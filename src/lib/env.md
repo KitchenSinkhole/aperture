@@ -15,6 +15,7 @@ Fields:
 - `ESI_BASE_URL` — ESI base URL; defaulted to `https://esi.evetech.net`. Used by the ESI client to build request URLs.
 - `EVE_USER_AGENT` — required by the ESI client; defaulted.
 - `ZKB_FEED_ENABLED` — master switch for the server-side zKillboard live feed (`zkbFeed.ts`). String `'true'`/`'false'`, parsed to a boolean; defaults to `true`. Set `'false'` to disable the outbound feed (CI, air-gapped dev, zKB degraded). Only `server.ts` reads it (the only place the feed is booted).
+- `FAVICON_URL` — URL or `/public`-relative path for the browser tab icon, used in `layout.tsx` metadata. Defaults to `/favicon.png`. Operators set this to a custom hosted URL or drop a file in `public/` to bundle it.
 - `NODE_ENV` — narrowed to `development | test | production`.
 
 ### Env

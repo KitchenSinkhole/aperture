@@ -32,6 +32,9 @@ const schema = z
       .enum(['true', 'false'])
       .default('true')
       .transform((v) => v === 'true'),
+    // URL or absolute path served from /public. Used in <head> icon metadata.
+    // Operators can point this at a custom hosted icon or drop a file in public/.
+    FAVICON_URL: z.string().default('/favicon.png'),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   })
   .superRefine((v, ctx) => {

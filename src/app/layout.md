@@ -14,9 +14,10 @@
 
 ### Exports
 - Default: `RootLayout`
-- Named: `metadata` — `next.Metadata` for the document `<title>` and description.
+- Named: `metadata` — `next.Metadata` for the document `<title>`, description, and favicon icon (read from `env.FAVICON_URL`).
 
 ### Depends on
 - `next/font/google` — Geist font.
+- `@/lib/env` — reads `FAVICON_URL` for the icon metadata entry.
 - `@/lib/utils` — `cn` className helper.
 - `./globals.css` — Tailwind v4 base + shadcn theme tokens.
