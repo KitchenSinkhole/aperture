@@ -10,7 +10,7 @@ Safe to import from both server-only and client modules — exports only static 
 ---
 
 ### `SIGNATURE_GROUP_CATALOG: readonly SignatureGroupOption[]`
-Seven entries in the order shown in the UI dropdown. Each entry carries:
+Eight entries in the order shown in the UI dropdown. Each entry carries:
 - `key` — the `SignatureGroupKey` enum value (`'combat'`, `'relic'`, `'data'`, `'gas'`, `'wormhole'`, `'ore'`, `'ghost'`).
 - `label` — UI label (e.g. `'Combat'`).
 - `scannerName` — literal string EVE emits in the Group column of the probe-scanner paste (e.g. `'Combat Site'`).
