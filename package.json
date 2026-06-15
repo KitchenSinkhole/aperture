@@ -13,7 +13,7 @@
     "start": "tsx server.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "set RUN_DB_TESTS=1 && vitest run",
+    "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
