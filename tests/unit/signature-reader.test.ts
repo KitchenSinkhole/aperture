@@ -124,4 +124,17 @@ describe('parseSignaturePaste', () => {
       },
     ]);
   });
+
+  it('parses homefront anomalies', () => {
+    const text =
+      'XFV-531\tCosmic Anomaly\tHomefront Operation Site - Combat Site	Suspicious Signal: Block the Broadcast\t100.0%\t68.93 AU'
+    expect(parseSignaturePaste(text)).toEqual([
+      {
+        sigId: 'XFV-531',
+        name: 'Suspicious Signal: Block the Broadcast',
+        groupName: 'Homefront Operation Site - Combat Site',
+        signal: '100.0%'
+      }
+    ]);
+  });
 });
