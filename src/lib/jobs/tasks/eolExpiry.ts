@@ -43,9 +43,11 @@ async function expireEol(): Promise<{ scanned: number; deleted: number; failed: 
         not(isNull(apMapConnection.eolAt)),
         // The CASE branches are bound params (unknown → text), so the CASE result
         // is text; cast it to double precision for make_interval's `secs` arg.
+        // Wormhole lifetimes vary ±15%; multiply by 1.15 to assume the optimistic
+        // (longest) end so we don't reap a hole that's still alive.
         sql`${apMapConnection.eolAt} < now() - make_interval(secs => (case when ${apMapConnection.eolStage} = 'critical' then ${
-          apertureConfig.WORMHOLE_EOL_CRITICAL_LIFETIME_MS / 1000
-        } else ${apertureConfig.WORMHOLE_EOL_LIFETIME_MS / 1000} end)::double precision)`,
+          (apertureConfig.WORMHOLE_EOL_CRITICAL_LIFETIME_MS * 1.15) / 1000
+        } else ${(apertureConfig.WORMHOLE_EOL_LIFETIME_MS * 1.15) / 1000} end)::double precision)`,
         eq(apMap.deleteEolConnections, true),
         isNull(apMap.deletedAt),
       ),
