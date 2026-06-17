@@ -355,6 +355,25 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
     });
   });
 
+  it('resolveFactionalWarfareRows', async () => {
+    const rows = await resolveSignatureRows([
+      {
+        sigId: 'VBA-720',
+        name: 'Minmatar Small ADV-1',
+        groupName: 'Factional Warfare Site - Combat Site',
+        signal: '100.0%'
+      }
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      sigId: 'VBA-720',
+      groupKey: 'combat',
+      typeId: null,
+      name: 'Minmatar Small ADV-1',
+    });
+  });
+
   it('resolveSignatureRows: classifies the seven scanner groups + WH name → typeId', async () => {
     const rows = await resolveSignatureRows([
       { sigId: 'WH1-001', name: 'X901', groupName: 'Wormhole', signal: '100.0%' },
