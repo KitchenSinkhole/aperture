@@ -18,6 +18,7 @@ export type SignatureGroupOption = {
 
 export const SIGNATURE_GROUP_CATALOG: readonly SignatureGroupOption[] = [
   { key: 'combat',   label: 'Combat',   scannerName: 'Combat Site' },
+  { key: 'combat',   label: 'Combat',   scannerName: 'Factional Warfare - Combat Site'},
   { key: 'combat',   label: 'Combat',   scannerName: 'Homefront Operation Site - Combat Site'},
   { key: 'relic',    label: 'Relic',    scannerName: 'Relic Site' },
   { key: 'data',     label: 'Data',     scannerName: 'Data Site' },
