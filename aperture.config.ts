@@ -272,7 +272,7 @@ export const apertureConfig = {
   /** 
    * The duration that a map ping will persist in milliseconds
    */
-  MAP_PING_DURATION_MS: 3_000,
+  MAP_PING_DURATION_MS: 10_000,
 
   /**
    * Batch cap for housekeeping jobs that delete row-by-row through
