@@ -1,5 +1,6 @@
 import type { SystemNotificationLoad } from '@/lib/realtime/protocol';
 import type { UnderglowConfig } from '@/types';
+import { apertureConfig } from '../../../aperture.config';
 
 /**
  * Client-side visual presets per `systemNotification` kind. The server sends a
@@ -12,7 +13,7 @@ export const UNDERGLOW_PRESETS: Record<SystemNotificationLoad['kind'], Underglow
   // Ping: a short, fast sky-blue pulse — a user draws attention to a system
   // without the commitment of a rally point. Distinct hue and a brisker cycle
   // than the killmail alert so the two read differently.
-  ping: { color: '#38bdf8', brightness: 0.95, durationMs: 3_000, speedMs: 1_000 },
+  ping: { color: '#38bdf8', brightness: 0.95, durationMs: apertureConfig.MAP_PING_DURATION_MS ?? 3_000, speedMs: 1_000 },
 };
 
 /**

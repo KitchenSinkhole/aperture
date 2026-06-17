@@ -269,6 +269,11 @@ export const apertureConfig = {
    */
   MAP_PURGE_GRACE_DAYS: 30,
 
+  /** 
+   * The duration that a map ping will persist in milliseconds
+   */
+  MAP_PING_DURATION_MS: 3_000,
+
   /**
    * Batch cap for housekeeping jobs that delete row-by-row through
    * `commitMapEvent`. Bounds the per-run worst case: a thundering pg_notify
