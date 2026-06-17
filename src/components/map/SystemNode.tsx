@@ -16,7 +16,7 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
-import type { MapSystemNode } from '@/lib/map/loadMap';
+import type { MapPresenceEntry, MapSystemNode } from '@/lib/map/loadMap';
 import { formatAgoFromMs } from '@/lib/map/relativeTime';
 import {
   systemEffectBonuses,
@@ -27,6 +27,7 @@ import { systemDisplayName, isDrifterSystem } from '@/lib/eve/drifterSystems';
 import { isShatteredSystem } from '@/lib/eve/shatteredSystems';
 import { homeAccentColor, systemClassColor, systemEffectColor, systemStatusColor } from './styling';
 import { InlineTextEdit } from './InlineTextEdit';
+import { PilotRosterTable } from './PilotRosterTable';
 import { usePresenceForSystem } from './MapPresenceContext';
 import { useSignatureIndicator } from './MapSignatureIndicatorContext';
 import { useUnderglowForSystem } from './MapUnderglowContext';
@@ -181,10 +182,34 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
           hovered handle. Without an id, `getHandle` falls back to `handles[0]`
           (the first declared = Top), which pins both the drag origin and the
           snap target to the top handle regardless of which side is in play. */}
-      <Handle type="source" id="top" position={Position.Top} className={handleClass} style={handleStyles.top} />
-      <Handle type="source" id="right" position={Position.Right} className={handleClass} style={handleStyles.right} />
-      <Handle type="source" id="bottom" position={Position.Bottom} className={handleClass} style={handleStyles.bottom} />
-      <Handle type="source" id="left" position={Position.Left} className={handleClass} style={handleStyles.left} />
+      <Handle
+        type="source"
+        id="top"
+        position={Position.Top}
+        className={handleClass}
+        style={handleStyles.top}
+      />
+      <Handle
+        type="source"
+        id="right"
+        position={Position.Right}
+        className={handleClass}
+        style={handleStyles.right}
+      />
+      <Handle
+        type="source"
+        id="bottom"
+        position={Position.Bottom}
+        className={handleClass}
+        style={handleStyles.bottom}
+      />
+      <Handle
+        type="source"
+        id="left"
+        position={Position.Left}
+        className={handleClass}
+        style={handleStyles.left}
+      />
 
       <div className="flex items-stretch">
         {/* Left column: security class + tag, the visual leads, sized up and
@@ -247,7 +272,11 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
               </IndicatorPill>
             )}
             {isShattered && (
-              <SystemKindIcon icon={CircleDashed} label="Shattered system" className="text-rose-400" />
+              <SystemKindIcon
+                icon={CircleDashed}
+                label="Shattered system"
+                className="text-rose-400"
+              />
             )}
             {isDrifter && (
               <SystemKindIcon icon={Atom} label="Drifter wormhole" className="text-violet-400" />
@@ -264,7 +293,9 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
                 {orderedStatics.length > 0 && (
                   <span className="flex items-center gap-1">
                     {orderedStatics.map((cls, i) => (
-                      <span key={i} className="font-bold" style={{ color: systemClassColor(cls) }}>{cls}</span>
+                      <span key={i} className="font-bold" style={{ color: systemClassColor(cls) }}>
+                        {cls}
+                      </span>
                     ))}
                   </span>
                 )}
@@ -356,7 +387,10 @@ function IntelIndicators({
   return (
     <div className="nodrag nopan pointer-events-none absolute -right-2 -bottom-2 flex items-center gap-1">
       {inFactionWarfare && (
-        <IndicatorPill className="text-orange-400 ring-orange-400/40" label="Faction Warfare system">
+        <IndicatorPill
+          className="text-orange-400 ring-orange-400/40"
+          label="Faction Warfare system"
+        >
           <Swords className="size-2.5" aria-hidden />
         </IndicatorPill>
       )}
@@ -443,13 +477,7 @@ function SystemKindIcon({
  * effect's bonuses resolved to this system's class. `nodrag nopan` so the
  * interaction never starts a canvas pan/drag.
  */
-function EffectIndicator({
-  effect,
-  classId,
-}: {
-  effect: SystemEffectKey;
-  classId: number | null;
-}) {
+function EffectIndicator({ effect, classId }: { effect: SystemEffectKey; classId: number | null }) {
   const color = systemEffectColor(effect);
   const name = systemEffectName(effect);
   const bonuses = classId != null ? systemEffectBonuses(effect, classId) : [];
@@ -492,11 +520,7 @@ function EffectIndicator({
   );
 }
 
-function PresenceBadge({
-  pilots,
-}: {
-  pilots: readonly import('@/lib/map/loadMap').MapPresenceEntry[];
-}) {
+function PresenceBadge({ pilots }: { pilots: readonly MapPresenceEntry[] }) {
   return (
     <PreviewCard.Root>
       <PreviewCard.Trigger
@@ -512,23 +536,13 @@ function PresenceBadge({
       </PreviewCard.Trigger>
       <PreviewCard.Portal>
         <PreviewCard.Positioner sideOffset={4} side="top" align="end">
-          <PreviewCard.Popup className="nodrag nopan z-50 min-w-40 rounded-md border bg-popover px-2 py-1.5 text-xs text-popover-foreground shadow-md">
-            <ul className="space-y-0.5">
-              {pilots.map((p) => (
-                <li key={p.characterId} className="flex items-start justify-between gap-3">
-                  <span className="font-medium">{p.characterName}</span>
-                  <span className="flex flex-col items-end text-right text-muted-foreground">
-                    <span>{p.shipName ?? p.shipTypeName ?? '—'}</span>
-                    {/* Custom ship name and type both shown; the type line is
-                        omitted when the pilot never renamed the hull (ESI
-                        defaults ship_name to the type name). */}
-                    {p.shipName && p.shipTypeName && p.shipName !== p.shipTypeName && (
-                      <span className="text-[10px] text-muted-foreground/70">{p.shipTypeName}</span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
+          <PreviewCard.Popup className="nodrag nopan z-50 min-w-40 rounded-md border bg-popover p-0 text-xs text-popover-foreground shadow-md">
+            <PilotRosterTable
+              presence={pilots}
+              showHeaders={false}
+              showLocationColumn={false}
+              scrollable={false}
+            />
           </PreviewCard.Popup>
         </PreviewCard.Positioner>
       </PreviewCard.Portal>

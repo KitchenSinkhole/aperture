@@ -3,10 +3,16 @@
  * panels and the pilot roster popover). Plain styled table elements — no state.
  */
 
+/** Full-width compact `<table>`. Wrap in `ScrollTable` for a height-capped, bordered scroll region. */
+export function InfoTable({ children }: { children: React.ReactNode }) {
+  return <table className="w-full text-xs">{children}</table>;
+}
+
+/** Height-capped, bordered scroll container — wrap an `InfoTable` (or its rows) in it. */
 export function ScrollTable({ children }: { children: React.ReactNode }) {
   return (
     <div className="max-h-[60vh] overflow-auto rounded-md ring-1 ring-foreground/10">
-      <table className="w-full text-xs">{children}</table>
+      {children}
     </div>
   );
 }

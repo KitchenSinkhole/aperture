@@ -5,8 +5,11 @@
 
 ---
 
+### InfoTable({ children })
+A full-width `text-xs` `<table>`. Pass `<thead>`/`<tbody>` as children. Render bare for a non-scrolling table, or wrap in `ScrollTable` for a height-capped, bordered scroll region.
+
 ### ScrollTable({ children })
-A `max-h-[60vh]` scroll container wrapping a full-width `text-xs` `<table>`. Pass `<thead>`/`<tbody>` as children.
+A `max-h-[60vh]` bordered (`rounded-md ring-1`) scroll container. Wrap an `InfoTable` in it. (No longer provides the `<table>` itself — that's `InfoTable`.)
 
 ### Th({ className, children })
 Left-aligned `<th>` cell with the standard padding/weight. `className` extends.
@@ -20,5 +23,5 @@ Centered muted empty-state block (not a table row — render in place of `Scroll
 ---
 
 ### Consumed by
-- `MapInfoDialog` (Systems / Connections panels)
-- `PilotRoster`
+- `MapInfoDialog` (Systems / Connections panels — `ScrollTable` + `InfoTable`)
+- `PilotRosterTable` (wraps `InfoTable` in `ScrollTable` only when `scrollable`; `SystemNode`'s presence popup renders it bare)
