@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { abcStrategy, homeStaticExemptionChanges } from '@/lib/tagging/abc';
+import {
+  abcStrategy,
+  homeStaticExemptionChanges,
+  isTaggableClass,
+  letterForIndex,
+  indexForLetter,
+} from '@/lib/tagging/abc';
 import { scheme0121Strategy } from '@/lib/tagging/scheme0121';
 import type { TagContext, TagEdge, TagSystem } from '@/lib/tagging/types';
 
@@ -20,6 +26,52 @@ const abcCtx = (systems: TagSystem[]): TagContext => ({
   connections: [],
 });
 
+describe('isTaggableClass', () => {
+  it('is true for C1–C6 and C13', () => {
+    for (const cls of ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C13']) {
+      expect(isTaggableClass(cls)).toBe(true);
+    }
+  });
+
+  it('is false for named WH classes, k-space, and class-less systems', () => {
+    for (const cls of ['C12', 'C14', 'C15', 'C16', 'C17', 'C18', 'H', 'L', '0.0', 'A', 'P', 'C7', '']) {
+      expect(isTaggableClass(cls)).toBe(false);
+    }
+    expect(isTaggableClass(null)).toBe(false);
+  });
+});
+
+describe('letterForIndex / indexForLetter', () => {
+  it('maps ordinals to bijective base-26 letters at the boundaries', () => {
+    expect(letterForIndex(0)).toBe('A');
+    expect(letterForIndex(25)).toBe('Z');
+    expect(letterForIndex(26)).toBe('AA');
+    expect(letterForIndex(27)).toBe('AB');
+    expect(letterForIndex(701)).toBe('ZZ');
+    expect(letterForIndex(702)).toBe('AAA');
+  });
+
+  it('inverts letters back to ordinals', () => {
+    expect(indexForLetter('A')).toBe(0);
+    expect(indexForLetter('Z')).toBe(25);
+    expect(indexForLetter('AA')).toBe(26);
+    expect(indexForLetter('ZZ')).toBe(701);
+    expect(indexForLetter('AAA')).toBe(702);
+  });
+
+  it('rejects non-letter tokens (e.g. 0121 numeric tags)', () => {
+    for (const token of ['1', '11', '', 'a', 'A1', ' ']) {
+      expect(indexForLetter(token)).toBeNull();
+    }
+  });
+
+  it('round-trips ordinal → letter → ordinal', () => {
+    for (let n = 0; n <= 1000; n++) {
+      expect(indexForLetter(letterForIndex(n))).toBe(n);
+    }
+  });
+});
+
 describe('ABC strategy', () => {
   it('assigns the lowest free letter per class, independently', () => {
     expect(abcStrategy.tagOnAdd(abcCtx([]), sys(1, 'C1', null))).toBe('A');
@@ -34,6 +86,13 @@ describe('ABC strategy', () => {
     expect(abcStrategy.tagOnAdd(abcCtx([sys(1, 'C1', 'A')]), sys(2, 'C2', null))).toBe('A');
   });
 
+  it('tags C13 shattered systems on their own sequence', () => {
+    expect(abcStrategy.tagOnAdd(abcCtx([]), sys(1, 'C13', null))).toBe('A');
+    expect(abcStrategy.tagOnAdd(abcCtx([sys(1, 'C13', 'A')]), sys(2, 'C13', null))).toBe('B');
+    // C13 is independent of the C1–C6 sequences.
+    expect(abcStrategy.tagOnAdd(abcCtx([sys(1, 'C1', 'A')]), sys(2, 'C13', null))).toBe('A');
+  });
+
   it('reclaims a freed letter (lowest free, not next)', () => {
     // B is gone → the next C1 reclaims B, not D.
     expect(
@@ -41,13 +100,41 @@ describe('ABC strategy', () => {
     ).toBe('B');
   });
 
-  it('does not tag k-space / Abyssal / Pochven / class-less systems', () => {
+  it('does not tag k-space / Abyssal / Pochven / named WH / class-less systems', () => {
     expect(abcStrategy.tagOnAdd(abcCtx([]), sys(1, 'H', null))).toBeNull();
     expect(abcStrategy.tagOnAdd(abcCtx([]), sys(2, 'L', null))).toBeNull();
     expect(abcStrategy.tagOnAdd(abcCtx([]), sys(3, '0.0', null))).toBeNull();
     expect(abcStrategy.tagOnAdd(abcCtx([]), sys(4, 'A', null))).toBeNull();
     expect(abcStrategy.tagOnAdd(abcCtx([]), sys(5, 'P', null))).toBeNull();
     expect(abcStrategy.tagOnAdd(abcCtx([]), sys(6, null, null))).toBeNull();
+    // C13 is now taggable, but the other named holes (Thera, Drifters) stay skipped.
+    for (const cls of ['C12', 'C14', 'C15', 'C16', 'C17', 'C18']) {
+      expect(abcStrategy.tagOnAdd(abcCtx([]), sys(7, cls, null))).toBeNull();
+    }
+  });
+
+  it('never tags the Home system even when its class is taggable', () => {
+    const ctx: TagContext = {
+      scheme: 'abc',
+      homeMapSystemId: BigInt(1),
+      exemptHomeStatic: false,
+      systems: [sys(1, 'C5', null)],
+      connections: [],
+    };
+    expect(abcStrategy.tagOnAdd(ctx, sys(1, 'C5', null))).toBeNull();
+  });
+
+  it('ignores other-class and untagged systems when picking the next letter', () => {
+    const ctx = abcCtx([sys(1, 'C1', 'A'), sys(2, 'C13', 'A'), sys(3, 'C5', null)]);
+    // C5 has no tagged sibling, so it starts at A despite the other classes.
+    expect(abcStrategy.tagOnAdd(ctx, sys(4, 'C5', null))).toBe('A');
+  });
+
+  it('never tags on connect (topology is irrelevant for ABC)', () => {
+    const ctx = abcCtx([sys(1, 'C3', 'A'), sys(2, 'C3', null)]);
+    expect(
+      abcStrategy.tagOnConnect(ctx, { source: sys(1, 'C3', 'A'), target: sys(2, 'C3', null) }),
+    ).toBeNull();
   });
 
   it('continues past Z into multi-letter tokens', () => {
@@ -65,6 +152,22 @@ describe('ABC strategy', () => {
     // C2 is in the always-shown grid even with no systems yet.
     const c2 = out.perClass.find((r) => r.classLabel === 'C2')!;
     expect(c2.next).toEqual(['A', 'B', 'C']);
+  });
+
+  it('availableTags grid is exactly C1–C6 — C13 is tagged but never shown', () => {
+    // A tagged C13 system is on the map...
+    const ctx = abcCtx([sys(1, 'C13', 'A')]);
+    const out = abcStrategy.availableTags(ctx, null);
+    if (out.scheme !== 'abc') throw new Error('expected abc');
+    // ...yet the panel grid omits C13 (DEFAULT_ABC_CLASSES ≠ TAGGABLE_CLASSES)...
+    expect(out.perClass.map((r) => r.classLabel)).toEqual(['C1', 'C2', 'C3', 'C4', 'C5', 'C6']);
+    // ...while tagOnAdd still hands the next C13 its letter.
+    expect(abcStrategy.tagOnAdd(ctx, sys(2, 'C13', null))).toBe('B');
+  });
+
+  it('availableTags ignores the selected-parent argument', () => {
+    const ctx = abcCtx([sys(1, 'C1', 'A')]);
+    expect(abcStrategy.availableTags(ctx, BigInt(1))).toEqual(abcStrategy.availableTags(ctx, null));
   });
 });
 
@@ -227,5 +330,52 @@ describe('ABC home-static exemption', () => {
       connections: [edge(STATIC_HOME, 1, true)],
     };
     expect(homeStaticExemptionChanges(ctx)).toEqual([]);
+  });
+
+  it('clears every Home-static target in one pass', () => {
+    const t1 = sys(1, 'C5', 'A');
+    const t2 = sys(2, 'C5', 'B');
+    const changes = homeStaticExemptionChanges(
+      exemptCtx([home, t1, t2], [edge(STATIC_HOME, 1, true), edge(STATIC_HOME, 2, true)], true),
+    );
+    expect(changes).toContainEqual({ mapSystemId: BigInt(1), tag: null });
+    expect(changes).toContainEqual({ mapSystemId: BigInt(2), tag: null });
+  });
+
+  it('never tags or exempts the Home system even when its class is taggable', () => {
+    // Home is C5 here (taggable), behind its own static to a C5 target.
+    const taggableHome = sys(STATIC_HOME, 'C5', null);
+    const target = sys(1, 'C5', 'A');
+    const changes = homeStaticExemptionChanges(
+      exemptCtx([taggableHome, target], [edge(STATIC_HOME, 1, true)], true),
+    );
+    // Only the target is cleared; Home gets neither a tag nor an exemption entry.
+    expect(changes).toEqual([{ mapSystemId: BigInt(1), tag: null }]);
+  });
+
+  it('leaves a non-taggable Home-static target untouched', () => {
+    const target = sys(1, 'H', null);
+    const changes = homeStaticExemptionChanges(
+      exemptCtx([home, target], [edge(STATIC_HOME, 1, true)], true),
+    );
+    expect(changes).toEqual([]);
+  });
+
+  it('fills any untagged taggable system (self-healing) regardless of exemption', () => {
+    const tagged = sys(1, 'C5', 'A');
+    const hole = sys(2, 'C5', null);
+    const changes = homeStaticExemptionChanges(
+      exemptCtx([home, tagged, hole], [], false),
+    );
+    // The hole reclaims the lowest free letter (B); the tagged one is left alone.
+    expect(changes).toEqual([{ mapSystemId: BigInt(2), tag: 'B' }]);
+  });
+
+  it('does not emit a spurious clear for an already-untagged exempt system', () => {
+    const target = sys(1, 'C5', null);
+    const changes = homeStaticExemptionChanges(
+      exemptCtx([home, target], [edge(STATIC_HOME, 1, true)], true),
+    );
+    expect(changes).toEqual([]);
   });
 });
