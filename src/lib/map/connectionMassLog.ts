@@ -104,10 +104,12 @@ export async function logConnectionJump(args: LogConnectionJumpArgs): Promise<vo
 }
 
 /**
- * List a connection's mass-log for display, oldest jump first, with a running
- * cumulative mass. Scoped to `mapId` so a connection id from another map can't
- * be read through this map's route. Returns `[]` when the connection isn't on
- * the map.
+ * List a connection's mass-log for display, newest jump first. Each entry's
+ * `cumulativeMass` is the chronological running total up to and including that
+ * jump (a SQL window function over ascending `jumped_at`/`id`), so it stays
+ * correct under the descending display sort. Scoped to `mapId` so a connection
+ * id from another map can't be read through this map's route. Returns `[]` when
+ * the connection isn't on the map.
  */
 export async function listConnectionMassLog(args: {
   mapId: bigint;
