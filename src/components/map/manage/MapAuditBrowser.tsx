@@ -255,8 +255,7 @@ export function MapAuditBrowser({ mapId }: { mapId: string }) {
           <option value="all">All actors</option>
           {actors.map((a) => (
             <option key={a.characterId ?? 'none'} value={a.characterId ?? 'none'}>
-              {a.name}
-              {a.mainName && a.mainName !== a.name ? ` (main: ${a.mainName})` : ''} ({a.eventCount})
+              {a.name} ({a.eventCount})
             </option>
           ))}
         </select>

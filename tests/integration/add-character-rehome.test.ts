@@ -3,8 +3,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { eq, inArray } from 'drizzle-orm';
 import { db, pool } from '@/db/client';
-import { apCharacter, apUser } from '@/db/schema';
+import { apCharacter, apMap, apMapEvent, apUser } from '@/db/schema';
 import { persistLogin } from '@/lib/auth/persistLogin';
+import { listAuditActors, queryAuditEvents } from '@/lib/map/audit';
 import type { EveProfile } from '@/lib/auth/eve-provider';
 
 // Issue #116 — "Add character" must re-home an alt that already owns its own
@@ -19,6 +20,7 @@ const D = 90000214n; // already-seen character logging in without a link
 
 const TEST_IDS = [A, B, C, NEW, D];
 const createdUserIds = new Set<number>();
+const createdMapIds = new Set<bigint>();
 
 function profile(characterId: bigint, name: string): EveProfile {
   return { characterId, name, ownerHash: `hash-${characterId}`, scopes: ['publicData'] };
@@ -50,6 +52,11 @@ async function accountExists(userId: number): Promise<boolean> {
 }
 
 async function cleanup() {
+  // Maps first: ap_map_event cascades with its map, clearing the FK to the chars.
+  if (createdMapIds.size > 0) {
+    await db.delete(apMap).where(inArray(apMap.id, [...createdMapIds]));
+    createdMapIds.clear();
+  }
   await db.delete(apCharacter).where(inArray(apCharacter.id, TEST_IDS));
   if (createdUserIds.size > 0) {
     await db.delete(apUser).where(inArray(apUser.id, [...createdUserIds]));
@@ -150,5 +157,51 @@ describe('add-character re-home (real Postgres)', () => {
       .innerJoin(apUser, eq(apUser.id, apCharacter.userId))
       .where(eq(apCharacter.id, B));
     expect(row!.main).toBe(A);
+  });
+
+  it('renders the re-homed alt\'s prior audit commits under the linking main', async () => {
+    const linkAccount = await newAccount();
+    await db.insert(apCharacter).values({ id: A, userId: linkAccount, name: 'Main', ownerHash: 'hA' });
+    await db.update(apUser).set({ mainCharacterId: A }).where(eq(apUser.id, linkAccount));
+
+    const oldAccount = await newAccount();
+    await db.insert(apCharacter).values({ id: B, userId: oldAccount, name: 'Alt', ownerHash: 'hB' });
+    await db.update(apUser).set({ mainCharacterId: B }).where(eq(apUser.id, oldAccount));
+
+    const [map] = await db
+      .insert(apMap)
+      .values({ scope: 'wh', type: 'private', name: 'Rehome Audit', ownerCharacterId: A })
+      .returning({ id: apMap.id });
+    const mapId = map!.id;
+    createdMapIds.add(mapId);
+
+    // The alt commits to the map *before* the re-home, so the event's character_id
+    // is B and at insert time B's account main is B.
+    await db.insert(apMapEvent).values({
+      mapId,
+      characterId: B,
+      occurredAt: new Date(),
+      kind: 'system.added',
+      payload: { kind: 'system.added', id: '1', name: 'J100000' },
+    });
+
+    await persistLogin(profile(B, 'Alt'), tokens(), linkAccount);
+
+    // Feed: the commit now reads as the main (id + name), not the alt.
+    const page = await queryAuditEvents({ mapId });
+    expect(page.rows).toHaveLength(1);
+    expect(page.rows[0]!.characterId).toBe(A.toString());
+    expect(page.rows[0]!.characterName).toBe('Main');
+
+    // Dropdown: one account-actor, keyed by the main — the alt never appears.
+    const actors = await listAuditActors(mapId);
+    const named = actors.filter((a) => a.characterId !== null);
+    expect(named).toHaveLength(1);
+    expect(named[0]!.characterId).toBe(A.toString());
+    expect(named[0]!.name).toBe('Main');
+
+    // Filter is by account main: A matches the commit, the alt id B matches nothing.
+    expect((await queryAuditEvents({ mapId, characterId: A })).rows).toHaveLength(1);
+    expect((await queryAuditEvents({ mapId, characterId: B })).rows).toHaveLength(0);
   });
 });

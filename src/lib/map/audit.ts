@@ -48,10 +48,9 @@ export interface AuditEventRow {
 
 /** A distinct actor on a map, for the filter dropdown. `characterId: null` = automation. */
 export interface AuditActor {
+  /** The acting account's main character id (commits roll up to the main). `null` = automation. */
   characterId: string | null;
   name: string;
-  mainCharacterId: string | null;
-  mainName: string | null;
   eventCount: number;
 }
 
@@ -100,6 +99,15 @@ const DESTRUCTIVE_KINDS: ReadonlySet<MapEventKind> = new Set([
  */
 const excludePositionOnly: SQL = sql`not (${apMapEvent.kind} = 'system.updated' and jsonb_exists(${apMapEvent.payload}, 'positionX') and not jsonb_exists_any(${apMapEvent.payload}, array['status','alias','tag','intelNotes','locked','rallyAt']))`;
 
+// Audit attribution rolls every commit up to the acting character's account "main"
+// — the human identity. Once an alt is re-homed onto a main's account (issue #116),
+// its `user_id` repoints, so its prior commits reattribute to the main here at query
+// time, matching the stats rollup. Falls back to the acting character when no main
+// is recorded (and to the automation bucket when there is no acting character).
+const auditMainChar = alias(apCharacter, 'audit_main_char');
+/** Rolled-up actor id (SQL): the acting character's account main, else the acting id. */
+const rolledActorId: SQL = sql`coalesce(${apUser.mainCharacterId}, ${apMapEvent.characterId})`;
+
 function kindCategory(kind: MapEventKind): AuditEventCategory {
   // Every MapEventKind is `<category>.<verb>`; the prefix is one of the four.
   return kind.slice(0, kind.indexOf('.')) as AuditEventCategory;
@@ -137,28 +145,25 @@ function decodeCursor(cursor: string): { occurredAt: Date; id: bigint } | null {
  * `characterId: null` automation bucket when present.
  */
 export async function listAuditActors(mapId: bigint): Promise<AuditActor[]> {
-  const mainChar = alias(apCharacter, 'audit_main_char');
+  const rolledName: SQL<string | null> = sql`coalesce(${auditMainChar.name}, ${apCharacter.name})`;
   const rows = await db
     .select({
-      characterId: apMapEvent.characterId,
-      name: apCharacter.name,
-      mainCharacterId: apUser.mainCharacterId,
-      mainName: mainChar.name,
+      characterId: sql<string | null>`${rolledActorId}`,
+      name: rolledName,
       eventCount: sql<number>`count(*)::int`,
     })
     .from(apMapEvent)
     .leftJoin(apCharacter, eq(apMapEvent.characterId, apCharacter.id))
     .leftJoin(apUser, eq(apCharacter.userId, apUser.id))
-    .leftJoin(mainChar, eq(apUser.mainCharacterId, mainChar.id))
+    .leftJoin(auditMainChar, eq(apUser.mainCharacterId, auditMainChar.id))
     .where(eq(apMapEvent.mapId, mapId))
-    .groupBy(apMapEvent.characterId, apCharacter.name, apUser.mainCharacterId, mainChar.name);
+    .groupBy(rolledActorId, rolledName);
 
   return rows
     .map((r) => ({
-      characterId: r.characterId?.toString() ?? null,
+      // int8 crosses the driver as a string already; keep it as-is.
+      characterId: r.characterId ?? null,
       name: r.name ?? 'System / automation',
-      mainCharacterId: r.mainCharacterId?.toString() ?? null,
-      mainName: r.mainName ?? null,
       eventCount: r.eventCount,
     }))
     .sort((a, b) => b.eventCount - a.eventCount);
@@ -170,7 +175,8 @@ function filterClauses(params: AuditQueryParams): SQL[] {
   if (params.characterId === 'none') {
     clauses.push(isNull(apMapEvent.characterId));
   } else if (params.characterId !== undefined) {
-    clauses.push(eq(apMapEvent.characterId, params.characterId));
+    // The id is an account main; match every commit by any character in that account.
+    clauses.push(sql`${rolledActorId} = ${params.characterId}`);
   }
   if (params.kinds && params.kinds.length > 0) {
     clauses.push(inArray(apMapEvent.kind, params.kinds));
@@ -182,6 +188,7 @@ function filterClauses(params: AuditQueryParams): SQL[] {
     clauses.push(
       or(
         ilike(apCharacter.name, pat),
+        ilike(auditMainChar.name, pat),
         ilike(apMapEvent.kind, pat),
         sql`(${apMapEvent.payload} ->> 'sigId') ilike ${pat}`,
         sql`(${apMapEvent.payload} ->> 'name') ilike ${pat}`,
@@ -223,10 +230,14 @@ export async function queryAuditEvents(params: AuditQueryParams): Promise<AuditP
       kind: apMapEvent.kind,
       payload: apMapEvent.payload,
       characterId: apMapEvent.characterId,
+      mainCharacterId: apUser.mainCharacterId,
       characterName: apCharacter.name,
+      mainName: auditMainChar.name,
     })
     .from(apMapEvent)
     .leftJoin(apCharacter, eq(apMapEvent.characterId, apCharacter.id))
+    .leftJoin(apUser, eq(apCharacter.userId, apUser.id))
+    .leftJoin(auditMainChar, eq(apUser.mainCharacterId, auditMainChar.id))
     .where(and(...clauses))
     .orderBy(desc(apMapEvent.occurredAt), desc(apMapEvent.id))
     .limit(limit + 1);
@@ -238,18 +249,22 @@ export async function queryAuditEvents(params: AuditQueryParams): Promise<AuditP
 
   const rows: AuditEventRow[] = page.map((r) => {
     const kind = r.kind as MapEventKind;
+    // Attribute to the acting character's account main (issue #116), falling back
+    // to the acting character itself when no main is recorded.
+    const actorId = r.mainCharacterId ?? r.characterId;
+    const actorName = r.mainName ?? r.characterName;
     const parsed = mapEventPayloadSchema.safeParse(r.payload);
     let action: string | null = null;
     if (parsed.success) {
-      action = describeMapEvent(parsed.data, buildContext(parsed.data, r.characterName, names));
+      action = describeMapEvent(parsed.data, buildContext(parsed.data, actorName, names));
     }
     return {
       id: r.id.toString(),
       occurredAt: r.occurredAt.toISOString(),
       kind,
       category: kindCategory(kind),
-      characterId: r.characterId?.toString() ?? null,
-      characterName: r.characterName,
+      characterId: actorId?.toString() ?? null,
+      characterName: actorName,
       // The actor lives in its own column — the summary is the action alone, with
       // the first letter capitalized so it reads as a standalone log line.
       summary: capitalize(action ?? fallbackSummary(kind)),
@@ -403,7 +418,10 @@ export async function auditActorSummary(
 ): Promise<ActorSummary> {
   const clauses: SQL[] = [eq(apMapEvent.mapId, mapId), excludePositionOnly];
   clauses.push(
-    characterId === 'none' ? isNull(apMapEvent.characterId) : eq(apMapEvent.characterId, characterId),
+    // The id is an account main; aggregate every commit by any character in it.
+    characterId === 'none'
+      ? isNull(apMapEvent.characterId)
+      : sql`${rolledActorId} = ${characterId}`,
   );
   if (from) clauses.push(gte(apMapEvent.occurredAt, from));
   if (to) clauses.push(lte(apMapEvent.occurredAt, to));
@@ -411,6 +429,8 @@ export async function auditActorSummary(
   const rows = await db
     .select({ kind: apMapEvent.kind, count: sql<number>`count(*)::int` })
     .from(apMapEvent)
+    .leftJoin(apCharacter, eq(apMapEvent.characterId, apCharacter.id))
+    .leftJoin(apUser, eq(apCharacter.userId, apUser.id))
     .where(and(...clauses))
     .groupBy(apMapEvent.kind);
 
