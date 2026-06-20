@@ -575,7 +575,13 @@ export function MapCanvas({
   const mapId = viewData.map.id;
 
   const onNodesChange = useCallback((changes: NodeChange<Node<SystemNodeData>>[]) => {
-    setNodes((nds) => applyNodeChanges(changes, nds));
+    // The `selected` flag is owned entirely by `selectedSystemIds` + the reconcile
+    // sync. Drop xyflow's internal `select` changes so a plain pane click — which
+    // xyflow uses to clear its own selection — can't strip the outline off a node
+    // we deliberately keep selected (deselect is the pane double-click).
+    const filtered = changes.filter((c) => c.type !== 'select');
+    if (filtered.length === 0) return;
+    setNodes((nds) => applyNodeChanges(filtered, nds));
   }, []);
 
   // Commit the post-drag positions of every selected system. xyflow drags all
@@ -742,7 +748,12 @@ export function MapCanvas({
     setSelectedSystemIds(new Set());
   }, []);
 
-  const onPaneClick = useCallback(() => {
+  // A plain background click intentionally keeps the current selection (so the
+  // inspector/sidebar don't vanish on a stray click). Deselect is the deliberate
+  // double-click on empty pane below.
+  const onPaneDoubleClick = useCallback((event: React.MouseEvent) => {
+    // Only the empty pane clears — double-clicking a node/edge/overlay must not.
+    if (!(event.target as HTMLElement).classList.contains('react-flow__pane')) return;
     setSelected(null);
     setSelectedSystemIds(new Set());
   }, []);
@@ -1243,6 +1254,7 @@ export function MapCanvas({
           <div
             ref={flowWrapperRef}
             className="relative h-full overflow-hidden rounded-lg ring-1 ring-foreground/10"
+            onDoubleClick={onPaneDoubleClick}
           >
             {selectedSystemIds.size > 1 &&
               deletableSelectedSystemIds.length > 0 &&
@@ -1307,7 +1319,6 @@ export function MapCanvas({
               edgeTypes={edgeTypes}
               onNodeClick={onNodeClick}
               onEdgeClick={onEdgeClick}
-              onPaneClick={onPaneClick}
               onNodeContextMenu={onNodeContextMenu}
               onEdgeContextMenu={onEdgeContextMenu}
               onPaneContextMenu={onPaneContextMenu}
@@ -1334,6 +1345,7 @@ export function MapCanvas({
               fitView={initialViewport === null}
               defaultViewport={initialViewport ?? undefined}
               zoomOnScroll={false}
+              zoomOnDoubleClick={false}
               preventScrolling={false}
               onMoveEnd={onMoveEnd}
               proOptions={{ hideAttribution: true }}
