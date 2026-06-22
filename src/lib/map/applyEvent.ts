@@ -15,16 +15,29 @@ import type { MapEventPayload } from '@/lib/realtime/protocol';
 export function applyEvent(state: MapViewData, payload: MapEventPayload): MapViewData {
   switch (payload.kind) {
     case 'system.added': {
-      // payload structurally satisfies MapSystemNode (contains all required fields).
-      const nodeData = payload as MapSystemNode;
+      // `signatures` rides the event to re-hydrate a re-added system's surviving
+      // sigs; the node body itself excludes it. payload otherwise structurally
+      // satisfies MapSystemNode (contains all required fields).
+      const { signatures: incomingSignatures, ...rest } = payload;
+      const nodeData = rest as unknown as MapSystemNode;
       const exists = state.systems.some((s) => s.id === nodeData.id);
-      if (exists) {
-        return {
-          ...state,
-          systems: state.systems.map((s) => (s.id === nodeData.id ? nodeData : s)),
-        };
+      const systems = exists
+        ? state.systems.map((s) => (s.id === nodeData.id ? nodeData : s))
+        : [...state.systems, nodeData];
+
+      // Upsert (not replace-all): `system.removed` already pruned this system's
+      // sigs, so we only fold the survivors back in (find-by-id replace, else append).
+      let signatures = state.signatures;
+      if (incomingSignatures && incomingSignatures.length > 0) {
+        signatures = [...state.signatures];
+        for (const sig of incomingSignatures as MapSignature[]) {
+          const idx = signatures.findIndex((s) => s.id === sig.id);
+          if (idx >= 0) signatures[idx] = sig;
+          else signatures.push(sig);
+        }
       }
-      return { ...state, systems: [...state.systems, nodeData] };
+
+      return { ...state, systems, signatures };
     }
 
     case 'system.removed':

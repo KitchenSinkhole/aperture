@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
+  apMapSignature,
   apMapSystem,
   universeConstellation,
   universeRegion,
@@ -67,6 +68,29 @@ export async function buildSystemNode(
     .innerJoin(universeWormhole, eq(universeSystemStatic.typeId, universeWormhole.typeId))
     .where(eq(universeSystemStatic.systemId, row.systemId));
 
+  // Surviving signatures ride the event so re-adding a soft-removed system
+  // re-hydrates its sigs on every tab without a reload. Brand-new adds return [].
+  // Mirrors the signature load in `loadMapForView` (left-join for `wormholeCode`).
+  const signatureRows = await tx
+    .select({
+      id: apMapSignature.id,
+      mapSystemId: apMapSignature.mapSystemId,
+      mapConnectionId: apMapSignature.mapConnectionId,
+      sigId: apMapSignature.sigId,
+      groupKey: apMapSignature.groupKey,
+      typeId: apMapSignature.typeId,
+      wormholeCode: universeWormhole.name,
+      name: apMapSignature.name,
+      description: apMapSignature.description,
+      expiresAt: apMapSignature.expiresAt,
+      createdAt: apMapSignature.createdAt,
+      updatedAt: apMapSignature.updatedAt,
+    })
+    .from(apMapSignature)
+    .leftJoin(universeWormhole, eq(apMapSignature.typeId, universeWormhole.typeId))
+    .where(eq(apMapSignature.mapSystemId, mapSystemId))
+    .orderBy(apMapSignature.sigId);
+
   return {
     id: row.id.toString(),
     systemId: row.systemId,
@@ -94,5 +118,19 @@ export async function buildSystemNode(
     rallyAt: row.rallyAt ? row.rallyAt.toISOString() : null,
     positionX: row.positionX,
     positionY: row.positionY,
+    signatures: signatureRows.map((s) => ({
+      id: s.id.toString(),
+      mapSystemId: s.mapSystemId.toString(),
+      mapConnectionId: s.mapConnectionId ? s.mapConnectionId.toString() : null,
+      sigId: s.sigId,
+      groupKey: s.groupKey,
+      typeId: s.typeId,
+      wormholeCode: s.wormholeCode,
+      name: s.name,
+      description: s.description,
+      expiresAt: s.expiresAt.toISOString(),
+      createdAt: s.createdAt.toISOString(),
+      updatedAt: s.updatedAt.toISOString(),
+    })),
   };
 }

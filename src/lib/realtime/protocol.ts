@@ -178,7 +178,15 @@ const signatureBody = {
 };
 
 export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('system.added'), eventId, ...systemNodeBody }),
+  // `signatures` re-hydrates a re-added (soft-removed) system's surviving sigs on
+  // every tab in the single real broadcast — see buildSystemNode + applyEvent.
+  // Absent/empty for a brand-new add.
+  z.object({
+    kind: z.literal('system.added'),
+    eventId,
+    ...systemNodeBody,
+    signatures: z.array(z.object(signatureBody)).optional(),
+  }),
   z.object({ kind: z.literal('system.removed'), eventId, id: z.string() }),
   z.object({
     kind: z.literal('system.updated'),
