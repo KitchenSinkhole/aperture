@@ -251,6 +251,12 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     description: z.string().nullable().optional(),
     expiresAt: z.string().optional(),
     updatedAt: z.string().optional(),
+    // Full post-update row (Stage 2 self-heal). Additive to the conditional
+    // audit fields above — the formatter/audit ignore it and keep reading those,
+    // so precision + no-op suppression are untouched. The canvas upserts from it
+    // to materialize a sig whose `signature.create` it never received (reconnect
+    // gaps, reordering). `leadsToMapSystemId` is omitted (canvas ignores it).
+    snapshot: z.object(signatureBody).optional(),
   }),
   // `mapSystemId`/`sigId` captured at delete time (the signature row is
   // hard-deleted) so the audit names the system and the in-game code.

@@ -135,6 +135,19 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
     }
 
     case 'signature.update': {
+      // Self-heal: when the full post-update snapshot rides the event, upsert it
+      // (replace-by-id, else append) so a client missing this sig's baseline
+      // materializes it instead of silently no-op'ing the merge-by-id below.
+      if (payload.snapshot) {
+        const snap = payload.snapshot as MapSignature;
+        const exists = state.signatures.some((s) => s.id === snap.id);
+        return {
+          ...state,
+          signatures: exists
+            ? state.signatures.map((s) => (s.id === snap.id ? snap : s))
+            : [...state.signatures, snap],
+        };
+      }
       return {
         ...state,
         signatures: state.signatures.map((s): MapSignature => {
