@@ -288,6 +288,13 @@
       "when": 1780016400000,
       "tag": "0041_admin_teardown",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1780017600000,
+      "tag": "0042_connection_confirmed_at",
+      "breakpoints": true
     }
   ]
 }

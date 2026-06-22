@@ -155,6 +155,29 @@ export function removeSystem(input: RemoveSystemInput): Promise<ActionResult<Map
         .where(and(eq(apMapSystem.id, input.mapSystemId), eq(apMapSystem.mapId, input.mapId)))
         .returning({ id: apMapSystem.id });
       if (!row) throw new Error('System not found on map.');
+
+      // Dormant the incident wormhole connections rather than deleting them: a
+      // soft-removed system's wh links become memory (kept for an in-place
+      // restore once the sig is re-pasted — Stage 4), hidden from the view via
+      // `loadMapForView`'s `confirmed_at IS NOT NULL` filter. The single
+      // `system.removed` broadcast already prunes every incident connection on
+      // each client regardless of scope, so live + reload now agree. Non-`wh`
+      // links stay confirmed and re-link structurally via
+      // `addSystemWithStargateLinks` on re-add.
+      await tx
+        .update(apMapConnection)
+        .set({ confirmedAt: null })
+        .where(
+          and(
+            eq(apMapConnection.mapId, input.mapId),
+            eq(apMapConnection.scope, 'wh'),
+            or(
+              eq(apMapConnection.sourceMapSystemId, input.mapSystemId),
+              eq(apMapConnection.targetMapSystemId, input.mapSystemId),
+            ),
+          ),
+        );
+
       return { id: row.id.toString() };
     },
   });

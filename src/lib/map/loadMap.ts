@@ -305,6 +305,10 @@ export async function loadMapForView(
             eq(apMapConnection.mapId, mapId),
             inArray(apMapConnection.sourceMapSystemId, visibleSystemIds),
             inArray(apMapConnection.targetMapSystemId, visibleSystemIds),
+            // Dormant `wh` connections (endpoint removed, sig not re-pasted) carry
+            // a NULL `confirmed_at` and must not resurface on reload. Non-`wh` rows
+            // are always confirmed, so this never hides structural links.
+            isNotNull(apMapConnection.confirmedAt),
           ),
         )
         .orderBy(apMapConnection.id)

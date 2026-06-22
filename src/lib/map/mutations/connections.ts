@@ -82,6 +82,9 @@ export function createConnection(
           isRolling: input.isRolling ?? false,
           isStatic: input.isStatic ?? false,
           eolAt: stage !== 'none' ? new Date() : null,
+          // Every create is a fresh assertion (manual draw, sig link, stargate
+          // auto-link) → confirmed now. removeSystem dormants wh rows by NULLing this.
+          confirmedAt: new Date(),
         })
         .returning({
           id: apMapConnection.id,
