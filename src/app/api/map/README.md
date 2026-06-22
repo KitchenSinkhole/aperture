@@ -26,6 +26,7 @@ Every route in this tree obeys these invariants:
 | POST | `/api/map/[mapId]/connections` | `createConnection` | `connection.create` |
 | PATCH | `/api/map/[mapId]/connections/[connId]` | `updateConnection` | `connection.update` |
 | DELETE | `/api/map/[mapId]/connections/[connId]` | `deleteConnection` | `connection.delete` |
+| POST | `/api/map/[mapId]/connections/[connId]/restore` | `restoreConnection` | `system.added` (per hidden endpoint) + `connection.create` |
 | POST | `/api/map/[mapId]/subchain` | `deleteSubchain` | `connection.delete` + `system.removed` (N events) |
 | POST | `/api/map/[mapId]/signatures` | `createSignature` | `signature.create` |
 | PATCH | `/api/map/[mapId]/signatures/[sigId]` | `updateSignature` | `signature.update` |

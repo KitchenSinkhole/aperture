@@ -52,6 +52,7 @@ import {
   deleteDisconnectedOnServer,
   deleteSignatureOnServer,
   deleteSubchainOnServer,
+  restoreConnectionOnServer,
   fetchMapSnapshot,
   fetchSystemData,
   pingSystemOnServer,
@@ -123,6 +124,7 @@ import { MapUnderglowBridge } from './MapUnderglowBridge';
 import { SystemNode, type SystemNodeData } from './SystemNode';
 import { MapContextMenu } from './MapContextMenu';
 import { SubchainDeletePrompt } from './SubchainDeletePrompt';
+import { RestoreConnectionPrompt } from './RestoreConnectionPrompt';
 import { MapLayoutGrid } from './layout/MapLayoutGrid';
 import { MapPanel } from './layout/MapPanel';
 import { DEFAULT_MAP_LAYOUT, PANELS, ensurePanelsPlaced } from '@/lib/map/layout/panels';
@@ -220,6 +222,14 @@ type SubchainSigOffer = {
   count: number;
 };
 
+// A re-confirmed wormhole sig whose remembered connection is currently dormant
+// (absent from the view) → an offer to restore it. Keyed on the dormant
+// connection id; `targetName` names the far system for the prompt.
+type RestoreConnOffer = {
+  connId: string;
+  targetName: string;
+};
+
 export function MapCanvas({
   data,
   stats: initialStats,
@@ -285,6 +295,7 @@ export function MapCanvas({
   // icon enqueues a single entry; a lazy-delete paste can enqueue several at
   // once. `[0]` is the active prompt; an empty queue ⇒ no prompt.
   const [subchainSigPrompts, setSubchainSigPrompts] = useState<SubchainSigOffer[]>([]);
+  const [restoreConnPrompts, setRestoreConnPrompts] = useState<RestoreConnOffer[]>([]);
   // Pending delete-disconnected confirmation. The doomed systems (everything cut
   // off from the Home) are highlighted via `selectedSystemIds` while open.
   const [disconnectedPreview, setDisconnectedPreview] = useState<{ count: number } | null>(null);
@@ -936,10 +947,55 @@ export function MapCanvas({
     [mapId, runOptimistic, viewData, buildSubchainSigOffer],
   );
 
+  // Scan committed paste payloads for wormhole sigs whose remembered connection
+  // is currently dormant — i.e. absent from the (pre-fold) view — and turn each
+  // into a restore offer. A re-pasted surviving sig commits a `signature.update`
+  // carrying a full `snapshot`; a brand-new sig commits `signature.create`.
+  // De-duped by connection id; multiple wh sigs → multiple offers.
+  const buildRestoreOffers = useCallback(
+    (payloads: MapEventPayload[]): RestoreConnOffer[] => {
+      const offers: RestoreConnOffer[] = [];
+      const seen = new Set<string>();
+      for (const p of payloads) {
+        const body =
+          p.kind === 'signature.update' ? p.snapshot : p.kind === 'signature.create' ? p : null;
+        if (!body) continue;
+        if (body.groupKey !== 'wormhole') continue;
+        const connId = body.mapConnectionId;
+        if (connId == null || seen.has(connId)) continue;
+        // Present in the view ⇒ confirmed/visible, nothing to restore.
+        if (viewData.connections.some((c) => c.id === connId)) continue;
+        seen.add(connId);
+        const far =
+          body.leadsToMapSystemId != null
+            ? viewData.systems.find((s) => s.id === body.leadsToMapSystemId)
+            : undefined;
+        const targetName = far
+          ? far.alias?.trim() || far.name
+          : (body.wormholeCode ?? 'wormhole');
+        offers.push({ connId, targetName });
+      }
+      return offers;
+    },
+    [viewData],
+  );
+
+  // Fold a signature paste into state, then offer to restore any dormant
+  // connection the paste re-confirmed (built from the pre-fold graph). Used by
+  // both signature-paste entry points (the CTRL+V hotkey and the panel dialog).
+  const onSignaturePasteResult = useCallback(
+    (payloads: MapEventPayload[]) => {
+      const offers = buildRestoreOffers(payloads);
+      onBulkPaste(payloads);
+      if (offers.length > 0) setRestoreConnPrompts((q) => [...q, ...offers]);
+    },
+    [onBulkPaste, buildRestoreOffers],
+  );
+
   // Fold a lazy-delete paste into state, then offer the subchain prompt for each
-  // wormhole sig the paste removed — the same prompt the row trash icon raises.
-  // The offers are built from the pre-fold graph (removed sigs still carry their
-  // `mapConnectionId`), then `onBulkPaste` applies the removals.
+  // wormhole sig the paste removed — the same prompt the row trash icon raises —
+  // plus a restore offer for any dormant connection it re-confirmed. Offers are
+  // built from the pre-fold graph, then `onBulkPaste` applies the changes.
   const onLazyDeletePasteResult = useCallback(
     (payloads: MapEventPayload[]) => {
       const offers: SubchainSigOffer[] = [];
@@ -948,10 +1004,12 @@ export function MapCanvas({
         const offer = buildSubchainSigOffer(viewData.signatures.find((s) => s.id === p.id));
         if (offer) offers.push(offer);
       }
+      const restoreOffers = buildRestoreOffers(payloads);
       onBulkPaste(payloads);
       if (offers.length > 0) setSubchainSigPrompts((q) => [...q, ...offers]);
+      if (restoreOffers.length > 0) setRestoreConnPrompts((q) => [...q, ...restoreOffers]);
     },
-    [onBulkPaste, buildSubchainSigOffer, viewData],
+    [onBulkPaste, buildSubchainSigOffer, buildRestoreOffers, viewData],
   );
 
   // ---- Delete subchain ----------------------------------------------------
@@ -1027,6 +1085,18 @@ export function MapCanvas({
     });
     if (result.ok) onBulkPaste(result.data.payloads);
   }, [subchainSigPrompts, mapId, onBulkPaste]);
+
+  const dismissRestoreConn = useCallback(() => {
+    setRestoreConnPrompts((q) => q.slice(1));
+  }, []);
+
+  const onConfirmRestoreConn = useCallback(async () => {
+    const active = restoreConnPrompts[0];
+    if (!active) return;
+    setRestoreConnPrompts((q) => q.slice(1));
+    const result = await restoreConnectionOnServer({ mapId, connectionId: active.connId });
+    if (result.ok) onBulkPaste(result.data.payloads);
+  }, [restoreConnPrompts, mapId, onBulkPaste]);
 
   // ---- Delete disconnected -----------------------------------------------
   // Compute the systems cut off from the Home, highlight them, and open the
@@ -1283,6 +1353,13 @@ export function MapCanvas({
                 onDismiss={dismissSubchainSig}
               />
             )}
+            {restoreConnPrompts[0] && (
+              <RestoreConnectionPrompt
+                targetName={restoreConnPrompts[0].targetName}
+                onConfirm={onConfirmRestoreConn}
+                onDismiss={dismissRestoreConn}
+              />
+            )}
             {subchainPreview && (
               <SubchainDeletePrompt
                 lead="Delete subchain beyond"
@@ -1439,7 +1516,7 @@ export function MapCanvas({
           mapId={mapId}
           system={selectedSystem}
           signatures={viewData.signatures}
-          onBulkPaste={onBulkPaste}
+          onBulkPaste={onSignaturePasteResult}
           lazyDelete={lazyDeleteSigs}
           onLazyDeleteChange={setLazyDeleteSigs}
           onOpenSearch={() => setSigSearchOpen(true)}
@@ -1467,7 +1544,7 @@ export function MapCanvas({
           selectedSystem={selectedSystem}
           systems={viewData.systems}
           viewerCharacterIds={viewerCharacterIds}
-          onBulkPaste={onBulkPaste}
+          onBulkPaste={onSignaturePasteResult}
           lazyDelete={lazyDeleteSigs}
           onLazyDeleteConsume={() => setLazyDeleteSigs(false)}
           onLazyDeletePasteResult={onLazyDeletePasteResult}

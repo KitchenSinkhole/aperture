@@ -61,7 +61,7 @@ A frameless `Card` (no card header) with:
 | mapId | string | yes | `ap_map.id` for the paste dialog. |
 | system | MapSystemNode \| null | yes | The selected system; when `null` only the search button is rendered (it searches across all systems). |
 | signatures | MapSignature[] | yes | All signatures on the map; filtered to the active system for the paste dialog's existing-sig set. |
-| onBulkPaste | (payloads: MapEventPayload[]) => void | yes | Forwarded to `SignaturePasteDialog`; caller registers each `eventId` in its dedupe set and applies each payload locally. |
+| onBulkPaste | (payloads: MapEventPayload[]) => void | yes | Forwarded to `SignaturePasteDialog` as its `onResult`; caller registers each `eventId` in its dedupe set and applies each payload locally. `MapCanvas` passes its `onSignaturePasteResult` here (not the raw `onBulkPaste`), so a dialog paste also raises Stage 4 restore-connection offers. |
 | lazyDelete | boolean | yes | Whether the one-shot CTRL+V "Lazy delete" arm is active (state owned by `MapCanvas`, shared with `SignaturePasteHotkey`). |
 | onLazyDeleteChange | (next: boolean) => void | yes | Toggles the lazy-delete arm from the header button. |
 | onOpenSearch | () => void | yes | Opens the `SignatureSearchDialog`. Wired to `setSigSearchOpen(true)` in `MapCanvas`. The search button is always rendered (searches across all systems); lazy-delete and paste remain gated on a selected system. |

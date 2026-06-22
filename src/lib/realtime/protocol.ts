@@ -255,7 +255,8 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     // audit fields above — the formatter/audit ignore it and keep reading those,
     // so precision + no-op suppression are untouched. The canvas upserts from it
     // to materialize a sig whose `signature.create` it never received (reconnect
-    // gaps, reordering). `leadsToMapSystemId` is omitted (canvas ignores it).
+    // gaps, reordering). Its `leadsToMapSystemId` is populated for linked sigs so
+    // the Stage 4 restore offer can name a dormant connection's destination.
     snapshot: z.object(signatureBody).optional(),
   }),
   // `mapSystemId`/`sigId` captured at delete time (the signature row is

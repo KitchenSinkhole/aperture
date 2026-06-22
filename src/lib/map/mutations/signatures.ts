@@ -211,6 +211,13 @@ export function updateSignature(
       // Resolve the post-update row's wormhole code once (its `typeId` may be
       // unchanged by this patch); reused by both the audit field and the snapshot.
       const wormholeCode = row.typeId !== null ? await resolveWormholeCode(tx, row.typeId) : null;
+      // Far endpoint of the (possibly unchanged) linked connection — rides the
+      // snapshot so a client can name the destination of a still-linked sig even
+      // when its connection is dormant/hidden (Stage 4 restore offer).
+      const snapshotLeadsTo =
+        row.mapConnectionId !== null
+          ? await resolveLeadsTo(tx, row.mapConnectionId, row.mapSystemId)
+          : null;
 
       const out: MapEventPatch<'signature.update'> = {
         id: row.id.toString(),
@@ -255,6 +262,7 @@ export function updateSignature(
         expiresAt: row.expiresAt.toISOString(),
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
+        leadsToMapSystemId: snapshotLeadsTo,
       };
       return out;
     },

@@ -10,6 +10,7 @@ import type {
   MapViewData,
   ParsedSigRow,
   ResolvedSigRow,
+  RestoreConnectionResult,
   SignatureGroupKey,
   StructureIntel,
   SubchainDeleteResult,
@@ -228,6 +229,23 @@ export function deleteConnectionOnServer(args: {
   return mutationFetch<MapEventPayload>(
     'DELETE',
     `/api/map/${args.mapId}/connections/${args.connectionId}`,
+  );
+}
+
+/**
+ * Restore a dormant wormhole connection (Stage 4 sig-memory restore): re-confirm
+ * the connection and re-activate any hidden endpoint. Body-less. Returns the
+ * committed event payloads (`system.added` per re-activated endpoint, then
+ * `connection.create`) — register each `eventId` and fold each via `applyEvent`
+ * (the wrapper-level `eventId` is always `0`).
+ */
+export function restoreConnectionOnServer(args: {
+  mapId: string;
+  connectionId: string;
+}): Promise<ActionResult<RestoreConnectionResult>> {
+  return mutationFetch<RestoreConnectionResult>(
+    'POST',
+    `/api/map/${args.mapId}/connections/${args.connectionId}/restore`,
   );
 }
 

@@ -384,6 +384,12 @@ export type {
   SubchainDeleteResult,
 } from '@/lib/map/mutations/subchain';
 
+// Restore-connection orchestrator types (src/lib/map/mutations/restoreConnection.ts).
+export type {
+  RestoreConnectionInput,
+  RestoreConnectionResult,
+} from '@/lib/map/mutations/restoreConnection';
+
 // Wormhole-catalog lookup result types (src/lib/map/wormholeTypes.ts).
 export type { WormholeTypeOption, StaticMatch } from '@/lib/map/wormholeTypes';
 
