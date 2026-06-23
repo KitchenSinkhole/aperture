@@ -291,6 +291,7 @@ export type {
   MapSystemNode,
   MapConnectionEdge,
   MapSignature,
+  MapNote,
   MapPresenceEntry,
   MapViewData,
   MapListItem,

@@ -26,8 +26,11 @@ Dispatches on `payload.kind` and returns a new `MapViewData` without mutating th
 - `signature.create` — upserts the full signature body into `state.signatures`.
 - `signature.update` — when the event carries a `snapshot` (full post-update row), **upserts** it (replace-by-id, else append) so a client missing this sig's baseline materializes it instead of silently no-op'ing. Otherwise falls back to merging the patch into the matching signature by id; only present keys overwrite. Patch fields include `groupKey`, `typeId`, the display-only `wormholeCode` (resolved server-side from `universe_wormhole.name` when `typeId` changes), and `updatedAt`.
 - `signature.delete` — removes the signature by id.
+- `note.created` — upserts the full note body into `state.notes` (existence-checked by `id`).
+- `note.updated` — merges the patch into the matching note by id. `title`, `lastEditedByCharacterId`, `lastEditedByName`, `updatedAt` always apply (they always ride the event); `content`, `severity`, `locked`, `positionX`, `positionY` apply only when present.
+- `note.deleted` — removes the note by id.
 - `map.create`, `map.delete`, `map.restore`, `map.purge` — return `state` unchanged. The last two are admin-only events; non-admin viewers never see a soft-deleted map open, so there is no canvas state to reconcile.
 
 ### Depends On
-- `MapViewData`, `MapSystemNode`, `MapConnectionEdge`, `MapSignature` — types from `@/types`
+- `MapViewData`, `MapSystemNode`, `MapConnectionEdge`, `MapSignature`, `MapNote` — types from `@/types`
 - `MapEventPayload` — type from `@/lib/realtime/protocol`

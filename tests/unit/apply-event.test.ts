@@ -11,6 +11,7 @@ const makeState = (overrides?: Partial<MapViewData>): MapViewData => ({
   systems: [],
   connections: [],
   signatures: [],
+  notes: [],
   presence: [],
   ...overrides,
 });

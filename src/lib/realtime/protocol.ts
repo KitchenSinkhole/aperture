@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   connectionScope,
   eolStage,
+  mapNoteSeverity,
   mapScope,
   mapType,
   signatureGroupKey,
@@ -116,6 +117,7 @@ const eolStageEnum = z.enum(eolStage.enumValues);
 const mapScopeEnum = z.enum(mapScope.enumValues);
 const mapTypeEnum = z.enum(mapType.enumValues);
 const signatureGroupKeyEnum = z.enum(signatureGroupKey.enumValues);
+const mapNoteSeverityEnum = z.enum(mapNoteSeverity.enumValues);
 
 const eventId = z.number().int().positive();
 
@@ -175,6 +177,30 @@ const signatureBody = {
   // connection — what the sig "leads to". Null/absent when unlinked. The canvas
   // ignores it; the audit/Discord resolve it to a system name.
   leadsToMapSystemId: z.string().nullable().optional(),
+};
+
+/**
+ * Full note body — mirrors `MapNote` (loadMap.ts) so a client can append a
+ * freshly-created note straight from the realtime payload. Unlike the systems
+ * pattern, attribution is denormalized: the creator/last-editor ids + resolved
+ * names ride the body so the inspector can show "created by X · last edited by Y"
+ * without a follow-up roster lookup. Character ids cross the wire as numbers (an
+ * EVE character id fits in `Number.MAX_SAFE_INTEGER`, like `characterUpdate`).
+ */
+const noteBody = {
+  id: z.string(),
+  title: z.string(),
+  content: z.string().nullable(),
+  severity: mapNoteSeverityEnum,
+  locked: z.boolean(),
+  positionX: z.number(),
+  positionY: z.number(),
+  createdByCharacterId: z.number().int().nullable(),
+  createdByName: z.string().nullable(),
+  lastEditedByCharacterId: z.number().int().nullable(),
+  lastEditedByName: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
 };
 
 export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
@@ -268,6 +294,30 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     mapSystemId: z.string().optional(),
     sigId: z.string().optional(),
   }),
+  z.object({ kind: z.literal('note.created'), eventId, ...noteBody }),
+  z.object({
+    kind: z.literal('note.updated'),
+    eventId,
+    id: z.string(),
+    // `title` always rides as the audit/Discord descriptor (names *which* note),
+    // mirroring how `signature.update` always carries `sigId`. The canvas
+    // re-applying an unchanged title is a no-op. The remaining fields are present
+    // only when they actually changed (merge-by-id on the client).
+    title: z.string(),
+    content: z.string().nullable().optional(),
+    severity: mapNoteSeverityEnum.optional(),
+    locked: z.boolean().optional(),
+    positionX: z.number().optional(),
+    positionY: z.number().optional(),
+    // The editor identity always rides so the inspector's "last edited by" stays
+    // live; `updatedAt` likewise.
+    lastEditedByCharacterId: z.number().int().nullable(),
+    lastEditedByName: z.string().nullable(),
+    updatedAt: z.string(),
+  }),
+  // `title` captured at delete time (the note row is hard-deleted) so the audit
+  // names the note even after the row is gone.
+  z.object({ kind: z.literal('note.deleted'), eventId, id: z.string(), title: z.string() }),
   z.object({
     kind: z.literal('map.create'),
     eventId,
@@ -320,6 +370,9 @@ export const MAP_EVENT_KINDS = [
   'signature.create',
   'signature.update',
   'signature.delete',
+  'note.created',
+  'note.updated',
+  'note.deleted',
   'map.create',
   'map.update',
   'map.delete',
