@@ -2,10 +2,19 @@
 
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 import { ContextMenu } from '@base-ui/react/context-menu';
-import { Plus, Radar, Scissors, Trash2, Unlink } from 'lucide-react';
+import { Plus, Radar, Scissors, StickyNote, Trash2, Unlink } from 'lucide-react';
 
-import type { MapContextMenuTarget, MapSystemNode, MapConnectionEdge } from '@/types';
-import type { UpdateSystemBody, UpdateConnectionBody } from '@/lib/map/client';
+import type {
+  MapContextMenuTarget,
+  MapSystemNode,
+  MapConnectionEdge,
+  MapNote,
+} from '@/types';
+import type {
+  UpdateSystemBody,
+  UpdateConnectionBody,
+  UpdateNoteBody,
+} from '@/lib/map/client';
 import { computeDisconnected, computeSubchain, neighborsOf } from '@/lib/map/subchainGraph';
 import {
   MenuItem,
@@ -25,11 +34,14 @@ import {
   EOL_STAGES,
   EOL_STAGE_LABELS,
   WH_MASS_LABELS,
+  NOTE_SEVERITIES,
+  NOTE_SEVERITY_LABELS,
   type SystemStatus,
   type WhMass,
   type WhJumpMass,
   type ConnectionScope,
   type EolStage,
+  type NoteSeverity,
 } from '@/lib/map/enumLabels';
 import { cn } from '@/lib/utils';
 import { SetDestinationItem } from './SetDestinationItem';
@@ -115,6 +127,10 @@ export function MapContextMenu({
   onDeleteSubchainPick,
   onDeleteDisconnected,
   onPingSystem,
+  notes,
+  onAddNoteAt,
+  onNotePatch,
+  onNoteRemove,
 }: {
   target: MapContextMenuTarget | null;
   onClose: () => void;
@@ -140,6 +156,12 @@ export function MapContextMenu({
   onDeleteDisconnected: () => void;
   /** Broadcast a transient attention "ping" pulse on this system to all viewers. */
   onPingSystem: (id: string) => void;
+  /** Live notes — the `note` target resolves its row from here. */
+  notes: MapNote[];
+  /** Pane action: create a note at the right-clicked point. */
+  onAddNoteAt: (clientX: number, clientY: number) => void;
+  onNotePatch: (id: string, patch: UpdateNoteBody) => void;
+  onNoteRemove: (id: string) => void;
 }) {
   // A zero-size virtual element at the cursor point; recreated per render so the
   // rect tracks the current target's coordinates.
@@ -204,6 +226,10 @@ export function MapContextMenu({
               onDeleteSubchainPick,
               onDeleteDisconnected,
               onPingSystem,
+              notes,
+              onAddNoteAt,
+              onNotePatch,
+              onNoteRemove,
             })}
           </MenuPrimitive.Popup>
         </MenuPrimitive.Positioner>
@@ -229,6 +255,10 @@ function renderItems({
   onDeleteSubchainPick,
   onDeleteDisconnected,
   onPingSystem,
+  notes,
+  onAddNoteAt,
+  onNotePatch,
+  onNoteRemove,
 }: {
   target: MapContextMenuTarget | null;
   onClose: () => void;
@@ -246,6 +276,10 @@ function renderItems({
   onDeleteSubchainPick: (headId: string, anchorId: string) => void;
   onDeleteDisconnected: () => void;
   onPingSystem: (id: string) => void;
+  notes: MapNote[];
+  onAddNoteAt: (clientX: number, clientY: number) => void;
+  onNotePatch: (id: string, patch: UpdateNoteBody) => void;
+  onNoteRemove: (id: string) => void;
 }) {
   if (!target) return null;
 
@@ -290,6 +324,23 @@ function renderItems({
         />
       );
     }
+    case 'note': {
+      const note = notes.find((n) => n.id === target.id);
+      if (!note) return <MenuItem disabled>Note not found</MenuItem>;
+      return (
+        <NoteItems
+          note={note}
+          onPatch={(patch) => {
+            onNotePatch(note.id, patch);
+            onClose();
+          }}
+          onDelete={() => {
+            onNoteRemove(note.id);
+            onClose();
+          }}
+        />
+      );
+    }
     case 'connection': {
       const connection = connections.find((c) => c.id === target.id);
       if (!connection) return <MenuItem disabled>Connection not found</MenuItem>;
@@ -327,6 +378,15 @@ function renderItems({
             }}
           >
             Add system
+          </MenuItem>
+          <MenuItem
+            icon={<StickyNote className="size-3.5" />}
+            onClick={() => {
+              onAddNoteAt(target.x, target.y);
+              onClose();
+            }}
+          >
+            Add note here
           </MenuItem>
           {disconnected.size > 0 &&
             (lockedDisconnected.length > 0 ? (
@@ -567,6 +627,64 @@ function SubchainKeepSubmenu({
         })}
       </MenuSubmenuContent>
     </MenuSubmenu>
+  );
+}
+
+function NoteItems({
+  note,
+  onPatch,
+  onDelete,
+}: {
+  note: MapNote;
+  onPatch: (patch: UpdateNoteBody) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <>
+      <MenuSubmenu>
+        <MenuSubmenuTrigger inset>Severity</MenuSubmenuTrigger>
+        <MenuSubmenuContent>
+          <MenuRadioGroup
+            value={note.severity}
+            onValueChange={(v) => onPatch({ severity: v as NoteSeverity })}
+          >
+            {NOTE_SEVERITIES.map((s) => (
+              <MenuRadioItem key={s} value={s}>
+                {NOTE_SEVERITY_LABELS[s]}
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+        </MenuSubmenuContent>
+      </MenuSubmenu>
+
+      <MenuCheckboxItem
+        checked={note.locked}
+        onCheckedChange={(checked) => onPatch({ locked: checked })}
+      >
+        Locked
+      </MenuCheckboxItem>
+
+      <MenuSeparator />
+
+      {/* A locked note is protected from deletion (the lock also blocks dragging);
+          unlock it first. Mirrors the inspector's disabled Remove button. */}
+      {note.locked ? (
+        <DisabledHintItem
+          destructive
+          icon={<Trash2 className="size-3.5" />}
+          label="Delete note"
+          hint="Unlock the note to delete it"
+        />
+      ) : (
+        <MenuItem
+          className="text-destructive data-highlighted:text-destructive"
+          icon={<Trash2 className="size-3.5" />}
+          onClick={onDelete}
+        >
+          Delete note
+        </MenuItem>
+      )}
+    </>
   );
 }
 

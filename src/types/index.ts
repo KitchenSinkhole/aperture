@@ -521,13 +521,14 @@ export interface MapLayoutConfig {
 /**
  * A right-click target on the map canvas, carrying both the kind/id of what was
  * clicked and the client (screen) coordinates of the cursor used to anchor the
- * context menu. `null` ⇒ no menu open. `system`/`connection` carry the row id;
- * `pane` is the empty-canvas background. Right-click does not change selection —
- * the menu operates on `id` directly.
+ * context menu. `null` ⇒ no menu open. `system`/`connection`/`note` carry the row
+ * id; `pane` is the empty-canvas background. Right-click does not change selection
+ * — the menu operates on `id` directly.
  */
 export type MapContextMenuTarget =
   | { kind: 'system'; id: string; x: number; y: number }
   | { kind: 'connection'; id: string; x: number; y: number }
+  | { kind: 'note'; id: string; x: number; y: number }
   | { kind: 'pane'; x: number; y: number };
 
 /** Filter state for `SignatureSearchDialog`. Owned by `MapCanvas` so it persists between opens. */

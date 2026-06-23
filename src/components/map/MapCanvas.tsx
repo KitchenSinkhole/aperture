@@ -60,8 +60,12 @@ import {
   updateConnectionOnServer,
   updateSignatureOnServer,
   updateSystemOnServer,
+  addNoteOnServer,
+  updateNoteOnServer,
+  deleteNoteOnServer,
   type CreateSignatureBody,
   type UpdateConnectionBody,
+  type UpdateNoteBody,
   type UpdateSignatureBody,
   type UpdateSystemBody,
 } from '@/lib/map/client';
@@ -122,6 +126,7 @@ import { MapTravelProvider, TravelBridge } from './MapTravelContext';
 import { MapUnderglowProvider } from './MapUnderglowContext';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
 import { SystemNode, type SystemNodeData } from './SystemNode';
+import { MapNoteNode, type MapNoteNodeData } from './MapNoteNode';
 import { MapContextMenu } from './MapContextMenu';
 import { SubchainDeletePrompt } from './SubchainDeletePrompt';
 import { RestoreConnectionPrompt } from './RestoreConnectionPrompt';
@@ -211,8 +216,14 @@ function mergeLayouts(
   return next;
 }
 
-const nodeTypes = { system: SystemNode };
+const nodeTypes = { system: SystemNode, note: MapNoteNode };
 const edgeTypes = { connection: ConnectionEdge };
+
+// xyflow node ids must be unique, but `ap_map_system.id` and `ap_map_note.id` are
+// independent identity sequences and so collide numerically. Namespace note nodes
+// (`note:<id>`) in xyflow; their real `ap_map_note.id` stays on `data.id`.
+type CanvasNode = Node<SystemNodeData> | Node<MapNoteNodeData>;
+const noteNodeId = (noteId: string) => `note:${noteId}`;
 
 /** A pending "also delete the subchain?" offer raised by a deleted wormhole sig. */
 type SubchainSigOffer = {
@@ -319,7 +330,7 @@ export function MapCanvas({
   // Captured via ReactFlow's onInit so the manual-add flow can place new nodes
   // at the current viewport centre rather than (0,0).
   const flowInstance = useRef<ReactFlowInstance<
-    Node<SystemNodeData>,
+    CanvasNode,
     Edge<ConnectionEdgeData>
   > | null>(null);
   const flowWrapperRef = useRef<HTMLDivElement>(null);
@@ -368,8 +379,8 @@ export function MapCanvas({
     });
   }, [viewData.systems, data.map.id]);
 
-  const [nodes, setNodes] = useState<Node<SystemNodeData>[]>(() =>
-    data.systems.map((s) => ({
+  const [nodes, setNodes] = useState<CanvasNode[]>(() => [
+    ...data.systems.map((s) => ({
       id: s.id,
       type: 'system' as const,
       position: { x: s.positionX, y: s.positionY },
@@ -382,7 +393,15 @@ export function MapCanvas({
       selected: false,
       draggable: !s.locked,
     })),
-  );
+    ...data.notes.map((n) => ({
+      id: noteNodeId(n.id),
+      type: 'note' as const,
+      position: { x: n.positionX, y: n.positionY },
+      data: { ...n },
+      selected: false,
+      draggable: !n.locked,
+    })),
+  ]);
   const appliedEventIds = useRef<Set<number>>(new Set());
 
   const [initialViewport] = useState<Viewport | null>(() => {
@@ -585,7 +604,7 @@ export function MapCanvas({
   // ---- xyflow → server callbacks -----------------------------------------
   const mapId = viewData.map.id;
 
-  const onNodesChange = useCallback((changes: NodeChange<Node<SystemNodeData>>[]) => {
+  const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes((nds) => applyNodeChanges(changes, nds));
   }, []);
 
@@ -621,6 +640,38 @@ export function MapCanvas({
 
   const onNodeDragStop = useCallback(
     (_event: React.MouseEvent | unknown, node: Node) => {
+      // Notes drag independently and may overlap anything — snap, then commit the
+      // position optimistically (no collision nudge). The real `ap_map_note.id`
+      // lives on `data.id` (the xyflow id is namespaced).
+      if (node.type === 'note') {
+        const noteId = (node.data as MapNoteNodeData).id;
+        const note = viewData.notes.find((n) => n.id === noteId);
+        if (!note) return;
+        const snapped = snapPointToGrid(node.position);
+        if (note.positionX === snapped.x && note.positionY === snapped.y) return;
+        runOptimistic(
+          {
+            kind: 'note.updated',
+            eventId: 0,
+            id: noteId,
+            title: note.title,
+            positionX: snapped.x,
+            positionY: snapped.y,
+            // Carry the current attribution so the optimistic apply doesn't blank
+            // "last edited by"; the authoritative echo overwrites it with the actor.
+            lastEditedByCharacterId: note.lastEditedByCharacterId,
+            lastEditedByName: note.lastEditedByName,
+            updatedAt: new Date().toISOString(),
+          },
+          () =>
+            updateNoteOnServer({
+              mapId,
+              noteId,
+              patch: { positionX: snapped.x, positionY: snapped.y },
+            }),
+        );
+        return;
+      }
       // Dragging any member of a multi-selection moves the whole group; commit
       // every selected system's new position, not just the grabbed node.
       if (selectedSystemIds.size > 1 && selectedSystemIds.has(node.id)) {
@@ -651,7 +702,7 @@ export function MapCanvas({
         () => updateSystemOnServer({ mapId, mapSystemId: node.id, patch }),
       );
     },
-    [mapId, viewData.systems, selectedSystemIds, commitGroupMove, runOptimistic],
+    [mapId, viewData.systems, viewData.notes, selectedSystemIds, commitGroupMove, runOptimistic],
   );
 
   const onConnect = useCallback(
@@ -724,12 +775,80 @@ export function MapCanvas({
     setAddSystemOpen(true);
   }, []);
 
+  // ---- Note callbacks ----------------------------------------------------
+  // Select a note into the inspector (wired to the node's double-click via the
+  // sync block's `data.onOpen`). Stable for the component lifetime.
+  const onOpenNote = useCallback((noteId: string) => {
+    setSelected({ kind: 'note', id: noteId });
+    setSelectedSystemIds(new Set());
+  }, []);
+
+  // Pane "Add note here": convert the cursor's client point to flow coords, snap,
+  // and POST immediately (notes need no picker dialog). The awaited payload folds
+  // the new note in; the user double-clicks it to edit.
+  const onAddNoteAt = useCallback(
+    (clientX: number, clientY: number) => {
+      setContextMenu(null);
+      const inst = flowInstance.current;
+      const point: Point = inst
+        ? inst.screenToFlowPosition({ x: clientX, y: clientY })
+        : { x: 0, y: 0 };
+      const pos = snapPointToGrid(point);
+      awaitServer(() =>
+        addNoteOnServer({
+          mapId,
+          body: { title: 'New note', positionX: pos.x, positionY: pos.y },
+        }),
+      );
+    },
+    [mapId, awaitServer],
+  );
+
+  const onNotePatch = useCallback(
+    (noteId: string, patch: UpdateNoteBody) => {
+      const note = viewData.notes.find((n) => n.id === noteId);
+      // `note.updated` always carries title + editor attribution + updatedAt; the
+      // changed fields ride from `patch`. Optimistic attribution keeps the current
+      // values (the authoritative echo replaces them with the real actor).
+      const opt: MapEventPayload = {
+        kind: 'note.updated',
+        eventId: 0,
+        id: noteId,
+        title: note?.title ?? '',
+        lastEditedByCharacterId: note?.lastEditedByCharacterId ?? null,
+        lastEditedByName: note?.lastEditedByName ?? null,
+        updatedAt: new Date().toISOString(),
+        ...patch,
+      };
+      runOptimistic(opt, () => updateNoteOnServer({ mapId, noteId, patch }));
+    },
+    [mapId, viewData.notes, runOptimistic],
+  );
+
+  const onNoteRemove = useCallback(
+    (noteId: string) => {
+      const note = viewData.notes.find((n) => n.id === noteId);
+      runOptimistic(
+        { kind: 'note.deleted', eventId: 0, id: noteId, title: note?.title ?? '' },
+        () => deleteNoteOnServer({ mapId, noteId }),
+      );
+      setSelected(null);
+    },
+    [mapId, viewData.notes, runOptimistic],
+  );
+
   // Click selection is driven by direct handlers (they own single + Ctrl+click
   // toggle), while `onSelectionChange` is used only as a box-select reconciler
   // (see below). The two don't fight because the reconciler ignores size<=1 and
   // no-ops when xyflow's set already matches ours.
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
+      // Notes select singly into the inspector — no multi-select / group semantics.
+      if (node.type === 'note') {
+        setSelected({ kind: 'note', id: (node.data as MapNoteNodeData).id });
+        setSelectedSystemIds(new Set());
+        return;
+      }
       // Ctrl/Cmd+click toggles the node in the group. The inspector primary is
       // cleared whenever 2+ are selected — a multi-select group drives no
       // inspector / per-system module (which would otherwise thrash on refetch);
@@ -762,6 +881,15 @@ export function MapCanvas({
   // cursor point + target; selection is intentionally left untouched.
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
     event.preventDefault();
+    if (node.type === 'note') {
+      setContextMenu({
+        kind: 'note',
+        id: (node.data as MapNoteNodeData).id,
+        x: event.clientX,
+        y: event.clientY,
+      });
+      return;
+    }
     setContextMenu({ kind: 'system', id: node.id, x: event.clientX, y: event.clientY });
   }, []);
 
@@ -1167,41 +1295,64 @@ export function MapCanvas({
   // with empty deps).
   const [lastSync, setLastSync] = useState<{
     systems: MapViewData['systems'];
+    notes: MapViewData['notes'];
     selectedSystemIds: Set<string>;
+    // The note-node halo is driven by the inspector `selected` ref (notes have no
+    // multi-select set), so a note selection change must trigger a re-sync.
+    selected: SelectionRef | null;
     intel: Record<number, SystemIntelSummary>;
   } | null>(null);
   if (
     !lastSync ||
     lastSync.systems !== viewData.systems ||
+    lastSync.notes !== viewData.notes ||
     lastSync.selectedSystemIds !== selectedSystemIds ||
+    lastSync.selected !== selected ||
     // `intel` is replaced by reference when a live-added system's data backfills;
     // re-sync so its decorators (sov/FW/incursion) appear without a systems change.
     lastSync.intel !== intel
   ) {
-    setLastSync({ systems: viewData.systems, selectedSystemIds, intel });
+    setLastSync({ systems: viewData.systems, notes: viewData.notes, selectedSystemIds, selected, intel });
     setNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]));
-      return viewData.systems.map((s) => {
-        const existing = prevById.get(s.id);
-        const position = existing?.dragging
-          ? existing.position
-          : { x: s.positionX, y: s.positionY };
-        return {
-          ...(existing ?? {}),
-          id: s.id,
-          type: 'system' as const,
-          position,
-          data: {
-            ...s,
-            onAliasOrTagCommit,
-            isHome: s.id === viewData.map.homeMapSystemId,
-            inFactionWarfare: intel[s.systemId]?.factionWar != null,
-            hasIncursion: intel[s.systemId]?.incursion != null,
-          },
-          selected: selectedSystemIds.has(s.id),
-          draggable: !s.locked,
-        };
-      });
+      return [
+        ...viewData.systems.map((s) => {
+          const existing = prevById.get(s.id);
+          const position = existing?.dragging
+            ? existing.position
+            : { x: s.positionX, y: s.positionY };
+          return {
+            ...(existing ?? {}),
+            id: s.id,
+            type: 'system' as const,
+            position,
+            data: {
+              ...s,
+              onAliasOrTagCommit,
+              isHome: s.id === viewData.map.homeMapSystemId,
+              inFactionWarfare: intel[s.systemId]?.factionWar != null,
+              hasIncursion: intel[s.systemId]?.incursion != null,
+            },
+            selected: selectedSystemIds.has(s.id),
+            draggable: !s.locked,
+          };
+        }),
+        ...viewData.notes.map((n) => {
+          const existing = prevById.get(noteNodeId(n.id));
+          const position = existing?.dragging
+            ? existing.position
+            : { x: n.positionX, y: n.positionY };
+          return {
+            ...(existing ?? {}),
+            id: noteNodeId(n.id),
+            type: 'note' as const,
+            position,
+            data: { ...n, onOpen: onOpenNote },
+            selected: selected?.kind === 'note' && selected.id === n.id,
+            draggable: !n.locked,
+          };
+        }),
+      ];
     });
   }
 
@@ -1435,6 +1586,10 @@ export function MapCanvas({
               onDeleteSubchainPick={onDeleteSubchainPick}
               onDeleteDisconnected={onDeleteDisconnected}
               onPingSystem={onPingSystem}
+              notes={viewData.notes}
+              onAddNoteAt={onAddNoteAt}
+              onNotePatch={onNotePatch}
+              onNoteRemove={onNoteRemove}
             />
           </div>
         );
@@ -1462,6 +1617,8 @@ export function MapCanvas({
             onSystemRemove={onSystemRemove}
             onConnectionPatch={onConnectionPatch}
             onConnectionDelete={onConnectionDelete}
+            onNotePatch={onNotePatch}
+            onNoteRemove={onNoteRemove}
           />
         );
       case 'route':
