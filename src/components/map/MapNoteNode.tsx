@@ -5,6 +5,7 @@ import { Tooltip } from '@base-ui/react/tooltip';
 import type { NodeProps } from '@xyflow/react';
 import type { MapNote } from '@/lib/map/loadMap';
 import { noteSeverityColor } from './styling';
+import { NoteContent } from './NoteContent';
 
 // Free-standing map note. A severity-coloured card carrying a short title (the
 // on-node label) and an optional longer body shown as a hover tooltip. Notes
@@ -54,9 +55,10 @@ export function MapNoteNode({
         {data.locked && <Lock className="size-3 shrink-0 text-muted-foreground" />}
       </div>
       {data.content && (
-        <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-muted-foreground">
-          {data.content}
-        </p>
+        <NoteContent
+          content={data.content}
+          className="mt-0.5 line-clamp-2 text-[10px] text-muted-foreground"
+        />
       )}
     </div>
   );
@@ -69,8 +71,8 @@ export function MapNoteNode({
       <Tooltip.Trigger render={<div />}>{body}</Tooltip.Trigger>
       <Tooltip.Portal>
         <Tooltip.Positioner sideOffset={4} side="top" align="center">
-          <Tooltip.Popup className="nodrag nopan z-50 max-w-[20rem] rounded-md border bg-popover px-2 py-1 text-xs whitespace-pre-wrap text-popover-foreground shadow-md">
-            {data.content}
+          <Tooltip.Popup className="nodrag nopan z-50 max-w-[20rem] rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md">
+            <NoteContent content={data.content} />
           </Tooltip.Popup>
         </Tooltip.Positioner>
       </Tooltip.Portal>

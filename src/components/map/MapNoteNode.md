@@ -13,7 +13,7 @@
 `MapNoteNodeData = MapNote & { onOpen?: (id: string) => void }`. `onOpen` is absent on a read-only path (mirrors `SystemNode`'s optional `onAliasOrTagCommit`).
 
 ### Renders
-A `bg-map-node` card with a severity-coloured left border + ring (`noteSeverityColor(data.severity)` from `styling.ts`), the `title` as a truncated label, a `Lock` glyph when `data.locked`, and a 2-line clamped `content` preview. When `content` is set the whole card is a `Tooltip.Trigger` whose popup shows the full body (whitespace-preserved); with no body it renders the bare card.
+A `bg-map-node` card with a severity-coloured left border + ring (`noteSeverityColor(data.severity)` from `styling.ts`), the `title` as a truncated label, a `Lock` glyph when `data.locked`, and a 2-line clamped `content` preview rendered as markdown via `NoteContent` (GFM + `[color]…[/color]` tags). When `content` is set the whole card is a `Tooltip.Trigger` whose popup shows the full rendered markdown body; with no body it renders the bare card.
 
 ### Behaviour & Interactions
 - Double-click → `data.onOpen?.(data.id)` (selects the note → opens the inspector). `stopPropagation` prevents xyflow's pane double-click zoom from also firing.
@@ -22,5 +22,6 @@ A `bg-map-node` card with a severity-coloured left border + ring (`noteSeverityC
 
 ### Depends On
 - `noteSeverityColor` (`./styling`)
+- `NoteContent` (`./NoteContent`) — markdown + colour-tag rendering for the snippet and tooltip
 - `MapNote` type (`@/lib/map/loadMap`)
 - Base UI `Tooltip`, lucide `Lock`

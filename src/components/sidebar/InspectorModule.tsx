@@ -45,6 +45,8 @@ import {
   type WhMass,
 } from '@/lib/map/enumLabels';
 import { systemDisplayName } from '@/lib/eve/drifterSystems';
+import { NoteContent } from '@/components/map/NoteContent';
+import { NOTE_TEXT_COLOR_NAMES } from '@/lib/map/noteMarkdown';
 import { apertureConfig } from '../../../aperture.config';
 
 const NONE_JUMP_MASS = '__none__';
@@ -328,9 +330,20 @@ function NoteInspector({
               if (next !== (note.content ?? null)) onPatch({ content: next });
             }}
             maxLength={apertureConfig.MAP_NOTE_CONTENT_MAX_LENGTH}
-            placeholder="Notes are committed on blur."
+            placeholder="Markdown supported. Committed on blur."
             className="h-24 resize-none rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
           />
+          <span className="text-[10px] text-muted-foreground">
+            Markdown + colour tags: <code>[red]…[/red]</code> ({NOTE_TEXT_COLOR_NAMES.join(', ')})
+          </span>
+          {contentDraft.trim().length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-muted-foreground">Preview</span>
+              <div className="rounded-md border border-border bg-background px-2 py-1 text-xs">
+                <NoteContent content={contentDraft} />
+              </div>
+            </div>
+          )}
         </div>
 
         <Row label="Severity">
