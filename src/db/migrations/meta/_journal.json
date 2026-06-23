@@ -302,6 +302,13 @@
       "when": 1780018800000,
       "tag": "0043_connection_confirmed_at_default",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1780020000000,
+      "tag": "0044_map_notes",
+      "breakpoints": true
     }
   ]
 }

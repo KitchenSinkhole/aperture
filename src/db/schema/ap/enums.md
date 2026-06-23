@@ -20,6 +20,9 @@
 ### systemStatus
 `pgEnum('system_status', ['unknown', 'friendly', 'occupied', 'hostile', 'empty', 'unscanned'])` — per-system intel state driving node colour. On `ap_map_system`, default `unknown`.
 
+### mapNoteSeverity
+`pgEnum('map_note_severity', ['neutral', 'green', 'yellow', 'red'])` — severity band of a free-standing map note, driving the note node's border colour. On `ap_map_note`, default `neutral`. Added migration 0044 (map notes, issue #5).
+
 ### connectionScope
 `pgEnum('connection_scope', ['wh', 'stargate', 'jumpbridge', 'abyssal'])` — what kind of link a connection is. On `ap_map_connection`.
 

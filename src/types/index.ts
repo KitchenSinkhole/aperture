@@ -15,6 +15,7 @@ import type {
   apMapConnection,
   apMapConnectionLog,
   apMapEvent,
+  apMapNote,
   apMapRoleAccess,
   apMapSignature,
   apMapSystem,
@@ -112,6 +113,9 @@ export type NewApMap = InferInsertModel<typeof apMap>;
 
 export type ApMapSystem = InferSelectModel<typeof apMapSystem>;
 export type NewApMapSystem = InferInsertModel<typeof apMapSystem>;
+
+export type ApMapNote = InferSelectModel<typeof apMapNote>;
+export type NewApMapNote = InferInsertModel<typeof apMapNote>;
 
 export type ApMapConnection = InferSelectModel<typeof apMapConnection>;
 export type NewApMapConnection = InferInsertModel<typeof apMapConnection>;
