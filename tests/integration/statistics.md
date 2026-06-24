@@ -6,7 +6,7 @@
 Gated on `RUN_DB_TESTS=1` (skipped otherwise). Run:
 
 ```
-docker compose up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test statistics
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test statistics
 ```
 
 ### Covers

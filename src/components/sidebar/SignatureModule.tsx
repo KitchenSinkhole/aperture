@@ -8,6 +8,7 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   useReactTable,
+  type CellContext,
   type SortingState,
 } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
@@ -163,6 +164,178 @@ function useWormholeTypeMeta(
   }, [mapId, universeSystemId]);
   return byTypeId;
 }
+
+/**
+ * Volatile per-render data the table's cells need, handed in via TanStack's
+ * `table.options.meta` rather than captured in cell closures. See the note on
+ * the cell components below for why this indirection matters.
+ */
+type SignatureTableMeta = {
+  mapId: string;
+  system: MapSystemNode;
+  connections: MapConnectionEdge[];
+  systems: MapSystemNode[];
+  onPatch: (signatureId: string, patch: UpdateSignatureBody) => void;
+  onDelete: (signatureId: string) => void;
+  syncConnectionSize: (typeId: number | null, connectionId: string | null) => void;
+  metaByTypeId: Map<number, WormholeTypeMeta>;
+  assignedConnectionIds: string[];
+};
+
+// Cell renderers are module-level components with fixed identities. TanStack's
+// `flexRender` renders each `columnDef.cell` as a React component *type*, so a
+// fresh closure per render (the old in-`useMemo` columns) made React treat each
+// cell as a new type on every data change — unmounting and remounting the whole
+// cell subtree. That slammed an open in-row Select shut the moment another
+// viewer edited a sig in the same system (which churns `rows` →
+// `assignedConnectionIds` → the columns memo). Hoisting the cells and routing
+// volatile data through `table.options.meta` keeps the identities stable, so a
+// realtime update re-renders the cells in place instead of remounting them.
+function SigIdCell({ row }: CellContext<MapSignature, string>) {
+  return <span className="px-2 py-px font-mono text-xs">{row.original.sigId}</span>;
+}
+
+function GroupCell({ row, table }: CellContext<MapSignature, SignatureGroupKey | null>) {
+  const sig = row.original;
+  const { onPatch } = table.options.meta as SignatureTableMeta;
+  const groupMissing = sig.groupKey === null;
+  return (
+    <div className={`px-1 py-px${groupMissing ? ` ${MISSING_CELL}` : ''}`}>
+      <SignatureGroupSelect
+        value={sig.groupKey}
+        onValueChange={(nextKey) => {
+          if (nextKey === sig.groupKey) return;
+          onPatch(sig.id, buildGroupChangePatch(sig, nextKey));
+        }}
+        triggerClassName={FLAT_TRIGGER}
+      />
+    </div>
+  );
+}
+
+function TypeColumnCell({ row, table }: CellContext<MapSignature, unknown>) {
+  const sig = row.original;
+  const { mapId, system, onPatch, syncConnectionSize } =
+    table.options.meta as SignatureTableMeta;
+  const typeMissing =
+    sig.groupKey !== null &&
+    (sig.groupKey === 'wormhole' ? sig.typeId === null : !sig.name);
+  return (
+    <div className={`px-1 py-px${typeMissing ? ` ${MISSING_CELL}` : ''}`}>
+      <TypeCell
+        mapId={mapId}
+        system={system}
+        sig={sig}
+        onPatch={onPatch}
+        onSyncConnectionSize={syncConnectionSize}
+        triggerClassName={FLAT_TRIGGER}
+        inputClassName={FLAT_INPUT}
+      />
+    </div>
+  );
+}
+
+function DescriptionCell({ row, table }: CellContext<MapSignature, unknown>) {
+  const sig = row.original;
+  const { onPatch } = table.options.meta as SignatureTableMeta;
+  return (
+    <div className="px-1 py-px">
+      <EditableTextCell
+        value={sig.description ?? ''}
+        onCommit={(next) => onPatch(sig.id, { description: next || null })}
+        className={cn(FLAT_INPUT, 'h-6 text-sm')}
+        placeholder="—"
+      />
+    </div>
+  );
+}
+
+function LeadsToCell({ row, table }: CellContext<MapSignature, unknown>) {
+  const sig = row.original;
+  const {
+    system,
+    connections,
+    systems,
+    onPatch,
+    syncConnectionSize,
+    metaByTypeId,
+    assignedConnectionIds,
+  } = table.options.meta as SignatureTableMeta;
+  const leadsToMissing = sig.groupKey === 'wormhole' && sig.mapConnectionId === null;
+  return (
+    <div className={`px-1 py-px${leadsToMissing ? ` ${MISSING_CELL}` : ''}`}>
+      <ConnectionSelect
+        system={system}
+        connections={connections}
+        systems={systems}
+        value={sig.mapConnectionId}
+        onValueChange={(next) => {
+          onPatch(sig.id, { mapConnectionId: next });
+          syncConnectionSize(sig.typeId, next);
+        }}
+        disabled={sig.groupKey !== 'wormhole'}
+        targetClass={
+          sig.typeId == null ? null : metaByTypeId.get(sig.typeId)?.targetClass ?? null
+        }
+        excludeIds={assignedConnectionIds}
+        triggerClassName={FLAT_TRIGGER}
+      />
+    </div>
+  );
+}
+
+function TtlCell({ row }: CellContext<MapSignature, unknown>) {
+  return (
+    <span className="px-1 py-px text-xs text-muted-foreground">
+      {formatRelativeIso(row.original.expiresAt)}
+    </span>
+  );
+}
+
+function CreatedCell({ row }: CellContext<MapSignature, string>) {
+  return (
+    <span className="px-1 py-px text-xs text-muted-foreground">
+      {formatAgoIso(row.original.createdAt)}
+    </span>
+  );
+}
+
+function UpdatedCell({ row }: CellContext<MapSignature, string>) {
+  return (
+    <span className="px-1 py-px text-xs text-muted-foreground">
+      {formatAgoIso(row.original.updatedAt)}
+    </span>
+  );
+}
+
+function ActionsCell({ row, table }: CellContext<MapSignature, unknown>) {
+  const { onDelete } = table.options.meta as SignatureTableMeta;
+  return (
+    <div className="px-1 py-px text-right">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Delete signature"
+        onClick={() => onDelete(row.original.id)}
+      >
+        <Trash2 className="size-3.5" />
+      </Button>
+    </div>
+  );
+}
+
+const signatureColumns = [
+  columnHelper.accessor('sigId', { header: 'Sig', enableSorting: true, cell: SigIdCell }),
+  columnHelper.accessor('groupKey', { header: 'Group', enableSorting: true, cell: GroupCell }),
+  columnHelper.display({ id: 'type', header: 'Type', cell: TypeColumnCell }),
+  columnHelper.display({ id: 'description', header: 'Description', cell: DescriptionCell }),
+  columnHelper.display({ id: 'leadsTo', header: 'Leads to', cell: LeadsToCell }),
+  columnHelper.display({ id: 'ttl', header: 'TTL', cell: TtlCell }),
+  columnHelper.accessor('createdAt', { header: 'Created', enableSorting: true, cell: CreatedCell }),
+  columnHelper.accessor('updatedAt', { header: 'Updated', enableSorting: true, cell: UpdatedCell }),
+  columnHelper.display({ id: 'actions', header: '', cell: ActionsCell }),
+];
 
 /**
  * Standalone Signatures panel rendered below the map. Presentational —
@@ -414,161 +587,27 @@ function SignaturePanelBody({
     [metaByTypeId, onConnectionPatch],
   );
 
-  const columns = useMemo(
-    () => [
-      columnHelper.accessor('sigId', {
-        header: 'Sig',
-        enableSorting: true,
-        cell: ({ row }) => (
-          <span className="px-2 py-px font-mono text-xs">{row.original.sigId}</span>
-        ),
-      }),
-      columnHelper.accessor('groupKey', {
-        header: 'Group',
-        enableSorting: true,
-        cell: ({ row }) => {
-          const sig = row.original;
-          const groupMissing = sig.groupKey === null;
-          return (
-            <div className={`px-1 py-px${groupMissing ? ` ${MISSING_CELL}` : ''}`}>
-              <SignatureGroupSelect
-                value={sig.groupKey}
-                onValueChange={(nextKey) => {
-                  if (nextKey === sig.groupKey) return;
-                  onPatch(sig.id, buildGroupChangePatch(sig, nextKey));
-                }}
-                triggerClassName={FLAT_TRIGGER}
-              />
-            </div>
-          );
-        },
-      }),
-      columnHelper.display({
-        id: 'type',
-        header: 'Type',
-        cell: ({ row }) => {
-          const sig = row.original;
-          const typeMissing =
-            sig.groupKey !== null &&
-            (sig.groupKey === 'wormhole' ? sig.typeId === null : !sig.name);
-          return (
-            <div className={`px-1 py-px${typeMissing ? ` ${MISSING_CELL}` : ''}`}>
-              <TypeCell
-                mapId={mapId}
-                system={system}
-                sig={sig}
-                onPatch={onPatch}
-                onSyncConnectionSize={syncConnectionSize}
-                triggerClassName={FLAT_TRIGGER}
-                inputClassName={FLAT_INPUT}
-              />
-            </div>
-          );
-        },
-      }),
-      columnHelper.display({
-        id: 'description',
-        header: 'Description',
-        cell: ({ row }) => {
-          const sig = row.original;
-          return (
-            <div className="px-1 py-px">
-              <EditableTextCell
-                value={sig.description ?? ''}
-                onCommit={(next) => onPatch(sig.id, { description: next || null })}
-                className={cn(FLAT_INPUT, 'h-6 text-sm')}
-                placeholder="—"
-              />
-            </div>
-          );
-        },
-      }),
-      columnHelper.display({
-        id: 'leadsTo',
-        header: 'Leads to',
-        cell: ({ row }) => {
-          const sig = row.original;
-          const leadsToMissing = sig.groupKey === 'wormhole' && sig.mapConnectionId === null;
-          return (
-            <div className={`px-1 py-px${leadsToMissing ? ` ${MISSING_CELL}` : ''}`}>
-              <ConnectionSelect
-                system={system}
-                connections={connections}
-                systems={systems}
-                value={sig.mapConnectionId}
-                onValueChange={(next) => {
-                  onPatch(sig.id, { mapConnectionId: next });
-                  syncConnectionSize(sig.typeId, next);
-                }}
-                disabled={sig.groupKey !== 'wormhole'}
-                targetClass={
-                  sig.typeId == null ? null : metaByTypeId.get(sig.typeId)?.targetClass ?? null
-                }
-                excludeIds={assignedConnectionIds}
-                triggerClassName={FLAT_TRIGGER}
-              />
-            </div>
-          );
-        },
-      }),
-      columnHelper.display({
-        id: 'ttl',
-        header: 'TTL',
-        cell: ({ row }) => (
-          <span className="px-1 py-px text-xs text-muted-foreground">
-            {formatRelativeIso(row.original.expiresAt)}
-          </span>
-        ),
-      }),
-      columnHelper.accessor('createdAt', {
-        header: 'Created',
-        enableSorting: true,
-        cell: ({ row }) => (
-          <span className="px-1 py-px text-xs text-muted-foreground">
-            {formatAgoIso(row.original.createdAt)}
-          </span>
-        ),
-      }),
-      columnHelper.accessor('updatedAt', {
-        header: 'Updated',
-        enableSorting: true,
-        cell: ({ row }) => (
-          <span className="px-1 py-px text-xs text-muted-foreground">
-            {formatAgoIso(row.original.updatedAt)}
-          </span>
-        ),
-      }),
-      columnHelper.display({
-        id: 'actions',
-        header: '',
-        cell: ({ row }) => (
-          <div className="px-1 py-px text-right">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Delete signature"
-              onClick={() => onDelete(row.original.id)}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          </div>
-        ),
-      }),
-    ],
-    [mapId, system, connections, systems, onPatch, onDelete, syncConnectionSize, metaByTypeId, assignedConnectionIds],
-  );
-
   const [sorting, setSorting] = useState<SortingState>([{ id: 'sigId', desc: false }]);
 
   const table = useReactTable({
     data: filteredRows,
-    columns,
+    columns: signatureColumns,
     getRowId: (row) => row.id,
     state: { sorting },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    meta: {
+      mapId,
+      system,
+      connections,
+      systems,
+      onPatch,
+      onDelete,
+      syncConnectionSize,
+      metaByTypeId,
+      assignedConnectionIds,
+    } satisfies SignatureTableMeta,
   });
 
   const [draftSigId, setDraftSigId] = useState('');

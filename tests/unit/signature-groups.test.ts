@@ -8,8 +8,19 @@ import {
 describe('signatureGroupKeyFromScannerName', () => {
   it('maps every scanner Group label to its key', () => {
     for (const g of SIGNATURE_GROUP_CATALOG) {
-      expect(signatureGroupKeyFromScannerName(g.scannerName)).toBe(g.key);
+      for (const name of g.scannerNames) {
+        expect(signatureGroupKeyFromScannerName(name)).toBe(g.key);
+      }
     }
+  });
+
+  it('maps Combat aliases (Factional Warfare, Homefront) to combat', () => {
+    expect(
+      signatureGroupKeyFromScannerName('Factional Warfare Site - Combat Site'),
+    ).toBe('combat');
+    expect(
+      signatureGroupKeyFromScannerName('Homefront Operation Site - Combat Site'),
+    ).toBe('combat');
   });
 
   it('is case-insensitive', () => {

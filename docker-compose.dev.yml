@@ -1,0 +1,12 @@
+# Local-development overlay. Opt-in via:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+#
+# Publishes Postgres to the host on loopback only, so a locally-run Next.js
+# (`pnpm dev`) can reach it at localhost:5432. This is deliberately NOT a
+# `docker-compose.override.yml`: the bare `docker compose up -d` production
+# command must never pick this up and expose the database.
+services:
+  db:
+    ports:
+      - '127.0.0.1:5432:5432'

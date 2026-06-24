@@ -14,5 +14,5 @@
 ### Running
 Requires containerised Postgres with migrations applied:
 ```
-docker compose up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test
 ```

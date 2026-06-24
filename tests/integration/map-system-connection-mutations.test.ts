@@ -28,6 +28,8 @@ import {
   deleteConnection,
   updateConnection,
 } from '@/lib/map/mutations/connections';
+import { createSignature } from '@/lib/map/mutations/signatures';
+import { loadSignaturesForSystems } from '@/lib/map/systemNode';
 import { staticMatchForConnection, wormholeTypesForSystem } from '@/lib/map/wormholeTypes';
 import { mapEventPayloadSchema } from '@/lib/realtime/protocol';
 
@@ -173,6 +175,37 @@ describe.skipIf(!run)('system & connection mutations (real Postgres)', () => {
       .from(apMapSystem)
       .where(and(eq(apMapSystem.mapId, mapId), eq(apMapSystem.systemId, C3)));
     expect(rows).toHaveLength(1); // no duplicate row
+  });
+
+  it('re-adding a system carries no signatures on the event; survivors hydrate via the loader', async () => {
+    // Ensure C3 is placed, then hang a signature off it.
+    await addSystem({ mapId, systemId: C3, characterId: null });
+    const sysId = await mapSystemId(C3);
+    const sig = await createSignature({
+      mapId,
+      mapSystemId: sysId,
+      characterId: null,
+      sigId: 'ABC-123',
+      groupKey: 'wormhole',
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+    expect(sig.ok).toBe(true);
+
+    // Soft-remove then re-add: the signature row survives the visible=false cycle.
+    const removed = await removeSystem({ mapId, mapSystemId: sysId, characterId: null });
+    expect(removed.ok).toBe(true);
+    const readded = await addSystem({ mapId, systemId: C3, characterId: null });
+    expect(readded.ok).toBe(true);
+    if (!readded.ok) return;
+
+    // The event is a pure node-body delta — signatures do NOT ride it (embedding
+    // them breached the 8 KB pg_notify ceiling and rolled the insert back).
+    expect(readded.data).toMatchObject({ kind: 'system.added', id: sysId.toString() });
+    expect('signatures' in (readded.data as Record<string, unknown>)).toBe(false);
+
+    // The surviving sig is served by the shared loader the hydration endpoint uses.
+    const sigs = await loadSignaturesForSystems([sysId]);
+    expect(sigs.map((s) => s.sigId)).toContain('ABC-123');
   });
 
   it('createConnection / updateConnection (EOL) / deleteConnection round-trip', async () => {

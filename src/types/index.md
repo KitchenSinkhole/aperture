@@ -35,7 +35,7 @@ Re-exports the Thera module types from `src/lib/map/thera.ts`: `TheraHub` (`'The
 
 Re-exports `ApMapConnectionLog` / `NewApMapConnectionLog` (the `ap_map_connection_log` row) and the `ConnectionMassLogEntry` view type — a display row for the per-jump connection mass-log (joined character + ship-type name, `mass`/`cumulativeMass` as `number` kg). See `src/lib/map/connectionMassLog.ts`.
 
-The delete-subchain feature re-exports `DeleteSubchainInput`, `SubchainDeleteSummary`, and `SubchainDeleteResult` (`{ summary, payloads }`) from `src/lib/map/mutations/subchain.ts` — an N-event branch teardown matching the bulk-paste/Thera `{ summary, payloads }` shape.
+The delete-subchain feature re-exports `DeleteSubchainInput`, `SubchainDeleteSummary`, and `SubchainDeleteResult` (`{ summary, payloads }`) from `src/lib/map/mutations/subchain.ts` — an N-event branch teardown matching the bulk-paste/Thera `{ summary, payloads }` shape. The Stage 4 sig-memory restore re-exports `RestoreConnectionInput` and `RestoreConnectionResult` (`{ payloads }`) from `src/lib/map/mutations/restoreConnection.ts` — an N-event re-confirm (`system.added` per hidden endpoint, then `connection.create`).
 
 Permissions-overhaul adds `ApInstance` / `ApInstanceOwner` / `ApAccessGrant` row types (`+ New*`) and the enum unions `AccessMode`, `AccessPrincipal`, `AccessScope`, `AccessCapability` (from `src/db/schema/ap/enums.ts`).
 

@@ -1,11 +1,11 @@
 ## shatteredSystems.ts
 
-**Purpose:** Pins the set of shattered wormhole systems by solar-system id, since "shattered" is not derivable from the ingested SDE and is not obvious from a J-sig.
+**Purpose:** Identifies shattered wormhole systems straight from the J-sig name — no hand-curated id set required.
 **File:** `src/lib/eve/shatteredSystems.ts`
 
-A shattered system has had its planets/moons destroyed (no anchorable celestials, a permanent system effect, frigate-size limits for the class-13 holes). Sourced from the vendored anoik.is static dataset (`static.json?version=11`, pulled 2026-05-22 — the same snapshot the SDE ingest uses): a system is shattered when anoik gives it a "Planet (Shattered)" celestial (type `30889`). The list is every such system, **excluding** the five Drifter systems (they carry their own identity via `drifterSystems.ts` and are flagged separately on the map). Thera (`31000005`) is included — it is a genuine shattered system. 103 ids total.
+A shattered system has had its planets/moons destroyed (no anchorable celestials, a permanent system effect, frigate-size limits for the class-13 holes). CCP numbered every shattered J-space system in the `J0xxxxx` band (J000102 – J015227), so a leading `J0` is both necessary and sufficient to recognise one. Regular wormholes are named `J1xxxxx` and up; the five Drifter systems carry lore names (`Liberated Barbican`, …) and never match. Thera is the one shattered system without a J-sig and is matched by name.
 
 ---
 
-### isShatteredSystem(systemId: number): boolean
-Returns `true` if the solar-system id is a shattered wormhole system (Drifter systems excluded). Used by the map node to render a shattered indicator. Display only — touches no stored data.
+### isShatteredSystem(name: string): boolean
+Returns `true` if the system name is a shattered wormhole system: `Thera` or a name matching `/^J0\d{5}$/`. Used by the map node to render a shattered indicator. Display only — touches no stored data.

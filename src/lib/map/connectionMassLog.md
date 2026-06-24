@@ -30,8 +30,10 @@ range (a hole's max stable mass is ~3e9 kg).
 ---
 
 ### listConnectionMassLog({ mapId, connectionId }): Promise<ConnectionMassLogEntry[]>
-The connection's log for display — oldest jump first, joined to the acting character (name) + ship
-type (name), with a running `cumulativeMass`. **Scoped to `mapId`** (inner-joins `ap_map_connection`)
+The connection's log for display — **newest jump first**, joined to the acting character (name) + ship
+type (name). `cumulativeMass` on each entry is the chronological running total up to and including
+that jump, computed via a SQL window function (`SUM … OVER (ORDER BY jumped_at ASC, id ASC)`) so it
+remains correct regardless of the DESC outer sort. **Scoped to `mapId`** (inner-joins `ap_map_connection`)
 so a connection id from another map can't be read through this map's route; returns `[]` when the
 connection isn't on the map. Backs `GET /api/map/[mapId]/connections/[connId]/mass-log`.
 

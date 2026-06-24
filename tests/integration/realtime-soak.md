@@ -23,7 +23,7 @@ N **actors** fire concurrent position commits on **overlapping** systems (genuin
 ### Running
 DB-gated via `RUN_DB_TESTS=1` (needs Postgres + applied migrations):
 ```
-docker compose up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test realtime-soak
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test realtime-soak
 ```
 Load is env-tunable: `SOAK_ACTORS` (4), `SOAK_OBSERVERS` (3), `SOAK_MOVES` (40), `SOAK_SYSTEMS` (6).
 

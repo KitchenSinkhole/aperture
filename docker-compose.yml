@@ -8,8 +8,9 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: aperture
-    ports:
-      - '5432:5432'
+    # No host port mapping: Postgres is reachable only over the compose network
+    # (the app and one-shot migrate service connect via db:5432). Nothing on the
+    # host or LAN can reach it.
     volumes:
       - pgdata:/var/lib/postgresql
       - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro

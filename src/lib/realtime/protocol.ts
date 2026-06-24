@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   connectionScope,
   eolStage,
+  mapNoteSeverity,
   mapScope,
   mapType,
   signatureGroupKey,
@@ -116,6 +117,7 @@ const eolStageEnum = z.enum(eolStage.enumValues);
 const mapScopeEnum = z.enum(mapScope.enumValues);
 const mapTypeEnum = z.enum(mapType.enumValues);
 const signatureGroupKeyEnum = z.enum(signatureGroupKey.enumValues);
+const mapNoteSeverityEnum = z.enum(mapNoteSeverity.enumValues);
 
 const eventId = z.number().int().positive();
 
@@ -177,8 +179,40 @@ const signatureBody = {
   leadsToMapSystemId: z.string().nullable().optional(),
 };
 
+/**
+ * Full note body — mirrors `MapNote` (loadMap.ts) so a client can append a
+ * freshly-created note straight from the realtime payload. Unlike the systems
+ * pattern, attribution is denormalized: the creator/last-editor ids + resolved
+ * names ride the body so the inspector can show "created by X · last edited by Y"
+ * without a follow-up roster lookup. Character ids cross the wire as numbers (an
+ * EVE character id fits in `Number.MAX_SAFE_INTEGER`, like `characterUpdate`).
+ */
+const noteBody = {
+  id: z.string(),
+  title: z.string(),
+  content: z.string().nullable(),
+  severity: mapNoteSeverityEnum,
+  locked: z.boolean(),
+  positionX: z.number(),
+  positionY: z.number(),
+  createdByCharacterId: z.number().int().nullable(),
+  createdByName: z.string().nullable(),
+  lastEditedByCharacterId: z.number().int().nullable(),
+  lastEditedByName: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+};
+
 export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('system.added'), eventId, ...systemNodeBody }),
+  // A pure node-body delta: "this system became visible." Its signatures are NOT
+  // embedded — the canvas hydrates them via `GET …/systems/[id]/signatures` on
+  // receipt, keeping the event small (the full-sig payload otherwise breached the
+  // 8 KB `pg_notify` ceiling and rolled back the insert).
+  z.object({
+    kind: z.literal('system.added'),
+    eventId,
+    ...systemNodeBody,
+  }),
   z.object({ kind: z.literal('system.removed'), eventId, id: z.string() }),
   z.object({
     kind: z.literal('system.updated'),
@@ -243,6 +277,13 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     description: z.string().nullable().optional(),
     expiresAt: z.string().optional(),
     updatedAt: z.string().optional(),
+    // Full post-update row (Stage 2 self-heal). Additive to the conditional
+    // audit fields above — the formatter/audit ignore it and keep reading those,
+    // so precision + no-op suppression are untouched. The canvas upserts from it
+    // to materialize a sig whose `signature.create` it never received (reconnect
+    // gaps, reordering). Its `leadsToMapSystemId` is populated for linked sigs so
+    // the Stage 4 restore offer can name a dormant connection's destination.
+    snapshot: z.object(signatureBody).optional(),
   }),
   // `mapSystemId`/`sigId` captured at delete time (the signature row is
   // hard-deleted) so the audit names the system and the in-game code.
@@ -253,6 +294,30 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     mapSystemId: z.string().optional(),
     sigId: z.string().optional(),
   }),
+  z.object({ kind: z.literal('note.created'), eventId, ...noteBody }),
+  z.object({
+    kind: z.literal('note.updated'),
+    eventId,
+    id: z.string(),
+    // `title` always rides as the audit/Discord descriptor (names *which* note),
+    // mirroring how `signature.update` always carries `sigId`. The canvas
+    // re-applying an unchanged title is a no-op. The remaining fields are present
+    // only when they actually changed (merge-by-id on the client).
+    title: z.string(),
+    content: z.string().nullable().optional(),
+    severity: mapNoteSeverityEnum.optional(),
+    locked: z.boolean().optional(),
+    positionX: z.number().optional(),
+    positionY: z.number().optional(),
+    // The editor identity always rides so the inspector's "last edited by" stays
+    // live; `updatedAt` likewise.
+    lastEditedByCharacterId: z.number().int().nullable(),
+    lastEditedByName: z.string().nullable(),
+    updatedAt: z.string(),
+  }),
+  // `title` captured at delete time (the note row is hard-deleted) so the audit
+  // names the note even after the row is gone.
+  z.object({ kind: z.literal('note.deleted'), eventId, id: z.string(), title: z.string() }),
   z.object({
     kind: z.literal('map.create'),
     eventId,
@@ -305,6 +370,9 @@ export const MAP_EVENT_KINDS = [
   'signature.create',
   'signature.update',
   'signature.delete',
+  'note.created',
+  'note.updated',
+  'note.deleted',
   'map.create',
   'map.update',
   'map.delete',

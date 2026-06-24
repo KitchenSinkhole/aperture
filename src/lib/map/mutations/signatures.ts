@@ -193,8 +193,31 @@ export function updateSignature(
         .update(apMapSignature)
         .set(set)
         .where(eq(apMapSignature.id, input.signatureId))
-        .returning({ id: apMapSignature.id, updatedAt: apMapSignature.updatedAt });
+        .returning({
+          id: apMapSignature.id,
+          mapSystemId: apMapSignature.mapSystemId,
+          mapConnectionId: apMapSignature.mapConnectionId,
+          sigId: apMapSignature.sigId,
+          groupKey: apMapSignature.groupKey,
+          typeId: apMapSignature.typeId,
+          name: apMapSignature.name,
+          description: apMapSignature.description,
+          expiresAt: apMapSignature.expiresAt,
+          createdAt: apMapSignature.createdAt,
+          updatedAt: apMapSignature.updatedAt,
+        });
       if (!row) throw new Error('Signature not found.');
+
+      // Resolve the post-update row's wormhole code once (its `typeId` may be
+      // unchanged by this patch); reused by both the audit field and the snapshot.
+      const wormholeCode = row.typeId !== null ? await resolveWormholeCode(tx, row.typeId) : null;
+      // Far endpoint of the (possibly unchanged) linked connection — rides the
+      // snapshot so a client can name the destination of a still-linked sig even
+      // when its connection is dormant/hidden (Stage 4 restore offer).
+      const snapshotLeadsTo =
+        row.mapConnectionId !== null
+          ? await resolveLeadsTo(tx, row.mapConnectionId, row.mapSystemId)
+          : null;
 
       const out: MapEventPatch<'signature.update'> = {
         id: row.id.toString(),
@@ -217,14 +240,30 @@ export function updateSignature(
       if ('groupKey' in patch) out.groupKey = patch.groupKey;
       if ('typeId' in patch) {
         out.typeId = patch.typeId;
-        out.wormholeCode =
-          patch.typeId !== null && patch.typeId !== undefined
-            ? await resolveWormholeCode(tx, patch.typeId)
-            : null;
+        out.wormholeCode = wormholeCode;
       }
       if ('name' in patch) out.name = patch.name;
       if ('description' in patch) out.description = patch.description;
       if ('expiresAt' in patch) out.expiresAt = patch.expiresAt!.toISOString();
+
+      // Full post-update snapshot (Stage 2): lets a client whose baseline is
+      // missing/wrong upsert the whole row instead of silently no-op'ing the
+      // merge-by-id. Additive — the conditional audit fields above are untouched.
+      out.snapshot = {
+        id: row.id.toString(),
+        mapSystemId: row.mapSystemId.toString(),
+        mapConnectionId: row.mapConnectionId?.toString() ?? null,
+        sigId: row.sigId,
+        groupKey: row.groupKey,
+        typeId: row.typeId,
+        wormholeCode,
+        name: row.name,
+        description: row.description,
+        expiresAt: row.expiresAt.toISOString(),
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+        leadsToMapSystemId: snapshotLeadsTo,
+      };
       return out;
     },
   });

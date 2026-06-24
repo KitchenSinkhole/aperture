@@ -1,5 +1,6 @@
 import type { MapConnectionEdge, MapSystemNode } from '@/lib/map/loadMap';
 import type { SystemEffectKey } from '@/lib/eve/systemEffects';
+import type { NoteSeverity } from '@/lib/map/enumLabels';
 
 // The map encodes status and connection state purely as colour/stroke, with
 // explicit values so the canvas is readable without Tailwind tokens leaking
@@ -68,6 +69,21 @@ const HOME_ACCENT = '#fbbf24'; // amber/gold
 /** Accent colour for the designated Home system's ring and header icon. */
 export function homeAccentColor(): string {
   return HOME_ACCENT;
+}
+
+// Map-note severity → border colour. `neutral` matches the file's default grey
+// (so an unflagged note reads as "no severity"); green/yellow/red escalate using
+// the same hues as the status palette.
+const NOTE_SEVERITY_COLORS: Record<NoteSeverity, string> = {
+  neutral: '#6b7280',
+  green: '#22c55e',
+  yellow: '#eab308',
+  red: '#ef4444',
+};
+
+/** Border colour for a map note, by severity. */
+export function noteSeverityColor(severity: NoteSeverity): string {
+  return NOTE_SEVERITY_COLORS[severity];
 }
 
 // W-space anomaly-effect swatch colours for the node indicator.

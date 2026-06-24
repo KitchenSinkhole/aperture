@@ -36,6 +36,13 @@ export const apMapConnection = pgTable(
     // When the *current* `eol_stage` was entered (re-stamped on each stage
     // change) — used by the EOL-expiry cron and the countdown.
     eolAt: timestamp('eol_at', { withTimezone: true }),
+    // "Confirmed by a current sig observation." Defaults to now() so every insert
+    // path is confirmed on create (not just `createConnection` — the location-poll
+    // auto-link, Thera ingest, and transfer rely on this default); NULLed on a
+    // `wh` connection when an endpoint system is removed (dormant memory — kept
+    // for an in-place restore, hidden from the view). `loadMapForView` loads only
+    // rows with a non-null `confirmed_at`. Non-`wh` rows are never dormanted.
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }).defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

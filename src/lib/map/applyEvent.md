@@ -16,7 +16,7 @@ Dispatches on `payload.kind` and returns a new `MapViewData` without mutating th
 **Returns:** A new `MapViewData` with the event applied, or the original `state` reference when the event has no canvas representation (`map.create`, `map.delete`, `map.restore`, `map.purge`).
 
 **Per-kind behaviour:**
-- `system.added` — upserts the full system node body into `state.systems` (handles both new placements and re-activations of previously-removed systems).
+- `system.added` — upserts the system node body into `state.systems` (handles both new placements and re-activations of previously-removed systems). Pure node delta: signatures are **not** carried on the event. A re-added system's surviving sigs are hydrated separately by `MapCanvas`, which calls `fetchSystemSignatures` on every `system.added` and upserts the result into `viewData.signatures` — keeping the `pg_notify` payload under the 8 KB ceiling.
 - `system.removed` — filters the system out of `state.systems` (rows persist server-side at `visible=false`; the canvas just stops showing them), **and** prunes any connections incident to it plus any signatures whose `mapSystemId` matches it. This mirrors `loadMapForView`, which only returns connections whose both endpoints are visible: a hidden system's connection rows persist in the DB but must not stay in the client snapshot, or consumers that iterate `connections`/`signatures` directly (e.g. `SystemOverlay`) keep rendering the orphans (as "Unknown" rows) until the next reload. The DB rows survive and reappear if the system is re-added.
 - `system.updated` — merges the patch into the matching system; fields applied: `alias`, `tag`, `intelNotes`, `status`, `locked`, `rallyAt`, `positionX`, `positionY`.
 - `connection.create` — upserts the full edge body into `state.connections` (existence-checked by `id`, so a double-delivered event can't produce a duplicate edge / React key collision).
@@ -24,10 +24,13 @@ Dispatches on `payload.kind` and returns a new `MapViewData` without mutating th
 - `connection.delete` — removes the connection by id, and also removes any signatures whose `mapConnectionId` matches it. This mirrors the `ON DELETE CASCADE` on `ap_map_signature.map_connection_id`: the server emits only a `connection.delete` event while Postgres silently cascade-deletes the linked signature rows, so the reducer must drop them too — otherwise the client keeps an orphaned signature whose DB row is gone, and deleting it later 400s with "Signature not found."
 - `map.update` — updates `state.map.name` if present in the patch; other settings flags have no canvas representation.
 - `signature.create` — upserts the full signature body into `state.signatures`.
-- `signature.update` — merges the patch into the matching signature by id; only present keys overwrite. Includes `groupKey`, `typeId`, the display-only `wormholeCode` (resolved server-side from `universe_wormhole.name` when `typeId` changes), and `updatedAt`.
+- `signature.update` — when the event carries a `snapshot` (full post-update row), **upserts** it (replace-by-id, else append) so a client missing this sig's baseline materializes it instead of silently no-op'ing. Otherwise falls back to merging the patch into the matching signature by id; only present keys overwrite. Patch fields include `groupKey`, `typeId`, the display-only `wormholeCode` (resolved server-side from `universe_wormhole.name` when `typeId` changes), and `updatedAt`.
 - `signature.delete` — removes the signature by id.
+- `note.created` — upserts the full note body into `state.notes` (existence-checked by `id`).
+- `note.updated` — merges the patch into the matching note by id. `title`, `lastEditedByCharacterId`, `lastEditedByName`, `updatedAt` always apply (they always ride the event); `content`, `severity`, `locked`, `positionX`, `positionY` apply only when present.
+- `note.deleted` — removes the note by id.
 - `map.create`, `map.delete`, `map.restore`, `map.purge` — return `state` unchanged. The last two are admin-only events; non-admin viewers never see a soft-deleted map open, so there is no canvas state to reconcile.
 
 ### Depends On
-- `MapViewData`, `MapSystemNode`, `MapConnectionEdge`, `MapSignature` — types from `@/types`
+- `MapViewData`, `MapSystemNode`, `MapConnectionEdge`, `MapSignature`, `MapNote` — types from `@/types`
 - `MapEventPayload` — type from `@/lib/realtime/protocol`

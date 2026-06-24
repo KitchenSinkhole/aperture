@@ -7,11 +7,12 @@ import {
   apMap,
   apMapCharacterTracking,
   apMapConnection,
-  apMapSignature,
+  apMapNote,
   apMapSystem,
   apUser,
   connectionScope,
   eolStage,
+  mapNoteSeverity,
   mapScope,
   mapType,
   signatureGroupKey,
@@ -27,6 +28,7 @@ import {
   whMass,
 } from '@/db/schema';
 import { canViewMap, viewableMapPredicate } from '@/lib/auth/rights';
+import { loadSignaturesForSystems } from './systemNode';
 import { apertureConfig } from '../../../aperture.config';
 
 const HUB_NAME_BY_ID = new Map<number, string>(
@@ -42,6 +44,7 @@ type MapScope = (typeof mapScope.enumValues)[number];
 type MapType = (typeof mapType.enumValues)[number];
 type SignatureGroupKey = (typeof signatureGroupKey.enumValues)[number];
 type TagScheme = (typeof tagScheme.enumValues)[number];
+type NoteSeverity = (typeof mapNoteSeverity.enumValues)[number];
 
 /** A visible system on a map, flattened with its `universe_system` metadata. */
 export type MapSystemNode = {
@@ -119,6 +122,33 @@ export type MapSignature = {
 };
 
 /**
+ * A free-standing note placed on a map (`ap_map_note`). Mirrors the realtime
+ * `note.*` payload body. Attribution is denormalized: the creator/last-editor
+ * character ids ride with their resolved names (LEFT JOIN `ap_character` twice),
+ * so the inspector renders "created by X · last edited by Y" without a lookup.
+ */
+export type MapNote = {
+  /** `ap_map_note.id` as a string (xyflow node id). */
+  id: string;
+  title: string;
+  content: string | null;
+  severity: NoteSeverity;
+  locked: boolean;
+  positionX: number;
+  positionY: number;
+  /** EVE character id of the creator; null if the character was erased. */
+  createdByCharacterId: number | null;
+  /** Resolved creator name; null when the id is null or the row is gone. */
+  createdByName: string | null;
+  lastEditedByCharacterId: number | null;
+  lastEditedByName: string | null;
+  /** ISO timestamp. */
+  createdAt: string;
+  /** ISO timestamp of the last field change. */
+  updatedAt: string;
+};
+
+/**
  * Initial roster of online tracked pilots currently in known systems. The
  * client `MapPresenceContext` seeds from this and then merges incoming
  * `characterUpdate` envelopes on top. Mirrors the envelope's resolved fields
@@ -165,6 +195,7 @@ export type MapViewData = {
   systems: MapSystemNode[];
   connections: MapConnectionEdge[];
   signatures: MapSignature[];
+  notes: MapNote[];
   /** Tracked characters online + located on this map at load time. Realtime updates fold on top of this on the client. */
   presence: MapPresenceEntry[];
 };
@@ -305,31 +336,41 @@ export async function loadMapForView(
             eq(apMapConnection.mapId, mapId),
             inArray(apMapConnection.sourceMapSystemId, visibleSystemIds),
             inArray(apMapConnection.targetMapSystemId, visibleSystemIds),
+            // Dormant `wh` connections (endpoint removed, sig not re-pasted) carry
+            // a NULL `confirmed_at` and must not resurface on reload. Non-`wh` rows
+            // are always confirmed, so this never hides structural links.
+            isNotNull(apMapConnection.confirmedAt),
           ),
         )
         .orderBy(apMapConnection.id)
     : [];
-  const signatureRows = visibleSystemIds.length
-    ? await db
-        .select({
-          id: apMapSignature.id,
-          mapSystemId: apMapSignature.mapSystemId,
-          mapConnectionId: apMapSignature.mapConnectionId,
-          sigId: apMapSignature.sigId,
-          groupKey: apMapSignature.groupKey,
-          typeId: apMapSignature.typeId,
-          wormholeCode: universeWormhole.name,
-          name: apMapSignature.name,
-          description: apMapSignature.description,
-          expiresAt: apMapSignature.expiresAt,
-          createdAt: apMapSignature.createdAt,
-          updatedAt: apMapSignature.updatedAt,
-        })
-        .from(apMapSignature)
-        .leftJoin(universeWormhole, eq(apMapSignature.typeId, universeWormhole.typeId))
-        .where(inArray(apMapSignature.mapSystemId, visibleSystemIds))
-        .orderBy(apMapSignature.sigId)
-    : [];
+  const signatures = await loadSignaturesForSystems(visibleSystemIds);
+
+  // Notes are independent of systems (no `visible` join) — load every note on the
+  // map, resolving creator + last-editor names via two LEFT JOINs on ap_character.
+  const noteCreator = alias(apCharacter, 'note_creator');
+  const noteEditor = alias(apCharacter, 'note_editor');
+  const noteRows = await db
+    .select({
+      id: apMapNote.id,
+      title: apMapNote.title,
+      content: apMapNote.content,
+      severity: apMapNote.severity,
+      locked: apMapNote.locked,
+      positionX: apMapNote.positionX,
+      positionY: apMapNote.positionY,
+      createdByCharacterId: apMapNote.createdByCharacterId,
+      createdByName: noteCreator.name,
+      lastEditedByCharacterId: apMapNote.lastEditedByCharacterId,
+      lastEditedByName: noteEditor.name,
+      createdAt: apMapNote.createdAt,
+      updatedAt: apMapNote.updatedAt,
+    })
+    .from(apMapNote)
+    .leftJoin(noteCreator, eq(noteCreator.id, apMapNote.createdByCharacterId))
+    .leftJoin(noteEditor, eq(noteEditor.id, apMapNote.lastEditedByCharacterId))
+    .where(eq(apMapNote.mapId, mapId))
+    .orderBy(apMapNote.id);
 
   const presence = await loadMapPresence(mapId);
 
@@ -382,19 +423,22 @@ export async function loadMapForView(
       eolAt: c.eolAt ? c.eolAt.toISOString() : null,
       createdAt: c.createdAt.toISOString(),
     })),
-    signatures: signatureRows.map((r) => ({
-      id: r.id.toString(),
-      mapSystemId: r.mapSystemId.toString(),
-      mapConnectionId: r.mapConnectionId ? r.mapConnectionId.toString() : null,
-      sigId: r.sigId,
-      groupKey: r.groupKey,
-      typeId: r.typeId,
-      wormholeCode: r.wormholeCode,
-      name: r.name,
-      description: r.description,
-      expiresAt: r.expiresAt.toISOString(),
-      createdAt: r.createdAt.toISOString(),
-      updatedAt: r.updatedAt.toISOString(),
+    signatures,
+    notes: noteRows.map((n) => ({
+      id: n.id.toString(),
+      title: n.title,
+      content: n.content,
+      severity: n.severity,
+      locked: n.locked,
+      positionX: n.positionX,
+      positionY: n.positionY,
+      createdByCharacterId: n.createdByCharacterId === null ? null : Number(n.createdByCharacterId),
+      createdByName: n.createdByName,
+      lastEditedByCharacterId:
+        n.lastEditedByCharacterId === null ? null : Number(n.lastEditedByCharacterId),
+      lastEditedByName: n.lastEditedByName,
+      createdAt: n.createdAt.toISOString(),
+      updatedAt: n.updatedAt.toISOString(),
     })),
     presence,
   };

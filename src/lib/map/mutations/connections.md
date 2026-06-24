@@ -6,7 +6,7 @@
 ---
 
 ### createConnection(input: CreateConnectionInput): Promise<ActionResult<MapEventPayload>>
-Inserts one `ap_map_connection` row between two map systems. Flag defaults: `massStatus = 'fresh'`, `jumpMassClass = null`, `eolStage = 'none'`, booleans `false`; `eol_at` is stamped only when the connection is created at a non-`none` `eolStage`. Emits `connection.create` with the full edge body (id/source/target/scope/massStatus/jumpMassClass/eolStage + flags).
+Inserts one `ap_map_connection` row between two map systems. Flag defaults: `massStatus = 'fresh'`, `jumpMassClass = null`, `eolStage = 'none'`, booleans `false`; `eol_at` is stamped only when the connection is created at a non-`none` `eolStage`. `confirmed_at` is always set to `now()` — every create (manual draw, sig link, stargate auto-link) is a fresh observation, so the row is born confirmed (dormancy is only applied later by `removeSystem` NULLing incident `wh` rows). Emits `connection.create` with the full edge body (id/source/target/scope/massStatus/jumpMassClass/eolStage + flags). `confirmed_at` is not in the payload — the client never reads it; dormant rows are simply never sent.
 
 **Parameters:**
 - `input.sourceMapSystemId` / `input.targetMapSystemId` — endpoint `ap_map_system.id`s.

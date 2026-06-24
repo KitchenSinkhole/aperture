@@ -17,6 +17,7 @@
 - `preserve_mass`, `is_rolling` — `boolean`, default `false`.
 - `is_static` — `boolean`, default `false` (migration 0032). User-designated "this wormhole is the source system's static". A free manual flag, not the read-time catalog match (`staticMatchForConnection`). Drives the ABC home-static exemption (`ap_map.exempt_home_static_from_tag`).
 - `eol_at` — `timestamptz`, nullable. Stamped when the *current* `eol_stage` is entered (re-stamped on each stage change); read by the EOL-expiry cron + the countdown.
+- `confirmed_at` — `timestamptz`, nullable, **default `now()`** (migration 0042 added the column; 0043 added the default). "Confirmed by a current sig observation." The default confirms every create regardless of insert path — `createConnection` stamps it explicitly, while the location-poll auto-link (`ensureConnection`), Thera ingest, and map transfer omit it and rely on the default (before 0043 they produced `NULL` rows that `loadMapForView` silently hid on reload). `removeSystem` NULLs it on incident **`wh`** connections when an endpoint is removed (dormant memory — kept for an in-place restore, hidden from the view) — the only intended NULL, an explicit UPDATE the default doesn't touch. `loadMapForView` loads only rows with a non-null `confirmed_at`. Non-`wh` rows (stargate/jumpbridge/abyssal) are structural and never dormanted. The 0042 backfill set existing rows to `created_at`.
 - `created_at` / `updated_at` — `timestamptz`, default `now()`.
 
 **Check:** `source_map_system_id <> target_map_system_id` (`ap_map_connection_no_self_loop`).

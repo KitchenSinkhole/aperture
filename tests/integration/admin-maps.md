@@ -5,7 +5,7 @@
 **File:** `tests/integration/admin-maps.test.ts`
 
 ### Run
-`docker compose up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test admin-maps`
+`docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test admin-maps`
 
 ### Setup
 - One `ap_user` (random pk), one corp (`CORP_A` with `ALLIANCE_A`), three characters:

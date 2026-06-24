@@ -31,6 +31,17 @@ export type WhJumpMass = (typeof WH_JUMP_MASSES)[number];
 export const EOL_STAGES = ['none', 'eol', 'critical'] as const;
 export type EolStage = (typeof EOL_STAGES)[number];
 
+export const NOTE_SEVERITIES = ['neutral', 'green', 'yellow', 'red'] as const;
+export type NoteSeverity = (typeof NOTE_SEVERITIES)[number];
+
+/** Human labels for the severity selector in the note inspector / context menu. */
+export const NOTE_SEVERITY_LABELS: Record<NoteSeverity, string> = {
+  neutral: 'Neutral',
+  green: 'Green',
+  yellow: 'Yellow',
+  red: 'Red',
+};
+
 /** Human labels for the EOL-stage selector in the connection inspector. */
 export const EOL_STAGE_LABELS: Record<EolStage, string> = {
   none: 'None',

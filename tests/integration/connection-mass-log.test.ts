@@ -107,9 +107,11 @@ describe.skipIf(!run)('connection mass-log (real Postgres)', () => {
     await logConnectionJump({ mapId, connectionId: connId, characterId: null, shipTypeId: SHIP, mass: 2_000_000 });
     await logConnectionJump({ mapId, connectionId: connId, characterId: null, shipTypeId: null, mass: 500_000 });
 
+    // Newest jump first; cumulative is the chronological running total, so the
+    // first (latest) entry carries the grand total.
     const entries = await listConnectionMassLog({ mapId, connectionId: connId });
-    expect(entries.map((e) => e.mass)).toEqual([1_000_000, 2_000_000, 500_000]);
-    expect(entries.map((e) => e.cumulativeMass)).toEqual([1_000_000, 3_000_000, 3_500_000]);
+    expect(entries.map((e) => e.mass)).toEqual([500_000, 2_000_000, 1_000_000]);
+    expect(entries.map((e) => e.cumulativeMass)).toEqual([3_500_000, 3_000_000, 1_000_000]);
   });
 
   it('logConnectionJump skips a null mass (no row, cumulative unchanged)', async () => {

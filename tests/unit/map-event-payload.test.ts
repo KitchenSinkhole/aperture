@@ -34,6 +34,35 @@ describe('mapEventPayloadSchema', () => {
     expect(mapEventPayloadSchema.parse(payload)).toMatchObject({ kind: 'system.added', eventId: 42 });
   });
 
+  it('does not carry signatures on system.added (they hydrate via a separate fetch)', () => {
+    const parsed = mapEventPayloadSchema.parse({
+      kind: 'system.added',
+      eventId: 43,
+      id: '7',
+      systemId: 30000142,
+      name: 'Jita',
+      alias: null,
+      tag: null,
+      intelNotes: null,
+      status: 'occupied',
+      security: '0.9',
+      trueSec: 0.9,
+      effect: null,
+      regionName: 'The Forge',
+      constellationName: 'Kimotoro',
+      statics: [],
+      tradeHub: null,
+      locked: false,
+      rallyAt: null,
+      positionX: 10,
+      positionY: 20,
+      // A stray signatures field must be stripped, not preserved — the contract
+      // is that sigs never ride the event (that breached the 8 KB pg_notify cap).
+      signatures: [{ id: '1', sigId: 'ABC' }],
+    });
+    expect('signatures' in parsed).toBe(false);
+  });
+
   it('accepts a partial system.updated patch', () => {
     const parsed = mapEventPayloadSchema.parse({
       kind: 'system.updated',

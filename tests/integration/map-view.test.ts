@@ -133,6 +133,9 @@ describe('read-only map view (real Postgres)', () => {
       targetMapSystemId: whRow.id,
       scope: 'wh',
       massStatus: 'fresh',
+      // `createConnection` stamps this; a direct insert must too, or
+      // `loadMapForView`'s `confirmed_at IS NOT NULL` filter hides the edge.
+      confirmedAt: new Date(),
     });
 
     const data = await loadMapForView(mapId, TEST_VIEWER_ID);

@@ -44,9 +44,14 @@ Requires Node 24+, pnpm 9+, and Docker.
 
 ```bash
 pnpm install
-docker compose up -d db   # Postgres 18 with pgcrypto + pg_partman
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db   # Postgres 18 (pgcrypto + pg_partman), port published to localhost
 pnpm dev                  # http://localhost:3003
 ```
+
+The base `docker-compose.yml` does **not** publish Postgres to the host — that's the
+production posture (the DB is reachable only over the compose network). The
+`docker-compose.dev.yml` overlay re-publishes it on `127.0.0.1:5432` so a locally-run
+`pnpm dev` can connect; you must pass it explicitly.
 
 Copy `.env.example` to `.env` and fill in the values (see below) before `pnpm dev`. Other
 scripts: `pnpm typecheck`, `pnpm lint`, `pnpm test`. Full contributor setup is in
@@ -62,6 +67,10 @@ app image, runs database migrations as a one-shot `migrate` service, and starts 
 cp .env.example .env      # fill in real secrets (see below)
 docker compose up -d      # builds db + runs migrations + starts app on :3003
 ```
+
+This bare `docker compose up -d` does not include `docker-compose.dev.yml`, so Postgres is
+**never published to the host** in production — only the `app` and `migrate` services reach
+it over the internal compose network. Only port **3003** (the app) is exposed.
 
 Migrations run on every `up` and are idempotent. The **SDE static-data ingest is not run
 automatically** — after the first deploy, open `/setup`, unlock with `SETUP_PASSWORD`, and

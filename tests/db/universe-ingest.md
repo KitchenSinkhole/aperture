@@ -7,7 +7,7 @@
 Gated behind `RUN_DB_TESTS=1` (default `pnpm test` stays offline) and runs in the `node` vitest environment. Requires a migrated, bootstrapped Postgres:
 
 ```
-docker compose up -d db
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
 pnpm db:migrate
 pnpm sde:bootstrap
 RUN_DB_TESTS=1 pnpm test

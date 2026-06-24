@@ -25,7 +25,7 @@ If you've never opened the repo before, read these first:
 ```bash
 pnpm install
 cp .env.example .env          # fill in the values — see below
-docker compose up -d db       # Postgres 18 with pgcrypto + pg_partman
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db   # Postgres 18 (pgcrypto + pg_partman), published to localhost:5432
 pnpm db:migrate               # apply Drizzle migrations
 pnpm dev                      # http://localhost:3003
 ```

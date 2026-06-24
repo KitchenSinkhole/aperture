@@ -24,6 +24,7 @@ and a cumulative total. Loading / failed / empty states are inline text.
   refetch win, so a burst of jump events (each delivered exactly once, no `lastEvent` coalescing)
   can't land an older response after a newer one.
 - Mass is shown in kilotonnes (1 kt = 1e6 kg), matching `JumpInfoDialog`.
+- Entries arrive newest-first from the server; `cumulative` reads `entries[0].cumulativeMass` (the most recent entry carries the highest running total).
 
 ### Limitation
 Exact "% to next mass status" needs the WH type's total stable mass, which connections don't store —

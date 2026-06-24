@@ -1,4 +1,4 @@
-import type { MapConnectionEdge, MapSignature, MapSystemNode, MapViewData } from '@/types';
+import type { MapConnectionEdge, MapNote, MapSignature, MapSystemNode, MapViewData } from '@/types';
 import type { MapEventPayload } from '@/lib/realtime/protocol';
 
 /**
@@ -15,16 +15,16 @@ import type { MapEventPayload } from '@/lib/realtime/protocol';
 export function applyEvent(state: MapViewData, payload: MapEventPayload): MapViewData {
   switch (payload.kind) {
     case 'system.added': {
-      // payload structurally satisfies MapSystemNode (contains all required fields).
-      const nodeData = payload as MapSystemNode;
+      // Pure node-body delta: `payload` structurally satisfies MapSystemNode
+      // (contains all required fields). Signatures are NOT carried on the event —
+      // the canvas hydrates a (re)added system's surviving sigs via
+      // `fetchSystemSignatures` on receipt (kept the `pg_notify` payload small).
+      const nodeData = payload as unknown as MapSystemNode;
       const exists = state.systems.some((s) => s.id === nodeData.id);
-      if (exists) {
-        return {
-          ...state,
-          systems: state.systems.map((s) => (s.id === nodeData.id ? nodeData : s)),
-        };
-      }
-      return { ...state, systems: [...state.systems, nodeData] };
+      const systems = exists
+        ? state.systems.map((s) => (s.id === nodeData.id ? nodeData : s))
+        : [...state.systems, nodeData];
+      return { ...state, systems };
     }
 
     case 'system.removed':
@@ -122,6 +122,19 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
     }
 
     case 'signature.update': {
+      // Self-heal: when the full post-update snapshot rides the event, upsert it
+      // (replace-by-id, else append) so a client missing this sig's baseline
+      // materializes it instead of silently no-op'ing the merge-by-id below.
+      if (payload.snapshot) {
+        const snap = payload.snapshot as MapSignature;
+        const exists = state.signatures.some((s) => s.id === snap.id);
+        return {
+          ...state,
+          signatures: exists
+            ? state.signatures.map((s) => (s.id === snap.id ? snap : s))
+            : [...state.signatures, snap],
+        };
+      }
       return {
         ...state,
         signatures: state.signatures.map((s): MapSignature => {
@@ -143,6 +156,40 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
 
     case 'signature.delete':
       return { ...state, signatures: state.signatures.filter((s) => s.id !== payload.id) };
+
+    case 'note.created': {
+      // payload structurally satisfies MapNote (full body).
+      const note = payload as unknown as MapNote;
+      const exists = state.notes.some((n) => n.id === note.id);
+      if (exists) {
+        return { ...state, notes: state.notes.map((n) => (n.id === note.id ? note : n)) };
+      }
+      return { ...state, notes: [...state.notes, note] };
+    }
+
+    case 'note.updated': {
+      return {
+        ...state,
+        notes: state.notes.map((n): MapNote => {
+          if (n.id !== payload.id) return n;
+          const next = { ...n };
+          // `title` always rides; the rest only when changed.
+          next.title = payload.title;
+          if (payload.content !== undefined) next.content = payload.content;
+          if (payload.severity !== undefined) next.severity = payload.severity;
+          if (payload.locked !== undefined) next.locked = payload.locked;
+          if (payload.positionX !== undefined) next.positionX = payload.positionX;
+          if (payload.positionY !== undefined) next.positionY = payload.positionY;
+          next.lastEditedByCharacterId = payload.lastEditedByCharacterId;
+          next.lastEditedByName = payload.lastEditedByName;
+          next.updatedAt = payload.updatedAt;
+          return next;
+        }),
+      };
+    }
+
+    case 'note.deleted':
+      return { ...state, notes: state.notes.filter((n) => n.id !== payload.id) };
 
     case 'map.create':
     case 'map.delete':

@@ -68,14 +68,14 @@ export function homeStaticExemptionChanges(
   return changes;
 }
 
-/** Canonical WH classes always shown in the panel grid, even before discovery. */
+/** Canonical WH classes always shown in the panel grid, even before discovery. C13 omitted as it's rare */
 const DEFAULT_ABC_CLASSES = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6'];
 
-const TAGGABLE_CLASSES = new Set(['C1', 'C2', 'C3', 'C4', 'C5', 'C6']);
+const TAGGABLE_CLASSES = new Set(['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C13']);
 
 /**
  * True for a security label that gets its own ABC letter sequence.
- * Only C1–C6 are tagged; C13 shattered/drifter holes and k-space systems are
+ * Only C1–C6, and C13 are tagged; Drifter holes, Thera and k-space systems are
  * all named and skipped.
  */
 export function isTaggableClass(securityClass: string | null): securityClass is string {

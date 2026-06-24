@@ -7,9 +7,11 @@ import type {
   ImportResult,
   MapEventPayload,
   MapExportFile,
+  MapSignature,
   MapViewData,
   ParsedSigRow,
   ResolvedSigRow,
+  RestoreConnectionResult,
   SignatureGroupKey,
   StructureIntel,
   SubchainDeleteResult,
@@ -24,6 +26,7 @@ import type {
 import type {
   ConnectionScope,
   EolStage,
+  NoteSeverity,
   SystemStatus,
   WhJumpMass,
   WhMass,
@@ -84,6 +87,23 @@ export type UpdateConnectionBody = {
   preserveMass?: boolean;
   isRolling?: boolean;
   isStatic?: boolean;
+};
+
+export type CreateNoteBody = {
+  title: string;
+  content?: string | null;
+  severity?: NoteSeverity;
+  positionX: number;
+  positionY: number;
+};
+
+export type UpdateNoteBody = {
+  title?: string;
+  content?: string | null;
+  severity?: NoteSeverity;
+  locked?: boolean;
+  positionX?: number;
+  positionY?: number;
 };
 
 export type CreateSignatureBody = {
@@ -199,6 +219,36 @@ export function removeSystemOnServer(args: {
 }
 
 // ---------------------------------------------------------------------------
+// Note mutations
+// ---------------------------------------------------------------------------
+
+export function addNoteOnServer(args: {
+  mapId: string;
+  body: CreateNoteBody;
+}): Promise<ActionResult<MapEventPayload>> {
+  return mutationFetch<MapEventPayload>('POST', `/api/map/${args.mapId}/notes`, args.body);
+}
+
+export function updateNoteOnServer(args: {
+  mapId: string;
+  noteId: string;
+  patch: UpdateNoteBody;
+}): Promise<ActionResult<MapEventPayload>> {
+  return mutationFetch<MapEventPayload>(
+    'PATCH',
+    `/api/map/${args.mapId}/notes/${args.noteId}`,
+    args.patch,
+  );
+}
+
+export function deleteNoteOnServer(args: {
+  mapId: string;
+  noteId: string;
+}): Promise<ActionResult<MapEventPayload>> {
+  return mutationFetch<MapEventPayload>('DELETE', `/api/map/${args.mapId}/notes/${args.noteId}`);
+}
+
+// ---------------------------------------------------------------------------
 // Connection mutations
 // ---------------------------------------------------------------------------
 
@@ -228,6 +278,23 @@ export function deleteConnectionOnServer(args: {
   return mutationFetch<MapEventPayload>(
     'DELETE',
     `/api/map/${args.mapId}/connections/${args.connectionId}`,
+  );
+}
+
+/**
+ * Restore a dormant wormhole connection (Stage 4 sig-memory restore): re-confirm
+ * the connection and re-activate any hidden endpoint. Body-less. Returns the
+ * committed event payloads (`system.added` per re-activated endpoint, then
+ * `connection.create`) — register each `eventId` and fold each via `applyEvent`
+ * (the wrapper-level `eventId` is always `0`).
+ */
+export function restoreConnectionOnServer(args: {
+  mapId: string;
+  connectionId: string;
+}): Promise<ActionResult<RestoreConnectionResult>> {
+  return mutationFetch<RestoreConnectionResult>(
+    'POST',
+    `/api/map/${args.mapId}/connections/${args.connectionId}/restore`,
   );
 }
 
@@ -459,6 +526,22 @@ export function fetchSystemData(args: {
 }): Promise<FetchResult<SystemDataBatch>> {
   return readFetch<SystemDataBatch>(
     `/api/map/${args.mapId}/system-data?systems=${args.systemIds.join(',')}`,
+  );
+}
+
+/**
+ * Fetch one placed system's current signatures. Signatures no longer ride the
+ * `system.added` event (that breached the 8 KB `pg_notify` ceiling); `MapCanvas`
+ * calls this on the event to hydrate a (re)added system's surviving sigs so all
+ * tabs converge without a reload. Read-only (view rights) — no `eventId`.
+ * `mapSystemId` is `ap_map_system.id`, not the EVE solar-system id.
+ */
+export function fetchSystemSignatures(args: {
+  mapId: string;
+  mapSystemId: string;
+}): Promise<FetchResult<MapSignature[]>> {
+  return readFetch<MapSignature[]>(
+    `/api/map/${args.mapId}/systems/${args.mapSystemId}/signatures`,
   );
 }
 

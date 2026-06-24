@@ -16,6 +16,8 @@ Each helper returns `ActionResult<MapEventPayload>` — same shape as the route 
 | `UpdateConnectionBody` | `updateConnectionOnServer` | Includes `isStatic` (designate as the source system's static). |
 | `CreateSignatureBody` | `createSignatureOnServer` | `mapSystemId` digits; `expiresAt` ISO string. |
 | `UpdateSignatureBody` | `updateSignatureOnServer` | `mapConnectionId` digits or null; `expiresAt` optional ISO. |
+| `CreateNoteBody` | `addNoteOnServer` | Mirrors `POST /api/map/[mapId]/notes`. `severity` defaults to `neutral` server-side; `positionX`/`positionY` required. |
+| `UpdateNoteBody` | `updateNoteOnServer` | All fields optional; mirrors `PATCH /api/map/[mapId]/notes/[noteId]`. |
 
 ---
 
@@ -31,11 +33,23 @@ PATCH. Intended to be called optimistically (apply locally first, then commit/ro
 ### removeSystemOnServer({ mapId, mapSystemId }): Promise<ActionResult<MapEventPayload>>
 DELETE. Optimistic.
 
+### addNoteOnServer({ mapId, body }): Promise<ActionResult<MapEventPayload>>
+POST `/api/map/{mapId}/notes`. Create a free-standing note. Returns the `note.created` payload — await-then-apply (or optimistic, MapCanvas's choice). `body` is `CreateNoteBody`.
+
+### updateNoteOnServer({ mapId, noteId, patch }): Promise<ActionResult<MapEventPayload>>
+PATCH `/api/map/{mapId}/notes/{noteId}`. Update a note's fields. Optimistic (drag / inspector edits). `patch` is `UpdateNoteBody`.
+
+### deleteNoteOnServer({ mapId, noteId }): Promise<ActionResult<MapEventPayload>>
+DELETE `/api/map/{mapId}/notes/{noteId}`. Hard-delete a note. Optimistic.
+
 ### createConnectionOnServer({ mapId, body }): Promise<ActionResult<MapEventPayload>>
 POST. Await-then-apply.
 
 ### updateConnectionOnServer({ mapId, connectionId, patch }) / deleteConnectionOnServer({ mapId, connectionId })
 PATCH / DELETE on `/api/map/{mapId}/connections/{connectionId}`. Optimistic.
+
+### restoreConnectionOnServer({ mapId, connectionId }): Promise<ActionResult<RestoreConnectionResult>>
+POST `/api/map/{mapId}/connections/{connectionId}/restore` (no body). Re-confirm a dormant wormhole connection and re-activate any hidden endpoint (Stage 4 sig-memory restore). Returns `{ payloads }` (`system.added` per re-activated endpoint, then `connection.create`); the caller iterates `payloads` to register each `eventId` and apply each locally (wrapper-level `eventId` is always `0` — N-events). Used by `MapCanvas`'s restore-connection prompt.
 
 ### fetchConnectionMassLog({ mapId, connectionId }): Promise<FetchResult<ConnectionMassLogEntry[]>>
 GET `/api/map/{mapId}/connections/{connectionId}/mass-log` (view rights). Lists the connection's
@@ -62,6 +76,9 @@ POST `/api/map/{mapId}/signatures/resolve`. Preview-only resolver for the paste 
 
 ### fetchSystemData({ mapId, systemIds }): Promise<FetchResult<SystemDataBatch>>
 GET `/api/map/{mapId}/system-data?systems=<id>,<id>,...` (view rights). Returns `SystemDataBatch` (`{ intel, stats, structures }`, the same per-system view-models the page server-renders; `stats`/`structures` sparse). `MapCanvas` calls this to backfill systems added after the initial render and merges the result into its intel/stats/structures state — so sov/FW/incursion decorators and the sidebar modules fill in without a reload.
+
+### fetchSystemSignatures({ mapId, mapSystemId }): Promise<FetchResult<MapSignature[]>>
+GET `/api/map/{mapId}/systems/{mapSystemId}/signatures` (view rights; `mapSystemId` is `ap_map_system.id`). Returns the system's current signatures. Signatures no longer ride the `system.added` event (that breached the 8 KB `pg_notify` ceiling); `MapCanvas` calls this on every `system.added` and upserts the result into `viewData.signatures`, so a re-added system's surviving sigs converge on every tab without a reload.
 
 ### fetchWormholeTypes({ mapId, universeSystemId }): Promise<ActionResult<WormholeTypeOption[]>>
 GET `/api/map/{mapId}/wormhole-types?systemId=<universeSystemId>`. Results are cached per `(mapId, universeSystemId)` in a module-scoped `Map` for the session — WH catalog filtering is immutable per class, so this avoids re-fetching as the user opens the inspector for different systems.

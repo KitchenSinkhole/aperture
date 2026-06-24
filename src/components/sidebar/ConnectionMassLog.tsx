@@ -68,7 +68,7 @@ export function ConnectionMassLog({
     ),
   );
 
-  const cumulative = entries.length > 0 ? entries[entries.length - 1]!.cumulativeMass : 0;
+  const cumulative = entries.length > 0 ? entries[0]!.cumulativeMass : 0;
 
   return (
     <div className="flex flex-col gap-1.5 border-t border-border pt-2">

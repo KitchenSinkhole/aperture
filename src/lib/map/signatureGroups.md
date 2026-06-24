@@ -10,10 +10,10 @@ Safe to import from both server-only and client modules — exports only static 
 ---
 
 ### `SIGNATURE_GROUP_CATALOG: readonly SignatureGroupOption[]`
-Seven entries in the order shown in the UI dropdown. Each entry carries:
+Exactly one entry per group key, in the order shown in the UI dropdown — so the catalog can drive group dropdowns/chips directly without de-duping. Each entry carries:
 - `key` — the `SignatureGroupKey` enum value (`'combat'`, `'relic'`, `'data'`, `'gas'`, `'wormhole'`, `'ore'`, `'ghost'`).
 - `label` — UI label (e.g. `'Combat'`).
-- `scannerName` — literal string EVE emits in the Group column of the probe-scanner paste (e.g. `'Combat Site'`).
+- `scannerNames` — the literal strings EVE emits in the Group column of the probe-scanner paste. A group may have several aliases: `combat` covers `'Combat Site'`, `'Factional Warfare Site - Combat Site'`, and `'Homefront Operation Site - Combat Site'`.
 
 ---
 
@@ -30,7 +30,7 @@ Human-readable label for a group key, or `null` when the key is null/unknown. Us
 ---
 
 ### Types
-- `SignatureGroupOption` — `{ key, label, scannerName }`.
+- `SignatureGroupOption` — `{ key, label, scannerNames }`.
 
 Re-exported from `src/types/index.ts`.
 

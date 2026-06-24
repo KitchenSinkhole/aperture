@@ -203,4 +203,23 @@ describe.skipIf(!run)(`universe ingest gate (SDE build ${SDE_BUILD})`, () => {
       WHERE target_class = 'Thera' OR 'Thera' = ANY(source_classes)`);
     expect(stray.n).toBe(0);
   });
+
+  // The five Drifter holes open into a Drifter system but spawn k-space-side, only
+  // in systems with a Jove Observatory. That presence isn't in the SDE, so their
+  // source is broadened to the full k-space set (H/L/0.0) rather than left null —
+  // a null source would offer them everywhere (incl. J-space) via the class filter.
+  it('scopes the Drifter holes to k-space source classes', async () => {
+    const rows = await db.execute(sql`
+      SELECT name, source_classes AS "sourceClasses", target_class AS "targetClass"
+      FROM universe_wormhole
+      WHERE name IN ('B735', 'C414', 'R259', 'S877', 'V928')
+      ORDER BY name`);
+    const drifters = rows.rows as { name: string; sourceClasses: string[] | null; targetClass: string | null }[];
+    expect(drifters.map((r) => r.name)).toEqual(['B735', 'C414', 'R259', 'S877', 'V928']);
+    for (const r of drifters) {
+      expect([...(r.sourceClasses ?? [])].sort()).toEqual(['0.0', 'H', 'L']);
+      // Drifter destination classes (C14–C18) aren't in Aperture's vocabulary.
+      expect(r.targetClass).toBeNull();
+    }
+  });
 });

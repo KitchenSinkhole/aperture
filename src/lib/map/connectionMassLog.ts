@@ -3,7 +3,7 @@
 // outside Next's bundler where the `server-only` shim doesn't resolve. Same
 // precedent as `locationCommit.ts` / `bus.ts`. It is only ever imported by
 // server code (the poll + the API route).
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { apertureConfig } from '../../../aperture.config';
 import { db } from '@/db/client';
 import { apCharacter, apMapConnection, apMapConnectionLog, universeType } from '@/db/schema';
@@ -104,10 +104,12 @@ export async function logConnectionJump(args: LogConnectionJumpArgs): Promise<vo
 }
 
 /**
- * List a connection's mass-log for display, oldest jump first, with a running
- * cumulative mass. Scoped to `mapId` so a connection id from another map can't
- * be read through this map's route. Returns `[]` when the connection isn't on
- * the map.
+ * List a connection's mass-log for display, newest jump first. Each entry's
+ * `cumulativeMass` is the chronological running total up to and including that
+ * jump (a SQL window function over ascending `jumped_at`/`id`), so it stays
+ * correct under the descending display sort. Scoped to `mapId` so a connection
+ * id from another map can't be read through this map's route. Returns `[]` when
+ * the connection isn't on the map.
  */
 export async function listConnectionMassLog(args: {
   mapId: bigint;
@@ -122,6 +124,10 @@ export async function listConnectionMassLog(args: {
       shipTypeName: universeType.name,
       mass: apMapConnectionLog.mass,
       jumpedAt: apMapConnectionLog.jumpedAt,
+      // Window function computes the running cumulative in chronological order
+      // regardless of the outer DESC sort, so each entry carries the correct
+      // "mass used up to and including this jump" value.
+      cumulativeMass: sql<string>`SUM(${apMapConnectionLog.mass}) OVER (ORDER BY ${apMapConnectionLog.jumpedAt} ASC, ${apMapConnectionLog.id} ASC)`,
     })
     .from(apMapConnectionLog)
     .innerJoin(apMapConnection, eq(apMapConnection.id, apMapConnectionLog.connectionId))
@@ -133,21 +139,16 @@ export async function listConnectionMassLog(args: {
         eq(apMapConnection.mapId, args.mapId),
       ),
     )
-    .orderBy(asc(apMapConnectionLog.jumpedAt), asc(apMapConnectionLog.id));
+    .orderBy(desc(apMapConnectionLog.jumpedAt), desc(apMapConnectionLog.id));
 
-  let cumulative = 0;
-  return rows.map((r) => {
-    const mass = Number(r.mass);
-    cumulative += mass;
-    return {
-      id: r.id.toString(),
-      characterId: r.characterId !== null ? r.characterId.toString() : null,
-      characterName: r.characterName ?? null,
-      shipTypeId: r.shipTypeId,
-      shipTypeName: r.shipTypeName ?? null,
-      mass,
-      cumulativeMass: cumulative,
-      jumpedAt: r.jumpedAt.toISOString(),
-    };
-  });
+  return rows.map((r) => ({
+    id: r.id.toString(),
+    characterId: r.characterId !== null ? r.characterId.toString() : null,
+    characterName: r.characterName ?? null,
+    shipTypeId: r.shipTypeId,
+    shipTypeName: r.shipTypeName ?? null,
+    mass: Number(r.mass),
+    cumulativeMass: Number(r.cumulativeMass),
+    jumpedAt: r.jumpedAt.toISOString(),
+  }));
 }

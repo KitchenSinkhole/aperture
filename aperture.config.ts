@@ -124,6 +124,12 @@ export const apertureConfig = {
   /** Per-map system ceiling, enforced where `ap_map_system.visible = true`. */
   MAX_SYSTEMS_PER_MAP: 400,
 
+  /** Max length of a map note's `title` (the on-node label). Enforced app-layer (Zod). */
+  MAP_NOTE_TITLE_MAX_LENGTH: 20,
+
+  /** Max length of a map note's free-form `content` body. Enforced app-layer (Zod). */
+  MAP_NOTE_CONTENT_MAX_LENGTH: 1000,
+
   /**
    * EVE SSO OAuth2 endpoint paths, joined onto `AUTH_EVE_SSO_BASE`. Paths are
    * stable app constants; the base host is env-configurable (TQ vs SISI).

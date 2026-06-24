@@ -15,6 +15,7 @@ export * from './ap/route_destination';
 export * from './ap/character';
 export * from './ap/map';
 export * from './ap/map_system';
+export * from './ap/map_note';
 export * from './ap/map_connection';
 export * from './ap/map_connection_log';
 export * from './ap/map_signature';

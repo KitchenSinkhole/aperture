@@ -31,6 +31,12 @@ export const systemStatus = pgEnum('system_status', [
   'unscanned',
 ]);
 
+/**
+ * Severity band of a free-standing map note, driving the note node's border
+ * colour. `neutral` is the default (no alarm); `green`/`yellow`/`red` escalate.
+ */
+export const mapNoteSeverity = pgEnum('map_note_severity', ['neutral', 'green', 'yellow', 'red']);
+
 /** What kind of link a connection represents. */
 export const connectionScope = pgEnum('connection_scope', [
   'wh',

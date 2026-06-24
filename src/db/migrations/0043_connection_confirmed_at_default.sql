@@ -1,0 +1,21 @@
+-- Default `ap_map_connection.confirmed_at` to now().
+--
+-- 0042 added `confirmed_at` as a nullable column with no default, on the
+-- assumption that every insert path explicitly stamps it (`createConnection`
+-- does). It missed three other insert sites — the location-poll wormhole
+-- auto-link (`ensureConnection`), Thera ingest, and map transfer — which create
+-- connections without setting it. Those rows are born `confirmed_at = NULL` and
+-- `loadMapForView`'s `confirmed_at IS NOT NULL` filter hides them on reload, so a
+-- connection drawn by a pilot jumping a hole shows live then silently vanishes.
+--
+-- A column default is the right home for "every create is confirmed": it covers
+-- all current paths and any future one, and the only intended NULL — a removed
+-- endpoint's dormant `wh` link — is an explicit UPDATE in `removeSystem`, which
+-- the default does not touch. The column stays nullable for exactly that case.
+--
+-- Existing NULL rows are NOT backfilled here (a default only affects future
+-- inserts); the one-time repair is run out-of-band on the deployment DB.
+--
+-- Rollback: src/db/migrations/0043_connection_confirmed_at_default.rollback.sql.
+
+ALTER TABLE "ap_map_connection" ALTER COLUMN "confirmed_at" SET DEFAULT now();

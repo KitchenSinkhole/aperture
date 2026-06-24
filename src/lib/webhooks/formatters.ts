@@ -160,6 +160,28 @@ export function describeMapEvent(event: MapEventPayload, ctx: WebhookEventContex
       const sig = event.sigId ?? 'a signature';
       return `removed signature \`${sig}\` from **${name}**`;
     }
+    case 'note.created': {
+      const sev = event.severity === 'neutral' ? '' : ` (\`${event.severity}\`)`;
+      return `added note **${event.title}**${sev}`;
+    }
+    case 'note.updated': {
+      // `title` always rides as the descriptor; the changed fields ride conditionally.
+      const name = event.title;
+      if (event.severity !== undefined) {
+        return `changed note **${name}** severity to \`${event.severity}\``;
+      }
+      if (event.locked === true) return `locked note **${name}**`;
+      if (event.locked === false) return `unlocked note **${name}**`;
+      if ('content' in event) {
+        return event.content ? `updated the body of note **${name}**` : `cleared the body of note **${name}**`;
+      }
+      // A pure position drag carries positionX/Y only — noise, skip (mirrors systems).
+      if (event.positionX !== undefined || event.positionY !== undefined) return null;
+      // Nothing else changed: a title-only edit.
+      return `renamed note to **${name}**`;
+    }
+    case 'note.deleted':
+      return `removed note **${event.title}**`;
     case 'map.create':
       return `created the map \`${event.name}\``;
     case 'map.update':

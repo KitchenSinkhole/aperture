@@ -52,15 +52,21 @@ import {
   deleteDisconnectedOnServer,
   deleteSignatureOnServer,
   deleteSubchainOnServer,
+  restoreConnectionOnServer,
   fetchMapSnapshot,
   fetchSystemData,
+  fetchSystemSignatures,
   pingSystemOnServer,
   removeSystemOnServer,
   updateConnectionOnServer,
   updateSignatureOnServer,
   updateSystemOnServer,
+  addNoteOnServer,
+  updateNoteOnServer,
+  deleteNoteOnServer,
   type CreateSignatureBody,
   type UpdateConnectionBody,
+  type UpdateNoteBody,
   type UpdateSignatureBody,
   type UpdateSystemBody,
 } from '@/lib/map/client';
@@ -121,8 +127,10 @@ import { MapTravelProvider, TravelBridge } from './MapTravelContext';
 import { MapUnderglowProvider } from './MapUnderglowContext';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
 import { SystemNode, type SystemNodeData } from './SystemNode';
+import { MapNoteNode, type MapNoteNodeData } from './MapNoteNode';
 import { MapContextMenu } from './MapContextMenu';
 import { SubchainDeletePrompt } from './SubchainDeletePrompt';
+import { RestoreConnectionPrompt } from './RestoreConnectionPrompt';
 import { MapLayoutGrid } from './layout/MapLayoutGrid';
 import { MapPanel } from './layout/MapPanel';
 import { DEFAULT_MAP_LAYOUT, PANELS, ensurePanelsPlaced } from '@/lib/map/layout/panels';
@@ -209,8 +217,14 @@ function mergeLayouts(
   return next;
 }
 
-const nodeTypes = { system: SystemNode };
+const nodeTypes = { system: SystemNode, note: MapNoteNode };
 const edgeTypes = { connection: ConnectionEdge };
+
+// xyflow node ids must be unique, but `ap_map_system.id` and `ap_map_note.id` are
+// independent identity sequences and so collide numerically. Namespace note nodes
+// (`note:<id>`) in xyflow; their real `ap_map_note.id` stays on `data.id`.
+type CanvasNode = Node<SystemNodeData> | Node<MapNoteNodeData>;
+const noteNodeId = (noteId: string) => `note:${noteId}`;
 
 /** A pending "also delete the subchain?" offer raised by a deleted wormhole sig. */
 type SubchainSigOffer = {
@@ -218,6 +232,14 @@ type SubchainSigOffer = {
   anchorId: string;
   headName: string;
   count: number;
+};
+
+// A re-confirmed wormhole sig whose remembered connection is currently dormant
+// (absent from the view) → an offer to restore it. Keyed on the dormant
+// connection id; `targetName` names the far system for the prompt.
+type RestoreConnOffer = {
+  connId: string;
+  targetName: string;
 };
 
 export function MapCanvas({
@@ -285,6 +307,7 @@ export function MapCanvas({
   // icon enqueues a single entry; a lazy-delete paste can enqueue several at
   // once. `[0]` is the active prompt; an empty queue ⇒ no prompt.
   const [subchainSigPrompts, setSubchainSigPrompts] = useState<SubchainSigOffer[]>([]);
+  const [restoreConnPrompts, setRestoreConnPrompts] = useState<RestoreConnOffer[]>([]);
   // Pending delete-disconnected confirmation. The doomed systems (everything cut
   // off from the Home) are highlighted via `selectedSystemIds` while open.
   const [disconnectedPreview, setDisconnectedPreview] = useState<{ count: number } | null>(null);
@@ -308,7 +331,7 @@ export function MapCanvas({
   // Captured via ReactFlow's onInit so the manual-add flow can place new nodes
   // at the current viewport centre rather than (0,0).
   const flowInstance = useRef<ReactFlowInstance<
-    Node<SystemNodeData>,
+    CanvasNode,
     Edge<ConnectionEdgeData>
   > | null>(null);
   const flowWrapperRef = useRef<HTMLDivElement>(null);
@@ -357,8 +380,8 @@ export function MapCanvas({
     });
   }, [viewData.systems, data.map.id]);
 
-  const [nodes, setNodes] = useState<Node<SystemNodeData>[]>(() =>
-    data.systems.map((s) => ({
+  const [nodes, setNodes] = useState<CanvasNode[]>(() => [
+    ...data.systems.map((s) => ({
       id: s.id,
       type: 'system' as const,
       position: { x: s.positionX, y: s.positionY },
@@ -371,8 +394,58 @@ export function MapCanvas({
       selected: false,
       draggable: !s.locked,
     })),
-  );
+    ...data.notes.map((n) => ({
+      id: noteNodeId(n.id),
+      type: 'note' as const,
+      position: { x: n.positionX, y: n.positionY },
+      data: { ...n },
+      selected: false,
+      draggable: !n.locked,
+    })),
+  ]);
   const appliedEventIds = useRef<Set<number>>(new Set());
+
+  // Signatures no longer ride the `system.added` event (that breached the 8 KB
+  // pg_notify ceiling). On every system.added we refetch the system's sigs and
+  // upsert them into the view, so a re-added system's survivors converge on all
+  // tabs without a reload. Keyed on the *event*, not a viewData diff: re-add
+  // reuses the same ap_map_system.id (soft delete), so a diff-and-dedupe effect
+  // (like the read-side backfill above) would never refire.
+  const sigHydrateInFlight = useRef<Set<string>>(new Set());
+  const hydrateSignatures = useCallback(
+    (mapSystemId: string) => {
+      if (sigHydrateInFlight.current.has(mapSystemId)) return;
+      sigHydrateInFlight.current.add(mapSystemId);
+      void fetchSystemSignatures({ mapId: data.map.id, mapSystemId })
+        .then((result) => {
+          if (!result.ok) return;
+          setViewData((prev) => {
+            // Upsert-by-id (race-tolerant): a signature.create arriving during the
+            // fetch is never clobbered; the baseline for a (re)added system is
+            // empty (system.removed pruned / brand-new), so upsert == replace here.
+            const next = [...prev.signatures];
+            for (const sig of result.data) {
+              const idx = next.findIndex((s) => s.id === sig.id);
+              if (idx >= 0) next[idx] = sig;
+              else next.push(sig);
+            }
+            return { ...prev, signatures: next };
+          });
+        })
+        .finally(() => sigHydrateInFlight.current.delete(mapSystemId));
+    },
+    [data.map.id],
+  );
+
+  // Fire hydration for every system.added in a batch of just-applied payloads.
+  // Called from each fold site *outside* the setViewData updater (no side effects
+  // inside a state reducer).
+  const hydrateAddedSystems = useCallback(
+    (payloads: MapEventPayload[]) => {
+      for (const p of payloads) if (p.kind === 'system.added') hydrateSignatures(p.id);
+    },
+    [hydrateSignatures],
+  );
 
   const [initialViewport] = useState<Viewport | null>(() => {
     try {
@@ -483,7 +556,8 @@ export function MapCanvas({
       if (appliedEventIds.current.has(payload.eventId)) return;
       appliedEventIds.current.add(payload.eventId);
       setViewData((prev) => applyEvent(prev, payload));
-    }, []),
+      hydrateAddedSystems([payload]);
+    }, [hydrateAddedSystems]),
   );
 
   // ---- On-error resync failsafe ------------------------------------------
@@ -558,8 +632,9 @@ export function MapCanvas({
       }
       appliedEventIds.current.add(result.eventId);
       setViewData((prev) => applyEvent(prev, result.data));
+      hydrateAddedSystems([result.data]);
     },
-    [resync],
+    [resync, hydrateAddedSystems],
   );
 
   // Apply N event payloads in commit order and register each eventId in the
@@ -569,12 +644,13 @@ export function MapCanvas({
     if (payloads.length === 0) return;
     for (const p of payloads) appliedEventIds.current.add(p.eventId);
     setViewData((prev) => payloads.reduce(applyEvent, prev));
-  }, []);
+    hydrateAddedSystems(payloads);
+  }, [hydrateAddedSystems]);
 
   // ---- xyflow → server callbacks -----------------------------------------
   const mapId = viewData.map.id;
 
-  const onNodesChange = useCallback((changes: NodeChange<Node<SystemNodeData>>[]) => {
+  const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes((nds) => applyNodeChanges(changes, nds));
   }, []);
 
@@ -610,6 +686,49 @@ export function MapCanvas({
 
   const onNodeDragStop = useCallback(
     (_event: React.MouseEvent | unknown, node: Node) => {
+      // Notes drag independently and may overlap anything — snap, then commit the
+      // position optimistically (no collision nudge). Notes aren't tracked in
+      // `selectedSystemIds`, but xyflow still group-drags every node it selected
+      // (e.g. a box-select over several notes) in unison, so commit each selected
+      // note — not just the grabbed one, or the others snap back on release. Read
+      // the live store (authoritative at dragStop); the grabbed node is always
+      // included even if its `selected` flag hasn't landed yet. The real
+      // `ap_map_note.id` lives on `data.id` (the xyflow id is namespaced).
+      if (node.type === 'note') {
+        const live = flowInstance.current?.getNodes() ?? [];
+        const draggedNotes = live.filter(
+          (n) => n.type === 'note' && (n.selected || n.id === node.id),
+        );
+        for (const noteNode of draggedNotes) {
+          const noteId = (noteNode.data as MapNoteNodeData).id;
+          const note = viewData.notes.find((n) => n.id === noteId);
+          if (!note) continue;
+          const snapped = snapPointToGrid(noteNode.position);
+          if (note.positionX === snapped.x && note.positionY === snapped.y) continue;
+          runOptimistic(
+            {
+              kind: 'note.updated',
+              eventId: 0,
+              id: noteId,
+              title: note.title,
+              positionX: snapped.x,
+              positionY: snapped.y,
+              // Carry the current attribution so the optimistic apply doesn't blank
+              // "last edited by"; the authoritative echo overwrites it with the actor.
+              lastEditedByCharacterId: note.lastEditedByCharacterId,
+              lastEditedByName: note.lastEditedByName,
+              updatedAt: new Date().toISOString(),
+            },
+            () =>
+              updateNoteOnServer({
+                mapId,
+                noteId,
+                patch: { positionX: snapped.x, positionY: snapped.y },
+              }),
+          );
+        }
+        return;
+      }
       // Dragging any member of a multi-selection moves the whole group; commit
       // every selected system's new position, not just the grabbed node.
       if (selectedSystemIds.size > 1 && selectedSystemIds.has(node.id)) {
@@ -640,7 +759,7 @@ export function MapCanvas({
         () => updateSystemOnServer({ mapId, mapSystemId: node.id, patch }),
       );
     },
-    [mapId, viewData.systems, selectedSystemIds, commitGroupMove, runOptimistic],
+    [mapId, viewData.systems, viewData.notes, selectedSystemIds, commitGroupMove, runOptimistic],
   );
 
   const onConnect = useCallback(
@@ -713,12 +832,80 @@ export function MapCanvas({
     setAddSystemOpen(true);
   }, []);
 
+  // ---- Note callbacks ----------------------------------------------------
+  // Select a note into the inspector (wired to the node's double-click via the
+  // sync block's `data.onOpen`). Stable for the component lifetime.
+  const onOpenNote = useCallback((noteId: string) => {
+    setSelected({ kind: 'note', id: noteId });
+    setSelectedSystemIds(new Set());
+  }, []);
+
+  // Pane "Add note here": convert the cursor's client point to flow coords, snap,
+  // and POST immediately (notes need no picker dialog). The awaited payload folds
+  // the new note in; the user double-clicks it to edit.
+  const onAddNoteAt = useCallback(
+    (clientX: number, clientY: number) => {
+      setContextMenu(null);
+      const inst = flowInstance.current;
+      const point: Point = inst
+        ? inst.screenToFlowPosition({ x: clientX, y: clientY })
+        : { x: 0, y: 0 };
+      const pos = snapPointToGrid(point);
+      awaitServer(() =>
+        addNoteOnServer({
+          mapId,
+          body: { title: 'New note', positionX: pos.x, positionY: pos.y },
+        }),
+      );
+    },
+    [mapId, awaitServer],
+  );
+
+  const onNotePatch = useCallback(
+    (noteId: string, patch: UpdateNoteBody) => {
+      const note = viewData.notes.find((n) => n.id === noteId);
+      // `note.updated` always carries title + editor attribution + updatedAt; the
+      // changed fields ride from `patch`. Optimistic attribution keeps the current
+      // values (the authoritative echo replaces them with the real actor).
+      const opt: MapEventPayload = {
+        kind: 'note.updated',
+        eventId: 0,
+        id: noteId,
+        title: note?.title ?? '',
+        lastEditedByCharacterId: note?.lastEditedByCharacterId ?? null,
+        lastEditedByName: note?.lastEditedByName ?? null,
+        updatedAt: new Date().toISOString(),
+        ...patch,
+      };
+      runOptimistic(opt, () => updateNoteOnServer({ mapId, noteId, patch }));
+    },
+    [mapId, viewData.notes, runOptimistic],
+  );
+
+  const onNoteRemove = useCallback(
+    (noteId: string) => {
+      const note = viewData.notes.find((n) => n.id === noteId);
+      runOptimistic(
+        { kind: 'note.deleted', eventId: 0, id: noteId, title: note?.title ?? '' },
+        () => deleteNoteOnServer({ mapId, noteId }),
+      );
+      setSelected(null);
+    },
+    [mapId, viewData.notes, runOptimistic],
+  );
+
   // Click selection is driven by direct handlers (they own single + Ctrl+click
   // toggle), while `onSelectionChange` is used only as a box-select reconciler
   // (see below). The two don't fight because the reconciler ignores size<=1 and
   // no-ops when xyflow's set already matches ours.
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
+      // Notes select singly into the inspector — no multi-select / group semantics.
+      if (node.type === 'note') {
+        setSelected({ kind: 'note', id: (node.data as MapNoteNodeData).id });
+        setSelectedSystemIds(new Set());
+        return;
+      }
       // Ctrl/Cmd+click toggles the node in the group. The inspector primary is
       // cleared whenever 2+ are selected — a multi-select group drives no
       // inspector / per-system module (which would otherwise thrash on refetch);
@@ -751,6 +938,15 @@ export function MapCanvas({
   // cursor point + target; selection is intentionally left untouched.
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
     event.preventDefault();
+    if (node.type === 'note') {
+      setContextMenu({
+        kind: 'note',
+        id: (node.data as MapNoteNodeData).id,
+        x: event.clientX,
+        y: event.clientY,
+      });
+      return;
+    }
     setContextMenu({ kind: 'system', id: node.id, x: event.clientX, y: event.clientY });
   }, []);
 
@@ -770,6 +966,20 @@ export function MapCanvas({
 
   const onSelectionEnd = useCallback(() => {
     boxSelecting.current = false;
+    // Mixed multi-selection is unsupported: if the box caught systems *and* notes,
+    // prioritize systems and drop the notes from xyflow's selection — otherwise the
+    // notes group-drag with the systems but commit through a different path and
+    // rubber-band back on release. A pure-note box is left intact (its multi-note
+    // drag reads xyflow's selection directly). Done once at box end so it never
+    // fights xyflow's per-move re-selection during the draw.
+    const live = flowInstance.current?.getNodes() ?? [];
+    const hasSystem = live.some((n) => n.type === 'system' && n.selected);
+    const hasNote = live.some((n) => n.type === 'note' && n.selected);
+    if (hasSystem && hasNote) {
+      setNodes((prev) =>
+        prev.map((n) => (n.type === 'note' && n.selected ? { ...n, selected: false } : n)),
+      );
+    }
   }, []);
 
   // Box-select-only reconciler. xyflow fires `onSelectionChange` for *every*
@@ -781,8 +991,12 @@ export function MapCanvas({
   // the per-system modules as nodes enter the rectangle.
   const onSelectionChange = useCallback(
     ({ nodes: selNodes }: OnSelectionChangeParams) => {
-      if (!boxSelecting.current || selNodes.length <= 1) return;
-      const ids = selNodes.map((n) => n.id);
+      if (!boxSelecting.current) return;
+      // `selectedSystemIds` holds system ids only — group ops (move, "Remove N")
+      // route through the systems endpoints. Notes caught by the box select
+      // singly into the inspector, never the group; drop them here.
+      const ids = selNodes.filter((n) => n.type === 'system').map((n) => n.id);
+      if (ids.length <= 1) return;
       if (ids.length === selectedSystemIds.size && ids.every((id) => selectedSystemIds.has(id))) {
         return;
       }
@@ -831,6 +1045,14 @@ export function MapCanvas({
     const locked = new Set(viewData.systems.filter((s) => s.locked).map((s) => s.id));
     return [...selectedSystemIds].filter((id) => id !== homeId && !locked.has(id));
   }, [selectedSystemIds, viewData.map.homeMapSystemId, viewData.systems]);
+
+  // How many of the current selection are locked (and so excluded from the group
+  // delete) — feeds the "Remove N" button's hint so the count discrepancy is
+  // explained rather than silent.
+  const lockedSelectedCount = useMemo(() => {
+    const locked = new Set(viewData.systems.filter((s) => s.locked).map((s) => s.id));
+    return [...selectedSystemIds].filter((id) => locked.has(id)).length;
+  }, [selectedSystemIds, viewData.systems]);
 
   const removeSelectedSystems = useCallback(() => {
     for (const id of deletableSelectedSystemIds) {
@@ -928,10 +1150,55 @@ export function MapCanvas({
     [mapId, runOptimistic, viewData, buildSubchainSigOffer],
   );
 
+  // Scan committed paste payloads for wormhole sigs whose remembered connection
+  // is currently dormant — i.e. absent from the (pre-fold) view — and turn each
+  // into a restore offer. A re-pasted surviving sig commits a `signature.update`
+  // carrying a full `snapshot`; a brand-new sig commits `signature.create`.
+  // De-duped by connection id; multiple wh sigs → multiple offers.
+  const buildRestoreOffers = useCallback(
+    (payloads: MapEventPayload[]): RestoreConnOffer[] => {
+      const offers: RestoreConnOffer[] = [];
+      const seen = new Set<string>();
+      for (const p of payloads) {
+        const body =
+          p.kind === 'signature.update' ? p.snapshot : p.kind === 'signature.create' ? p : null;
+        if (!body) continue;
+        if (body.groupKey !== 'wormhole') continue;
+        const connId = body.mapConnectionId;
+        if (connId == null || seen.has(connId)) continue;
+        // Present in the view ⇒ confirmed/visible, nothing to restore.
+        if (viewData.connections.some((c) => c.id === connId)) continue;
+        seen.add(connId);
+        const far =
+          body.leadsToMapSystemId != null
+            ? viewData.systems.find((s) => s.id === body.leadsToMapSystemId)
+            : undefined;
+        const targetName = far
+          ? far.alias?.trim() || far.name
+          : (body.wormholeCode ?? 'wormhole');
+        offers.push({ connId, targetName });
+      }
+      return offers;
+    },
+    [viewData],
+  );
+
+  // Fold a signature paste into state, then offer to restore any dormant
+  // connection the paste re-confirmed (built from the pre-fold graph). Used by
+  // both signature-paste entry points (the CTRL+V hotkey and the panel dialog).
+  const onSignaturePasteResult = useCallback(
+    (payloads: MapEventPayload[]) => {
+      const offers = buildRestoreOffers(payloads);
+      onBulkPaste(payloads);
+      if (offers.length > 0) setRestoreConnPrompts((q) => [...q, ...offers]);
+    },
+    [onBulkPaste, buildRestoreOffers],
+  );
+
   // Fold a lazy-delete paste into state, then offer the subchain prompt for each
-  // wormhole sig the paste removed — the same prompt the row trash icon raises.
-  // The offers are built from the pre-fold graph (removed sigs still carry their
-  // `mapConnectionId`), then `onBulkPaste` applies the removals.
+  // wormhole sig the paste removed — the same prompt the row trash icon raises —
+  // plus a restore offer for any dormant connection it re-confirmed. Offers are
+  // built from the pre-fold graph, then `onBulkPaste` applies the changes.
   const onLazyDeletePasteResult = useCallback(
     (payloads: MapEventPayload[]) => {
       const offers: SubchainSigOffer[] = [];
@@ -940,10 +1207,12 @@ export function MapCanvas({
         const offer = buildSubchainSigOffer(viewData.signatures.find((s) => s.id === p.id));
         if (offer) offers.push(offer);
       }
+      const restoreOffers = buildRestoreOffers(payloads);
       onBulkPaste(payloads);
       if (offers.length > 0) setSubchainSigPrompts((q) => [...q, ...offers]);
+      if (restoreOffers.length > 0) setRestoreConnPrompts((q) => [...q, ...restoreOffers]);
     },
-    [onBulkPaste, buildSubchainSigOffer, viewData],
+    [onBulkPaste, buildSubchainSigOffer, buildRestoreOffers, viewData],
   );
 
   // ---- Delete subchain ----------------------------------------------------
@@ -1020,6 +1289,18 @@ export function MapCanvas({
     if (result.ok) onBulkPaste(result.data.payloads);
   }, [subchainSigPrompts, mapId, onBulkPaste]);
 
+  const dismissRestoreConn = useCallback(() => {
+    setRestoreConnPrompts((q) => q.slice(1));
+  }, []);
+
+  const onConfirmRestoreConn = useCallback(async () => {
+    const active = restoreConnPrompts[0];
+    if (!active) return;
+    setRestoreConnPrompts((q) => q.slice(1));
+    const result = await restoreConnectionOnServer({ mapId, connectionId: active.connId });
+    if (result.ok) onBulkPaste(result.data.payloads);
+  }, [restoreConnPrompts, mapId, onBulkPaste]);
+
   // ---- Delete disconnected -----------------------------------------------
   // Compute the systems cut off from the Home, highlight them, and open the
   // confirm dialog. The server recomputes the set authoritatively on confirm.
@@ -1089,41 +1370,64 @@ export function MapCanvas({
   // with empty deps).
   const [lastSync, setLastSync] = useState<{
     systems: MapViewData['systems'];
+    notes: MapViewData['notes'];
     selectedSystemIds: Set<string>;
+    // The note-node halo is driven by the inspector `selected` ref (notes have no
+    // multi-select set), so a note selection change must trigger a re-sync.
+    selected: SelectionRef | null;
     intel: Record<number, SystemIntelSummary>;
   } | null>(null);
   if (
     !lastSync ||
     lastSync.systems !== viewData.systems ||
+    lastSync.notes !== viewData.notes ||
     lastSync.selectedSystemIds !== selectedSystemIds ||
+    lastSync.selected !== selected ||
     // `intel` is replaced by reference when a live-added system's data backfills;
     // re-sync so its decorators (sov/FW/incursion) appear without a systems change.
     lastSync.intel !== intel
   ) {
-    setLastSync({ systems: viewData.systems, selectedSystemIds, intel });
+    setLastSync({ systems: viewData.systems, notes: viewData.notes, selectedSystemIds, selected, intel });
     setNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]));
-      return viewData.systems.map((s) => {
-        const existing = prevById.get(s.id);
-        const position = existing?.dragging
-          ? existing.position
-          : { x: s.positionX, y: s.positionY };
-        return {
-          ...(existing ?? {}),
-          id: s.id,
-          type: 'system' as const,
-          position,
-          data: {
-            ...s,
-            onAliasOrTagCommit,
-            isHome: s.id === viewData.map.homeMapSystemId,
-            inFactionWarfare: intel[s.systemId]?.factionWar != null,
-            hasIncursion: intel[s.systemId]?.incursion != null,
-          },
-          selected: selectedSystemIds.has(s.id),
-          draggable: !s.locked,
-        };
-      });
+      return [
+        ...viewData.systems.map((s) => {
+          const existing = prevById.get(s.id);
+          const position = existing?.dragging
+            ? existing.position
+            : { x: s.positionX, y: s.positionY };
+          return {
+            ...(existing ?? {}),
+            id: s.id,
+            type: 'system' as const,
+            position,
+            data: {
+              ...s,
+              onAliasOrTagCommit,
+              isHome: s.id === viewData.map.homeMapSystemId,
+              inFactionWarfare: intel[s.systemId]?.factionWar != null,
+              hasIncursion: intel[s.systemId]?.incursion != null,
+            },
+            selected: selectedSystemIds.has(s.id),
+            draggable: !s.locked,
+          };
+        }),
+        ...viewData.notes.map((n) => {
+          const existing = prevById.get(noteNodeId(n.id));
+          const position = existing?.dragging
+            ? existing.position
+            : { x: n.positionX, y: n.positionY };
+          return {
+            ...(existing ?? {}),
+            id: noteNodeId(n.id),
+            type: 'note' as const,
+            position,
+            data: { ...n, onOpen: onOpenNote },
+            selected: selected?.kind === 'note' && selected.id === n.id,
+            draggable: !n.locked,
+          };
+        }),
+      ];
     });
   }
 
@@ -1244,10 +1548,18 @@ export function MapCanvas({
                   variant="destructive"
                   size="sm"
                   onClick={removeSelectedSystems}
+                  title={
+                    lockedSelectedCount > 0
+                      ? `${lockedSelectedCount} locked system${lockedSelectedCount > 1 ? 's' : ''} excluded — unlock to remove`
+                      : undefined
+                  }
                   className="nodrag nopan absolute right-2 top-2 z-10"
                 >
                   <Trash2 />
                   Remove {deletableSelectedSystemIds.length}
+                  {lockedSelectedCount > 0 && (
+                    <span className="ml-1 text-[10px] opacity-80">({lockedSelectedCount} locked)</span>
+                  )}
                 </Button>
               )}
             <TransitSignaturePrompt
@@ -1265,6 +1577,13 @@ export function MapCanvas({
                 count={subchainSigPrompts[0].count}
                 onConfirm={onConfirmSubchainSig}
                 onDismiss={dismissSubchainSig}
+              />
+            )}
+            {restoreConnPrompts[0] && (
+              <RestoreConnectionPrompt
+                targetName={restoreConnPrompts[0].targetName}
+                onConfirm={onConfirmRestoreConn}
+                onDismiss={dismissRestoreConn}
               />
             )}
             {subchainPreview && (
@@ -1342,6 +1661,10 @@ export function MapCanvas({
               onDeleteSubchainPick={onDeleteSubchainPick}
               onDeleteDisconnected={onDeleteDisconnected}
               onPingSystem={onPingSystem}
+              notes={viewData.notes}
+              onAddNoteAt={onAddNoteAt}
+              onNotePatch={onNotePatch}
+              onNoteRemove={onNoteRemove}
             />
           </div>
         );
@@ -1369,6 +1692,8 @@ export function MapCanvas({
             onSystemRemove={onSystemRemove}
             onConnectionPatch={onConnectionPatch}
             onConnectionDelete={onConnectionDelete}
+            onNotePatch={onNotePatch}
+            onNoteRemove={onNoteRemove}
           />
         );
       case 'route':
@@ -1423,7 +1748,7 @@ export function MapCanvas({
           mapId={mapId}
           system={selectedSystem}
           signatures={viewData.signatures}
-          onBulkPaste={onBulkPaste}
+          onBulkPaste={onSignaturePasteResult}
           lazyDelete={lazyDeleteSigs}
           onLazyDeleteChange={setLazyDeleteSigs}
           onOpenSearch={() => setSigSearchOpen(true)}
@@ -1451,7 +1776,7 @@ export function MapCanvas({
           selectedSystem={selectedSystem}
           systems={viewData.systems}
           viewerCharacterIds={viewerCharacterIds}
-          onBulkPaste={onBulkPaste}
+          onBulkPaste={onSignaturePasteResult}
           lazyDelete={lazyDeleteSigs}
           onLazyDeleteConsume={() => setLazyDeleteSigs(false)}
           onLazyDeletePasteResult={onLazyDeletePasteResult}
