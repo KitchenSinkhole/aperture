@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.0.0-rc.8
+
+This release fixes an intermittent failure where adding a heavily-scanned system to the map could silently roll back, and refreshes the Docker deployment setup.
+
+### Fixes
+
+- **Adding a heavily-scanned system no longer fails intermittently** — re-adding a system that carried many surviving signatures embedded those signatures into the `system.added` event, whose `pg_notify` payload could exceed Postgres' 8 KB limit (37 signatures ≈ 11 KB). The overflow raised "payload string too long" inside the `AFTER INSERT` trigger and rolled back the insert, so the system silently failed to add. `system.added` is now a pure node delta again, and a (re)added system's signatures are hydrated on demand through a new view-gated signatures endpoint, mirroring the live-added-system backfill. *(MonoliYoda)*
+
+### Misc
+
+- Refreshed Docker deployment configuration and the related README / CONTRIBUTING notes. *(MonoliYoda)*
+
+### Contributors
+
+- **MonoliYoda** — signature-hydration regression fix, Docker deployment update
+
 ## v1.0.0-rc.7
 
 This release fixes a regression from rc.6 where wormhole connections drawn automatically — by a tracked pilot jumping a hole, by Thera ingest, or by a map transfer — would show up live and then silently vanish the next time the map was loaded.

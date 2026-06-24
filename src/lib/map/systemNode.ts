@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
   apMapSignature,
@@ -10,6 +10,7 @@ import {
   universeWormhole,
 } from '@/db/schema';
 import type { MapEventPatch } from '@/lib/realtime/protocol';
+import type { MapSignature } from '@/types';
 import { apertureConfig } from '../../../aperture.config';
 
 const HUB_NAME_BY_ID = new Map<number, string>(
@@ -26,9 +27,12 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * Re-read a placed system flattened with its universe metadata + statics — the
- * full `system.added` event body the canvas needs to render the node without a
- * follow-up fetch. Used inside a `commitMapEvent` `mutate` callback (so the
- * inserted row is visible) and shaped to match `mapEventPayloadSchema`.
+ * `system.added` event body the canvas needs to render the node. Signatures are
+ * NOT included: they hydrate via `GET …/systems/[id]/signatures` (see
+ * `loadSignaturesForSystems`), keeping the event a pure delta and the
+ * `pg_notify` payload under the 8 KB ceiling. Used inside a `commitMapEvent`
+ * `mutate` callback (so the inserted row is visible) and shaped to match
+ * `mapEventPayloadSchema`.
  */
 export async function buildSystemNode(
   tx: Tx,
@@ -68,29 +72,6 @@ export async function buildSystemNode(
     .innerJoin(universeWormhole, eq(universeSystemStatic.typeId, universeWormhole.typeId))
     .where(eq(universeSystemStatic.systemId, row.systemId));
 
-  // Surviving signatures ride the event so re-adding a soft-removed system
-  // re-hydrates its sigs on every tab without a reload. Brand-new adds return [].
-  // Mirrors the signature load in `loadMapForView` (left-join for `wormholeCode`).
-  const signatureRows = await tx
-    .select({
-      id: apMapSignature.id,
-      mapSystemId: apMapSignature.mapSystemId,
-      mapConnectionId: apMapSignature.mapConnectionId,
-      sigId: apMapSignature.sigId,
-      groupKey: apMapSignature.groupKey,
-      typeId: apMapSignature.typeId,
-      wormholeCode: universeWormhole.name,
-      name: apMapSignature.name,
-      description: apMapSignature.description,
-      expiresAt: apMapSignature.expiresAt,
-      createdAt: apMapSignature.createdAt,
-      updatedAt: apMapSignature.updatedAt,
-    })
-    .from(apMapSignature)
-    .leftJoin(universeWormhole, eq(apMapSignature.typeId, universeWormhole.typeId))
-    .where(eq(apMapSignature.mapSystemId, mapSystemId))
-    .orderBy(apMapSignature.sigId);
-
   return {
     id: row.id.toString(),
     systemId: row.systemId,
@@ -118,19 +99,51 @@ export async function buildSystemNode(
     rallyAt: row.rallyAt ? row.rallyAt.toISOString() : null,
     positionX: row.positionX,
     positionY: row.positionY,
-    signatures: signatureRows.map((s) => ({
-      id: s.id.toString(),
-      mapSystemId: s.mapSystemId.toString(),
-      mapConnectionId: s.mapConnectionId ? s.mapConnectionId.toString() : null,
-      sigId: s.sigId,
-      groupKey: s.groupKey,
-      typeId: s.typeId,
-      wormholeCode: s.wormholeCode,
-      name: s.name,
-      description: s.description,
-      expiresAt: s.expiresAt.toISOString(),
-      createdAt: s.createdAt.toISOString(),
-      updatedAt: s.updatedAt.toISOString(),
-    })),
   };
+}
+
+/**
+ * Load the signatures for one or more placed systems, flattened to `MapSignature`
+ * with `wormholeCode` resolved (LEFT JOIN `universe_wormhole`). The single source
+ * of the signature row shape, shared by `loadMapForView` (the whole visible set)
+ * and the per-system signatures endpoint (one id). Returns `[]` for an empty id
+ * set. Reads the pooled `db` directly — both callers run outside a transaction.
+ */
+export async function loadSignaturesForSystems(
+  mapSystemIds: bigint[],
+): Promise<MapSignature[]> {
+  if (mapSystemIds.length === 0) return [];
+  const rows = await db
+    .select({
+      id: apMapSignature.id,
+      mapSystemId: apMapSignature.mapSystemId,
+      mapConnectionId: apMapSignature.mapConnectionId,
+      sigId: apMapSignature.sigId,
+      groupKey: apMapSignature.groupKey,
+      typeId: apMapSignature.typeId,
+      wormholeCode: universeWormhole.name,
+      name: apMapSignature.name,
+      description: apMapSignature.description,
+      expiresAt: apMapSignature.expiresAt,
+      createdAt: apMapSignature.createdAt,
+      updatedAt: apMapSignature.updatedAt,
+    })
+    .from(apMapSignature)
+    .leftJoin(universeWormhole, eq(apMapSignature.typeId, universeWormhole.typeId))
+    .where(inArray(apMapSignature.mapSystemId, mapSystemIds))
+    .orderBy(apMapSignature.sigId);
+  return rows.map((s) => ({
+    id: s.id.toString(),
+    mapSystemId: s.mapSystemId.toString(),
+    mapConnectionId: s.mapConnectionId ? s.mapConnectionId.toString() : null,
+    sigId: s.sigId,
+    groupKey: s.groupKey,
+    typeId: s.typeId,
+    wormholeCode: s.wormholeCode,
+    name: s.name,
+    description: s.description,
+    expiresAt: s.expiresAt.toISOString(),
+    createdAt: s.createdAt.toISOString(),
+    updatedAt: s.updatedAt.toISOString(),
+  }));
 }

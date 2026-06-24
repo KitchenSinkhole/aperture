@@ -8,7 +8,6 @@ import {
   apMapCharacterTracking,
   apMapConnection,
   apMapNote,
-  apMapSignature,
   apMapSystem,
   apUser,
   connectionScope,
@@ -29,6 +28,7 @@ import {
   whMass,
 } from '@/db/schema';
 import { canViewMap, viewableMapPredicate } from '@/lib/auth/rights';
+import { loadSignaturesForSystems } from './systemNode';
 import { apertureConfig } from '../../../aperture.config';
 
 const HUB_NAME_BY_ID = new Map<number, string>(
@@ -344,27 +344,7 @@ export async function loadMapForView(
         )
         .orderBy(apMapConnection.id)
     : [];
-  const signatureRows = visibleSystemIds.length
-    ? await db
-        .select({
-          id: apMapSignature.id,
-          mapSystemId: apMapSignature.mapSystemId,
-          mapConnectionId: apMapSignature.mapConnectionId,
-          sigId: apMapSignature.sigId,
-          groupKey: apMapSignature.groupKey,
-          typeId: apMapSignature.typeId,
-          wormholeCode: universeWormhole.name,
-          name: apMapSignature.name,
-          description: apMapSignature.description,
-          expiresAt: apMapSignature.expiresAt,
-          createdAt: apMapSignature.createdAt,
-          updatedAt: apMapSignature.updatedAt,
-        })
-        .from(apMapSignature)
-        .leftJoin(universeWormhole, eq(apMapSignature.typeId, universeWormhole.typeId))
-        .where(inArray(apMapSignature.mapSystemId, visibleSystemIds))
-        .orderBy(apMapSignature.sigId)
-    : [];
+  const signatures = await loadSignaturesForSystems(visibleSystemIds);
 
   // Notes are independent of systems (no `visible` join) — load every note on the
   // map, resolving creator + last-editor names via two LEFT JOINs on ap_character.
@@ -443,20 +423,7 @@ export async function loadMapForView(
       eolAt: c.eolAt ? c.eolAt.toISOString() : null,
       createdAt: c.createdAt.toISOString(),
     })),
-    signatures: signatureRows.map((r) => ({
-      id: r.id.toString(),
-      mapSystemId: r.mapSystemId.toString(),
-      mapConnectionId: r.mapConnectionId ? r.mapConnectionId.toString() : null,
-      sigId: r.sigId,
-      groupKey: r.groupKey,
-      typeId: r.typeId,
-      wormholeCode: r.wormholeCode,
-      name: r.name,
-      description: r.description,
-      expiresAt: r.expiresAt.toISOString(),
-      createdAt: r.createdAt.toISOString(),
-      updatedAt: r.updatedAt.toISOString(),
-    })),
+    signatures,
     notes: noteRows.map((n) => ({
       id: n.id.toString(),
       title: n.title,

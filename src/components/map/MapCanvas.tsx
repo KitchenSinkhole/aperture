@@ -55,6 +55,7 @@ import {
   restoreConnectionOnServer,
   fetchMapSnapshot,
   fetchSystemData,
+  fetchSystemSignatures,
   pingSystemOnServer,
   removeSystemOnServer,
   updateConnectionOnServer,
@@ -404,6 +405,48 @@ export function MapCanvas({
   ]);
   const appliedEventIds = useRef<Set<number>>(new Set());
 
+  // Signatures no longer ride the `system.added` event (that breached the 8 KB
+  // pg_notify ceiling). On every system.added we refetch the system's sigs and
+  // upsert them into the view, so a re-added system's survivors converge on all
+  // tabs without a reload. Keyed on the *event*, not a viewData diff: re-add
+  // reuses the same ap_map_system.id (soft delete), so a diff-and-dedupe effect
+  // (like the read-side backfill above) would never refire.
+  const sigHydrateInFlight = useRef<Set<string>>(new Set());
+  const hydrateSignatures = useCallback(
+    (mapSystemId: string) => {
+      if (sigHydrateInFlight.current.has(mapSystemId)) return;
+      sigHydrateInFlight.current.add(mapSystemId);
+      void fetchSystemSignatures({ mapId: data.map.id, mapSystemId })
+        .then((result) => {
+          if (!result.ok) return;
+          setViewData((prev) => {
+            // Upsert-by-id (race-tolerant): a signature.create arriving during the
+            // fetch is never clobbered; the baseline for a (re)added system is
+            // empty (system.removed pruned / brand-new), so upsert == replace here.
+            const next = [...prev.signatures];
+            for (const sig of result.data) {
+              const idx = next.findIndex((s) => s.id === sig.id);
+              if (idx >= 0) next[idx] = sig;
+              else next.push(sig);
+            }
+            return { ...prev, signatures: next };
+          });
+        })
+        .finally(() => sigHydrateInFlight.current.delete(mapSystemId));
+    },
+    [data.map.id],
+  );
+
+  // Fire hydration for every system.added in a batch of just-applied payloads.
+  // Called from each fold site *outside* the setViewData updater (no side effects
+  // inside a state reducer).
+  const hydrateAddedSystems = useCallback(
+    (payloads: MapEventPayload[]) => {
+      for (const p of payloads) if (p.kind === 'system.added') hydrateSignatures(p.id);
+    },
+    [hydrateSignatures],
+  );
+
   const [initialViewport] = useState<Viewport | null>(() => {
     try {
       const raw = localStorage.getItem(`aperture:map:${data.map.id}:viewport`);
@@ -513,7 +556,8 @@ export function MapCanvas({
       if (appliedEventIds.current.has(payload.eventId)) return;
       appliedEventIds.current.add(payload.eventId);
       setViewData((prev) => applyEvent(prev, payload));
-    }, []),
+      hydrateAddedSystems([payload]);
+    }, [hydrateAddedSystems]),
   );
 
   // ---- On-error resync failsafe ------------------------------------------
@@ -588,8 +632,9 @@ export function MapCanvas({
       }
       appliedEventIds.current.add(result.eventId);
       setViewData((prev) => applyEvent(prev, result.data));
+      hydrateAddedSystems([result.data]);
     },
-    [resync],
+    [resync, hydrateAddedSystems],
   );
 
   // Apply N event payloads in commit order and register each eventId in the
@@ -599,7 +644,8 @@ export function MapCanvas({
     if (payloads.length === 0) return;
     for (const p of payloads) appliedEventIds.current.add(p.eventId);
     setViewData((prev) => payloads.reduce(applyEvent, prev));
-  }, []);
+    hydrateAddedSystems(payloads);
+  }, [hydrateAddedSystems]);
 
   // ---- xyflow → server callbacks -----------------------------------------
   const mapId = viewData.map.id;

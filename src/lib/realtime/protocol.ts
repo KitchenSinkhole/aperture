@@ -204,14 +204,14 @@ const noteBody = {
 };
 
 export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
-  // `signatures` re-hydrates a re-added (soft-removed) system's surviving sigs on
-  // every tab in the single real broadcast — see buildSystemNode + applyEvent.
-  // Absent/empty for a brand-new add.
+  // A pure node-body delta: "this system became visible." Its signatures are NOT
+  // embedded — the canvas hydrates them via `GET …/systems/[id]/signatures` on
+  // receipt, keeping the event small (the full-sig payload otherwise breached the
+  // 8 KB `pg_notify` ceiling and rolled back the insert).
   z.object({
     kind: z.literal('system.added'),
     eventId,
     ...systemNodeBody,
-    signatures: z.array(z.object(signatureBody)).optional(),
   }),
   z.object({ kind: z.literal('system.removed'), eventId, id: z.string() }),
   z.object({

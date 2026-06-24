@@ -78,6 +78,26 @@ describe('applyEvent — system.added', () => {
     applyEvent(state, { kind: 'system.added', eventId: 3, ...sys1 });
     expect(state.systems).toHaveLength(0);
   });
+
+  it('leaves signatures untouched — they hydrate via fetch, not the event', () => {
+    const sig: MapSignature = {
+      id: '30',
+      mapSystemId: '10',
+      mapConnectionId: null,
+      sigId: 'ABC-123',
+      groupKey: null,
+      typeId: null,
+      wormholeCode: null,
+      name: null,
+      description: null,
+      expiresAt: '2026-01-02T00:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const state = makeState({ signatures: [sig] });
+    const next = applyEvent(state, { kind: 'system.added', eventId: 5, ...sys1 });
+    expect(next.signatures).toEqual([sig]);
+  });
 });
 
 // ---------------------------------------------------------------------------

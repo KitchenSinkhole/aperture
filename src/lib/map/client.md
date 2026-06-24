@@ -77,6 +77,9 @@ POST `/api/map/{mapId}/signatures/resolve`. Preview-only resolver for the paste 
 ### fetchSystemData({ mapId, systemIds }): Promise<FetchResult<SystemDataBatch>>
 GET `/api/map/{mapId}/system-data?systems=<id>,<id>,...` (view rights). Returns `SystemDataBatch` (`{ intel, stats, structures }`, the same per-system view-models the page server-renders; `stats`/`structures` sparse). `MapCanvas` calls this to backfill systems added after the initial render and merges the result into its intel/stats/structures state — so sov/FW/incursion decorators and the sidebar modules fill in without a reload.
 
+### fetchSystemSignatures({ mapId, mapSystemId }): Promise<FetchResult<MapSignature[]>>
+GET `/api/map/{mapId}/systems/{mapSystemId}/signatures` (view rights; `mapSystemId` is `ap_map_system.id`). Returns the system's current signatures. Signatures no longer ride the `system.added` event (that breached the 8 KB `pg_notify` ceiling); `MapCanvas` calls this on every `system.added` and upserts the result into `viewData.signatures`, so a re-added system's surviving sigs converge on every tab without a reload.
+
 ### fetchWormholeTypes({ mapId, universeSystemId }): Promise<ActionResult<WormholeTypeOption[]>>
 GET `/api/map/{mapId}/wormhole-types?systemId=<universeSystemId>`. Results are cached per `(mapId, universeSystemId)` in a module-scoped `Map` for the session — WH catalog filtering is immutable per class, so this avoids re-fetching as the user opens the inspector for different systems.
 

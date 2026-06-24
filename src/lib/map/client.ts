@@ -7,6 +7,7 @@ import type {
   ImportResult,
   MapEventPayload,
   MapExportFile,
+  MapSignature,
   MapViewData,
   ParsedSigRow,
   ResolvedSigRow,
@@ -525,6 +526,22 @@ export function fetchSystemData(args: {
 }): Promise<FetchResult<SystemDataBatch>> {
   return readFetch<SystemDataBatch>(
     `/api/map/${args.mapId}/system-data?systems=${args.systemIds.join(',')}`,
+  );
+}
+
+/**
+ * Fetch one placed system's current signatures. Signatures no longer ride the
+ * `system.added` event (that breached the 8 KB `pg_notify` ceiling); `MapCanvas`
+ * calls this on the event to hydrate a (re)added system's surviving sigs so all
+ * tabs converge without a reload. Read-only (view rights) — no `eventId`.
+ * `mapSystemId` is `ap_map_system.id`, not the EVE solar-system id.
+ */
+export function fetchSystemSignatures(args: {
+  mapId: string;
+  mapSystemId: string;
+}): Promise<FetchResult<MapSignature[]>> {
+  return readFetch<MapSignature[]>(
+    `/api/map/${args.mapId}/systems/${args.mapSystemId}/signatures`,
   );
 }
 
