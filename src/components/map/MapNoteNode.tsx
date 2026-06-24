@@ -51,7 +51,7 @@ export function MapNoteNode({
       }}
     >
       <div className="flex items-center gap-1">
-        <span className="flex-1 truncate font-medium text-foreground">{data.title}</span>
+        <span className="flex-1 truncate font-mono text-lg font-bold leading-none">{data.title}</span>
         {data.locked && <Lock className="size-3 shrink-0 text-muted-foreground" />}
       </div>
       {data.content && (
