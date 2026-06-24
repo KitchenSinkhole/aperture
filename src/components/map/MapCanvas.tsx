@@ -641,35 +641,46 @@ export function MapCanvas({
   const onNodeDragStop = useCallback(
     (_event: React.MouseEvent | unknown, node: Node) => {
       // Notes drag independently and may overlap anything — snap, then commit the
-      // position optimistically (no collision nudge). The real `ap_map_note.id`
-      // lives on `data.id` (the xyflow id is namespaced).
+      // position optimistically (no collision nudge). Notes aren't tracked in
+      // `selectedSystemIds`, but xyflow still group-drags every node it selected
+      // (e.g. a box-select over several notes) in unison, so commit each selected
+      // note — not just the grabbed one, or the others snap back on release. Read
+      // the live store (authoritative at dragStop); the grabbed node is always
+      // included even if its `selected` flag hasn't landed yet. The real
+      // `ap_map_note.id` lives on `data.id` (the xyflow id is namespaced).
       if (node.type === 'note') {
-        const noteId = (node.data as MapNoteNodeData).id;
-        const note = viewData.notes.find((n) => n.id === noteId);
-        if (!note) return;
-        const snapped = snapPointToGrid(node.position);
-        if (note.positionX === snapped.x && note.positionY === snapped.y) return;
-        runOptimistic(
-          {
-            kind: 'note.updated',
-            eventId: 0,
-            id: noteId,
-            title: note.title,
-            positionX: snapped.x,
-            positionY: snapped.y,
-            // Carry the current attribution so the optimistic apply doesn't blank
-            // "last edited by"; the authoritative echo overwrites it with the actor.
-            lastEditedByCharacterId: note.lastEditedByCharacterId,
-            lastEditedByName: note.lastEditedByName,
-            updatedAt: new Date().toISOString(),
-          },
-          () =>
-            updateNoteOnServer({
-              mapId,
-              noteId,
-              patch: { positionX: snapped.x, positionY: snapped.y },
-            }),
+        const live = flowInstance.current?.getNodes() ?? [];
+        const draggedNotes = live.filter(
+          (n) => n.type === 'note' && (n.selected || n.id === node.id),
         );
+        for (const noteNode of draggedNotes) {
+          const noteId = (noteNode.data as MapNoteNodeData).id;
+          const note = viewData.notes.find((n) => n.id === noteId);
+          if (!note) continue;
+          const snapped = snapPointToGrid(noteNode.position);
+          if (note.positionX === snapped.x && note.positionY === snapped.y) continue;
+          runOptimistic(
+            {
+              kind: 'note.updated',
+              eventId: 0,
+              id: noteId,
+              title: note.title,
+              positionX: snapped.x,
+              positionY: snapped.y,
+              // Carry the current attribution so the optimistic apply doesn't blank
+              // "last edited by"; the authoritative echo overwrites it with the actor.
+              lastEditedByCharacterId: note.lastEditedByCharacterId,
+              lastEditedByName: note.lastEditedByName,
+              updatedAt: new Date().toISOString(),
+            },
+            () =>
+              updateNoteOnServer({
+                mapId,
+                noteId,
+                patch: { positionX: snapped.x, positionY: snapped.y },
+              }),
+          );
+        }
         return;
       }
       // Dragging any member of a multi-selection moves the whole group; commit
@@ -909,6 +920,20 @@ export function MapCanvas({
 
   const onSelectionEnd = useCallback(() => {
     boxSelecting.current = false;
+    // Mixed multi-selection is unsupported: if the box caught systems *and* notes,
+    // prioritize systems and drop the notes from xyflow's selection — otherwise the
+    // notes group-drag with the systems but commit through a different path and
+    // rubber-band back on release. A pure-note box is left intact (its multi-note
+    // drag reads xyflow's selection directly). Done once at box end so it never
+    // fights xyflow's per-move re-selection during the draw.
+    const live = flowInstance.current?.getNodes() ?? [];
+    const hasSystem = live.some((n) => n.type === 'system' && n.selected);
+    const hasNote = live.some((n) => n.type === 'note' && n.selected);
+    if (hasSystem && hasNote) {
+      setNodes((prev) =>
+        prev.map((n) => (n.type === 'note' && n.selected ? { ...n, selected: false } : n)),
+      );
+    }
   }, []);
 
   // Box-select-only reconciler. xyflow fires `onSelectionChange` for *every*
@@ -920,8 +945,12 @@ export function MapCanvas({
   // the per-system modules as nodes enter the rectangle.
   const onSelectionChange = useCallback(
     ({ nodes: selNodes }: OnSelectionChangeParams) => {
-      if (!boxSelecting.current || selNodes.length <= 1) return;
-      const ids = selNodes.map((n) => n.id);
+      if (!boxSelecting.current) return;
+      // `selectedSystemIds` holds system ids only — group ops (move, "Remove N")
+      // route through the systems endpoints. Notes caught by the box select
+      // singly into the inspector, never the group; drop them here.
+      const ids = selNodes.filter((n) => n.type === 'system').map((n) => n.id);
+      if (ids.length <= 1) return;
       if (ids.length === selectedSystemIds.size && ids.every((id) => selectedSystemIds.has(id))) {
         return;
       }
