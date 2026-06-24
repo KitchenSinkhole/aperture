@@ -391,7 +391,8 @@ export type {
 } from '@/lib/map/mutations/restoreConnection';
 
 // Wormhole-catalog lookup result types (src/lib/map/wormholeTypes.ts).
-export type { WormholeTypeOption, StaticMatch } from '@/lib/map/wormholeTypes';
+export type { WormholeCatalogEntry, WormholeTypeOption } from '@/lib/map/wormholeCatalog';
+export type { StaticMatch } from '@/lib/map/wormholeTypes';
 
 // Solar-system name search result (src/lib/map/systemSearch.ts).
 export type { SystemSearchResult } from '@/lib/map/systemSearch';

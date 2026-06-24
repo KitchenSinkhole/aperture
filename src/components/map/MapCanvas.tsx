@@ -1383,7 +1383,6 @@ export function MapCanvas({
                 </Button>
               )}
             <TransitSignaturePrompt
-              mapId={mapId}
               systems={viewData.systems}
               connections={viewData.connections}
               signatures={viewData.signatures}
@@ -1487,7 +1486,6 @@ export function MapCanvas({
       case 'signatures':
         return (
           <SignatureModule
-            mapId={mapId}
             system={selectedSystem}
             signatures={viewData.signatures}
             connections={viewData.connections}

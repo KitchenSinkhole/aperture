@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { fetchWormholeTypes, type UpdateConnectionBody } from '@/lib/map/client';
+import { fetchWormholeCatalog, type UpdateConnectionBody } from '@/lib/map/client';
 import type { WhJumpMass } from '@/lib/map/enumLabels';
 import type { MapConnectionEdge, MapSignature, MapSystemNode } from '@/types';
 import { useTraversals } from './MapPresenceContext';
@@ -41,7 +41,6 @@ type Prompt = {
   key: string;
   characterName: string;
   sourceMapSystemId: string;
-  sourceUniverseSystemId: number;
   destLabel: string;
   destClass: string | null;
   connectionId: string;
@@ -59,7 +58,6 @@ type Prompt = {
  * unscanned sources stay silent).
  */
 export function TransitSignaturePrompt({
-  mapId,
   systems,
   connections,
   signatures,
@@ -67,7 +65,6 @@ export function TransitSignaturePrompt({
   onPatchSignature,
   onConnectionPatch,
 }: {
-  mapId: string;
   systems: MapSystemNode[];
   connections: MapConnectionEdge[];
   signatures: MapSignature[];
@@ -118,19 +115,19 @@ export function TransitSignaturePrompt({
       key: `${t.fromSystemId}->${t.toSystemId}`,
       characterName: character.name,
       sourceMapSystemId: source.id,
-      sourceUniverseSystemId: source.systemId,
       destLabel: dest.alias ?? dest.name,
       destClass: dest.security,
       connectionId: wh.id,
     });
   });
 
-  // Load the source system's WH-type → target-class map for filtering. Usually
-  // a warm cache hit (same lookup `WormholeTypeSelect` / the sig panel use).
+  // Load the WH-type → target-class / jump-mass maps for filtering. These are
+  // system-independent catalog facts, so this hits the shared session-wide WH
+  // catalog (same lookup `WormholeTypeSelect` / the sig panel use) — usually warm.
   useEffect(() => {
     if (!prompt) return;
     let cancelled = false;
-    fetchWormholeTypes({ mapId, universeSystemId: prompt.sourceUniverseSystemId }).then((result) => {
+    fetchWormholeCatalog().then((result) => {
       if (cancelled || !result.ok) return;
       setTargetClassByTypeId(new Map(result.data.map((o) => [o.typeId, o.targetClass])));
       setJumpMassByTypeId(new Map(result.data.map((o) => [o.typeId, o.jumpMassClass])));
@@ -138,7 +135,7 @@ export function TransitSignaturePrompt({
     return () => {
       cancelled = true;
     };
-  }, [mapId, prompt]);
+  }, [prompt]);
 
   const dismiss = useCallback(() => setPrompt(null), []);
 

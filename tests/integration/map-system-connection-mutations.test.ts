@@ -30,7 +30,8 @@ import {
 } from '@/lib/map/mutations/connections';
 import { createSignature } from '@/lib/map/mutations/signatures';
 import { loadSignaturesForSystems } from '@/lib/map/systemNode';
-import { staticMatchForConnection, wormholeTypesForSystem } from '@/lib/map/wormholeTypes';
+import { staticMatchForConnection, wormholeCatalog } from '@/lib/map/wormholeTypes';
+import { annotateWormholeTypes } from '@/lib/map/wormholeCatalog';
 import { mapEventPayloadSchema } from '@/lib/realtime/protocol';
 
 /**
@@ -273,11 +274,13 @@ describe.skipIf(!run)('system & connection mutations (real Postgres)', () => {
     expect(remaining).toHaveLength(0); // hard delete
   });
 
-  it('wormholeTypesForSystem returns the full catalog annotated with matchesClass', async () => {
-    // The full catalog is returned now (the client splits matched vs. "show all"),
-    // so assert the matchesClass rule rather than a filtered set. The real seeded
-    // catalog is present too, which lets us pin the user-reported leak cases.
-    const types = await wormholeTypesForSystem(C3);
+  it('wormholeCatalog + annotateWormholeTypes apply the per-system matchesClass rule', async () => {
+    // The server returns the full, system-independent catalog; the client tags
+    // each row for the host system via annotateWormholeTypes. Assert the rule
+    // rather than a filtered set. The real seeded catalog is present too, which
+    // lets us pin the user-reported leak cases. C3's only static is WH_C3_HS.
+    const catalog = await wormholeCatalog();
+    const types = annotateWormholeTypes(catalog, { security: 'C3', staticTypeIds: [WH_C3_HS] });
     // Key our fixtures by typeId — the seeded catalog has real rows that reuse
     // the codes X877 / M555 (different classes), so a name key would collide.
     const byId = new Map(types.map((t) => [t.typeId, t]));

@@ -7,7 +7,6 @@ import { toast } from 'sonner';
 import {
   addSystemOnServer,
   deleteSignatureOnServer,
-  fetchWormholeTypes,
   removeSystemOnServer,
   updateSystemOnServer,
 } from '@/lib/map/client';
@@ -102,31 +101,61 @@ describe('client.ts — mutationFetch failure', () => {
   });
 });
 
-describe('client.ts — fetchWormholeTypes', () => {
-  it('returns the data array on success', async () => {
-    mockFetch({
-      body: {
-        ok: true,
-        data: [{ typeId: 1, name: 'A239', sourceClasses: ['C3'], targetClass: null }],
-      },
-    });
-    const result = await fetchWormholeTypes({ mapId: '99', universeSystemId: 31000001 });
-    expect(result).toEqual({
-      ok: true,
-      data: [{ typeId: 1, name: 'A239', sourceClasses: ['C3'], targetClass: null }],
-    });
+describe('client.ts — fetchWormholeCatalog', () => {
+  // The catalog promise is memoized at module scope; reset modules so each test
+  // starts with a cold cache and a fresh dynamic import of the helper.
+  beforeEach(() => {
+    vi.resetModules();
   });
 
-  it('caches by (mapId, universeSystemId) — second call does not hit the network', async () => {
+  it('GETs the global catalog route and returns the data array', async () => {
     const { calls } = mockFetch({
       body: {
         ok: true,
-        data: [{ typeId: 9, name: 'K162', sourceClasses: null, targetClass: null }],
+        data: [
+          { typeId: 1, name: 'A239', sourceClasses: ['C3'], targetClass: null, jumpMassClass: 'l' },
+        ],
       },
     });
-    const first = await fetchWormholeTypes({ mapId: '42', universeSystemId: 31000777 });
-    const second = await fetchWormholeTypes({ mapId: '42', universeSystemId: 31000777 });
+    const { fetchWormholeCatalog } = await import('@/lib/map/client');
+    const result = await fetchWormholeCatalog();
+    expect(result).toEqual({
+      ok: true,
+      data: [
+        { typeId: 1, name: 'A239', sourceClasses: ['C3'], targetClass: null, jumpMassClass: 'l' },
+      ],
+    });
+    expect(calls[0]!.url).toContain('/api/wormhole-types');
+  });
+
+  it('memoizes session-wide — concurrent + repeat calls hit the network once', async () => {
+    const { calls } = mockFetch({
+      body: {
+        ok: true,
+        data: [
+          { typeId: 9, name: 'K162', sourceClasses: null, targetClass: null, jumpMassClass: null },
+        ],
+      },
+    });
+    const { fetchWormholeCatalog } = await import('@/lib/map/client');
+    // Concurrent burst (N dropdowns mounting at once) shares one in-flight request.
+    const [first, second] = await Promise.all([fetchWormholeCatalog(), fetchWormholeCatalog()]);
+    const third = await fetchWormholeCatalog();
     expect(first).toEqual(second);
+    expect(second).toEqual(third);
     expect(calls).toHaveLength(1);
+  });
+
+  it('evicts on failure so a later call retries', async () => {
+    const { calls } = mockFetch(
+      { status: 500, body: { ok: false, error: 'boom' } },
+      { body: { ok: true, data: [] } },
+    );
+    const { fetchWormholeCatalog } = await import('@/lib/map/client');
+    const failed = await fetchWormholeCatalog();
+    expect(failed.ok).toBe(false);
+    const retried = await fetchWormholeCatalog();
+    expect(retried).toEqual({ ok: true, data: [] });
+    expect(calls).toHaveLength(2);
   });
 });

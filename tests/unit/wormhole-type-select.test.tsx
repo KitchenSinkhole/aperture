@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
-vi.mock('@/lib/map/client', () => ({ fetchWormholeTypes: vi.fn() }));
+vi.mock('@/lib/map/client', () => ({ fetchWormholeCatalog: vi.fn() }));
 vi.mock('@/components/map/styling', () => ({ systemClassColor: () => '#ffffff' }));
 
 // Stub Base UI Select primitives — they require a portal/popup context jsdom can't provide.
@@ -23,41 +23,47 @@ vi.mock('@/components/ui/select', async () => {
   return { Select, SelectTrigger, SelectValue, SelectContent, SelectItem };
 });
 
-import { fetchWormholeTypes } from '@/lib/map/client';
+import { fetchWormholeCatalog } from '@/lib/map/client';
 import { WormholeTypeSelect } from '@/components/sidebar/WormholeTypeSelect';
-import type { WormholeTypeOption } from '@/types';
+import type { WormholeCatalogEntry } from '@/types';
 
-const mockFetch = vi.mocked(fetchWormholeTypes);
+const mockFetch = vi.mocked(fetchWormholeCatalog);
 
-function makeOption(
+// The host system is a C3 whose only static is A242 (typeId 1). The component
+// derives `isStatic` / `matchesClass` from these props via `annotateWormholeTypes`,
+// so the fixtures are bare catalog rows and the grouping is computed end-to-end.
+const SYSTEM_SECURITY = 'C3';
+const SYSTEM_STATIC_TYPE_IDS = [1];
+
+function makeEntry(
   typeId: number,
   name: string,
-  overrides: Partial<WormholeTypeOption> = {},
-): WormholeTypeOption {
+  overrides: Partial<WormholeCatalogEntry> = {},
+): WormholeCatalogEntry {
   return {
     typeId,
     name,
-    sourceClasses: [],
+    sourceClasses: ['C5'], // does not include 'C3' → not class-matched unless overridden
     targetClass: null,
     jumpMassClass: null,
-    isStatic: false,
-    matchesClass: false,
     ...overrides,
   };
 }
 
-const STATIC_A242 = makeOption(1, 'A242', { isStatic: true, matchesClass: true, targetClass: 'C3' });
-const K162 = makeOption(2, 'K162', { sourceClasses: null, matchesClass: true });
-const CLASS_MATCHED_C140 = makeOption(3, 'C140', { matchesClass: true });
-const CLASS_MATCHED_N110 = makeOption(4, 'N110', { matchesClass: true });
-const OTHER_X702 = makeOption(5, 'X702', { matchesClass: false });
+// A242 is the system's static (typeId 1) → isStatic, hence pinned + matchesClass.
+const STATIC_A242 = makeEntry(1, 'A242', { sourceClasses: ['C3'], targetClass: 'C3' });
+// K162 has a null source → matches anywhere; the component pins it after statics.
+const K162 = makeEntry(2, 'K162', { sourceClasses: null });
+const CLASS_MATCHED_C140 = makeEntry(3, 'C140', { sourceClasses: ['C3'] });
+const CLASS_MATCHED_N110 = makeEntry(4, 'N110', { sourceClasses: ['C3'] });
+const OTHER_X702 = makeEntry(5, 'X702', { sourceClasses: ['C5'] });
 
 function renderSelect(container: HTMLDivElement, root: Root) {
   act(() => {
     root.render(
       <WormholeTypeSelect
-        mapId="map-1"
-        universeSystemId={31000001}
+        systemSecurity={SYSTEM_SECURITY}
+        staticTypeIds={SYSTEM_STATIC_TYPE_IDS}
         value={null}
         onValueChange={vi.fn()}
       />,
@@ -82,7 +88,7 @@ describe('WormholeTypeSelect — K162 grouping', () => {
     container.remove();
   });
 
-  function resolvedOptions(options: WormholeTypeOption[]) {
+  function resolvedOptions(options: WormholeCatalogEntry[]) {
     mockFetch.mockResolvedValue({ ok: true, data: options });
   }
 

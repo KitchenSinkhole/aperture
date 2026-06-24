@@ -1,26 +1,25 @@
 ## wormholeTypes.ts
 
-**Purpose:** Wormhole-catalog lookups — class-filtered WH-type suggestion and connection "mark as static" matching.
+**Purpose:** Server-side wormhole-catalog read + connection "mark as static" matching.
 **File:** `src/lib/map/wormholeTypes.ts`
+
+> Per-system dropdown grouping (`isStatic` / `matchesClass`) is **not** computed here — the catalog is static, so it's fetched once and annotated on the client via `annotateWormholeTypes` (`wormholeCatalog.ts`). This module only does the DB read and re-exports the option types.
 
 > **Class join key:** `universe_system.security` (the `C1`–`C6` / `H` / `L` / `0.0` labels), **not** `universe_system.security_class`. The catalog's `source_classes`/`target_class` use the same labels as `universe_system.security`, and the seeded catalog + the read-path tests use exactly those. `security_class` is the unrelated SDE ore-spawn field and would never match the catalog — `security` is correct.
 
 ---
 
 ### jumpMassBand(kg: number | null): WhJumpMass | null
-Buckets a wormhole's `wormholeMaxJumpMass` (kg) into the `s`/`m`/`l`/`xl` connection size bands. Thresholds: `≤5M → s`, `≤100M → m`, `<1B → l`, `≥1B → xl` (chosen to sit in the gaps between EVE's discrete jump-mass values — 5M / 62M / 300M·375M / 1B+). `null` in → `null` out. Used by both `wormholeTypesForSystem` (to tag each option) and the signature module's auto-set of a linked connection's size.
+Buckets a wormhole's `wormholeMaxJumpMass` (kg) into the `s`/`m`/`l`/`xl` connection size bands. Thresholds: `≤5M → s`, `≤100M → m`, `<1B → l`, `≥1B → xl` (chosen to sit in the gaps between EVE's discrete jump-mass values — 5M / 62M / 300M·375M / 1B+). `null` in → `null` out. Used by `wormholeCatalog` (to tag each entry) and the signature module's auto-set of a linked connection's size.
 
 ---
 
-### wormholeTypesForSystem(systemId: number): Promise<WormholeTypeOption[]>
-Returns the **full** wormhole catalog, annotated for `systemId`'s WH-type dropdown (ordered by code). The previous WHERE-filtered approach is gone — the dropdown now shows class matches by default and the rest behind a "show all" toggle, so the read path returns every row and the client splits them. Unknown `systemId` → `[]`.
+### wormholeCatalog(): Promise<WormholeCatalogEntry[]>
+Returns the **full**, system-independent wormhole catalog ordered by code — every `universe_wormhole` row with its inferred jump-mass band. Static reference data, identical for every system, fed to the global `/api/wormhole-types` route. The per-system `isStatic`/`matchesClass` grouping is derived on the client (`annotateWormholeTypes`), so this read takes no `systemId` and runs no statics query.
 
-Each row is tagged:
-- `matchesClass: boolean` — plausibly spawns here: `source_classes IS NULL` (appears anywhere — `K162` + Drifter/shattered-access holes), the source set **contains** the system's `security` class, **or** the type is one of the system's statics. The static clause guarantees a shattered system's odd-class statics (e.g. a shattered C5 with a C3→NS static) are never hidden.
-- `isStatic: true` when its `type_id` is one of the system's `universe_system_static` rows (dropdown pins these to the top).
 - `jumpMassClass` — from the `wormholeMaxJumpMass` dogma value (resolved by name from `universe_dogma_attribute`, read through `universe_type_attribute_effective`), bucketed by `jumpMassBand`. If the attribute name can't be resolved, every `jumpMassClass` is `null` (no join performed).
 
-**Returns:** `WormholeTypeOption[]` — `{ typeId, name, sourceClasses, targetClass, jumpMassClass, isStatic, matchesClass }`.
+**Returns:** `WormholeCatalogEntry[]` — `{ typeId, name, sourceClasses, targetClass, jumpMassClass }`.
 
 ---
 
@@ -35,8 +34,8 @@ Each row is tagged:
 
 ---
 
-### type WormholeTypeOption / StaticMatch
-Result shapes for the two lookups. Re-exported from `src/types/index.ts`.
+### type WormholeCatalogEntry / WormholeTypeOption / StaticMatch
+`WormholeCatalogEntry`/`WormholeTypeOption` live in `wormholeCatalog.ts` (client-safe) and are re-exported here for server callers; `StaticMatch` is defined here. All re-exported from `src/types/index.ts`.
 
 ### Depends On
 - `universeSystem`, `universeSystemStatic`, `universeWormhole` (Drizzle schema). The static→catalog join mirrors `loadMap.ts` `loadStatics`.

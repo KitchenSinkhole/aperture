@@ -12,7 +12,7 @@ Every route in this tree obeys these invariants:
 
 3. **`{ ok, data, eventId }` response shape.** Every mutation route returns this JSON body (HTTP 200 on success, 400 on mutation-layer failure). Error responses before the mutation layer (401, 404, 400 for invalid input) also use `{ ok: false, error: string }`.
 
-4. **Session + rights guard.** Every mutation route calls `requireMapMutate(rawMapId, session, '<right>')` from `utils.ts` (which chains session check + bigint parse + `requireMapRight` from `@/lib/auth/rights`). Read endpoints (e.g. `wormhole-types`, signature paste resolver) call `requireMapView`. The tuple result is mapped straight into a 401/403/404 response. Existence is never leaked: missing maps and non-viewable maps both return 404.
+4. **Session + rights guard.** Every mutation route calls `requireMapMutate(rawMapId, session, '<right>')` from `utils.ts` (which chains session check + bigint parse + `requireMapRight` from `@/lib/auth/rights`). Read endpoints (e.g. the signature paste resolver) call `requireMapView`. The tuple result is mapped straight into a 401/403/404 response. Existence is never leaked: missing maps and non-viewable maps both return 404. (The WH-type catalog is **not** here — it's static, system-independent reference data served by the global `GET /api/wormhole-types`, session-gated only.)
 
 5. **Per-map rights enforcement.** Every mutation route passes a `MapRight` to `requireMapMutate`. The content-editing routes (systems, connections, signatures, subchain, thera, disconnected) all pass `'map_update'`, which resolves to **view authority** — every viewer can chart, since collaborative mapping is the product. Management routes (import/export pass `'map_import'` / `'map_export'`) resolve to the binary `canManageMap` (admin, private owner, owning-corp Director, or owning-alliance executor-corp Director). Map-settings edits use `requireMapManage` from the Server Action, not these routes. There is no controller path that bypasses these checks; the static-analysis test in `tests/unit/route-rights-coverage.test.ts` blocks regressions.
 
@@ -31,7 +31,6 @@ Every route in this tree obeys these invariants:
 | POST | `/api/map/[mapId]/signatures` | `createSignature` | `signature.create` |
 | PATCH | `/api/map/[mapId]/signatures/[sigId]` | `updateSignature` | `signature.update` |
 | DELETE | `/api/map/[mapId]/signatures/[sigId]` | `deleteSignature` | `signature.delete` |
-| GET | `/api/map/[mapId]/wormhole-types?systemId=` | `wormholeTypesForSystem` | (read-only) |
 | GET | `/api/map/[mapId]/system-search?q=` | `searchSystems` | (read-only) |
 | POST | `/api/map/[mapId]/ping` | `pingSystem` | (transient broadcast — see below) |
 

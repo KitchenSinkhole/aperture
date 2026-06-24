@@ -21,7 +21,7 @@ import type {
   TheraConnection,
   TheraSyncInput,
   TheraSyncResult,
-  WormholeTypeOption,
+  WormholeCatalogEntry,
 } from '@/types';
 import type {
   ConnectionScope,
@@ -502,24 +502,22 @@ export function fetchSystemSignatures(args: {
 // ---------------------------------------------------------------------------
 
 /**
- * Tiny per-session cache keyed by `${mapId}:${universeSystemId}`. WH catalog
- * filtering is deterministic and immutable for a given system class, so a hit
- * lets the inspector swap between systems without re-fetching.
+ * Session-wide single-flight cache for the WH catalog. The catalog is static,
+ * system-independent reference data, so it's fetched **once** per session and
+ * shared by every WH-type dropdown. Caching the *promise* (not just the resolved
+ * value) coalesces the burst of concurrent calls when a system with N wormhole
+ * sigs mounts N dropdowns at once — they all await the same request instead of
+ * each firing their own. Per-system class grouping is derived on the client via
+ * `annotateWormholeTypes`. Evicted on failure so a transient error can retry.
  */
-const wormholeTypeCache = new Map<string, WormholeTypeOption[]>();
+let wormholeCatalogPromise: Promise<FetchResult<WormholeCatalogEntry[]>> | null = null;
 
-export async function fetchWormholeTypes(args: {
-  mapId: string;
-  /** EVE solar-system id, not `ap_map_system.id`. */
-  universeSystemId: number;
-}): Promise<FetchResult<WormholeTypeOption[]>> {
-  const cacheKey = `${args.mapId}:${args.universeSystemId}`;
-  const cached = wormholeTypeCache.get(cacheKey);
-  if (cached) return { ok: true, data: cached };
-
-  const result = await readFetch<WormholeTypeOption[]>(
-    `/api/map/${args.mapId}/wormhole-types?systemId=${args.universeSystemId}`,
-  );
-  if (result.ok) wormholeTypeCache.set(cacheKey, result.data);
-  return result;
+export function fetchWormholeCatalog(): Promise<FetchResult<WormholeCatalogEntry[]>> {
+  if (wormholeCatalogPromise) return wormholeCatalogPromise;
+  const promise = readFetch<WormholeCatalogEntry[]>('/api/wormhole-types').then((result) => {
+    if (!result.ok) wormholeCatalogPromise = null;
+    return result;
+  });
+  wormholeCatalogPromise = promise;
+  return promise;
 }

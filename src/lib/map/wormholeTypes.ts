@@ -9,6 +9,9 @@ import {
   universeWormhole,
   whJumpMass,
 } from '@/db/schema';
+import type { WormholeCatalogEntry } from '@/lib/map/wormholeCatalog';
+
+export type { WormholeCatalogEntry, WormholeTypeOption } from '@/lib/map/wormholeCatalog';
 
 type WhJumpMass = (typeof whJumpMass.enumValues)[number];
 
@@ -46,26 +49,6 @@ export function jumpMassBand(kg: number | null): WhJumpMass | null {
  * `source_classes = {'C3'}`). `security_class` is the unrelated SDE ore-spawn field.
  */
 
-export type WormholeTypeOption = {
-  typeId: number;
-  /** WH code, e.g. `A239`, `K162`. */
-  name: string;
-  /** Classes it can spawn in; null = source unspecified (K162 + Drifter/shattered-access holes). */
-  sourceClasses: string[] | null;
-  /** Class it leads into; null = resolved from the far side. */
-  targetClass: string | null;
-  /** Inferred per-jump size band from `wormholeMaxJumpMass`; null = unknown (e.g. K162). */
-  jumpMassClass: WhJumpMass | null;
-  /** True when this type is one of the host system's statics (anoik.is). */
-  isStatic: boolean;
-  /**
-   * True when this hole plausibly spawns in the host system: its source set is
-   * null (appears anywhere), contains the system's class, or it is one of the
-   * system's statics. Drives the dropdown's default vs. "show all" split.
-   */
-  matchesClass: boolean;
-};
-
 export type StaticMatch = {
   typeId: number;
   name: string;
@@ -74,32 +57,13 @@ export type StaticMatch = {
 };
 
 /**
- * The full wormhole catalog, annotated for a given system's WH-type dropdown.
- * Returns every catalog row ordered by code, each tagged with `isStatic` (one of
- * the system's statics, pinned to the top) and `matchesClass` (plausibly spawns
- * here — null source, source set contains the system's class, or it's a static).
- * The dropdown shows matches by default and the rest behind "show all"; the
- * static clause keeps a shattered system's odd-class statics from being hidden.
- * An unknown `systemId` yields `[]`.
+ * The full, system-independent wormhole catalog ordered by code — every
+ * `universe_wormhole` row with its inferred jump-mass band. Static reference
+ * data, identical for every system, so it's fetched once per session and the
+ * dropdown's per-system grouping (`isStatic` / `matchesClass`) is derived on the
+ * client via `annotateWormholeTypes`.
  */
-export async function wormholeTypesForSystem(systemId: number): Promise<WormholeTypeOption[]> {
-  const [system] = await db
-    .select({ security: universeSystem.security })
-    .from(universeSystem)
-    .where(eq(universeSystem.id, systemId));
-  if (!system) return [];
-
-  const staticRows = await db
-    .select({ typeId: universeSystemStatic.typeId })
-    .from(universeSystemStatic)
-    .where(eq(universeSystemStatic.systemId, systemId));
-  const staticTypeIds = new Set(staticRows.map((r) => r.typeId));
-
-  const matches = (typeId: number, sourceClasses: string[] | null): boolean =>
-    sourceClasses == null ||
-    (system.security != null && sourceClasses.includes(system.security)) ||
-    staticTypeIds.has(typeId);
-
+export async function wormholeCatalog(): Promise<WormholeCatalogEntry[]> {
   // The jump-mass band is derived from the `wormholeMaxJumpMass` dogma value,
   // read through the effective view (so any override is honoured). Resolve the
   // attribute id by name — an SDE renumber must surface as a null band, not a
@@ -119,12 +83,7 @@ export async function wormholeTypesForSystem(systemId: number): Promise<Wormhole
       })
       .from(universeWormhole)
       .orderBy(universeWormhole.name);
-    return rows.map((r) => ({
-      ...r,
-      jumpMassClass: null,
-      isStatic: staticTypeIds.has(r.typeId),
-      matchesClass: matches(r.typeId, r.sourceClasses),
-    }));
+    return rows.map((r) => ({ ...r, jumpMassClass: null }));
   }
 
   const rows = await db
@@ -145,12 +104,7 @@ export async function wormholeTypesForSystem(systemId: number): Promise<Wormhole
     )
     .orderBy(universeWormhole.name);
 
-  return rows.map(({ jumpMass, ...r }) => ({
-    ...r,
-    jumpMassClass: jumpMassBand(jumpMass),
-    isStatic: staticTypeIds.has(r.typeId),
-    matchesClass: matches(r.typeId, r.sourceClasses),
-  }));
+  return rows.map(({ jumpMass, ...r }) => ({ ...r, jumpMassClass: jumpMassBand(jumpMass) }));
 }
 
 /**

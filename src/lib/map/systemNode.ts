@@ -67,7 +67,11 @@ export async function buildSystemNode(
   if (!row) throw new Error('System row vanished mid-transaction.');
 
   const staticRows = await tx
-    .select({ name: universeWormhole.name, targetClass: universeWormhole.targetClass })
+    .select({
+      typeId: universeSystemStatic.typeId,
+      name: universeWormhole.name,
+      targetClass: universeWormhole.targetClass,
+    })
     .from(universeSystemStatic)
     .innerJoin(universeWormhole, eq(universeSystemStatic.typeId, universeWormhole.typeId))
     .where(eq(universeSystemStatic.systemId, row.systemId));
@@ -88,6 +92,7 @@ export async function buildSystemNode(
     // Resolve to the far-side system class (matches loadMap's loadStatics);
     // fall back to the raw WH code only when the class is unknown (K162-style).
     statics: staticRows.map((s) => s.targetClass ?? s.name).filter((c): c is string => !!c),
+    staticTypeIds: staticRows.map((s) => s.typeId),
     tradeHub:
       row.nearestTradeHubId != null && row.nearestTradeHubJumps != null
         ? {

@@ -35,6 +35,7 @@ function makeSystem(
     regionName: 'A-R00001',
     constellationName: 'A-C00001',
     statics: [],
+    staticTypeIds: [],
     tradeHub: null,
     locked: false,
     rallyAt: null,

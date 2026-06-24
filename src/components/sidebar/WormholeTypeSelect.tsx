@@ -8,8 +8,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { fetchWormholeTypes } from '@/lib/map/client';
+import { fetchWormholeCatalog } from '@/lib/map/client';
 import { systemClassColor } from '@/components/map/styling';
+import { annotateWormholeTypes, type WormholeCatalogEntry } from '@/lib/map/wormholeCatalog';
 import type { WormholeTypeOption } from '@/types';
 
 const NONE_VALUE = '__none__';
@@ -19,33 +20,35 @@ function OptionDivider() {
 }
 
 /**
- * Class-filtered wormhole-type dropdown for the signature inspector.
- * Lazy-loads options from `/api/map/[mapId]/wormhole-types?systemId=`
- * when mounted, then keeps them in a per-(mapId, universeSystemId) cache so
- * swapping between systems doesn't re-fetch.
+ * Class-filtered wormhole-type dropdown for the signature inspector. Loads the
+ * static, system-independent WH catalog once per session (shared by every
+ * dropdown via `fetchWormholeCatalog`), then derives this system's class
+ * grouping locally with `annotateWormholeTypes` — no per-system fetch.
  */
 export function WormholeTypeSelect({
-  mapId,
-  universeSystemId,
+  systemSecurity,
+  staticTypeIds,
   value,
   onValueChange,
   disabled,
   triggerClassName,
 }: {
-  mapId: string;
-  universeSystemId: number;
+  /** Host system's class label (`MapSystemNode.security`) — drives `matchesClass`. */
+  systemSecurity: string | null;
+  /** Host system's static `universe_wormhole.type_id` set (`MapSystemNode.staticTypeIds`). */
+  staticTypeIds: number[];
   /** Selected `universe_wormhole.type_id`, or null when unset. */
   value: number | null;
   onValueChange: (next: number | null) => void;
   disabled?: boolean;
   triggerClassName?: string;
 }) {
-  // Combine `loading` and `options` in one state object so the effect body only
+  // Combine `loading` and `catalog` in one state object so the effect body only
   // calls `setState` from the async resolver — never synchronously during the
   // effect run (which would trip the cascading-render lint rule).
-  const [state, setState] = useState<{ loading: boolean; options: WormholeTypeOption[] }>({
+  const [state, setState] = useState<{ loading: boolean; catalog: WormholeCatalogEntry[] }>({
     loading: true,
-    options: [],
+    catalog: [],
   });
   // Whether the "other classes" group (holes that don't plausibly spawn here) is
   // expanded. Collapsed by default — the whole point is a short list.
@@ -53,17 +56,20 @@ export function WormholeTypeSelect({
 
   useEffect(() => {
     let cancelled = false;
-    fetchWormholeTypes({ mapId, universeSystemId }).then((result) => {
+    fetchWormholeCatalog().then((result) => {
       if (cancelled) return;
-      setState({ loading: false, options: result.ok ? result.data : [] });
-      setShowAll(false);
+      setState({ loading: false, catalog: result.ok ? result.data : [] });
     });
     return () => {
       cancelled = true;
     };
-  }, [mapId, universeSystemId]);
+  }, []);
 
-  const { loading, options } = state;
+  const { loading } = state;
+  const options = useMemo(
+    () => annotateWormholeTypes(state.catalog, { security: systemSecurity, staticTypeIds }),
+    [state.catalog, systemSecurity, staticTypeIds],
+  );
 
   const items = useMemo(() => {
     const labels: Record<string, string> = { [NONE_VALUE]: 'Select type…' };

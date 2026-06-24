@@ -7,7 +7,6 @@
 
 | Prop | Type | Required | Description |
 |---|---|---|---|
-| mapId | string | yes | `ap_map.id` (for the WH-types endpoint and paste dialog). |
 | system | MapSystemNode \| null | yes | The selected system; when `null` the panel renders a "select a system" placeholder. |
 | signatures | MapSignature[] | yes | All signatures on the map; the module filters by `mapSystemId === system.id`. |
 | connections | MapConnectionEdge[] | yes | All connections on the map (forwarded to `ConnectionSelect`). |
@@ -35,7 +34,7 @@ A frameless `Card` (no card header) with:
   - `wormhole` → `WormholeTypeSelect`. Picks a `universe_wormhole` row; writes `typeId`.
   - cosmic groups → `SiteTypeCombobox` bound to `sig.name`: class+group-filtered site-name suggestions (from `signatureSites.ts`, keyed off `system.security`) with a free-text fallback; patches on blur.
   - `null` (unknown) → italic placeholder text.
-- **Leads-to cell** is `ConnectionSelect`, enabled only for `groupKey === 'wormhole'`. Its options are filtered to the selected WH type's destination class via the `targetClass` prop: `useWormholeTypeMeta(mapId, system.systemId)` builds a `typeId → { targetClass, jumpMassClass }` map (reusing the cached `fetchWormholeTypes` data), and the row/draft pass the entry for `sig.typeId` / `draftTypeId`. A type with no/unknown target (e.g. K162) passes `null` → unfiltered. Options are also filtered by `excludeIds={assignedConnectionIds}` (the connection ids already bound to a sig in this system) so a connection already claimed by another sig isn't suggested — the binding is 1:1. `assignedConnectionIds` is `rows.map(s => s.mapConnectionId)` (non-null); each `ConnectionSelect` exempts its own `value`, so a row keeps showing its own binding.
+- **Leads-to cell** is `ConnectionSelect`, enabled only for `groupKey === 'wormhole'`. Its options are filtered to the selected WH type's destination class via the `targetClass` prop: `useWormholeTypeMeta()` builds a `typeId → { targetClass, jumpMassClass }` map from the shared session-wide WH catalog (`fetchWormholeCatalog`; these are system-independent catalog facts), and the row/draft pass the entry for `sig.typeId` / `draftTypeId`. A type with no/unknown target (e.g. K162) passes `null` → unfiltered. Options are also filtered by `excludeIds={assignedConnectionIds}` (the connection ids already bound to a sig in this system) so a connection already claimed by another sig isn't suggested — the binding is 1:1. `assignedConnectionIds` is `rows.map(s => s.mapConnectionId)` (non-null); each `ConnectionSelect` exempts its own `value`, so a row keeps showing its own binding.
 - **Auto-set connection size:** once a WH sig has both a type and a linked connection, `syncConnectionSize(typeId, connectionId)` pushes the type's inferred `jumpMassClass` (from the same `useWormholeTypeMeta` map, server-derived from `wormholeMaxJumpMass`, e.g. O477 → `L`) onto that connection via `onConnectionPatch`. Fired whichever side is set last: from the Type cell's change (with the row's existing `mapConnectionId`), the Leads-to cell's change (with the row's `typeId`), and on draft submit (with the draft's type + connection). A type whose band can't be inferred (K162) leaves the connection size untouched.
 - **Description cell** uses `EditableTextCell` to patch `sig.description` on blur.
 - **`EditableTextCell`** is a small internal helper: a controlled `Input` with a local draft, committed on blur. It re-syncs from `value` only when the input isn't focused, so optimistic-apply and realtime updates don't clobber mid-edit typing. Controlled-mode also avoids Base UI's "uncontrolled `FieldControl` default value changed after init" warning that fires when the parent re-renders with a new `defaultValue` after a blur-triggered patch.
@@ -76,7 +75,7 @@ A frameless `Card` (no card header) with:
 - `Card`, `Button`, `Input` from `@/components/ui/*`
 - `labelForSignatureGroupKey` from `@/lib/map/signatureGroups`
 - `formatRelativeFromMs`, `formatAgoFromMs` from `@/lib/map/relativeTime`
-- `fetchWormholeTypes` from `@/lib/map/client` (target-class + jump-mass-band map for the Leads-to filter and connection-size auto-set)
+- `fetchWormholeCatalog` from `@/lib/map/client` (target-class + jump-mass-band map for the Leads-to filter and connection-size auto-set; the WH-type dropdowns annotate the same catalog client-side)
 - `apertureConfig` (`SIGNATURE_DEFAULT_TTL_MS`) from `aperture.config`
 - `@tanstack/react-table` — `useReactTable`, `createColumnHelper`, `getSortedRowModel`, `flexRender` for the sortable table
 - `SIGNATURE_GROUP_CATALOG` from `@/lib/map/signatureGroups` (group chip iteration)
