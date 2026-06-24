@@ -330,7 +330,7 @@ function NoteInspector({
               if (next !== (note.content ?? null)) onPatch({ content: next });
             }}
             maxLength={apertureConfig.MAP_NOTE_CONTENT_MAX_LENGTH}
-            placeholder="Markdown supported. Committed on blur."
+            placeholder="Markdown and color tags supported."
             className="h-24 resize-none rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
           />
           <span className="text-[10px] text-muted-foreground">
