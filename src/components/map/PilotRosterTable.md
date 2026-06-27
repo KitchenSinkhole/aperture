@@ -15,6 +15,7 @@
 | showGroupedPlayers | boolean | no | Cluster each account's pilots under their main anchor. Defaults to `false`. |
 | showOwner | boolean | no | Annotate alt rows with their main's name in the flat (ungrouped) view. Defaults to `false`. |
 | scrollable | boolean | no | Wrap the `InfoTable` in a height-capped, bordered `ScrollTable`. Defaults to `true`; `SystemNode`'s popup passes `false` for a full-height bare table. |
+| compact | boolean | no | Dense layout: thinner rows and no inter-row borders (via `InfoTable`'s `compact`), plus the Type and Ship columns clipped to a responsive max width (`max-w-[100px] lg:max-w-[180px]`) with an ellipsis and a `title` tooltip carrying the full value. The Pilot and Location columns are not clipped. Defaults to `false`; `SystemNode`'s popup passes `true`. |
 
 ### Renders
 An `InfoTable` with an optional sticky `<thead>` (Pilot / Location / Type / Ship — Location omitted when `showLocationColumn` is false) and a `<tbody>`, wrapped in a `ScrollTable` when `scrollable` (the default). Renders "No pilots match your filter." (via `EmptyRow`) when `presence` is empty.
@@ -27,7 +28,8 @@ Each pilot row shows the character name plus an amber `Unplug` icon (with a `tit
   - **Main not in presence list**: a dimmed italic name label (`main · offline`) anchors the group so its alts don't dangle. This covers both "main is offline" and "main was filtered out by the caller."
   - **No main set** on the account: the first (sorted) member anchors the group unbadged.
 - Does **not** own filter/query state — filtering is the caller's responsibility.
-- **Reused by `SystemNode`'s `PresenceBadge`**: the per-node hover popup renders this table with `showHeaders={false}` / `showLocationColumn={false}` / `scrollable={false}` and no `viewerIds` (so it's a bare, header-less, non-scrolling Pilot / Type / Ship list for the one system — no Unplug icon, no location, no grouping).
+- **Compact mode** (controlled by `compact`): rows go dense (thinner padding, no inter-row borders — handled centrally by `InfoTable`'s `compact`), and the Type/Ship cells are wrapped in a `block max-w-[100px] lg:max-w-[180px] truncate` span with a `title` tooltip so long ship names clip with an ellipsis instead of widening the popup. The inner `block` span is required because `truncate` does not clip reliably on a bare `<td>`. Pilot and Location are left untouched.
+- **Reused by `SystemNode`'s `PresenceBadge`**: the per-node hover popup renders this table with `showHeaders={false}` / `showLocationColumn={false}` / `scrollable={false}` / `compact` and no `viewerIds` (so it's a bare, header-less, non-scrolling, dense Pilot / Type / Ship list for the one system — no Unplug icon, no location, no grouping).
 
 ### Depends On
 - `InfoTable`/`ScrollTable`/`Th`/`Td`/`EmptyRow` from `@/components/dialogs/infoTable`

@@ -543,6 +543,7 @@ function PresenceBadge({ pilots }: { pilots: readonly MapPresenceEntry[] }) {
               showHeaders={false}
               showLocationColumn={false}
               scrollable={false}
+              compact
             />
           </PreviewCard.Popup>
         </PreviewCard.Positioner>
