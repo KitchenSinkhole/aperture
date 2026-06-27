@@ -539,3 +539,30 @@ export type SigSearchFilters = {
   /** `MapSystemNode.security` labels to include; empty = all. */
   securityClasses: string[];
 };
+
+// --- Observability: health probe (Phase 1) ---
+// Consumed by `/api/health/ready`, the external monitor, and (later) alerting.
+
+/**
+ * A readiness component's status. `unknown` is for a probe that errored in a
+ * non-critical way; for severity it ranks alongside `degraded` (does not 503).
+ */
+export type HealthComponentStatus = 'ok' | 'degraded' | 'down' | 'unknown';
+
+/** The components reported by the deep readiness probe. */
+export type HealthComponentName = 'db' | 'realtimeBus' | 'worker' | 'esi' | 'migrations';
+
+/** One component's result. `detail` is a human-readable, PII-free one-liner. */
+export type HealthComponent = {
+  status: HealthComponentStatus;
+  detail?: string;
+};
+
+/** Deep readiness report from `GET /api/health/ready`. */
+export type HealthReport = {
+  /** Worst component status. The route returns 503 iff this is `down`. */
+  status: HealthComponentStatus;
+  /** ISO-8601 instant the probe ran. */
+  checkedAt: string;
+  components: Record<HealthComponentName, HealthComponent>;
+};

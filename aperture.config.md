@@ -40,6 +40,7 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 
 **Authz / character cleanup**
 - `CHARACTER_CLEANUP_CRON`, `CHARACTER_AUTHZ_RESYNC_STALE_AFTER_MS`, `CHARACTER_AUTHZ_RESYNC_BATCH_SIZE` — cadence and throttle for the `character-cleanup` job's kick-expiry + authz resync passes.
+- `HEALTH_WORKER_STALE_MS` — `/api/health/ready` flags the `worker` component unhealthy if no `ap_job_run` finished within this window (15 min ≈ 3 `character-cleanup` ticks).
 - `AUTHZ_ADMIN_ROLE` — the ESI corporation role (`Director`) that resolves a character to `manager`.
 
 **Wormhole / signature lifetimes**

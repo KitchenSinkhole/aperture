@@ -194,6 +194,14 @@ export const apertureConfig = {
   CHARACTER_CLEANUP_CRON: '*/5 * * * *',
 
   /**
+   * `/api/health/ready` flags the `worker` component unhealthy if no `ap_job_run`
+   * has *finished* within this window. `character-cleanup` runs every 5 minutes
+   * (`CHARACTER_CLEANUP_CRON`), so 15 minutes (3 ticks) tolerates a slow/missed
+   * tick without false-alarming a live worker.
+   */
+  HEALTH_WORKER_STALE_MS: 15 * 60 * 1000,
+
+  /**
    * A character's `authz_level` is resynced by `character-cleanup` if
    * `authz_synced_at` is older than this (or NULL). 6 hours keeps director
    * status reasonably fresh without bombarding ESI for every active character

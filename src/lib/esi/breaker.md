@@ -19,6 +19,9 @@ Increments the failure run. Re-opens immediately on a half-open trial failure; o
 ### breakerState(operationId: string): BreakerState
 Current state (`closed | open | half-open`) — observability/tests.
 
+### openBreakerCount(): number
+How many breakers are currently `open`, counted without mutating state (a cooled-down open breaker is **not** transitioned to half-open here, unlike `canRequest`). Used by the health probe (`esi` component) / metrics.
+
 ### __resetBreakersForTest(): void
 Clears all breaker state.
 

@@ -73,6 +73,19 @@ export function breakerState(operationId: string): BreakerState {
   return get(operationId).state;
 }
 
+/**
+ * How many breakers are currently open. Reads state without mutating it — unlike
+ * `canRequest`, a cooled-down open breaker is *not* transitioned to half-open
+ * here. Used by the health probe / metrics to gauge ESI degradation.
+ */
+export function openBreakerCount(): number {
+  let count = 0;
+  for (const b of breakers.values()) {
+    if (b.state === 'open') count += 1;
+  }
+  return count;
+}
+
 /** Test-only: clear all breaker state. */
 export function __resetBreakersForTest(): void {
   breakers.clear();

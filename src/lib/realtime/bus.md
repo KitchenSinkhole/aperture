@@ -17,6 +17,11 @@ Whether the dedicated LISTEN connection is currently live. Used by the WS health
 
 ---
 
+### bus.subscriberCount(): number
+Total active map subscriptions across all channels. Lets the health probe (`src/lib/health/probe.ts`) distinguish an **idle** bus (zero subscribers ⇒ the lazy connection is intentionally not open) from a connection that dropped while subscribers expect it.
+
+---
+
 ### Notes
 - Uses its **own `pg.Client`** (not the pooled `db`) because LISTEN occupies a connection for its lifetime.
 - On notification, parses the payload as JSON (non-JSON → `{}`), derives `mapId` from the channel name, and emits one of two envelopes:

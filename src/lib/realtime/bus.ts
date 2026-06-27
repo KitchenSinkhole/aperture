@@ -69,6 +69,17 @@ class RealtimeBus {
     return this.connected;
   }
 
+  /**
+   * Total active map subscriptions across all channels. Lets the health probe
+   * tell an *idle* bus (zero subscribers ⇒ intentionally not connected, since
+   * the connection is lazy) apart from a dropped connection that should exist.
+   */
+  subscriberCount(): number {
+    let total = 0;
+    for (const set of this.listeners.values()) total += set.size;
+    return total;
+  }
+
   private channel(mapId: bigint): string {
     return `${PREFIX}${mapId.toString()}`;
   }
