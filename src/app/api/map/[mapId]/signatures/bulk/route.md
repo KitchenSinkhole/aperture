@@ -10,7 +10,7 @@
 ```ts
 {
   mapSystemId: string,                  // ap_map_system.id as string
-  rows: ParsedSigRow[],                 // server re-resolves; preview-only resolution is dropped
+  rows: ParsedSigRow[],                 // incl. classKind; server re-resolves, preview-only resolution dropped
   options: {
     addMissing: boolean,
     updateExisting: boolean,

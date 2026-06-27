@@ -3,7 +3,7 @@ import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { deleteSignature, updateSignature } from '@/lib/map/mutations/signatures';
-import { signatureGroupKey } from '@/db/schema';
+import { signatureClassKind, signatureGroupKey } from '@/db/schema';
 import { parseBigInt, requireMapMutate } from '../../../utils';
 
 /**
@@ -19,6 +19,7 @@ const updateSignatureBodySchema = z.object({
   mapConnectionId: z.string().regex(/^\d+$/).nullable().optional(),
   sigId: z.string().min(1).max(7).optional(),
   groupKey: z.enum(signatureGroupKey.enumValues).nullable().optional(),
+  classKind: z.enum(signatureClassKind.enumValues).nullable().optional(),
   typeId: z.number().int().positive().nullable().optional(),
   name: z.string().max(100).nullable().optional(),
   description: z.string().nullable().optional(),
@@ -69,6 +70,7 @@ export async function PATCH(
   }
   if ('sigId' in parsed.data) patch.sigId = parsed.data.sigId;
   if ('groupKey' in parsed.data) patch.groupKey = parsed.data.groupKey;
+  if ('classKind' in parsed.data) patch.classKind = parsed.data.classKind;
   if ('typeId' in parsed.data) patch.typeId = parsed.data.typeId;
   if ('name' in parsed.data) patch.name = parsed.data.name;
   if ('description' in parsed.data) patch.description = parsed.data.description;

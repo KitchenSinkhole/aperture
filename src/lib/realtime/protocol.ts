@@ -5,6 +5,7 @@ import {
   mapNoteSeverity,
   mapScope,
   mapType,
+  signatureClassKind,
   signatureGroupKey,
   systemStatus,
   whJumpMass,
@@ -117,6 +118,7 @@ const eolStageEnum = z.enum(eolStage.enumValues);
 const mapScopeEnum = z.enum(mapScope.enumValues);
 const mapTypeEnum = z.enum(mapType.enumValues);
 const signatureGroupKeyEnum = z.enum(signatureGroupKey.enumValues);
+const signatureClassKindEnum = z.enum(signatureClassKind.enumValues);
 const mapNoteSeverityEnum = z.enum(mapNoteSeverity.enumValues);
 
 const eventId = z.number().int().positive();
@@ -166,6 +168,7 @@ const signatureBody = {
   mapConnectionId: z.string().nullable(),
   sigId: z.string(),
   groupKey: signatureGroupKeyEnum.nullable(),
+  classKind: signatureClassKindEnum.nullable(),
   typeId: z.number().int().nullable(),
   wormholeCode: z.string().nullable(),
   name: z.string().nullable(),
@@ -271,6 +274,7 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     leadsToMapSystemId: z.string().nullable().optional(),
     sigId: z.string().optional(),
     groupKey: signatureGroupKeyEnum.nullable().optional(),
+    classKind: signatureClassKindEnum.nullable().optional(),
     typeId: z.number().int().nullable().optional(),
     wormholeCode: z.string().nullable().optional(),
     name: z.string().nullable().optional(),

@@ -6,7 +6,7 @@
 ---
 
 ### resolveSignatureRows(rows: ParsedSigRow[]): Promise<ResolvedSigRow[]>
-Single round-trip to `universe_wormhole` (filtered by the unique WH names that appeared in wormhole-group rows), zero queries for the six cosmic groups. Returns each input row enriched with `{ groupKey, typeId }` and a possibly-nulled `name`:
+Single round-trip to `universe_wormhole` (filtered by the unique WH names that appeared in wormhole-group rows), zero queries for the six cosmic groups. Returns each input row enriched with `{ groupKey, typeId }` and a possibly-nulled `name`. The parser-supplied `classKind` (`signature`/`anomaly`) passes through untouched:
 
 - `groupKey` is derived from `groupName` via `signatureGroupKeyFromScannerName` — pure, no DB hit.
 - `typeId` is set only when `groupKey === 'wormhole'` and `name` matches a `universe_wormhole.name`. Otherwise null.

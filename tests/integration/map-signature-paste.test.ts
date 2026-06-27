@@ -128,6 +128,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         name: 'Unstable Wormhole',
         groupName: 'Wormhole',
         signal: '100.0%',
+        classKind: 'signature',
         groupKey: 'wormhole',
         typeId: TYPE_UNSTABLE,
       },
@@ -136,6 +137,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         name: 'Barren Reservoir',
         groupName: 'Gas Site',
         signal: '100.0%',
+        classKind: 'signature',
         groupKey: 'gas',
         typeId: null,
       },
@@ -144,6 +146,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         name: null,
         groupName: null,
         signal: '4.2%',
+        classKind: 'signature',
         groupKey: null,
         typeId: null,
       },
@@ -192,6 +195,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         sigId: apMapSignature.sigId,
         name: apMapSignature.name,
         groupKey: apMapSignature.groupKey,
+        classKind: apMapSignature.classKind,
       })
       .from(apMapSignature)
       .where(eq(apMapSignature.mapSystemId, mapSystemIdA));
@@ -202,6 +206,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
     expect(abcRow).toMatchObject({
       name: 'preserve me', // unchanged — paste shouldn't clobber name
       groupKey: 'wormhole',
+      classKind: 'signature', // filled from the paste (seeded null → 'signature')
     });
 
     // Clean for the next test.
@@ -246,6 +251,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
           name: 'Barren Reservoir',
           groupName: 'Gas Site',
           signal: '100.0%',
+          classKind: 'signature',
           groupKey: 'gas',
           typeId: null,
         },
@@ -254,6 +260,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
           name: 'Vast Frontier Reservoir',
           groupName: 'Gas Site',
           signal: '100.0%',
+          classKind: 'signature',
           groupKey: 'gas',
           typeId: null,
         },
@@ -342,7 +349,8 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         sigId: 'XFV-531',
         name: 'Suspicious Signal: Block the Broadcast',
         groupName: 'Homefront Operation Site - Combat Site',
-        signal: '100.0%'
+        signal: '100.0%',
+        classKind: 'anomaly'
       }
     ]);
 
@@ -361,7 +369,8 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         sigId: 'VBA-720',
         name: 'Minmatar Small ADV-1',
         groupName: 'Factional Warfare Site - Combat Site',
-        signal: '100.0%'
+        signal: '100.0%',
+        classKind: 'anomaly'
       }
     ]);
 
@@ -376,24 +385,26 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
 
   it('resolveSignatureRows: classifies the seven scanner groups + WH name → typeId', async () => {
     const rows = await resolveSignatureRows([
-      { sigId: 'WH1-001', name: 'X901', groupName: 'Wormhole', signal: '100.0%' },
+      { sigId: 'WH1-001', name: 'X901', groupName: 'Wormhole', signal: '100.0%', classKind: 'signature' },
       // Low-strength wormhole: EVE emits "Wormhole" in both Name and Group.
-      { sigId: 'WH2-002', name: 'Wormhole', groupName: 'Wormhole', signal: '4.2%' },
+      { sigId: 'WH2-002', name: 'Wormhole', groupName: 'Wormhole', signal: '4.2%', classKind: 'signature' },
       // Cosmic-site row: name carried through, typeId null.
       {
         sigId: 'REL-003',
         name: 'Forgotten Perimeter Habitation Coils',
         groupName: 'Relic Site',
         signal: '100.0%',
+        classKind: 'signature',
       },
       // Unknown group: low-strength row with no Group cell.
-      { sigId: 'UNK-004', name: null, groupName: null, signal: '4.2%' },
+      { sigId: 'UNK-004', name: null, groupName: null, signal: '4.2%', classKind: 'signature' },
       // Combat scanner group.
       {
         sigId: 'COM-005',
         name: 'Fortification Frontier Stronghold',
         groupName: 'Combat Site',
         signal: '100.0%',
+        classKind: 'signature',
       },
     ]);
 
@@ -470,6 +481,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
           name: null,
           groupName: 'Wormhole',
           signal: '100.0%',
+          classKind: 'signature',
           groupKey: 'wormhole',
           typeId: null,
         },
@@ -479,6 +491,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
           name: null,
           groupName: null,
           signal: '100%',
+          classKind: 'signature',
           groupKey: null,
           typeId: null,
         },

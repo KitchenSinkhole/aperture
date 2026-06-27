@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { pasteSignatures } from '@/lib/map/mutations/bulkSignatures';
+import { signatureClassKind } from '@/db/schema';
 import { resolveSignatureRows } from '@/lib/map/signatureReader';
 import type { ParsedSigRow } from '@/lib/map/signatureParser';
 import { apertureConfig } from '../../../../../../../aperture.config';
@@ -25,6 +26,7 @@ const parsedRowSchema = z.object({
   name: z.string().nullable(),
   groupName: z.string().nullable(),
   signal: z.string().nullable(),
+  classKind: z.enum(signatureClassKind.enumValues),
 });
 
 const bulkPasteBodySchema = z.object({

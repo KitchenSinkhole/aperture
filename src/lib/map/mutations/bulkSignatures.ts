@@ -4,7 +4,7 @@ import { db } from '@/db/client';
 import { apMapSignature } from '@/db/schema';
 import type { MapEventPayload } from '@/lib/realtime/protocol';
 import type { ResolvedSigRow } from '@/lib/map/signatureReader';
-import type { SignatureGroupKey } from '@/types';
+import type { SignatureClassKind, SignatureGroupKey } from '@/types';
 import type { ActionResult } from './core';
 import { createSignature, updateSignature, deleteSignature } from './signatures';
 import { deleteConnection } from './connections';
@@ -63,6 +63,7 @@ export async function pasteSignatures(
           id: apMapSignature.id,
           sigId: apMapSignature.sigId,
           groupKey: apMapSignature.groupKey,
+          classKind: apMapSignature.classKind,
           typeId: apMapSignature.typeId,
           name: apMapSignature.name,
           mapConnectionId: apMapSignature.mapConnectionId,
@@ -97,6 +98,7 @@ export async function pasteSignatures(
             characterId: input.characterId,
             sigId,
             groupKey: incoming.groupKey,
+            classKind: incoming.classKind,
             typeId: incoming.typeId,
             name: incoming.name,
             description: null,
@@ -121,11 +123,17 @@ export async function pasteSignatures(
         // high-strength re-paste.
         const patch: {
           groupKey?: SignatureGroupKey | null;
+          classKind?: SignatureClassKind | null;
           typeId?: number | null;
           name?: string | null;
         } = {};
         if (incoming.groupKey !== null && incoming.groupKey !== existingRow.groupKey) {
           patch.groupKey = incoming.groupKey;
+        }
+        // Paste always resolves a kind, so fill a previously-null row or correct
+        // a stale one. (Unlike groupKey, the parser never emits a null classKind.)
+        if (incoming.classKind !== existingRow.classKind) {
+          patch.classKind = incoming.classKind;
         }
         if (incoming.typeId !== null && incoming.typeId !== existingRow.typeId) {
           patch.typeId = incoming.typeId;

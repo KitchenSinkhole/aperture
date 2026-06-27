@@ -10,6 +10,7 @@ function makeSig(
   return {
     mapConnectionId: null,
     groupKey: null,
+    classKind: null,
     typeId: null,
     wormholeCode: null,
     name: null,

@@ -6,7 +6,7 @@
 ---
 
 ### POST /api/map/[mapId]/signatures/resolve
-**Body:** `{ rows: ParsedSigRow[] }` — capped at 500 entries.
+**Body:** `{ rows: ParsedSigRow[] }` — capped at 500 entries. Each row carries `classKind` (`signature`/`anomaly`), which passes through to the `ResolvedSigRow` output unchanged.
 
 **Auth & guards:** `requireMapView(rawMapId, session)` — view-only; 401 / 404. The bulk POST enforces the actual `map_update` right.
 

@@ -15,6 +15,7 @@ import {
   mapNoteSeverity,
   mapScope,
   mapType,
+  signatureClassKind,
   signatureGroupKey,
   systemStatus,
   tagScheme,
@@ -43,6 +44,7 @@ type WhJumpMass = (typeof whJumpMass.enumValues)[number];
 type MapScope = (typeof mapScope.enumValues)[number];
 type MapType = (typeof mapType.enumValues)[number];
 type SignatureGroupKey = (typeof signatureGroupKey.enumValues)[number];
+type SignatureClassKind = (typeof signatureClassKind.enumValues)[number];
 type TagScheme = (typeof tagScheme.enumValues)[number];
 type NoteSeverity = (typeof mapNoteSeverity.enumValues)[number];
 
@@ -105,6 +107,8 @@ export type MapSignature = {
   sigId: string;
   /** Scanner-level group; null for "unknown". */
   groupKey: SignatureGroupKey | null;
+  /** Cosmic Signature (`signature`, must scan) vs Cosmic Anomaly (`anomaly`, warpable). Paste-derived; null when unknown. */
+  classKind: SignatureClassKind | null;
   /** `universe_type.id`. Only meaningful when `groupKey === 'wormhole'` (points to a `universe_wormhole` row); otherwise null. */
   typeId: number | null;
   /** Display-only wormhole code (e.g. "B274"), resolved server-side from `universe_wormhole.name`. Null when `typeId` is null or not a wormhole. */
