@@ -15,6 +15,8 @@ Fields:
 - `ESI_BASE_URL` — ESI base URL; defaulted to `https://esi.evetech.net`. Used by the ESI client to build request URLs.
 - `EVE_USER_AGENT` — required by the ESI client; defaulted.
 - `ZKB_FEED_ENABLED` — master switch for the server-side zKillboard live feed (`zkbFeed.ts`). String `'true'`/`'false'`, parsed to a boolean; defaults to `true`. Set `'false'` to disable the outbound feed (CI, air-gapped dev, zKB degraded). Only `server.ts` reads it (the only place the feed is booted).
+- `METRICS_ENABLED` — opt-in switch for the `/api/metrics` Prometheus endpoint. String `'true'`/`'false'`, parsed to a boolean; defaults to `false`. When `false` the route returns 404. Read only by `src/app/api/metrics/route.ts`.
+- `METRICS_TOKEN` — Bearer/`?token=` secret required by `/api/metrics` while enabled; defaults to `''`. An empty token matches nothing (every request 401s), so enabling without setting a token leaves the endpoint closed.
 - `NODE_ENV` — narrowed to `development | test | production`.
 
 ### Env

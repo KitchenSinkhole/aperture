@@ -32,6 +32,17 @@ const schema = z
       .enum(['true', 'false'])
       .default('true')
       .transform((v) => v === 'true'),
+    // Opt-in `/api/metrics` Prometheus endpoint. Off by default so a self-hoster
+    // doesn't unknowingly expose internals; the public deployment turns it on and
+    // sets a token. With it disabled the route 404s.
+    METRICS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    // Bearer/`?token=` secret guarding `/api/metrics` while enabled. An empty
+    // token admits nothing (the route 401s), so enabling without a token is a
+    // closed door rather than an open one.
+    METRICS_TOKEN: z.string().default(''),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   })
   .superRefine((v, ctx) => {
