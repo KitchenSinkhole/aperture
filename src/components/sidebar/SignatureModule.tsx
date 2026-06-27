@@ -19,6 +19,8 @@ import { SignatureGroupSelect } from './SignatureGroupSelect';
 import { ConnectionSelect } from './ConnectionSelect';
 import { SiteTypeCombobox } from './SiteTypeCombobox';
 import { SignaturePasteDialog } from '@/components/dialogs/SignaturePasteDialog';
+import { SignatureIcon } from '@/components/icons/SignatureIcon';
+import { AnomalyIcon } from '@/components/icons/AnomalyIcon';
 import type {
   MapConnectionEdge,
   MapEventPayload,
@@ -87,6 +89,7 @@ const FLAT_INPUT =
 const columnHelper = createColumnHelper<MapSignature>();
 
 const colHeaderClass: Record<string, string> = {
+  classKind: 'w-6 px-1 py-0.5',
   sigId: 'w-24 px-2 py-0.5 text-left',
   groupKey: 'w-32 px-3 py-0.5 text-left',
   type: 'w-56 px-3 py-0.5 text-left',
@@ -191,6 +194,20 @@ type SignatureTableMeta = {
 // `assignedConnectionIds` → the columns memo). Hoisting the cells and routing
 // volatile data through `table.options.meta` keeps the identities stable, so a
 // realtime update re-renders the cells in place instead of remounting them.
+// Signature-vs-anomaly glyph. No colour class → inherits the row's foreground
+// text colour (matches SigIdCell). Each icon carries its own label/tooltip.
+// Unknown class (null, e.g. a manually-added or pre-paste sig) shows nothing
+// rather than guessing.
+function ClassKindCell({ row }: CellContext<MapSignature, unknown>) {
+  const { classKind } = row.original;
+  return (
+    <span className="flex items-center justify-center px-1 py-px">
+      {classKind === 'signature' && <SignatureIcon className="size-3.5" />}
+      {classKind === 'anomaly' && <AnomalyIcon className="size-2.5" />}
+    </span>
+  );
+}
+
 function SigIdCell({ row }: CellContext<MapSignature, string>) {
   return <span className="px-2 py-px font-mono text-xs">{row.original.sigId}</span>;
 }
@@ -326,6 +343,7 @@ function ActionsCell({ row, table }: CellContext<MapSignature, unknown>) {
 }
 
 const signatureColumns = [
+  columnHelper.display({ id: 'classKind', header: '', cell: ClassKindCell }),
   columnHelper.accessor('sigId', { header: 'Sig', enableSorting: true, cell: SigIdCell }),
   columnHelper.accessor('groupKey', { header: 'Group', enableSorting: true, cell: GroupCell }),
   columnHelper.display({ id: 'type', header: 'Type', cell: TypeColumnCell }),
@@ -672,7 +690,7 @@ function SignaturePanelBody({
           <tbody>
             {table.getRowModel().rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-2 py-3 text-center text-xs text-muted-foreground">
+                <td colSpan={10} className="px-2 py-3 text-center text-xs text-muted-foreground">
                   {rows.length > 0 ? 'No signatures match the filter.' : 'No signatures.'}
                 </td>
               </tr>
