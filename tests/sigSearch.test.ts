@@ -131,4 +131,103 @@ describe('buildSigSearchResults', () => {
     expect(rows[0]!.system.alias).toBe('Alpha');
     expect(rows[1]!.system.alias).toBe('Bravo');
   });
+
+  it('sorts by sigId descending', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    const a = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString() });
+    const b = makeSig({ id: '2', sigId: 'BBB', mapSystemId: 's1', createdAt: new Date(NOW).toISOString() });
+    const rows = buildSigSearchResults([a, b], [sys], BASE, 'sigId', 'desc', NOW);
+    expect(rows[0]!.sig.sigId).toBe('BBB');
+    expect(rows[1]!.sig.sigId).toBe('AAA');
+  });
+
+  it('sorts by age ascending — newest first', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    const newer = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW - 3_600_000).toISOString() });
+    const older = makeSig({ id: '2', sigId: 'BBB', mapSystemId: 's1', createdAt: new Date(NOW - 7_200_000).toISOString() });
+    const rows = buildSigSearchResults([older, newer], [sys], BASE, 'age', 'asc', NOW);
+    expect(rows[0]!.sig.sigId).toBe('AAA');
+    expect(rows[1]!.sig.sigId).toBe('BBB');
+  });
+
+  it('sorts by systemName descending and falls back to name when alias is null', () => {
+    const sysA = makeSystem({ id: 's1', name: 'J999999', alias: null }); // sorts on name 'J999999'
+    const sysB = makeSystem({ id: 's2', name: 'J222222', alias: 'Alpha' }); // sorts on alias 'Alpha'
+    const sigA = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString() });
+    const sigB = makeSig({ id: '2', sigId: 'BBB', mapSystemId: 's2', createdAt: new Date(NOW).toISOString() });
+    const rows = buildSigSearchResults([sigA, sigB], [sysA, sysB], BASE, 'systemName', 'desc', NOW);
+    // 'J999999' > 'Alpha', so descending puts the null-alias (name) system first.
+    expect(rows[0]!.system.id).toBe('s1');
+    expect(rows[1]!.system.id).toBe('s2');
+  });
+
+  it('securityClasses filter keeps systems from any listed class', () => {
+    const c3 = makeSystem({ id: 's1', name: 'J123456', security: 'C3' });
+    const hs = makeSystem({ id: 's2', name: 'Jita', security: 'H' });
+    const ls = makeSystem({ id: 's3', name: 'Tama', security: 'L' });
+    const sigC3 = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString() });
+    const sigHs = makeSig({ id: '2', sigId: 'BBB', mapSystemId: 's2', createdAt: new Date(NOW).toISOString() });
+    const sigLs = makeSig({ id: '3', sigId: 'CCC', mapSystemId: 's3', createdAt: new Date(NOW).toISOString() });
+    const rows = buildSigSearchResults(
+      [sigC3, sigHs, sigLs],
+      [c3, hs, ls],
+      { ...BASE, securityClasses: ['C3', 'H'] },
+      'sigId',
+      'asc',
+      NOW,
+    );
+    expect(rows.map((r) => r.sig.sigId)).toEqual(['AAA', 'BBB']);
+  });
+
+  it('securityClasses filter excludes a system whose security is null', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456', security: null });
+    const sig = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString() });
+    const rows = buildSigSearchResults([sig], [sys], { ...BASE, securityClasses: ['C3'] }, 'sigId', 'asc', NOW);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('name filter trims surrounding whitespace', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    const sig = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), name: 'Eagle Nebula' });
+    const rows = buildSigSearchResults([sig], [sys], { ...BASE, name: '  nebula  ' }, 'sigId', 'asc', NOW);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('maxAgeHours boundary is inclusive — exactly at the limit is kept, just over is dropped', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    const exact = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW - 3_600_000).toISOString() }); // 1h
+    const over = makeSig({ id: '2', sigId: 'BBB', mapSystemId: 's1', createdAt: new Date(NOW - 3_600_001).toISOString() }); // 1h + 1ms
+    const rows = buildSigSearchResults([exact, over], [sys], { ...BASE, maxAgeHours: 1 }, 'sigId', 'asc', NOW);
+    expect(rows.map((r) => r.sig.sigId)).toEqual(['AAA']);
+  });
+
+  it('maxAgeHours of 0 drops every aged signature', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    const sig = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW - 1_000).toISOString() }); // 1s old
+    const rows = buildSigSearchResults([sig], [sys], { ...BASE, maxAgeHours: 0 }, 'sigId', 'asc', NOW);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('applies name, groupKey and securityClasses filters together (AND)', () => {
+    const c3 = makeSystem({ id: 's1', name: 'J123456', security: 'C3' });
+    const hs = makeSystem({ id: 's2', name: 'Jita', security: 'H' });
+    const match = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'gas', name: 'Vast Frontier Reservoir' });
+    const wrongName = makeSig({ id: '2', sigId: 'BBB', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'gas', name: 'Barren Perimeter Reservoir' });
+    const wrongGroup = makeSig({ id: '3', sigId: 'CCC', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'wormhole', name: 'Vast Frontier Reservoir' });
+    const wrongSec = makeSig({ id: '4', sigId: 'DDD', mapSystemId: 's2', createdAt: new Date(NOW).toISOString(), groupKey: 'gas', name: 'Vast Frontier Reservoir' });
+    const rows = buildSigSearchResults(
+      [match, wrongName, wrongGroup, wrongSec],
+      [c3, hs],
+      { name: 'vast', groupKey: 'gas', maxAgeHours: null, securityClasses: ['C3'] },
+      'sigId',
+      'asc',
+      NOW,
+    );
+    expect(rows.map((r) => r.sig.sigId)).toEqual(['AAA']);
+  });
+
+  it('returns an empty array for empty signatures input', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    expect(buildSigSearchResults([], [sys], BASE, 'sigId', 'asc', NOW)).toEqual([]);
+  });
 });
