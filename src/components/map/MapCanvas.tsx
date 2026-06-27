@@ -574,7 +574,17 @@ export function MapCanvas({
   const handleNavigateToSig = useCallback((systemId: string, sigId: string) => {
     setSelected({ kind: 'system', id: systemId });
     setSelectedSystemIds(new Set([systemId]));
-    flowInstance.current?.fitView({ nodes: [{ id: systemId }], padding: 0.5, duration: 400 });
+    const inst = flowInstance.current;
+    const node = inst?.getNode(systemId);
+    if (inst && node) {
+      const w = node.measured?.width ?? node.width ?? 0;
+      const h = node.measured?.height ?? node.height ?? 0;
+      // Snap (no animation) to the system, preserving the current zoom level.
+      inst.setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+        zoom: inst.getZoom(),
+        duration: 0,
+      });
+    }
     if (flashTimer.current) clearTimeout(flashTimer.current);
     setFlashSigId(sigId);
     flashTimer.current = setTimeout(() => setFlashSigId(null), 3000);
