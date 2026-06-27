@@ -24,6 +24,7 @@ export interface PanelDef {
 export const PANELS: PanelDef[] = [
   { id: 'canvas', title: 'Map', defaultVisible: true, minW: 4, minH: 6 },
   { id: 'signatures', title: 'Signatures', defaultVisible: true, minW: 6, minH: 3 },
+  { id: 'sigSearch', title: 'Signature Search', defaultVisible: true, minW: 4, minH: 3 },
   { id: 'inspector', title: 'Inspector', defaultVisible: true, minW: 1, minH: 3 },
   { id: 'route', title: 'Routes', defaultVisible: true, minW: 2, minH: 2 },
   { id: 'intel', title: 'Intel', defaultVisible: true, minW: 1, minH: 2 },
@@ -37,6 +38,7 @@ export const PANELS: PanelDef[] = [
 
 // Right-column modules, in display order (everything except canvas + signatures).
 const RIGHT_COLUMN: PanelId[] = [
+  'sigSearch',
   'inspector',
   'route',
   'intel',

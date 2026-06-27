@@ -15,7 +15,7 @@
 `Record<Breakpoint, number>` — `{ lg: 12, md: 8, sm: 4 }`. Column count per breakpoint.
 
 ### PANELS
-`PanelDef[]` — the registry of every panel in DOM source order (which drives single-column `sm` stacking). Each `PanelDef` is `{ id: PanelId; title: string; defaultVisible: boolean; minW: number; minH: number }`. Order: canvas, signatures, inspector, route, intel, structure, killStats, systemGraph, systemKillboard, tags, thera (displayed as "Eve-Scout"). `minW`/`minH` are the per-panel resize floors **in grid columns/rows** (not px) — edit them here to change how small a panel can be dragged.
+`PanelDef[]` — the registry of every panel in DOM source order (which drives single-column `sm` stacking). Each `PanelDef` is `{ id: PanelId; title: string; defaultVisible: boolean; minW: number; minH: number }`. Order: canvas, signatures, sigSearch (displayed as "Signature Search"), inspector, route, intel, structure, killStats, systemGraph, systemKillboard, tags, thera (displayed as "Eve-Scout"). `minW`/`minH` are the per-panel resize floors **in grid columns/rows** (not px) — edit them here to change how small a panel can be dragged.
 
 ### PANEL_MIN
 `Record<PanelId, { minW: number; minH: number }>` — the resize floors derived from `PANELS`. Authoritative: `MapLayoutGrid` re-applies these over each stored layout item at render time, so lowering a floor takes effect for already-saved per-account layouts without disturbing their persisted positions.

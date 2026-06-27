@@ -492,6 +492,7 @@ export type UnderglowConfig = {
 export type PanelId =
   | 'canvas'
   | 'signatures'
+  | 'sigSearch'
   | 'inspector'
   | 'route'
   | 'intel'
@@ -531,7 +532,7 @@ export type MapContextMenuTarget =
   | { kind: 'note'; id: string; x: number; y: number }
   | { kind: 'pane'; x: number; y: number };
 
-/** Filter state for `SignatureSearchDialog`. Owned by `MapCanvas` so it persists between opens. */
+/** Filter state for the `sigSearch` panel (`SignatureSearchModule`). Owned by `MapCanvas` so it persists across the session. */
 export type SigSearchFilters = {
   name: string;
   groupKey: SignatureGroupKey | null;

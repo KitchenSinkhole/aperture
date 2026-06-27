@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ClipboardPaste, Search, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ClipboardPaste, Trash2 } from 'lucide-react';
 import {
   createColumnHelper,
   flexRender,
@@ -394,11 +394,11 @@ export function SignatureModule({
 }
 
 /**
- * Header actions for the Signatures panel — the **Search** button, **Lazy delete** arm toggle, and
+ * Header actions for the Signatures panel — the **Lazy delete** arm toggle and
  * the **Paste from scanner** button. Rendered into the `MapPanel` header
  * (`headerRight`) rather than inside the card, so they sit beside the panel
- * title alongside the drag handle and hide button. The search button is always
- * rendered; lazy delete and paste are only shown when a system is selected.
+ * title alongside the drag handle and hide button. Both are only shown when a
+ * system is selected.
  */
 export function SignatureModuleHeaderActions({
   mapId,
@@ -407,7 +407,6 @@ export function SignatureModuleHeaderActions({
   onBulkPaste,
   lazyDelete,
   onLazyDeleteChange,
-  onOpenSearch,
 }: {
   mapId: string;
   system: MapSystemNode | null;
@@ -415,14 +414,9 @@ export function SignatureModuleHeaderActions({
   onBulkPaste: (payloads: MapEventPayload[]) => void;
   lazyDelete: boolean;
   onLazyDeleteChange: (next: boolean) => void;
-  onOpenSearch: () => void;
 }) {
   return (
     <>
-      <Button type="button" variant="outline" size="sm" onClick={onOpenSearch}>
-        <Search className="size-3.5" />
-        Sig Search
-      </Button>
       {system && (
         <>
           <LazyDeleteToggle armed={lazyDelete} onArmedChange={onLazyDeleteChange} />
