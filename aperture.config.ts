@@ -290,6 +290,21 @@ export const apertureConfig = {
    * run picks up the rest.
    */
   JOB_DELETE_BATCH_SIZE: 500,
+
+  /**
+   * Histogram bucket upper-bounds (ms) for `esi_request_duration_ms`. Finite
+   * `le` boundaries in Prometheus semantics (a `+Inf` bucket is implied by the
+   * total count). Spans a fast cache hit (~5ms) to the per-request timeout
+   * (`ESI_REQUEST_TIMEOUT_MS` = 5000ms).
+   */
+  METRICS_ESI_LATENCY_BUCKETS_MS: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
+
+  /**
+   * Histogram bucket upper-bounds (ms) for `route_plan_duration_ms`. Route
+   * planning is an in-memory Dijkstra over the cached K-space graph plus a few
+   * small DB reads — sub-millisecond to tens of milliseconds in practice.
+   */
+  METRICS_ROUTE_LATENCY_BUCKETS_MS: [1, 2, 5, 10, 25, 50, 100, 250, 500],
 } as const;
 
 export type ApertureConfig = typeof apertureConfig;

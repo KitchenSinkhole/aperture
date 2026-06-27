@@ -8,6 +8,7 @@ import { canViewMap } from '@/lib/auth/rights';
 import { seedTrackingForMap } from '@/lib/jobs/tracking';
 import { bus } from './bus';
 import { addMapViewer, removeMapViewer } from './mapViewers';
+import { decWsConnection, incWsConnection } from './wsConnections';
 import { clientToServerMessageSchema, type ServerToClientMessage } from './protocol';
 
 /**
@@ -113,6 +114,7 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
   wss.on('connection', (ws: WebSocket, _req: IncomingMessage, session: SessionClaims) => {
     const state: ClientState = { session, isAlive: true, subscriptions: new Map() };
     clients.set(ws, state);
+    incWsConnection();
 
     ws.on('pong', () => {
       state.isAlive = true;
@@ -143,6 +145,7 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       }
       state.subscriptions.clear();
       clients.delete(ws);
+      decWsConnection();
     });
   });
 

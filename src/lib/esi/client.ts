@@ -10,6 +10,8 @@ import { OP_KEYS, type OpKey } from './opkeys';
 import { resolveRoute } from './routes';
 import { canRequest, recordFailure, recordSuccess } from './breaker';
 import { inDowntimeWindow } from './downtime';
+import { recordEsiRequest } from '@/lib/metrics/registry';
+import type { EsiMetricOutcome } from '@/types';
 
 /**
  * The ESI client substrate.
@@ -184,9 +186,46 @@ function assertErrorBudget(operationId: string, headers: Headers): void {
 
 /**
  * Issue a single ESI request for an opKey and return the decoded response.
- * See the module header for the failure-mode taxonomy.
+ * Wraps {@link runEsiCall} to tally `esi_requests_total{operationId,outcome}`
+ * and observe `esi_request_duration_ms{operationId}`. Latency is recorded only
+ * for outcomes where a request actually left the process — `breaker_open` and
+ * `token_error` short-circuit before the network, so timing them would skew the
+ * histogram toward zero.
  */
 export async function esiCall<T>(opKey: OpKey, opts: EsiCallOptions<T>): Promise<T> {
+  const operationId = OP_KEYS[opKey].operationId;
+  const start = performance.now();
+  try {
+    const result = await runEsiCall(opKey, opts);
+    recordEsiRequest(operationId, 'success', performance.now() - start);
+    return result;
+  } catch (err) {
+    const outcome = outcomeOf(err);
+    recordEsiRequest(operationId, outcome, requestLeftProcess(outcome) ? performance.now() - start : null);
+    throw err;
+  }
+}
+
+/** Map a thrown ESI error to its metrics outcome label. */
+function outcomeOf(err: unknown): EsiMetricOutcome {
+  if (err instanceof EsiBreakerOpenError) return 'breaker_open';
+  if (err instanceof EsiDowntimeError) return 'downtime';
+  if (err instanceof EsiRateLimitError) return 'rate_limited';
+  if (err instanceof EsiDecodeError) return 'decode_error';
+  if (err instanceof EsiTokenError) return 'token_error';
+  // EsiHttpError and any unexpected throw fold to the generic transport failure.
+  return 'http_error';
+}
+
+function requestLeftProcess(outcome: EsiMetricOutcome): boolean {
+  return outcome !== 'breaker_open' && outcome !== 'token_error';
+}
+
+/**
+ * Issue a single ESI request for an opKey and return the decoded response.
+ * See the module header for the failure-mode taxonomy.
+ */
+async function runEsiCall<T>(opKey: OpKey, opts: EsiCallOptions<T>): Promise<T> {
   const op = OP_KEYS[opKey];
   const route = resolveRoute(op.operationId);
   const operationId = op.operationId;

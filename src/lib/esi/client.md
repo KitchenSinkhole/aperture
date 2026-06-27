@@ -6,7 +6,9 @@
 ---
 
 ### esiCall<T>(opKey: OpKey, opts: EsiCallOptions<T>): Promise<T>
-Resolves `OP_KEYS[opKey]` → swagger route (`resolveRoute`). Gates on `canRequest`; for `auth: 'character'` ops resolves a bearer token via `resolveCharacterToken`. Builds the URL (path-param substitution + `datasource` + query), `fetch`es with a `ESI_REQUEST_TIMEOUT_MS` timeout, then:
+Thin metrics wrapper around `runEsiCall` (the request logic below): tallies `esi_requests_total{operationId,outcome}` (`recordEsiRequest`) and observes `esi_request_duration_ms{operationId}`. `outcome` is derived from the thrown error type (`success` / `http_error` / `decode_error` / `breaker_open` / `downtime` / `rate_limited` / `token_error`). Latency is observed only when a request actually left the process — `breaker_open` and `token_error` short-circuit before the network, so they're tallied but not timed.
+
+`runEsiCall` resolves `OP_KEYS[opKey]` → swagger route (`resolveRoute`). Gates on `canRequest`; for `auth: 'character'` ops resolves a bearer token via `resolveCharacterToken`. Builds the URL (path-param substitution + `datasource` + query), `fetch`es with a `ESI_REQUEST_TIMEOUT_MS` timeout, then:
 - network/timeout error → `EsiDowntimeError` in window (no breaker hit) else `recordFailure` + `EsiHttpError`.
 - **401 on a character-auth op → token problem, not endpoint health.** The stored access token was stale / early-invalidated, so esiCall **force-refreshes once** (`forceRefreshCharacterToken` → `refreshAccessToken`, bypassing the expiry buffer) and retries the request. A 401 never calls `recordFailure` (the breaker stays clean). If the refreshed token *still* 401s → `EsiHttpError(operationId, 401, body)` (a transient CCP blip; the poll backs off and survives). If the forced refresh itself fails (dead refresh token) → `EsiTokenError`. The 401 body is currently logged via `console.warn` (TEMP diagnostic — remove after one capture).
 - other non-2xx → checks error budget (`EsiRateLimitError`), then downtime/`EsiHttpError` as above (breaker counted).
@@ -27,5 +29,6 @@ Every request sends `X-Compatibility-Date: apertureConfig.ESI_COMPATIBILITY_DATE
 
 ### Depends On
 - `routes.resolveRoute`, `breaker.{canRequest,recordSuccess,recordFailure}`, `downtime.inDowntimeWindow`.
+- `@/lib/metrics/registry.recordEsiRequest` for per-request counter/histogram instrumentation.
 - `@/lib/auth/eve-provider.refreshAccessToken` + `@/lib/crypto.decryptToken` for token resolution.
 - `env.ESI_BASE_URL` / `env.EVE_USER_AGENT`; `apertureConfig.ESI_DATASOURCE` / `ESI_COMPATIBILITY_DATE` / `ESI_REQUEST_TIMEOUT_MS` / `SSO_TOKEN_REFRESH_BUFFER_S`.

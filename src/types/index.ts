@@ -566,3 +566,62 @@ export type HealthReport = {
   checkedAt: string;
   components: Record<HealthComponentName, HealthComponent>;
 };
+
+// --- Observability: metrics registry (Phase 2) ---
+// Produced by the in-process registry; consumed by `/api/metrics` (Phase 3) and
+// the snapshot job (Phase 5). PII-free by construction — labels are operation
+// ids and fixed outcome tags, never character names or IPs.
+
+export type MetricLabels = Record<string, string>;
+
+/** The distinct outcomes an `esiCall` is tallied under (`esi_requests_total`). */
+export type EsiMetricOutcome =
+  | 'success'
+  | 'http_error'
+  | 'decode_error'
+  | 'breaker_open'
+  | 'downtime'
+  | 'rate_limited'
+  | 'token_error';
+
+/** One counter metric: a name/help plus a value per label-set. */
+export type CounterSnapshot = {
+  name: string;
+  help: string;
+  series: Array<{ labels: MetricLabels; value: number }>;
+};
+
+/**
+ * One histogram metric. `buckets` are the finite upper bounds (the `+Inf`
+ * bucket equals `count`); each series' `counts[i]` is the cumulative number of
+ * observations `<= buckets[i]` (Prometheus `le` semantics).
+ */
+export type HistogramSnapshot = {
+  name: string;
+  help: string;
+  buckets: number[];
+  series: Array<{ labels: MetricLabels; counts: number[]; sum: number; count: number }>;
+};
+
+/** Point-in-time view of all cumulative metrics held by the registry. */
+export type MetricsSnapshot = {
+  counters: CounterSnapshot[];
+  histograms: HistogramSnapshot[];
+};
+
+/**
+ * Instantaneous gauges sampled at scrape/snapshot time. Not held in the
+ * registry — they're computed on demand from the DB and the live process.
+ */
+export type GaugeReadings = {
+  trackedCharacters: number;
+  visibleSystems: number;
+  wsConnections: number;
+  openEsiBreakers: number;
+  jobBacklog: number;
+  jobsAbandoned: number;
+  processRssBytes: number;
+  processHeapUsedBytes: number;
+  processHeapTotalBytes: number;
+  eventLoopLagMs: number;
+};

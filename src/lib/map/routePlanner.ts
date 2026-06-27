@@ -3,6 +3,7 @@ import { aliasedTable, and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apMapConnection, apMapSystem, universeStargateEdge, universeSystem } from '@/db/schema';
 import { loadTheraConnections } from './thera';
+import { recordRoutePlan } from '@/lib/metrics/registry';
 import type { RouteHop, RoutePlan, RoutePrefs, WhJumpMass } from '@/types';
 
 /**
@@ -277,23 +278,28 @@ export async function planRoutes(args: {
   destinationSystemIds: number[];
   prefs: RoutePrefs;
 }): Promise<RoutePlan[]> {
-  const { mapId, sourceSystemId, destinationSystemIds, prefs } = args;
-  const { adjacency, trueSec } = await getGateGraph();
-  const [whEdges, scoutEdges, mapSystems] = await Promise.all([
-    loadMapWormholeEdges(mapId),
-    prefs.includeEveScout ? loadEveScoutEdges() : Promise.resolve<RouteOverlayEdge[]>([]),
-    loadMapSystems(mapId),
-  ]);
-  const raw = planRoutesOnGraph({
-    adjacency,
-    trueSec,
-    overlay: [...whEdges, ...scoutEdges],
-    onMapSystemIds: mapSystems.ids,
-    sourceSystemId,
-    destinationSystemIds,
-    prefs,
-  });
-  return enrichPlans(raw, mapSystems.tags);
+  const start = performance.now();
+  try {
+    const { mapId, sourceSystemId, destinationSystemIds, prefs } = args;
+    const { adjacency, trueSec } = await getGateGraph();
+    const [whEdges, scoutEdges, mapSystems] = await Promise.all([
+      loadMapWormholeEdges(mapId),
+      prefs.includeEveScout ? loadEveScoutEdges() : Promise.resolve<RouteOverlayEdge[]>([]),
+      loadMapSystems(mapId),
+    ]);
+    const raw = planRoutesOnGraph({
+      adjacency,
+      trueSec,
+      overlay: [...whEdges, ...scoutEdges],
+      onMapSystemIds: mapSystems.ids,
+      sourceSystemId,
+      destinationSystemIds,
+      prefs,
+    });
+    return await enrichPlans(raw, mapSystems.tags);
+  } finally {
+    recordRoutePlan(performance.now() - start);
+  }
 }
 
 /** Batch-resolve name/security for every system in every path and fold into RoutePlans. */
