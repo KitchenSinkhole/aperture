@@ -232,21 +232,21 @@ export function SignatureSearchModule({
                 className="group border-t border-foreground/10 align-middle hover:bg-muted/30"
               >
                 <td className="px-2 py-px font-mono text-xs">{sig.sigId}</td>
-                <td className="px-2 py-px text-xs">
+                <td className="px-2 py-px">
                   {labelForSignatureGroupKey(sig.groupKey) ?? '—'}
                 </td>
-                <td className="w-px whitespace-nowrap px-2 py-px text-xs">
+                <td className="w-px whitespace-nowrap px-2 py-px">
                   {system.alias ?? system.name}
                   {system.security && (
                     <span
-                      className="ml-1.5 font-mono font-bold"
+                      className="ml-1.5 shrink-0 text-xs font-bold"
                       style={{ color: systemClassColor(system.security) }}
                     >
                       {system.security}{system.tag ?? ''}
                     </span>
                   )}
                 </td>
-                <td className="px-2 py-px text-xs">{sig.name ?? '—'}</td>
+                <td className="px-2 py-px">{sig.name ?? '—'}</td>
                 <td className="px-2 py-px text-xs text-muted-foreground tabular-nums">
                   {formatAgoFromMs(ageMs)}
                 </td>
