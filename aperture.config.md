@@ -57,6 +57,14 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `METRICS_ESI_LATENCY_BUCKETS_MS`, `METRICS_ROUTE_LATENCY_BUCKETS_MS` — histogram bucket upper-bounds (`le`) for the `esi_request_duration_ms` / `route_plan_duration_ms` histograms.
 - `METRICS_SNAPSHOT_CRON` — cadence for the `metrics-snapshot` job that samples the registry + gauges into `ap_metric_snapshot` (1 min; the admin metrics page buckets it per range).
 
+**Instance alerting (Phase 6)** — consumed by the in-process alert loop (`src/lib/alerts/`), booted from `server.ts` rather than graphile-worker so scheduling/state survive a degraded DB.
+- `ALERT_EVALUATE_INTERVAL_MS` — alert-loop `setInterval` cadence (1 min).
+- `ALERT_DB_PROBE_TIMEOUT_MS`, `ALERT_DB_SLOW_MS` — `SELECT 1` probe timeout (→ `down`) and the slow-but-succeeded threshold (→ `degraded`).
+- `ALERT_DEBOUNCE_EVALUATIONS` — consecutive bad ticks before a rule fires; the debounce that honors "open > X min" and swallows single-tick blips.
+- `ALERT_ESI_BREAKERS_OPEN_THRESHOLD` — open-breaker count at/above which the `esi_breakers` rule goes bad.
+- `ALERT_JOB_ABANDONED_MS` — age past which an un-ended `ap_job_run` row counts as an abandoned (worker-died) handler.
+- `ALERT_ERROR_RATE_WINDOW_MS`, `ALERT_ERROR_RATE_THRESHOLD` — lookback window and error|fatal `ap_error_log` count that trips the `error_rate` rule. Worker staleness reuses `HEALTH_WORKER_STALE_MS`.
+
 Per-task cron expressions live as `cron` strings on each task module in `src/lib/jobs/tasks/`, not here.
 
 ### ApertureConfig

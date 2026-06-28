@@ -43,6 +43,13 @@ const schema = z
     // token admits nothing (the route 401s), so enabling without a token is a
     // closed door rather than an open one.
     METRICS_TOKEN: z.string().default(''),
+    // Phase 6 instance alerting. Two Discord webhooks, both optional: the alert
+    // loop no-ops when both are empty. `ALERT_WEBHOOK_URL` is the verbose
+    // operator channel (PII-scrubbed detail); `STATUS_WEBHOOK_URL` is the terse,
+    // user-facing public channel. Plain strings (not `.url()`) so an empty
+    // default stays valid, matching `METRICS_TOKEN`.
+    ALERT_WEBHOOK_URL: z.string().default(''),
+    STATUS_WEBHOOK_URL: z.string().default(''),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   })
   .superRefine((v, ctx) => {

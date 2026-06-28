@@ -28,6 +28,7 @@ app.prepare().then(async () => {
   const { startWorker, stopWorker } = await import('@/lib/jobs/runner');
   const { env } = await import('@/lib/env');
   const { startZkbFeed, stopZkbFeed } = await import('@/lib/integrations/zkbFeed');
+  const { startAlertLoop, stopAlertLoop } = await import('@/lib/alerts/scheduler');
   const { getLogger } = await import('@/lib/log/logger');
   const log = getLogger('server');
 
@@ -49,6 +50,13 @@ app.prepare().then(async () => {
       startZkbFeed();
       log.info('zKillboard feed started');
     }
+    // In-process instance alerting (Phase 6). No-ops unless an alert webhook is
+    // configured; runs here rather than as a graphile-worker cron so it can still
+    // alert when the DB (and thus the worker) is degraded.
+    startAlertLoop();
+    if (env.ALERT_WEBHOOK_URL || env.STATUS_WEBHOOK_URL) {
+      log.info('instance alerting started');
+    }
   });
 
   // Stop the worker before letting the HTTP server close; graphile-worker
@@ -58,6 +66,7 @@ app.prepare().then(async () => {
     if (shuttingDown) return;
     shuttingDown = true;
     log.info('Shutting down', { signal });
+    stopAlertLoop();
     try {
       await stopZkbFeed();
     } catch (err) {

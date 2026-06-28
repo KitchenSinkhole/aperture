@@ -677,3 +677,54 @@ export type MetricHistory = {
   points: MetricHistoryPoint[];
   jobRuns: JobSuccessPoint[];
 };
+
+// --- Observability: instance alerting (Phase 6) ---
+// Drives the in-process alert loop (`src/lib/alerts/`). Deliberately DB-free at
+// the type level — alert state lives in memory, not in a table, so alerting can
+// fire about a degraded DB. PII-free by construction (rule keys + counts only).
+
+/** The conditions the alert loop watches. */
+export type AlertRuleKey = 'db' | 'worker' | 'esi_breakers' | 'job_abandoned' | 'error_rate';
+
+/**
+ * A rule's evaluated status. `down`/`degraded` are bad (drive firing); `ok`
+ * resolves; `unknown` means the signal was unreachable (e.g. a DB-backed rule
+ * during a DB outage) and is a no-op — it never fires or resolves.
+ */
+export type AlertRuleStatus = 'ok' | 'degraded' | 'down' | 'unknown';
+
+/**
+ * One gather of every signal the rules read, filled by the scheduler. Each field
+ * is `null` when its source was unreachable/timed out, so the rules can map it to
+ * `unknown` rather than a false `ok`.
+ */
+export type AlertSignals = {
+  /** `SELECT 1` probe latency in ms, or `null` if it errored/timed out. */
+  dbProbeMs: number | null;
+  /** Age (ms) of the most recent finished `ap_job_run`, or `null` if unreadable. */
+  workerStaleMs: number | null;
+  /** Open ESI circuit breakers right now (in-process; always available). */
+  openBreakers: number;
+  /** Count of un-ended `ap_job_run` rows older than the abandon threshold, or `null`. */
+  abandonedJobs: number | null;
+  /** error|fatal `ap_error_log` rows in the lookback window, or `null` if unreadable. */
+  recentErrors: number | null;
+};
+
+/** One rule's evaluation result. `detail` is a PII-free, human-readable one-liner. */
+export type AlertRuleResult = {
+  key: AlertRuleKey;
+  status: AlertRuleStatus;
+  detail: string;
+};
+
+/** A state-machine transition the scheduler dispatches to Discord. */
+export type AlertTransition = {
+  key: AlertRuleKey;
+  kind: 'fire' | 'resolve';
+  /** Worst status seen while firing (`down`/`degraded`); `'ok'` on resolve. */
+  status: AlertRuleStatus;
+  detail: string;
+  /** Epoch ms the condition started firing — present on both fire and resolve. */
+  firingSince: number;
+};

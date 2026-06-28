@@ -53,6 +53,12 @@ export interface SerializedInstanceConfig {
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
+// Fixed locale so server and client render identical text (avoids hydration mismatch).
+const DATE_FORMAT = new Intl.DateTimeFormat('en-US', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
+
 export function InstanceAccessPanel({ config }: { config: SerializedInstanceConfig }) {
   return (
     <section className="flex flex-col gap-3">
@@ -97,7 +103,7 @@ function AccessModeCard({ mode, updatedAt }: { mode: 'open' | 'restricted'; upda
         <CardTitle>Access mode</CardTitle>
         <CardDescription>
           Currently <strong>{mode}</strong>
-          {updatedAt ? ` · updated ${new Date(updatedAt).toLocaleString()}` : ' · never set'}.
+          {updatedAt ? ` · updated ${DATE_FORMAT.format(new Date(updatedAt))}` : ' · never set'}.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex gap-2">
@@ -276,7 +282,7 @@ function GrantsCard({ grants }: { grants: SerializedGrant[] }) {
                       <span className="text-muted-foreground">({CAPABILITY_HINT[g.capability]})</span>
                     </td>
                     <td className="px-3 py-2 text-xs">
-                      {g.expiresAt ? new Date(g.expiresAt).toLocaleString() : 'permanent'}
+                      {g.expiresAt ? DATE_FORMAT.format(new Date(g.expiresAt)) : 'permanent'}
                     </td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">{g.note ?? '—'}</td>
                     <td className="px-3 py-2 text-right">

@@ -97,14 +97,34 @@ Two structural truths shape the design:
 - Admin page (gated by `isAdmin(session)` like the rest of `(admin)`) renders recharts line/area graphs: ESI rate & latency & failure %, route-calc latency, tracked characters, system count, server load (RSS/event-loop lag), job success rate.
 **Done when:** the admin metrics page renders multi-day graphs from `ap_metric_snapshot` on a running instance.
 
-## Phase 6 — Instance alerting (Discord)
+## Phase 6 — Instance alerting (Discord) — SHIPPED
 **Mode:** Plan mode (alert rules + dedup state machine are the design-heavy part)
 **Goal:** Push to Discord when something is wrong — terse public status updates + detailed operator alerts.
-**Touches:** env additions (`ALERT_WEBHOOK_URL`, `STATUS_WEBHOOK_URL`) in `src/lib/env.ts`; alerting job `src/lib/jobs/tasks/alertEvaluate.ts` (+ `.md`) registered in `registry.ts`; rule/state module `src/lib/alerts/rules.ts` (+ `.md`); thresholds in `aperture.config.ts`.
-**Design:**
-- Cron job (~every minute) evaluates rules against Phase 1 health + Phase 2 registry + `ap_job_run`: DB unreachable, worker heartbeat missed, ≥N ESI breakers open > X min, job abandoned, error-rate spike (from `ap_error_log`).
-- **State-machine dedup**: fire on transition healthy→bad, resolve on bad→healthy — mirror the `consecutive_failures` pattern in `dispatcher.ts` so it never spams. Alert state persisted (small `ap_alert_state` table, or reuse `ap_error_log`/job notes — decide in plan-mode session).
-- Two channels via `postDiscordWebhook`: `STATUS_WEBHOOK_URL` (terse, user-facing), `ALERT_WEBHOOK_URL` (verbose operator detail, **scrubbed** — character id not name).
+
+**DEVIATION FROM ORIGINAL DESIGN (recorded per CLAUDE.md):** the original plan below called
+for a **graphile-worker cron job** plus a DB-backed **`ap_alert_state` table**. Both are
+DB-dependent — graphile-worker scheduling needs a healthy DB to fire, and a DB-backed state
+table can't be written while the DB is down. A primary thing we must alert on is the **DB
+itself being degraded**, which a DB-backed alerter can never reliably do. Since `server.ts`
+runs Next + WS + graphile-worker in **one process** (it already owns the ESI breaker `Map`, WS
+counts, and `ap_job_run` writes), Phase 6 was instead built as an **in-process `setInterval`
+loop with in-memory dedup state**:
+- `src/lib/alerts/rules.ts` (+ `.md`) — pure rules (`evaluateRules`) + the dedup state machine
+  (`reconcile`, mirroring `dispatcher.ts`'s `consecutive_failures`, debounced by
+  `ALERT_DEBOUNCE_EVALUATIONS`) + Discord-payload formatting. Firing state is a `globalThis`
+  singleton, **not a table** → no `ap_alert_state`, **no migration**, no `registry.ts` change.
+- `src/lib/alerts/scheduler.ts` (+ `.md`) — the loop, booted from `server.ts` (next to
+  `startZkbFeed`). Timeout-guarded signal gather (`SELECT 1` probe latency, worker staleness,
+  abandoned jobs, recent `ap_error_log` errors, in-process breaker count); HTTP-only Discord
+  delivery so it needs no DB.
+- Rules: `db` (down/degraded by probe latency — the headline rule), `worker` (stale heartbeat),
+  `esi_breakers` (≥N open), `job_abandoned`, `error_rate`. DB-backed signals degrade to
+  `unknown` (no-op) during a DB outage so the `db` rule owns that case without false-resolves.
+- Env: `ALERT_WEBHOOK_URL` (verbose operator, scrubbed) + `STATUS_WEBHOOK_URL` (terse public);
+  loop no-ops when both empty. Thresholds in `aperture.config.ts` (`ALERT_*`).
+- Tested by `tests/unit/alert-rules.test.ts` (DB-free — in-memory state makes the dedup machine
+  directly unit-testable).
+
 **Done when:** forcing a breaker open / killing the worker fires one operator alert and one resolve on recovery, with no repeat spam.
 
 ## Phase 7 — Client error capture

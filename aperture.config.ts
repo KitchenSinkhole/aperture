@@ -313,6 +313,49 @@ export const apertureConfig = {
    * Postgres; the read path buckets it down per selected range.
    */
   METRICS_SNAPSHOT_CRON: '*/1 * * * *',
+
+  /**
+   * Instance-alerting evaluation cadence. The alert loop is an in-process
+   * `setInterval` booted from `server.ts` (NOT a graphile-worker cron) so its
+   * scheduling does not depend on a healthy DB — the whole point of Phase 6 is
+   * to alert on DB degradation, which a DB-backed cron could never do.
+   */
+  ALERT_EVALUATE_INTERVAL_MS: 60_000,
+  /**
+   * Hard ceiling on the alert loop's `SELECT 1` DB probe. A hung/overloaded DB
+   * must surface as `down` quickly rather than wedging the loop; the probe races
+   * this timeout and a failure (timeout or error) is itself the alert signal.
+   */
+  ALERT_DB_PROBE_TIMEOUT_MS: 2_000,
+
+  /**
+   * A DB probe that succeeds but takes longer than this is reported `degraded`
+   * (overloaded / restarting / contended) rather than `ok`.
+   */
+  ALERT_DB_SLOW_MS: 1_000,
+
+  /**
+   * Consecutive bad evaluations before a rule transitions healthy→firing. At the
+   * 1-minute `ALERT_EVALUATE_INTERVAL_MS` this is the debounce window (≈2 min) —
+   * it is how "breaker open > X min" is honored without tracking breaker
+   * duration, and it swallows transient single-tick blips.
+   */
+  ALERT_DEBOUNCE_EVALUATIONS: 2,
+
+  /** Open ESI circuit breakers at/above which the `esi_breakers` rule goes bad. */
+  ALERT_ESI_BREAKERS_OPEN_THRESHOLD: 2,
+
+  /**
+   * An `ap_job_run` row still un-ended this long after `started_at` means the
+   * worker died mid-handler (a true abandon), not a job legitimately in flight.
+   */
+  ALERT_JOB_ABANDONED_MS: 10 * 60 * 1000,
+
+  /** Lookback window for the `error_rate` rule's `ap_error_log` count. */
+  ALERT_ERROR_RATE_WINDOW_MS: 5 * 60 * 1000,
+
+  /** error|fatal `ap_error_log` rows within the window at/above which it fires. */
+  ALERT_ERROR_RATE_THRESHOLD: 25,
 } as const;
 
 export type ApertureConfig = typeof apertureConfig;
