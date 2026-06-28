@@ -192,3 +192,18 @@ export const accessCapability = pgEnum('access_capability', [
   'view',
   'edit',
 ]);
+
+/**
+ * Severity of a persisted `ap_error_log` row, mirroring the pino levels the
+ * structured logger emits. Only `error`/`fatal` are written today (the persist
+ * threshold in `src/lib/log/logger.ts`); `warn` is declared so the threshold
+ * could be lowered later without an `ALTER TYPE`.
+ */
+export const errorLevel = pgEnum('error_level', ['warn', 'error', 'fatal']);
+
+/**
+ * Where an `ap_error_log` row originated. `server` = request/action path,
+ * `job` = background worker, `client` = browser (Phase 7 ingest route, declared
+ * now to avoid a later `ALTER TYPE`).
+ */
+export const errorSource = pgEnum('error_source', ['server', 'job', 'client']);

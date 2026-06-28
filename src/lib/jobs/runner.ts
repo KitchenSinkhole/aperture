@@ -8,7 +8,10 @@ import {
 } from 'graphile-worker';
 import { apertureConfig } from '../../../aperture.config';
 import { pool } from '@/db/client';
+import { getLogger } from '@/lib/log/logger';
 import { buildCronItems, buildTaskList, type JobModule } from './registry';
+
+const jobLog = getLogger('job');
 
 /**
  * The graphile-worker runtime. Single Node process, shares the
@@ -89,10 +92,9 @@ async function rearmLocationPollLoop(): Promise<void> {
         AND (locked_at IS NOT NULL OR attempts >= max_attempts)`,
   );
   if (res.rowCount && res.rowCount > 0) {
-    console.log(
-      'graphile-worker: re-armed %d stalled location-poll job(s) (orphaned lock or exhausted retries)',
-      res.rowCount,
-    );
+    jobLog.info('Re-armed stalled location-poll job(s) (orphaned lock or exhausted retries)', {
+      count: res.rowCount,
+    });
   }
 }
 

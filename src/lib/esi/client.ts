@@ -11,7 +11,12 @@ import { resolveRoute } from './routes';
 import { canRequest, recordFailure, recordSuccess } from './breaker';
 import { inDowntimeWindow } from './downtime';
 import { recordEsiRequest } from '@/lib/metrics/registry';
+import { getLogger } from '@/lib/log/logger';
 import type { EsiMetricOutcome } from '@/types';
+
+// ESI runs in the background worker (location-poll) and in Next request paths;
+// `job` is the dominant source for these diagnostics.
+const esiLog = getLogger('job');
 
 /**
  * The ESI client substrate.
@@ -305,10 +310,13 @@ async function runEsiCall<T>(opKey: OpKey, opts: EsiCallOptions<T>): Promise<T> 
       // TEMP (recurring-401 diagnosis — remove after one capture): surface the
       // exact CCP reason so we can tell a revoked `invalid_token` from an
       // expired / early-invalidated access token.
-      console.warn(
-        `[esi] 401 on ${operationId} for character ${opts.characterId} ` +
-          `(attempt ${attempt}/${maxAttempts}): ${body}`,
-      );
+      esiLog.warn('ESI 401 on authenticated call', {
+        operationId,
+        characterId: opts.characterId,
+        attempt,
+        maxAttempts,
+        body,
+      });
       if (attempt < maxAttempts) continue; // force-refresh + retry once
       // Refresh succeeded but ESI still rejects the fresh token → treat as a
       // transient outage (the poll backs off and survives) rather than a dead

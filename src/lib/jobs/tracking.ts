@@ -2,8 +2,11 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apCharacter, apMap, apMapCharacterTracking, apMapTrackingSeed } from '@/db/schema';
 import { canViewMap } from '@/lib/auth/rights';
+import { getLogger } from '@/lib/log/logger';
 import { broadcastCharacterLogout } from '@/lib/realtime/characterLogout';
 import { locationPollJobKey } from './tasks/locationPoll';
+
+const jobLog = getLogger('job');
 
 /**
  * Lifecycle seam for the per-character location-poll.
@@ -43,7 +46,10 @@ export async function startTrackingCharacter(
   // row pointing at a soft-deleted map would be harmless (the handler joins
   // through `WHERE deleted_at IS NULL`), but the failure mode of "I clicked
   // the toggle and nothing happened" is worse than a clean error here.
-  console.log(`Starting tracking for character ${args.characterId} on map ${args.mapId}…`);
+  jobLog.info('Starting tracking for character on map', {
+    characterId: args.characterId,
+    mapId: args.mapId,
+  });
   const [map] = await db
     .select({ id: apMap.id, deletedAt: apMap.deletedAt })
     .from(apMap)

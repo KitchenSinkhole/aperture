@@ -27,4 +27,4 @@ Whether `attachWsServer` has run in this process.
 - No `import 'server-only'`: loaded by the custom `server.ts` outside Next's bundler (the `server-only` shim doesn't resolve there); only `server.ts` and tests import it.
 
 ### Depends On
-- `ws`, `next-auth/jwt` (`decode`), `@/lib/auth/rights` (`canViewMap`), `@/lib/jobs/tracking` (`seedTrackingForMap`), `./bus`, `./mapViewers` (`addMapViewer`/`removeMapViewer`), `./wsConnections` (`incWsConnection`/`decWsConnection`), `./protocol`, `aperture.config`, `@/lib/env`.
+- `ws`, `next-auth/jwt` (`decode`), `@/lib/auth/rights` (`canViewMap`), `@/lib/jobs/tracking` (`seedTrackingForMap`), `@/lib/log/logger` (`getLogger('server')` — per-frame `debug` trace), `./bus`, `./mapViewers` (`addMapViewer`/`removeMapViewer`), `./wsConnections` (`incWsConnection`/`decWsConnection`), `./protocol`, `aperture.config`, `@/lib/env`.

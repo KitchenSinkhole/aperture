@@ -10,7 +10,7 @@ const imgSrc = "img-src 'self' data: blob: https://images.evetech.net";
 
 const nextConfig: NextConfig = {
   typedRoutes: true,
-  serverExternalPackages: ['pg', 'graphile-worker'],
+  serverExternalPackages: ['pg', 'graphile-worker', 'pino'],
   turbopack: {
     root: __dirname,
   },

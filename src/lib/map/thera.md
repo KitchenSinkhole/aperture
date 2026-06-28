@@ -13,7 +13,7 @@ Fetch the current EVE-Scout Thera + Turnur connections (via the `fetchEveScoutCo
 ---
 
 ### syncTheraConnections(args): Promise<ActionResult<TheraSyncResult>>
-Fold the chosen connections onto a map. Groups targets by hub; ensures the hub + each target system visible and a `wh`/`fresh` connection per pair, all under one `db.transaction` (mirrors `importMapData`). Idempotent: skips a system already `visible` and a connection that already links the pair in either direction (mirrors `locationCommit`). New systems are positioned by fanning targets radially around the hub. Auto-tagging: ABC rides in `system.added` via `assignTagOnAdd`; the 0121 child tag is emitted as a best-effort follow-up `system.updated` after commit via `assignTagOnConnect`.
+Fold the chosen connections onto a map. Groups targets by hub; ensures the hub + each target system visible and a `wh`/`fresh` connection per pair, all under one `db.transaction` (mirrors `importMapData`). Idempotent: skips a system already `visible` and a connection that already links the pair in either direction (mirrors `locationCommit`). New systems are positioned by fanning targets radially around the hub. Auto-tagging: ABC rides in `system.added` via `assignTagOnAdd`; the 0121 child tag is emitted as a best-effort follow-up `system.updated` after commit via `assignTagOnConnect` (a tag failure is logged at `warn` via the structured logger [[logger]] and never fails the sync).
 
 **Parameters:**
 - `mapId` — target map.

@@ -11,6 +11,7 @@ import { commitMapEvent, type ActionResult } from '@/lib/map/mutations/core';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
 import { canCreateMap, requireMapManage, requireMapRight } from '@/lib/auth/rights';
+import { logger } from '@/lib/log/logger';
 
 /**
  * Low-frequency, user-initiated map mutations via Server Actions (CLAUDE.md
@@ -248,7 +249,7 @@ export async function updateMapSettingsAction(
     try {
       await applyHomeStaticExemption(id, guard.characterId);
     } catch (err) {
-      console.warn('home-static exemption reconcile failed (map=%s):', id.toString(), err);
+      logger.warn('home-static exemption reconcile failed', { mapId: id.toString(), err });
     }
   }
 

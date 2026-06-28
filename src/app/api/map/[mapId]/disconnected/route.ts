@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { deleteDisconnected } from '@/lib/map/mutations/subchain';
 import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
+import { logger } from '@/lib/log/logger';
 import { requireMapMutate } from '../../utils';
 
 /**
@@ -42,7 +43,7 @@ export async function POST(
     try {
       await applyHomeStaticExemption(guard.mapId, guard.characterId);
     } catch (err) {
-      console.warn('home-static exemption reconcile failed (map=%s):', guard.mapId.toString(), err);
+      logger.warn('home-static exemption reconcile failed', { mapId: guard.mapId.toString(), err });
     }
   }
 

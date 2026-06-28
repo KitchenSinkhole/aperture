@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { deleteConnection, updateConnection } from '@/lib/map/mutations/connections';
 import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
+import { logger } from '@/lib/log/logger';
 import { connectionScope, eolStage, whJumpMass, whMass } from '@/db/schema/ap/enums';
 import { parseBigInt, requireMapMutate } from '../../../utils';
 
@@ -69,7 +70,7 @@ export async function PATCH(
     try {
       await applyHomeStaticExemption(guard.mapId, guard.characterId);
     } catch (err) {
-      console.warn('home-static exemption reconcile failed (map=%s):', guard.mapId.toString(), err);
+      logger.warn('home-static exemption reconcile failed', { mapId: guard.mapId.toString(), err });
     }
   }
 
@@ -102,7 +103,7 @@ export async function DELETE(
     try {
       await applyHomeStaticExemption(guard.mapId, guard.characterId);
     } catch (err) {
-      console.warn('home-static exemption reconcile failed (map=%s):', guard.mapId.toString(), err);
+      logger.warn('home-static exemption reconcile failed', { mapId: guard.mapId.toString(), err });
     }
   }
 

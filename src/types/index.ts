@@ -47,6 +47,8 @@ import type {
   accessPrincipal,
   accessScope,
   authzLevel,
+  errorLevel,
+  errorSource,
   mapRight,
   mapType,
   roleSource,
@@ -201,6 +203,8 @@ export type AccessMode = (typeof accessMode.enumValues)[number];
 export type AccessPrincipal = (typeof accessPrincipal.enumValues)[number];
 export type AccessScope = (typeof accessScope.enumValues)[number];
 export type AccessCapability = (typeof accessCapability.enumValues)[number];
+export type ErrorLevel = (typeof errorLevel.enumValues)[number];
+export type ErrorSource = (typeof errorSource.enumValues)[number];
 /** The six cosmic-signature groups (every group except `wormhole`). Their site
  * names are baked into the EVE client and have no SDE rows, so they're carried
  * as free-text `name` strings rather than a `typeId` FK. */

@@ -7,6 +7,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apMapEvent } from '@/db/schema';
+import { getLogger } from '@/lib/log/logger';
 import {
   mapEventPayloadSchema,
   type MapEventKind,
@@ -15,6 +16,7 @@ import {
 } from '@/lib/realtime/protocol';
 
 const WEBHOOK_DISPATCH_TASK = 'webhook-dispatch';
+const log = getLogger('server');
 
 /**
  * The single canonical commit point for every map mutation (CLAUDE.md "Mutation
@@ -144,11 +146,10 @@ export async function enqueueWebhookDispatch(
       )
     `);
   } catch (err) {
-    console.warn(
-      'webhook-dispatch enqueue failed (map=%s, event=%s):',
-      mapId.toString(),
+    log.warn('webhook-dispatch enqueue failed', {
+      mapId: mapId.toString(),
       eventId,
-      err instanceof Error ? err.message : err,
-    );
+      err: err instanceof Error ? err.message : err,
+    });
   }
 }

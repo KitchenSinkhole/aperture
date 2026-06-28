@@ -22,6 +22,7 @@ export * from './ap/map_signature';
 export * from './ap/map_event';
 export * from './ap/event_kind';
 export * from './ap/system_stats';
+export * from './ap/error_log';
 export * from './ap/job_run';
 export * from './ap/map_character_tracking';
 export * from './ap/map_tracking_seed';

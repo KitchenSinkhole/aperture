@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { createConnection } from '@/lib/map/mutations/connections';
 import { updateSystem } from '@/lib/map/mutations/systems';
 import { assignTagOnConnect } from '@/lib/tagging/service';
+import { logger } from '@/lib/log/logger';
 import { connectionScope, eolStage, whJumpMass, whMass } from '@/db/schema/ap/enums';
 import { parseBigInt, requireMapMutate } from '../../utils';
 
@@ -92,7 +93,7 @@ export async function POST(
         });
       }
     } catch (err) {
-      console.warn('auto-tag on connect failed (map=%s):', guard.mapId.toString(), err);
+      logger.warn('auto-tag on connect failed', { mapId: guard.mapId.toString(), err });
     }
   }
 

@@ -4,9 +4,12 @@ import { db } from '@/db/client';
 import { apMapConnection, apMapSystem, universeSystem } from '@/db/schema';
 import { fetchEveScoutConnections } from '@/lib/integrations/evescout';
 import { assignTagOnAdd, assignTagOnConnect } from '@/lib/tagging/service';
+import { getLogger } from '@/lib/log/logger';
 import { commitMapEvent, type ActionResult, type Tx } from './mutations/core';
 import { buildSystemNode } from './systemNode';
 import type { MapEventPayload } from '@/lib/realtime/protocol';
+
+const log = getLogger('server');
 
 /**
  * Thera module backend.
@@ -380,6 +383,6 @@ async function tagOnConnect(
     });
     if (upd.ok) payloads.push(upd.data);
   } catch (err) {
-    console.warn('thera-sync auto-tag on connect failed (map=%s):', mapId.toString(), err);
+    log.warn('thera-sync auto-tag on connect failed', { mapId: mapId.toString(), err });
   }
 }

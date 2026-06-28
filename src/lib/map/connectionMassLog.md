@@ -27,6 +27,8 @@ broadcasts a `connectionMassLog` envelope to the map channel.
 **Side effects:** one INSERT, one `SUM` read, one `pg_notify`. Cumulative stays within JS safe-int
 range (a hole's max stable mass is ~3e9 kg).
 
+**Logging:** via the structured logger ([[logger]], `source='job'`). The unresolved-mass skip and the per-jump trace are `warn`/`debug` (stdout only); a missing insert id is `error` (persisted to `ap_error_log`).
+
 ---
 
 ### listConnectionMassLog({ mapId, connectionId }): Promise<ConnectionMassLogEntry[]>

@@ -67,3 +67,9 @@
 
 ### accessCapability
 `pgEnum('access_capability', ['login', 'admin', 'view', 'edit'])` — what an `ap_access_grant` row permits. `login`/`admin` are instance-scoped (allowlist entry / super-admin); `view`/`edit` are map-scoped and reserved for the temporary-sharing feature (declared to avoid a future `ALTER TYPE`). A CHECK pairs capability with scope. The `manage` capability (the old manager hand-grant) was retired in migration 0041.
+
+### errorLevel
+`pgEnum('error_level', ['warn', 'error', 'fatal'])` — severity of an `ap_error_log` row, mirroring the pino levels the structured logger ([[logger]]) emits. Only `error`/`fatal` are persisted today (the persist threshold in `src/lib/log/logger.ts`); `warn` is declared so the threshold could be lowered later without an `ALTER TYPE`. Added migration 0045 (observability phase 4).
+
+### errorSource
+`pgEnum('error_source', ['server', 'job', 'client'])` — where an `ap_error_log` row originated: `server` (request/action path), `job` (background worker), `client` (browser ingest, Phase 7). `client` is declared now to avoid a later `ALTER TYPE`. Added migration 0045.
