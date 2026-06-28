@@ -65,6 +65,11 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `ALERT_JOB_ABANDONED_MS` — age past which an un-ended `ap_job_run` row counts as an abandoned (worker-died) handler.
 - `ALERT_ERROR_RATE_WINDOW_MS`, `ALERT_ERROR_RATE_THRESHOLD` — lookback window and error|fatal `ap_error_log` count that trips the `error_rate` rule. Worker staleness reuses `HEALTH_WORKER_STALE_MS`.
 
+**Client error capture (Phase 7)** — consumed by the `/api/client-errors` ingest route + its in-process limiter (`src/lib/log/clientErrorRate.ts`).
+- `CLIENT_ERROR_RATE_WINDOW_MS` — fixed-window length for the ingest rate limiter; per-session and global counters reset each window.
+- `CLIENT_ERROR_MAX_PER_SESSION`, `CLIENT_ERROR_MAX_GLOBAL` — per-session and global caps; exceeding either drops the report (429) without writing, so a browser render loop can't flood `ap_error_log`.
+- `CLIENT_ERROR_MESSAGE_MAX_LENGTH`, `CLIENT_ERROR_STACK_MAX_LENGTH` — truncation caps on the ingested `message` and `stack`/`componentStack` before persistence.
+
 Per-task cron expressions live as `cron` strings on each task module in `src/lib/jobs/tasks/`, not here.
 
 ### ApertureConfig

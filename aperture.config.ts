@@ -356,6 +356,25 @@ export const apertureConfig = {
 
   /** error|fatal `ap_error_log` rows within the window at/above which it fires. */
   ALERT_ERROR_RATE_THRESHOLD: 25,
+
+  /**
+   * Fixed-window length for the `/api/client-errors` ingest rate limiter
+   * (Phase 7 client error capture). Per-session and global counters reset once a
+   * window elapses; a browser render loop is bounded to the caps below per window.
+   */
+  CLIENT_ERROR_RATE_WINDOW_MS: 60_000,
+
+  /** Max client-error reports accepted per session per window before dropping (429). */
+  CLIENT_ERROR_MAX_PER_SESSION: 20,
+
+  /** Max client-error reports accepted across all sessions per window (flood ceiling). */
+  CLIENT_ERROR_MAX_GLOBAL: 200,
+
+  /** `message` cap (chars) on an ingested client error before it hits `ap_error_log`. */
+  CLIENT_ERROR_MESSAGE_MAX_LENGTH: 1_000,
+
+  /** `stack` / `componentStack` cap (chars) on an ingested client error. */
+  CLIENT_ERROR_STACK_MAX_LENGTH: 8_000,
 } as const;
 
 export type ApertureConfig = typeof apertureConfig;
