@@ -20,6 +20,7 @@ import type {
   apMapSignature,
   apMapSystem,
   apMapTrackingSeed,
+  apMetricSnapshot,
   apRole,
   apRouteDestination,
   apStructure,
@@ -155,6 +156,9 @@ export type NewApEventKind = InferInsertModel<typeof apEventKind>;
 
 export type ApSystemStats = InferSelectModel<typeof apSystemStats>;
 export type NewApSystemStats = InferInsertModel<typeof apSystemStats>;
+
+export type ApMetricSnapshot = InferSelectModel<typeof apMetricSnapshot>;
+export type NewApMetricSnapshot = InferInsertModel<typeof apMetricSnapshot>;
 
 export type ApCorporation = InferSelectModel<typeof apCorporation>;
 export type NewApCorporation = InferInsertModel<typeof apCorporation>;
@@ -628,4 +632,48 @@ export type GaugeReadings = {
   processHeapUsedBytes: number;
   processHeapTotalBytes: number;
   eventLoopLagMs: number;
+};
+
+// --- Observability: metrics history (Phase 5) ---
+// View-model for the admin metrics page. `deriveSeries` turns the cumulative
+// `ap_metric_snapshot` rollups into per-interval rates/averages; gauges pass
+// through. Points carry an epoch-ms `t`; the client formats axis/tooltip labels
+// from it per the selected range.
+
+/** Selectable history windows on the admin metrics page. */
+export type MetricRange = '1h' | '24h' | '7d' | '30d';
+
+/** One derived point — rates over the interval ending at `t`, gauges sampled at `t`. */
+export type MetricHistoryPoint = {
+  t: number;
+  esiRequestRate: number | null; // requests/min over the interval
+  esiFailurePct: number | null; // % of ESI requests with a non-success outcome
+  esiAvgLatencyMs: number | null; // mean ESI latency over the interval
+  routeAvgLatencyMs: number | null; // mean route-plan time over the interval
+  trackedCharacters: number;
+  visibleSystems: number;
+  wsConnections: number;
+  esiBreakersOpen: number;
+  jobBacklog: number;
+  jobsAbandoned: number;
+  processRssMb: number;
+  processHeapUsedMb: number;
+  eventLoopLagMs: number;
+};
+
+/** Job-run success ratio per time bucket (sourced from `ap_job_run`, not the registry). */
+export type JobSuccessPoint = {
+  t: number;
+  successPct: number | null; // null when no runs finished in the bucket
+  runs: number;
+};
+
+/** Everything the admin metrics page graphs for one `range`. */
+export type MetricHistory = {
+  range: MetricRange;
+  /** Window bounds (epoch ms) — the fixed X-axis domain, independent of how much data exists. */
+  fromMs: number;
+  toMs: number;
+  points: MetricHistoryPoint[];
+  jobRuns: JobSuccessPoint[];
 };

@@ -316,6 +316,13 @@
       "when": 1780021200000,
       "tag": "0045_error_log",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1780022400000,
+      "tag": "0046_metric_snapshot",
+      "breakpoints": true
     }
   ]
 }

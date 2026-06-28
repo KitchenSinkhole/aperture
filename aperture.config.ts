@@ -305,6 +305,14 @@ export const apertureConfig = {
    * small DB reads — sub-millisecond to tens of milliseconds in practice.
    */
   METRICS_ROUTE_LATENCY_BUCKETS_MS: [1, 2, 5, 10, 25, 50, 100, 250, 500],
+
+  /**
+   * `metrics-snapshot` cron cadence. Samples the in-process registry + gauges
+   * into `ap_metric_snapshot` for the admin metrics page's history graphs.
+   * 1-minute resolution over the 30-day retention is ~43k rows — trivial for
+   * Postgres; the read path buckets it down per selected range.
+   */
+  METRICS_SNAPSHOT_CRON: '*/1 * * * *',
 } as const;
 
 export type ApertureConfig = typeof apertureConfig;

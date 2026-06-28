@@ -7,6 +7,7 @@ import { expiredConnections } from './tasks/expiredConnections';
 import { incursionRefresh } from './tasks/incursionRefresh';
 import { locationPoll } from './tasks/locationPoll';
 import { mapPurge } from './tasks/mapPurge';
+import { metricsSnapshot } from './tasks/metricsSnapshot';
 import { partitionMaintenance } from './tasks/partitionMaintenance';
 import { sdeIngest } from './tasks/sdeIngest';
 import { signatureReap } from './tasks/signatureReap';
@@ -54,6 +55,8 @@ const modules: readonly JobModule[] = [
   activityRollupRefresh,
   // pg_partman maintenance (premake + retention).
   partitionMaintenance,
+  // Observability snapshot: registry + gauges → ap_metric_snapshot for the admin graphs.
+  metricsSnapshot,
   // ESI cannot return other corps' structures, so structure intel is manual
   // entry (`ap_structure`) with no recurring resolve work.
   // Per-character location poll (no cron; self-re-enqueueing).
