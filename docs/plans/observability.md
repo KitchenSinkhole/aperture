@@ -136,6 +136,45 @@ loop with in-memory dedup state**:
 - Errors land in `ap_error_log` (reused from Phase 4) and thus feed the Phase 6 error-rate rule and the Phase 5 graphs.
 **Done when:** a thrown client error produces a scrubbed `ap_error_log` row; the boundary shows a recoverable fallback; rate-limit drops a flood.
 
+## Phase 8 — Deepen instrumentation coverage
+**Mode:** Plan mode (many hot paths; each tier picks a hook point and label cardinality is a design decision)
+**Goal:** Close the gap between "ESI is fine" and "is *Aperture itself* serving users and pushing realtime updates." Phases 2–3 instrumented the ESI egress + route calc + infra gauges; the realtime/mutation core, the app's own HTTP surface, per-task job flow, integrations, and auth are still dark — which is exactly the part that broke in the motivating incident.
+
+**Mechanism (applies to every tier):**
+- Counters/histograms must be **pre-registered in `src/lib/metrics/registry.ts`** (like the existing three) so every snapshot carries the full shape; emit via `metrics.incrementCounter` / `metrics.observeHistogram`. Add new metric-name constants alongside `ESI_REQUESTS_TOTAL` etc.
+- Instantaneous gauges get a new key in `sampleGauges()` (`src/lib/metrics/gauges.ts`) + a row in the `GAUGE_METRICS` table in `src/lib/metrics/prometheus.ts`.
+- Histogram buckets are constants in `aperture.config.ts` (mirror `METRICS_ESI_LATENCY_BUCKETS_MS`).
+- **Label cardinality is the main risk** — keep labels to the fixed task vocabulary / bounded route templates / known outcomes; never label by map id, character id, or raw URL.
+- Anything you want on the admin graphs (Phase 5) also needs a series in `ap_metric_snapshot`; the `/metrics` formatter (Phase 3) picks counters/histograms/gauges up automatically once registered.
+- Every `.ts` touched gets its companion `.md` updated in the same operation. No `server-only` in any runner-reachable module.
+
+### Tier 1 — realtime / mutation pipeline (biggest blind spot)
+**Touches:** `src/lib/realtime/bus.ts`, `src/lib/realtime/wsServer.ts` (+ `.md`s); the `ap_map_event` insert path.
+- `map_events_total{task}` — counter at the one `INSERT INTO ap_map_event` choke point (or the `pg_notify` emit in `bus.ts`). The canonical activity signal: one event per mutation, split by the fixed task vocabulary.
+- `realtime_broadcasts_total{task}` + `realtime_fanout_duration_ms` — counter + histogram in the WS layer: envelopes pushed and `pg_notify`→socket-write latency. Complements the existing `ws_connections` gauge (which says nothing about whether fanout is flowing).
+- `pg_notify_received_total{channel}` — counter on the `LISTEN` handler; a stall here while mutations continue is the silent-stale-state failure the degraded banner exists for.
+
+### Tier 2 — HTTP golden signals (currently none)
+**Touches:** `server.ts` or a shared API/Server-Action wrapper (+ `.md`s).
+- `http_requests_total{route,method,status}` + `http_request_duration_ms{route}` — the rate/errors/duration triad for Aperture's *own* surface (the high-frequency signature-edit / drag / connection-change mutations), which today has no latency or error-rate signal. Use bounded route templates as the label, not raw paths.
+
+### Tier 3 — background jobs (gauges exist, flow does not)
+**Touches:** `withInstrumentation` / `ap_job_run` wrap (`src/lib/jobs/*`), `locationPoll`, `connectionMassLog` (+ `.md`s).
+- `job_runs_total{task,outcome}` + `job_duration_ms{task}` — one add at the existing `withInstrumentation` choke point; turns the static `job_backlog`/`jobs_abandoned` gauges into per-task success-rate and duration trends.
+- `location_polls_total{outcome}` + `character_jumps_total` — from the tracking poll and the `connectionMassLog` derivation; measures tracking health and real player-movement volume.
+
+### Tier 4 — cheap gauges, high value
+**Touches:** `src/lib/metrics/gauges.ts` (+ the `prometheus.ts` gauge table); error-log write path.
+- `db_pool_connections{state}` — `pool.totalCount` / `idleCount` / `waitingCount` off `src/db/client.ts`; pool saturation is a classic silent killer and a free read.
+- `error_log_events_total{source}` — counter where rows land in `ap_error_log` (server/job/client); exposes to Grafana the same rate the Phase 6 error-rate rule already consumes.
+
+### Tier 5 — integrations & auth
+**Touches:** webhook dispatcher (`postDiscordWebhook` path), `src/lib/auth.ts` token rotation + JWK cache (+ `.md`s).
+- `webhook_deliveries_total{target,outcome}` (+ retry count) — the Slack/Discord fanout already classifies 429/5xx; surface its reliability.
+- `esi_token_refresh_total{outcome}` + `jwk_cache_refresh_total` — token-rotation failures are a quiet way for tracking to die account-by-account; the JWK cache is capped at one re-fetch per 10s, so a refresh spike is a signal.
+
+**Done when:** each tier's metrics register, appear in `/api/metrics`, move under real traffic, and graph in Grafana; label cardinality stays bounded (no per-map/character/url labels); a unit test exercises at least the Tier 1 `map_events_total` and Tier 2 `http_request_duration_ms` paths and reads non-zero series from the registry. Tiers are independently shippable — land Tier 1 + Tier 2 first (they close the incident-class gap).
+
 ---
 
 ## Verification (end-to-end)
@@ -147,4 +186,5 @@ loop with in-memory dedup state**:
 - **Admin graphs:** let the snapshot job run, open `/admin/metrics`, confirm multi-point series render.
 - **Alerting:** force an ESI breaker open (or stop the worker) → exactly one operator + one status message, then a single resolve on recovery; verify no PII in payloads.
 - **Client capture:** throw in a client component → scrubbed `ap_error_log` row (`source='client'`), boundary fallback shows, flood is rate-limited.
+- **Deepened instrumentation:** drive a map mutation, an API request, a job run, a webhook delivery, and a token refresh, then confirm the Tier 1–5 series appear in `/api/metrics` and move; verify no per-map/character/url labels leaked (cardinality stays bounded) and the new series graph in Grafana.
 - **Integration tests** (`RUN_DB_TESTS`) for: health probe component states, the snapshot reap retention boundary, the alert dedup state machine, and the error-log scrubbing.
