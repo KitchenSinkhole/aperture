@@ -6,27 +6,11 @@
 import { cn } from '@/lib/utils';
 
 /**
- * Full-width compact `<table>`. Wrap in `ScrollTable` for a height-capped,
- * bordered scroll region. `compact` densifies all descendant cells (thinner
- * vertical padding) and drops the per-row top borders in one shot.
+ * Full-width `text-xs` `<table>`. Wrap in `ScrollTable` for a height-capped,
+ * bordered scroll region.
  */
-export function InfoTable({
-  compact = false,
-  children,
-}: {
-  compact?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <table
-      className={cn(
-        'w-full text-xs',
-        compact && '[&_td]:py-0.5 [&_th]:py-0.5 [&_tr]:border-t-0',
-      )}
-    >
-      {children}
-    </table>
-  );
+export function InfoTable({ children }: { children: React.ReactNode }) {
+  return <table className="w-full text-xs">{children}</table>;
 }
 
 /** Height-capped, bordered scroll container — wrap an `InfoTable` (or its rows) in it. */
