@@ -21,4 +21,5 @@ Test-only. Drops the cached remote key set so a fresh fetch + cooldown cycle can
 
 Notes:
 - The remote key set uses `cooldownDuration = apertureConfig.JWK_REFETCH_MIN_INTERVAL_MS`. On an unknown `kid`, jose reloads at most once per cooldown window; repeated unknown-kid verifies inside the window throw without re-fetching — this is the footgun #3 cap.
+- The key set is created with jose's `[customFetch]` option pointing at an `instrumentedFetch` wrapper, so each **genuine remote JWKS reload** records `jwk_cache_refresh_total{outcome='success'|'error'}` (success on transport completion, error on fetch rejection). This counts real cache refreshes — the thing the cooldown caps — not per-token verifies.
 - JWKS URI = `apertureConfig.SSO_JWKS_PATH` resolved against `env.AUTH_EVE_SSO_BASE` (TQ vs SISI).

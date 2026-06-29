@@ -1,0 +1,21 @@
+name: Guard master
+
+# PRs should target dev. master only ever updates by merging dev into it,
+# so any PR opened against master (other than from dev) is a mistake — fail
+# loudly so it can't be merged by accident.
+
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  block:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject PRs against master
+        if: github.head_ref != 'dev'
+        run: |
+          echo "::error::This PR targets master, but PRs must target 'dev'." \
+               "master only updates by merging 'dev' into it." \
+               "Re-base this PR onto 'dev' (Edit > change base branch)."
+          exit 1

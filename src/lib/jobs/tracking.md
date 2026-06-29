@@ -36,3 +36,4 @@ The per-map default: the first time an account opens a map, auto-track all its *
 ### Depends On
 - `@/lib/auth/rights` (`canViewMap`) — the view-access re-check in `pruneTrackingForLostAccess`.
 - `@/lib/realtime/characterLogout` (`broadcastCharacterLogout`) — roster eviction on prune.
+- `@/lib/log/logger` (`getLogger('job')`) — the start-tracking info line.

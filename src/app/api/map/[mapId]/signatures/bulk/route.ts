@@ -8,6 +8,7 @@ import { resolveSignatureRows } from '@/lib/map/signatureReader';
 import type { ParsedSigRow } from '@/lib/map/signatureParser';
 import { apertureConfig } from '../../../../../../../aperture.config';
 import { parseBigInt, requireMapMutate } from '../../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/signatures/bulk — diff a paste against a system's sigs
@@ -42,7 +43,7 @@ const bulkPasteBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/signatures/bulk', async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -84,4 +85,4 @@ export async function POST(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

@@ -1,0 +1,62 @@
+name: Release to Discord
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to announce (for testing, e.g. v1.0.0-rc.9)"
+        required: true
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve and post changelog to Discord
+        env:
+          WEBHOOK: ${{ secrets.RELEASE_WEBHOOK_URL }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REL_TITLE: ${{ github.event.release.name }}
+          REL_TAG: ${{ github.event.release.tag_name }}
+          REL_BODY: ${{ github.event.release.body }}
+          REL_URL: ${{ github.event.release.html_url }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # Manual test run: pull the release data for the supplied tag.
+            gh release view "$INPUT_TAG" --repo "$REPO" \
+              --json name,tagName,body,url > rel.json
+            TITLE=$(jq -r '.name // .tagName' rel.json)
+            BODY=$(jq -r '.body' rel.json)
+            URL=$(jq -r '.url' rel.json)
+          else
+            TITLE="${REL_TITLE:-$REL_TAG}"
+            BODY="$REL_BODY"
+            URL="$REL_URL"
+          fi
+
+          # Discord embed descriptions cap at 4096 chars; slice by codepoint
+          # (jq string slicing is unicode-safe) and leave room for the link.
+          jq -n \
+            --arg title "$TITLE" \
+            --arg body "$BODY" \
+            --arg url "$URL" \
+            '
+            ($body | gsub("(^\\s+|\\s+$)"; "")) as $trimmed
+            | (if ($trimmed | length) > 3900
+               then ($trimmed[0:3900] + "…")
+               else $trimmed end) as $desc
+            | {
+                embeds: [{
+                  title: $title,
+                  url: $url,
+                  description: ($desc + "\n\n[Full release notes](" + $url + ")"),
+                  color: 5814783
+                }]
+              }
+            ' \
+          | curl -sSf -H "Content-Type: application/json" -d @- "$WEBHOOK"

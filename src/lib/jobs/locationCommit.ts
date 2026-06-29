@@ -5,6 +5,9 @@ import { commitMapEvent } from '@/lib/map/mutations/core';
 import { buildSystemNode } from '@/lib/map/systemNode';
 import { findOpenPosition, type Point } from '@/lib/map/placement';
 import { assignTagOnAdd, assignTagOnConnect } from '@/lib/tagging/service';
+import { getLogger } from '@/lib/log/logger';
+
+const jobLog = getLogger('job');
 
 /**
  * The per-map fold for a detected wormhole jump from the
@@ -349,6 +352,6 @@ async function tagOnJump(
       },
     });
   } catch (err) {
-    console.warn('auto-tag on jump failed (map=%s):', mapId.toString(), err);
+    jobLog.warn('auto-tag on jump failed', { mapId: mapId.toString(), err });
   }
 }

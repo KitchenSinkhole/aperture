@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { importMapData, mapExportSchema } from '@/lib/map/transfer';
 import { requireMapMutate } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/import — merge a `MapExportFile` into the open map.
@@ -16,7 +17,7 @@ import { requireMapMutate } from '../../utils';
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/import', async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -49,4 +50,4 @@ export async function POST(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

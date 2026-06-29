@@ -7,6 +7,8 @@
 import { sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apMapEvent } from '@/db/schema';
+import { getLogger } from '@/lib/log/logger';
+import { recordMapEvent } from '@/lib/metrics/registry';
 import {
   mapEventPayloadSchema,
   type MapEventKind,
@@ -15,6 +17,7 @@ import {
 } from '@/lib/realtime/protocol';
 
 const WEBHOOK_DISPATCH_TASK = 'webhook-dispatch';
+const log = getLogger('server');
 
 /**
  * The single canonical commit point for every map mutation (CLAUDE.md "Mutation
@@ -93,6 +96,10 @@ export async function commitMapEvent<K extends MapEventKind>(
       .values({ id: BigInt(eventId), mapId, characterId, occurredAt, kind, payload })
       .returning({ id: apMapEvent.id });
 
+    // The canonical activity signal: one tally per committed mutation, split by
+    // the bounded 17-value event-kind vocabulary.
+    recordMapEvent(kind);
+
     return { eventId, payload, occurredAt };
   };
 
@@ -144,11 +151,10 @@ export async function enqueueWebhookDispatch(
       )
     `);
   } catch (err) {
-    console.warn(
-      'webhook-dispatch enqueue failed (map=%s, event=%s):',
-      mapId.toString(),
+    log.warn('webhook-dispatch enqueue failed', {
+      mapId: mapId.toString(),
       eventId,
-      err instanceof Error ? err.message : err,
-    );
+      err: err instanceof Error ? err.message : err,
+    });
   }
 }

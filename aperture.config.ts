@@ -194,6 +194,14 @@ export const apertureConfig = {
   CHARACTER_CLEANUP_CRON: '*/5 * * * *',
 
   /**
+   * `/api/health/ready` flags the `worker` component unhealthy if no `ap_job_run`
+   * has *finished* within this window. `character-cleanup` runs every 5 minutes
+   * (`CHARACTER_CLEANUP_CRON`), so 15 minutes (3 ticks) tolerates a slow/missed
+   * tick without false-alarming a live worker.
+   */
+  HEALTH_WORKER_STALE_MS: 15 * 60 * 1000,
+
+  /**
    * A character's `authz_level` is resynced by `character-cleanup` if
    * `authz_synced_at` is older than this (or NULL). 6 hours keeps director
    * status reasonably fresh without bombarding ESI for every active character
@@ -282,6 +290,112 @@ export const apertureConfig = {
    * run picks up the rest.
    */
   JOB_DELETE_BATCH_SIZE: 500,
+
+  /**
+   * Histogram bucket upper-bounds (ms) for `esi_request_duration_ms`. Finite
+   * `le` boundaries in Prometheus semantics (a `+Inf` bucket is implied by the
+   * total count). Spans a fast cache hit (~5ms) to the per-request timeout
+   * (`ESI_REQUEST_TIMEOUT_MS` = 5000ms).
+   */
+  METRICS_ESI_LATENCY_BUCKETS_MS: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
+
+  /**
+   * Histogram bucket upper-bounds (ms) for `route_plan_duration_ms`. Route
+   * planning is an in-memory Dijkstra over the cached K-space graph plus a few
+   * small DB reads — sub-millisecond to tens of milliseconds in practice.
+   */
+  METRICS_ROUTE_LATENCY_BUCKETS_MS: [1, 2, 5, 10, 25, 50, 100, 250, 500],
+
+  /**
+   * Histogram bucket upper-bounds (ms) for `http_request_duration_ms` —
+   * Aperture's own HTTP surface (the per-route `withApiMetrics` wrapper). Spans a
+   * trivial 4xx short-circuit (~5ms) to a slow mutation (a few seconds).
+   */
+  METRICS_HTTP_LATENCY_BUCKETS_MS: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
+
+  /**
+   * Histogram bucket upper-bounds (ms) for `job_duration_ms`. Background jobs run
+   * longer than requests — a location-poll round-trips ESI, a snapshot/reap scans
+   * partitions — so the buckets reach a full minute.
+   */
+  METRICS_JOB_DURATION_BUCKETS_MS: [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000],
+
+  /**
+   * Histogram bucket upper-bounds (ms) for `realtime_fanout_duration_ms` — the
+   * in-process `dispatch()`→deliver span in `bus.ts`. In-process fanout is
+   * sub-millisecond to tens of milliseconds.
+   */
+  METRICS_FANOUT_LATENCY_BUCKETS_MS: [1, 2, 5, 10, 25, 50, 100, 250],
+
+  /**
+   * `metrics-snapshot` cron cadence. Samples the in-process registry + gauges
+   * into `ap_metric_snapshot` for the admin metrics page's history graphs.
+   * 1-minute resolution over the 30-day retention is ~43k rows — trivial for
+   * Postgres; the read path buckets it down per selected range.
+   */
+  METRICS_SNAPSHOT_CRON: '*/1 * * * *',
+
+  /**
+   * Instance-alerting evaluation cadence. The alert loop is an in-process
+   * `setInterval` booted from `server.ts` (NOT a graphile-worker cron) so its
+   * scheduling does not depend on a healthy DB — the whole point of Phase 6 is
+   * to alert on DB degradation, which a DB-backed cron could never do.
+   */
+  ALERT_EVALUATE_INTERVAL_MS: 60_000,
+  /**
+   * Hard ceiling on the alert loop's `SELECT 1` DB probe. A hung/overloaded DB
+   * must surface as `down` quickly rather than wedging the loop; the probe races
+   * this timeout and a failure (timeout or error) is itself the alert signal.
+   */
+  ALERT_DB_PROBE_TIMEOUT_MS: 2_000,
+
+  /**
+   * A DB probe that succeeds but takes longer than this is reported `degraded`
+   * (overloaded / restarting / contended) rather than `ok`.
+   */
+  ALERT_DB_SLOW_MS: 1_000,
+
+  /**
+   * Consecutive bad evaluations before a rule transitions healthy→firing. At the
+   * 1-minute `ALERT_EVALUATE_INTERVAL_MS` this is the debounce window (≈2 min) —
+   * it is how "breaker open > X min" is honored without tracking breaker
+   * duration, and it swallows transient single-tick blips.
+   */
+  ALERT_DEBOUNCE_EVALUATIONS: 2,
+
+  /** Open ESI circuit breakers at/above which the `esi_breakers` rule goes bad. */
+  ALERT_ESI_BREAKERS_OPEN_THRESHOLD: 2,
+
+  /**
+   * An `ap_job_run` row still un-ended this long after `started_at` means the
+   * worker died mid-handler (a true abandon), not a job legitimately in flight.
+   */
+  ALERT_JOB_ABANDONED_MS: 10 * 60 * 1000,
+
+  /** Lookback window for the `error_rate` rule's `ap_error_log` count. */
+  ALERT_ERROR_RATE_WINDOW_MS: 5 * 60 * 1000,
+
+  /** error|fatal `ap_error_log` rows within the window at/above which it fires. */
+  ALERT_ERROR_RATE_THRESHOLD: 25,
+
+  /**
+   * Fixed-window length for the `/api/client-errors` ingest rate limiter
+   * (Phase 7 client error capture). Per-session and global counters reset once a
+   * window elapses; a browser render loop is bounded to the caps below per window.
+   */
+  CLIENT_ERROR_RATE_WINDOW_MS: 60_000,
+
+  /** Max client-error reports accepted per session per window before dropping (429). */
+  CLIENT_ERROR_MAX_PER_SESSION: 20,
+
+  /** Max client-error reports accepted across all sessions per window (flood ceiling). */
+  CLIENT_ERROR_MAX_GLOBAL: 200,
+
+  /** `message` cap (chars) on an ingested client error before it hits `ap_error_log`. */
+  CLIENT_ERROR_MESSAGE_MAX_LENGTH: 1_000,
+
+  /** `stack` / `componentStack` cap (chars) on an ingested client error. */
+  CLIENT_ERROR_STACK_MAX_LENGTH: 8_000,
 } as const;
 
 export type ApertureConfig = typeof apertureConfig;

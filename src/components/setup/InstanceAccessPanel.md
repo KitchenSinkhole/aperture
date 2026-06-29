@@ -20,6 +20,7 @@ Three cards: **Access mode** (Restricted/Open toggle buttons), **Owner entities*
 - The active access-mode button is `variant="default"` and disabled; the other is `outline`.
 - Grant capability hint maps `login→allowlist`, `admin→super-admin`.
 - The expiry input is `datetime-local`; empty = permanent grant.
+- Timestamps (access-mode `updatedAt`, grant `expiresAt`) render through a module-level `Intl.DateTimeFormat('en-US', …)` constant with a fixed locale, so server and client produce identical text and avoid a hydration mismatch (bare `toLocaleString()` picks the runtime default locale, which differs Node↔browser).
 
 ### Emits / Calls
 - `setupSetAccessMode`, `setupAddOwner`, `setupRemoveOwner`, `setupAddGrant`, `setupRemoveGrant` — all from [[actions]] under `src/app/(setup)/`.

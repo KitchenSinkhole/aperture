@@ -6,6 +6,7 @@ import { deleteNote, updateNote } from '@/lib/map/mutations/notes';
 import { mapNoteSeverity } from '@/db/schema/ap/enums';
 import { parseBigInt, requireMapMutate } from '../../../utils';
 import { apertureConfig } from '../../../../../../../aperture.config';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * PATCH /api/map/[mapId]/notes/[noteId]  — update a note's fields.
@@ -27,7 +28,7 @@ const updateNoteBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function PATCH(
+export const PATCH = withApiMetrics('/api/map/:mapId/notes/:noteId', async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string; noteId: string }> },
 ) {
@@ -64,9 +65,9 @@ export async function PATCH(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});
 
-export async function DELETE(
+export const DELETE = withApiMetrics('/api/map/:mapId/notes/:noteId', async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string; noteId: string }> },
 ) {
@@ -87,4 +88,4 @@ export async function DELETE(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

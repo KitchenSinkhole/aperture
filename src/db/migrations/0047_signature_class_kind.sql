@@ -8,7 +8,7 @@
 -- manual rows have no known kind (cannot be backfilled — the source paste is
 -- gone).
 --
--- Rollback: src/db/migrations/0045_signature_class_kind.rollback.sql.
+-- Rollback: src/db/migrations/0047_signature_class_kind.rollback.sql.
 
 CREATE TYPE "public"."signature_class_kind" AS ENUM('signature', 'anomaly');--> statement-breakpoint
 

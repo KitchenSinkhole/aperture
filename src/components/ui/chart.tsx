@@ -26,7 +26,10 @@ export function ChartContainer({ className, children, ...props }: ChartContainer
       )}
       {...props}
     >
-      <ResponsiveContainer width="100%" height="100%">
+      {/* `initialDimension` defaults to -1×-1, which recharts warns about on the
+          first synchronous render (before the ResizeObserver measures). A positive
+          placeholder silences that; the observer corrects it on the next frame. */}
+      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 300, height: 160 }}>
         {children}
       </ResponsiveContainer>
     </div>
@@ -49,16 +52,22 @@ export function ChartTooltipContent({
   payload,
   label,
   valueFormatter,
+  labelFormatter,
 }: {
   active?: boolean;
   payload?: TooltipPayloadItem[];
   label?: string | number;
   valueFormatter?: (value: number) => string;
+  labelFormatter?: (label: number) => string;
 }) {
   if (!active || !payload || payload.length === 0) return null;
+  const shownLabel =
+    typeof label === 'number' && labelFormatter ? labelFormatter(label) : label;
   return (
     <div className="rounded-md border border-border bg-popover px-2 py-1 text-[10px] shadow-md">
-      {label != null ? <p className="mb-0.5 font-medium text-muted-foreground">{label}</p> : null}
+      {shownLabel != null ? (
+        <p className="mb-0.5 font-medium text-muted-foreground">{shownLabel}</p>
+      ) : null}
       {payload.map((item, i) => (
         <div key={i} className="flex items-center gap-1.5">
           <span className="size-2 rounded-[2px]" style={{ backgroundColor: item.color }} />

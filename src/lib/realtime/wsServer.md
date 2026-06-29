@@ -15,6 +15,7 @@ Per connection:
 - Malformed frames are dropped silently.
 - **Heartbeat:** every `WS_HEARTBEAT_MS` the server `ping`s each socket (terminating any that missed the prior pong) and sends an app-level `healthCheck` envelope so a quiet map still clears the client's degraded banner.
 - On close, all of the socket's bus subscriptions are released and its `mapViewers` counts are decremented.
+- **Connection gauge:** `incWsConnection()` on connect / `decWsConnection()` on close keep the process-wide live-socket count (`wsConnections.ts`) current for the `ws_connections` metrics gauge.
 
 ---
 
@@ -26,4 +27,4 @@ Whether `attachWsServer` has run in this process.
 - No `import 'server-only'`: loaded by the custom `server.ts` outside Next's bundler (the `server-only` shim doesn't resolve there); only `server.ts` and tests import it.
 
 ### Depends On
-- `ws`, `next-auth/jwt` (`decode`), `@/lib/auth/rights` (`canViewMap`), `@/lib/jobs/tracking` (`seedTrackingForMap`), `./bus`, `./mapViewers` (`addMapViewer`/`removeMapViewer`), `./protocol`, `aperture.config`, `@/lib/env`.
+- `ws`, `next-auth/jwt` (`decode`), `@/lib/auth/rights` (`canViewMap`), `@/lib/jobs/tracking` (`seedTrackingForMap`), `@/lib/log/logger` (`getLogger('server')` — per-frame `debug` trace), `./bus`, `./mapViewers` (`addMapViewer`/`removeMapViewer`), `./wsConnections` (`incWsConnection`/`decWsConnection`), `./protocol`, `aperture.config`, `@/lib/env`.

@@ -116,7 +116,6 @@ export function PilotRoster({
         presence={filtered}
         systemNameById={systemNameById}
         viewerIds={viewerIds}
-        showHeaders
         showGroupedPlayers={grouped}
         showOwner={showOwner}
       />

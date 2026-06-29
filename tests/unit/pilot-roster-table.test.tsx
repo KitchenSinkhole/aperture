@@ -123,50 +123,22 @@ describe('PilotRosterTable — empty state', () => {
 // Column visibility
 // ---------------------------------------------------------------------------
 
-describe('PilotRosterTable — column visibility', () => {
+describe('PilotRosterTable — columns', () => {
   const presence = [pilot({ characterId: 1, characterName: 'Alpha' })];
 
-  it('shows all four columns including Location by default', () => {
+  it('shows the Pilot / Location / Type / Ship columns', () => {
     render(<PilotRosterTable presence={presence} />);
     expect(headerLabels()).toEqual(['Pilot', 'Location', 'Type', 'Ship']);
   });
 
-  it('omits the Location header and cell when showLocationColumn is false', () => {
-    render(<PilotRosterTable presence={presence} showLocationColumn={false} />);
-    expect(headerLabels()).toEqual(['Pilot', 'Type', 'Ship']);
-    // Header dropped + the matching body cell dropped (4 → 3).
-    expect(bodyRows()[0]!.querySelectorAll('td')).toHaveLength(3);
-  });
-
-  it('renders four body cells per row when the Location column is shown', () => {
+  it('renders four body cells per row', () => {
     render(<PilotRosterTable presence={presence} />);
     expect(bodyRows()[0]!.querySelectorAll('td')).toHaveLength(4);
   });
 
-  it('omits the header row entirely when showHeaders is false', () => {
-    render(<PilotRosterTable presence={presence} showHeaders={false} />);
-    expect(container.querySelector('thead')).toBeNull();
-    // Body still renders.
-    expect(bodyRows()).toHaveLength(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Scrollable wrapper
-// ---------------------------------------------------------------------------
-
-describe('PilotRosterTable — scrollable wrapper', () => {
-  const presence = [pilot({ characterId: 1, characterName: 'Alpha' })];
-
-  it('wraps the table in a scroll region by default', () => {
+  it('wraps the table in a scroll region', () => {
     render(<PilotRosterTable presence={presence} />);
     expect(container.querySelector('.overflow-auto')).not.toBeNull();
-  });
-
-  it('renders a bare table (no scroll region) when scrollable is false', () => {
-    render(<PilotRosterTable presence={presence} scrollable={false} />);
-    expect(container.querySelector('.overflow-auto')).toBeNull();
-    expect(container.querySelector('table')).not.toBeNull();
   });
 });
 

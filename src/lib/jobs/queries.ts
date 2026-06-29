@@ -87,6 +87,22 @@ export async function summary(taskName: string, sinceMs: number): Promise<JobSum
   };
 }
 
+/**
+ * The most recently *finished* run across all tasks — the worker's heartbeat.
+ * `null` when no run has ever completed. The health probe treats a finished run
+ * within `HEALTH_WORKER_STALE_MS` as proof the worker is alive (the
+ * `character-cleanup` cron guarantees a regular tick).
+ */
+export async function latestFinishedRun(): Promise<{ name: string; endedAt: Date } | null> {
+  const [row] = await db
+    .select({ name: apJobRun.name, endedAt: apJobRun.endedAt })
+    .from(apJobRun)
+    .where(isNotNull(apJobRun.endedAt))
+    .orderBy(desc(apJobRun.endedAt))
+    .limit(1);
+  return row?.endedAt ? { name: row.name, endedAt: row.endedAt } : null;
+}
+
 /** Distinct task names that have any rows in `ap_job_run`. */
 export async function knownTaskNames(): Promise<string[]> {
   const rows = await db

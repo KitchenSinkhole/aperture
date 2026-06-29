@@ -32,6 +32,24 @@ const schema = z
       .enum(['true', 'false'])
       .default('true')
       .transform((v) => v === 'true'),
+    // Opt-in `/api/metrics` Prometheus endpoint. Off by default so a self-hoster
+    // doesn't unknowingly expose internals; the public deployment turns it on and
+    // sets a token. With it disabled the route 404s.
+    METRICS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    // Bearer/`?token=` secret guarding `/api/metrics` while enabled. An empty
+    // token admits nothing (the route 401s), so enabling without a token is a
+    // closed door rather than an open one.
+    METRICS_TOKEN: z.string().default(''),
+    // Phase 6 instance alerting. Two Discord webhooks, both optional: the alert
+    // loop no-ops when both are empty. `ALERT_WEBHOOK_URL` is the verbose
+    // operator channel (PII-scrubbed detail); `STATUS_WEBHOOK_URL` is the terse,
+    // user-facing public channel. Plain strings (not `.url()`) so an empty
+    // default stays valid, matching `METRICS_TOKEN`.
+    ALERT_WEBHOOK_URL: z.string().default(''),
+    STATUS_WEBHOOK_URL: z.string().default(''),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   })
   .superRefine((v, ctx) => {

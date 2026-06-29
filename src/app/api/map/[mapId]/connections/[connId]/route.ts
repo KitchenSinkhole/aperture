@@ -4,8 +4,10 @@ import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { deleteConnection, updateConnection } from '@/lib/map/mutations/connections';
 import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
+import { logger } from '@/lib/log/logger';
 import { connectionScope, eolStage, whJumpMass, whMass } from '@/db/schema/ap/enums';
 import { parseBigInt, requireMapMutate } from '../../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * PATCH /api/map/[mapId]/connections/[connId] — update a connection's flags.
@@ -26,7 +28,7 @@ const updateConnectionBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function PATCH(
+export const PATCH = withApiMetrics('/api/map/:mapId/connections/:connId', async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string; connId: string }> },
 ) {
@@ -69,14 +71,14 @@ export async function PATCH(
     try {
       await applyHomeStaticExemption(guard.mapId, guard.characterId);
     } catch (err) {
-      console.warn('home-static exemption reconcile failed (map=%s):', guard.mapId.toString(), err);
+      logger.warn('home-static exemption reconcile failed', { mapId: guard.mapId.toString(), err });
     }
   }
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});
 
-export async function DELETE(
+export const DELETE = withApiMetrics('/api/map/:mapId/connections/:connId', async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string; connId: string }> },
 ) {
@@ -102,9 +104,9 @@ export async function DELETE(
     try {
       await applyHomeStaticExemption(guard.mapId, guard.characterId);
     } catch (err) {
-      console.warn('home-static exemption reconcile failed (map=%s):', guard.mapId.toString(), err);
+      logger.warn('home-static exemption reconcile failed', { mapId: guard.mapId.toString(), err });
     }
   }
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

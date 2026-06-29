@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.0.0-rc.9
+
+This release adds collaborative map notes, replaces the system presence popup with a full pilot table, and lets you share dashboard layouts as a file.
+
+### New features
+
+- **Map notes** — drop free-form notes anywhere on the map as their own nodes, edited inline and shared live with everyone viewing the map. Notes are a first-class map entity (`ap_map_note`) with their own create/edit/delete API and audit trail. *(MonoliYoda)*
+
+### Improvements
+
+- **System presence shows a pilot table** — clicking a system node's presence badge now opens a pilot table with the same columns as the pilot roster view instead of the old popup. `PilotRosterTable` was extracted from `PilotRoster` so both share the same columns. *(Ionis en Gravonere, MonoliYoda)*
+- **Shareable dashboard layouts** — export the current map dashboard layout to `aperture-layout.json` and import it back on any map; imported files are re-validated and panels re-placed before the layout is applied. *(MonoliYoda)*
+
+### Contributors
+
+- **MonoliYoda** — map notes feature, dashboard layout export/import, presence-table integration
+- **Ionis en Gravonere** — system presence pilot-roster table
+
 ## v1.0.0-rc.8
 
 This release fixes an intermittent failure where adding a heavily-scanned system to the map could silently roll back, and refreshes the Docker deployment setup.

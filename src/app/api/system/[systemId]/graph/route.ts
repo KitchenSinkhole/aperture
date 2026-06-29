@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { systemStatsSeries } from '@/lib/map/stats';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/system/[systemId]/graph?range=
@@ -20,7 +21,7 @@ export const runtime = 'nodejs';
 const paramsSchema = z.object({ systemId: z.coerce.number().int().positive() });
 const querySchema = z.object({ range: z.enum(['24h', '7d', '30d']).default('7d') });
 
-export async function GET(
+export const GET = withApiMetrics('/api/system/:systemId/graph', async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ systemId: string }> },
 ) {
@@ -42,4 +43,4 @@ export async function GET(
 
   const series = await systemStatsSeries(parsedParams.data.systemId, parsedQuery.data.range);
   return Response.json({ ok: true, series });
-}
+});

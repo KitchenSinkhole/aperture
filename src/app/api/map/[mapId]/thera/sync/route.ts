@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { syncTheraConnections } from '@/lib/map/thera';
 import { requireMapMutate } from '../../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/thera/sync — fold the chosen EVE-Scout connections onto
@@ -32,7 +33,7 @@ const bodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/thera/sync', async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -65,4 +66,4 @@ export async function POST(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

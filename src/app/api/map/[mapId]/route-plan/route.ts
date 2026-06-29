@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { planRoutes } from '@/lib/map/routePlanner';
 import { routePrefsSchema } from '@/lib/map/routePrefs';
 import { requireMapView } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/route-plan
@@ -26,7 +27,7 @@ const bodySchema = z.object({
   prefs: routePrefsSchema,
 });
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/route-plan', async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -51,4 +52,4 @@ export async function POST(
     prefs: parsed.prefs,
   });
   return Response.json({ ok: true, data });
-}
+});

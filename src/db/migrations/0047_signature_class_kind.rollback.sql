@@ -1,4 +1,4 @@
--- Rollback for 0045_signature_class_kind.sql.
+-- Rollback for 0047_signature_class_kind.sql.
 --
 -- Drops the `class_kind` column and the `signature_class_kind` enum. Any stored
 -- signature/anomaly classifications are discarded.

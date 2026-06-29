@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { pingSystem } from '@/lib/map/ping';
 import { parseBigInt, requireMapView } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/ping — broadcast a transient "ping" pulse on a system to
@@ -26,7 +27,7 @@ const pingBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/ping', async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -58,4 +59,4 @@ export async function POST(
 
   const result = await pingSystem({ mapId: guard.mapId, mapSystemId });
   return Response.json(result, { status: result.ok ? 200 : 404 });
-}
+});

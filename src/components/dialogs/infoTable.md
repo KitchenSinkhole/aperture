@@ -12,10 +12,10 @@ A full-width `text-xs` `<table>`. Pass `<thead>`/`<tbody>` as children. Render b
 A `max-h-[60vh]` bordered (`rounded-md ring-1`) scroll container. Wrap an `InfoTable` in it. (No longer provides the `<table>` itself — that's `InfoTable`.)
 
 ### Th({ className, children })
-Left-aligned `<th>` cell with the standard padding/weight. `className` extends.
+Left-aligned `<th>` cell with the standard padding/weight. `className` is merged via `cn` (so it can override the base padding).
 
 ### Td({ className, children })
-`<td>` cell with the standard padding. `className` extends.
+`<td>` cell with the standard padding. `className` is merged via `cn` (so it can override the base padding).
 
 ### EmptyRow({ children })
 Centered muted empty-state block (not a table row — render in place of `ScrollTable`).
@@ -24,4 +24,4 @@ Centered muted empty-state block (not a table row — render in place of `Scroll
 
 ### Consumed by
 - `MapInfoDialog` (Systems / Connections panels — `ScrollTable` + `InfoTable`)
-- `PilotRosterTable` (wraps `InfoTable` in `ScrollTable` only when `scrollable`; `SystemNode`'s presence popup renders it bare)
+- `PilotRosterTable` (wraps `InfoTable` in `ScrollTable`)

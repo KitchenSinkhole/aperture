@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { requireStructureMutate } from '@/lib/structures/guard';
 import { createStructure } from '@/lib/structures/mutations';
 import { withTypeName } from '@/lib/structures/read';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/structures — create a manual structure-intel row.
@@ -26,7 +27,7 @@ const createStructureBodySchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withApiMetrics('/api/structures', async function POST(request: NextRequest) {
   const session = await getSession();
   const guard = requireStructureMutate(session);
   if (!guard.ok) {
@@ -59,4 +60,4 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-}
+});

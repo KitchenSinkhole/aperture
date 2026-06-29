@@ -27,7 +27,7 @@ import { systemDisplayName, isDrifterSystem } from '@/lib/eve/drifterSystems';
 import { isShatteredSystem } from '@/lib/eve/shatteredSystems';
 import { homeAccentColor, systemClassColor, systemEffectColor, systemStatusColor } from './styling';
 import { InlineTextEdit } from './InlineTextEdit';
-import { PilotRosterTable } from './PilotRosterTable';
+import { SystemPresenceTable } from './SystemPresenceTable';
 import { usePresenceForSystem } from './MapPresenceContext';
 import { useSignatureIndicator } from './MapSignatureIndicatorContext';
 import { useUnderglowForSystem } from './MapUnderglowContext';
@@ -538,12 +538,7 @@ function PresenceBadge({ pilots }: { pilots: readonly MapPresenceEntry[] }) {
       <PreviewCard.Portal>
         <PreviewCard.Positioner sideOffset={4} side="top" align="end">
           <PreviewCard.Popup className="nodrag nopan z-50 min-w-40 rounded-md border bg-popover p-0 text-xs text-popover-foreground shadow-md">
-            <PilotRosterTable
-              presence={pilots}
-              showHeaders={false}
-              showLocationColumn={false}
-              scrollable={false}
-            />
+            <SystemPresenceTable presence={pilots} />
           </PreviewCard.Popup>
         </PreviewCard.Positioner>
       </PreviewCard.Portal>

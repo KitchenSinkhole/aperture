@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { deleteSignature, updateSignature } from '@/lib/map/mutations/signatures';
 import { signatureClassKind, signatureGroupKey } from '@/db/schema';
 import { parseBigInt, requireMapMutate } from '../../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * PATCH /api/map/[mapId]/signatures/[sigId] — update a signature's fields.
@@ -28,7 +29,7 @@ const updateSignatureBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function PATCH(
+export const PATCH = withApiMetrics('/api/map/:mapId/signatures/:sigId', async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string; sigId: string }> },
 ) {
@@ -86,9 +87,9 @@ export async function PATCH(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});
 
-export async function DELETE(
+export const DELETE = withApiMetrics('/api/map/:mapId/signatures/:sigId', async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string; sigId: string }> },
 ) {
@@ -109,4 +110,4 @@ export async function DELETE(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

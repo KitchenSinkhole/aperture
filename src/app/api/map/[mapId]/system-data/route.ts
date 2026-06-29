@@ -5,6 +5,7 @@ import { intelForSystems } from '@/lib/map/intel';
 import { statsForSystems } from '@/lib/map/stats';
 import { structuresForSystems } from '@/lib/structures/read';
 import { requireMapView } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/system-data?systems=<id>,<id>,...
@@ -21,7 +22,7 @@ export const runtime = 'nodejs';
 
 const MAX_SYSTEMS = 256;
 
-export async function GET(
+export const GET = withApiMetrics('/api/map/:mapId/system-data', async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -61,4 +62,4 @@ export async function GET(
   ]);
 
   return Response.json({ ok: true, data: { intel, stats, structures } });
-}
+});

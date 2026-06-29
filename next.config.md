@@ -8,7 +8,7 @@
 ### nextConfig (default export)
 
 - `typedRoutes: true` — typed `Route` link checking.
-- `serverExternalPackages: ['pg', 'graphile-worker']` — keep these native/Node-only packages out of the server bundle.
+- `serverExternalPackages: ['pg', 'graphile-worker', 'pino']` — keep these native/Node-only packages out of the server bundle. `pino` is external so its runtime `require` of `sonic-boom`/thread-stream isn't mangled by the bundler (the structured logger, `src/lib/log/logger.ts`).
 - `turbopack.root` — pins the workspace root to this directory.
 - `headers()` — emits one `Content-Security-Policy` header on every route (`source: '/:path*'`).
 

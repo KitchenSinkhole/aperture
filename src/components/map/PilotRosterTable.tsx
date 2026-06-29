@@ -155,7 +155,6 @@ function PilotRow({
   indent = false,
   isMain = false,
   showOwner = false,
-  showLocationColumn = true,
 }: {
   p: MapPresenceEntry;
   systemNameById: Map<number, MapSystemNode>;
@@ -167,7 +166,6 @@ function PilotRow({
   isMain?: boolean;
   /** Annotate an alt row with its main's name (ungrouped mode). */
   showOwner?: boolean;
-  showLocationColumn?: boolean;
 }) {
   // Online (in-game) is what put the pilot on this roster; the icon flags the
   // ones who don't also have the map open in Aperture right now. Without viewer
@@ -202,11 +200,9 @@ function PilotRow({
           )}
         </span>
       </Td>
-      {showLocationColumn && (
-        <Td>
-          <LocationCell p={p} systemNameById={systemNameById} />
-        </Td>
-      )}
+      <Td>
+        <LocationCell p={p} systemNameById={systemNameById} />
+      </Td>
       <Td className="text-muted-foreground">{p.shipTypeName ?? '—'}</Td>
       <Td className="text-muted-foreground">{customShipName(p) || '—'}</Td>
     </tr>
@@ -254,26 +250,19 @@ export function PilotRosterTable({
   presence,
   systemNameById = EMPTY_SYSTEM_MAP,
   viewerIds,
-  showHeaders = true,
-  showLocationColumn = true,
   showGroupedPlayers = false,
   showOwner = false,
-  scrollable = true,
 }: {
   /** Pre-filtered pilot list — the table sorts and optionally groups, but does not re-filter. */
   presence: readonly MapPresenceEntry[];
-  /** Required when `showLocationColumn` is true; safe to omit otherwise. */
+  /** EVE solar-system id → placed map node, for resolving the location cell's map-specific tag. */
   systemNameById?: Map<number, MapSystemNode>;
   /** When omitted, the Unplug icon is never shown (all pilots considered to have the map open). */
   viewerIds?: ReadonlySet<number>;
-  showHeaders?: boolean;
-  showLocationColumn?: boolean;
   /** Cluster each account's pilots under their main anchor. */
   showGroupedPlayers?: boolean;
   /** Annotate alt rows with their main's name in the flat (ungrouped) view. */
   showOwner?: boolean;
-  /** Wrap the table in a height-capped, bordered scroll region. Defaults to true. */
-  scrollable?: boolean;
 }) {
   const [sort, setSort] = useState<Sort>({ key: 'name', dir: 'asc' });
 
@@ -290,21 +279,18 @@ export function PilotRosterTable({
 
   if (presence.length === 0) return <EmptyRow>No pilots match your filter.</EmptyRow>;
 
-  const table = (
-    <InfoTable>
-      {showHeaders && (
+  return (
+    <ScrollTable>
+      <InfoTable>
         <thead className="sticky top-0 bg-muted/60 text-[10px] uppercase text-muted-foreground">
           <tr>
             <SortableTh label="Pilot" columnKey="name" sort={sort} onSort={onSort} />
-            {showLocationColumn && (
-              <SortableTh label="Location" columnKey="location" sort={sort} onSort={onSort} />
-            )}
+            <SortableTh label="Location" columnKey="location" sort={sort} onSort={onSort} />
             <SortableTh label="Type" columnKey="ship-type" sort={sort} onSort={onSort} />
             <SortableTh label="Ship" columnKey="ship-name" sort={sort} onSort={onSort} />
           </tr>
         </thead>
-      )}
-      <tbody>
+        <tbody>
         {showGroupedPlayers
           ? groups.flatMap((g) => {
               const rows: ReactElement[] = [];
@@ -316,7 +302,6 @@ export function PilotRosterTable({
                     systemNameById={systemNameById}
                     viewerIds={viewerIds}
                     isMain={g.anchorIsMain}
-                    showLocationColumn={showLocationColumn}
                   />,
                 );
               } else if (g.mainName !== null) {
@@ -330,7 +315,7 @@ export function PilotRosterTable({
                         </span>
                       </span>
                     </Td>
-                    {showLocationColumn && <Td>{null}</Td>}
+                    <Td>{null}</Td>
                     <Td>{null}</Td>
                     <Td>{null}</Td>
                   </tr>,
@@ -344,7 +329,6 @@ export function PilotRosterTable({
                     systemNameById={systemNameById}
                     viewerIds={viewerIds}
                     indent
-                    showLocationColumn={showLocationColumn}
                   />,
                 );
               }
@@ -357,12 +341,10 @@ export function PilotRosterTable({
                 systemNameById={systemNameById}
                 viewerIds={viewerIds}
                 showOwner={showOwner}
-                showLocationColumn={showLocationColumn}
               />
             ))}
-      </tbody>
-    </InfoTable>
+        </tbody>
+      </InfoTable>
+    </ScrollTable>
   );
-
-  return scrollable ? <ScrollTable>{table}</ScrollTable> : table;
 }

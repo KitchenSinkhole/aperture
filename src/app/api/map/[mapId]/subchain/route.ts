@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { deleteSubchain } from '@/lib/map/mutations/subchain';
 import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
+import { logger } from '@/lib/log/logger';
 import { parseBigInt, requireMapMutate } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/subchain — delete a head system and its orphaned branch
@@ -31,7 +33,7 @@ const subchainBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/subchain', async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -82,9 +84,9 @@ export async function POST(
     try {
       await applyHomeStaticExemption(guard.mapId, guard.characterId);
     } catch (err) {
-      console.warn('home-static exemption reconcile failed (map=%s):', guard.mapId.toString(), err);
+      logger.warn('home-static exemption reconcile failed', { mapId: guard.mapId.toString(), err });
     }
   }
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

@@ -7,7 +7,11 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { apertureConfig } from '../../../aperture.config';
 import { db } from '@/db/client';
 import { apCharacter, apMapConnection, apMapConnectionLog, universeType } from '@/db/schema';
+import { getLogger } from '@/lib/log/logger';
+import { recordCharacterJump } from '@/lib/metrics/registry';
 import type { ConnectionMassLogEntry } from '@/types';
+
+const jobLog = getLogger('job');
 
 /**
  * Server-side writer for the connection mass-log. Called from the
@@ -36,23 +40,21 @@ export interface LogConnectionJumpArgs {
  */
 export async function logConnectionJump(args: LogConnectionJumpArgs): Promise<void> {
   if (args.mass === null) {
-    console.warn(
-      'connection mass-log skipped: unresolved ship mass (map=%s connection=%s shipType=%s)',
-      args.mapId.toString(),
-      args.connectionId.toString(),
-      args.shipTypeId,
-    );
+    jobLog.warn('connection mass-log skipped: unresolved ship mass', {
+      mapId: args.mapId.toString(),
+      connectionId: args.connectionId.toString(),
+      shipTypeId: args.shipTypeId,
+    });
     return;
   }
   const massKg = BigInt(Math.round(args.mass));
-  console.log(
-    'logging connection jump: map=%s connection=%s character=%s shipType=%s mass=%d kg',
-    args.mapId.toString(),
-    args.connectionId.toString(),
-    args.characterId?.toString() ?? null,
-    args.shipTypeId,
-    Number(massKg)
-  );
+  jobLog.debug('logging connection jump', {
+    mapId: args.mapId.toString(),
+    connectionId: args.connectionId.toString(),
+    characterId: args.characterId?.toString() ?? null,
+    shipTypeId: args.shipTypeId,
+    massKg: Number(massKg),
+  });
 
   const [row] = await db
     .insert(apMapConnectionLog)
@@ -64,18 +66,24 @@ export async function logConnectionJump(args: LogConnectionJumpArgs): Promise<vo
     })
     .returning({ id: apMapConnectionLog.id, jumpedAt: apMapConnectionLog.jumpedAt });
   if (!row) {
-    console.error(
-      'failed to log connection jump: insert did not return id (map=%s connection=%s character=%s shipType=%s mass=%d kg)',
-      args.mapId.toString(),
-      args.connectionId.toString(),
-      args.characterId?.toString() ?? null,
-      args.shipTypeId,
-      Number(massKg)
-    );
+    jobLog.error('failed to log connection jump: insert did not return id', {
+      mapId: args.mapId.toString(),
+      connectionId: args.connectionId.toString(),
+      characterId: args.characterId?.toString() ?? null,
+      shipTypeId: args.shipTypeId,
+      massKg: Number(massKg),
+    });
   }
   if (row) {
-    console.log('logged connection jump: logId=%s jumpedAt=%s', row.id.toString(), row.jumpedAt.toISOString());
+    jobLog.debug('logged connection jump', {
+      logId: row.id.toString(),
+      jumpedAt: row.jumpedAt.toISOString(),
+    });
   }
+
+  // Real player-movement volume. Label-free — connection/ship-type ids are
+  // unbounded.
+  recordCharacterJump();
 
   // Running cumulative includes the row just inserted. Sum stays well within
   // JS safe-int range (a hole's max stable mass is ~3e9 kg).

@@ -314,7 +314,21 @@
       "idx": 45,
       "version": "7",
       "when": 1780021200000,
-      "tag": "0045_signature_class_kind",
+      "tag": "0045_error_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1780022400000,
+      "tag": "0046_metric_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1780023600000,
+      "tag": "0047_signature_class_kind",
       "breakpoints": true
     }
   ]

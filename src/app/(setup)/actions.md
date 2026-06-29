@@ -6,7 +6,7 @@
 ---
 
 ### setupUnlockAction(password: string): Promise<ActionResult>
-Constant-time compare against `env.SETUP_PASSWORD`. On match, sets the `ap_setup` cookie via `setSetupCookie()`. Refuses to run when `SETUP_PASSWORD` is empty (no accidental open-deploy). Error message is the generic `'Invalid password.'` to prevent enumeration. `console.warn`s `unlock-ok` / `unlock-failed` / `unlock-refused-no-env` with the request's `x-forwarded-for` so proxy + app logs can be correlated.
+Constant-time compare against `env.SETUP_PASSWORD`. On match, sets the `ap_setup` cookie via `setSetupCookie()`. Refuses to run when `SETUP_PASSWORD` is empty (no accidental open-deploy). Error message is the generic `'Invalid password.'` to prevent enumeration. Logs `unlock-ok` / `unlock-failed` / `unlock-refused-no-env` (structured logger [[logger]], `warn`) with the request's `x-forwarded-for` so proxy + app logs can be correlated.
 
 ### setupLogoutAction(): Promise<ActionResult>
 Best-effort delete of the `ap_setup` cookie.
@@ -46,7 +46,7 @@ Validates numeric id, calls `removeGrant` (which guards `scope='instance'`).
 ---
 
 ### Notes
-- All actions emit a `console.warn` with the client IP (best-effort from `x-forwarded-for`) and the action name. No DB audit row — CLAUDE.md forbids parallel audit tables and `ap_map_event` is map-scoped.
+- All actions emit a structured `warn` log ([[logger]], `source='server'`) with the client IP (best-effort from `x-forwarded-for`) and the action name. `warn` is stdout-only, so the IP is never persisted to `ap_error_log`. No DB audit row — CLAUDE.md forbids parallel audit tables and `ap_map_event` is map-scoped.
 - The unlock action's constant-time compare pads to the longer of the two buffers and checks the length separately so neither bypasses the other.
 - `revalidatePath('/setup')` runs on unlock + logout so the page rerenders with the new locked/unlocked state.
 - See [[setup-cookie]] for the cookie scaffold and [[env]] for the schema.

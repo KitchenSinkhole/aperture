@@ -20,6 +20,7 @@ import type {
   apMapSignature,
   apMapSystem,
   apMapTrackingSeed,
+  apMetricSnapshot,
   apRole,
   apRouteDestination,
   apStructure,
@@ -47,6 +48,8 @@ import type {
   accessPrincipal,
   accessScope,
   authzLevel,
+  errorLevel,
+  errorSource,
   mapRight,
   mapType,
   roleSource,
@@ -154,6 +157,9 @@ export type NewApEventKind = InferInsertModel<typeof apEventKind>;
 export type ApSystemStats = InferSelectModel<typeof apSystemStats>;
 export type NewApSystemStats = InferInsertModel<typeof apSystemStats>;
 
+export type ApMetricSnapshot = InferSelectModel<typeof apMetricSnapshot>;
+export type NewApMetricSnapshot = InferInsertModel<typeof apMetricSnapshot>;
+
 export type ApCorporation = InferSelectModel<typeof apCorporation>;
 export type NewApCorporation = InferInsertModel<typeof apCorporation>;
 
@@ -201,6 +207,8 @@ export type AccessMode = (typeof accessMode.enumValues)[number];
 export type AccessPrincipal = (typeof accessPrincipal.enumValues)[number];
 export type AccessScope = (typeof accessScope.enumValues)[number];
 export type AccessCapability = (typeof accessCapability.enumValues)[number];
+export type ErrorLevel = (typeof errorLevel.enumValues)[number];
+export type ErrorSource = (typeof errorSource.enumValues)[number];
 /** The six cosmic-signature groups (every group except `wormhole`). Their site
  * names are baked into the EVE client and have no SDE rows, so they're carried
  * as free-text `name` strings rather than a `typeId` FK. */
@@ -538,4 +546,224 @@ export type SigSearchFilters = {
   maxAgeHours: number | null;
   /** `MapSystemNode.security` labels to include; empty = all. */
   securityClasses: string[];
+};
+
+// --- Observability: health probe (Phase 1) ---
+// Consumed by `/api/health/ready`, the external monitor, and (later) alerting.
+
+/**
+ * A readiness component's status. `unknown` is for a probe that errored in a
+ * non-critical way; for severity it ranks alongside `degraded` (does not 503).
+ */
+export type HealthComponentStatus = 'ok' | 'degraded' | 'down' | 'unknown';
+
+/** The components reported by the deep readiness probe. */
+export type HealthComponentName = 'db' | 'realtimeBus' | 'worker' | 'esi' | 'migrations';
+
+/** One component's result. `detail` is a human-readable, PII-free one-liner. */
+export type HealthComponent = {
+  status: HealthComponentStatus;
+  detail?: string;
+};
+
+/** Deep readiness report from `GET /api/health/ready`. */
+export type HealthReport = {
+  /** Worst component status. The route returns 503 iff this is `down`. */
+  status: HealthComponentStatus;
+  /** ISO-8601 instant the probe ran. */
+  checkedAt: string;
+  components: Record<HealthComponentName, HealthComponent>;
+};
+
+// --- Observability: metrics registry (Phase 2) ---
+// Produced by the in-process registry; consumed by `/api/metrics` (Phase 3) and
+// the snapshot job (Phase 5). PII-free by construction — labels are operation
+// ids and fixed outcome tags, never character names or IPs.
+
+export type MetricLabels = Record<string, string>;
+
+/** The distinct outcomes an `esiCall` is tallied under (`esi_requests_total`). */
+export type EsiMetricOutcome =
+  | 'success'
+  | 'http_error'
+  | 'decode_error'
+  | 'breaker_open'
+  | 'downtime'
+  | 'rate_limited'
+  | 'token_error';
+
+/** Outcome label for `job_runs_total` — the `withInstrumentation` choke point. */
+export type JobOutcome = 'success' | 'failure';
+
+/**
+ * Bounded outcome label for `location_polls_total`, one per poll invocation.
+ * Mirrors the `PollNotes` stop reasons plus the live online/offline/back-off
+ * branches so tracking health is legible without per-character labels.
+ */
+export type LocationPollOutcome =
+  | 'no-payload'
+  | 'no-tracking'
+  | 'character-inactive'
+  | 'character-missing'
+  | 'token-loss'
+  | 'online'
+  | 'offline'
+  | 'esi-outage';
+
+/** Outcome label for `webhook_deliveries_total`, from the Discord dispatch result. */
+export type WebhookOutcome =
+  | 'success'
+  | 'rate_limited'
+  | 'http_4xx'
+  | 'http_5xx'
+  | 'network_error';
+
+/** Outcome label for `esi_token_refresh_total` in the SSO refresh exchange. */
+export type TokenRefreshOutcome =
+  | 'success'
+  | 'missing_token'
+  | 'http_error'
+  | 'invalid_response';
+
+/** Outcome label for `jwk_cache_refresh_total` — one per genuine remote JWKS fetch. */
+export type JwkRefreshOutcome = 'success' | 'error';
+
+/** One counter metric: a name/help plus a value per label-set. */
+export type CounterSnapshot = {
+  name: string;
+  help: string;
+  series: Array<{ labels: MetricLabels; value: number }>;
+};
+
+/**
+ * One histogram metric. `buckets` are the finite upper bounds (the `+Inf`
+ * bucket equals `count`); each series' `counts[i]` is the cumulative number of
+ * observations `<= buckets[i]` (Prometheus `le` semantics).
+ */
+export type HistogramSnapshot = {
+  name: string;
+  help: string;
+  buckets: number[];
+  series: Array<{ labels: MetricLabels; counts: number[]; sum: number; count: number }>;
+};
+
+/** Point-in-time view of all cumulative metrics held by the registry. */
+export type MetricsSnapshot = {
+  counters: CounterSnapshot[];
+  histograms: HistogramSnapshot[];
+};
+
+/**
+ * Instantaneous gauges sampled at scrape/snapshot time. Not held in the
+ * registry — they're computed on demand from the DB and the live process.
+ */
+export type GaugeReadings = {
+  trackedCharacters: number;
+  visibleSystems: number;
+  wsConnections: number;
+  openEsiBreakers: number;
+  jobBacklog: number;
+  jobsAbandoned: number;
+  dbPoolTotal: number;
+  dbPoolIdle: number;
+  dbPoolWaiting: number;
+  processRssBytes: number;
+  processHeapUsedBytes: number;
+  processHeapTotalBytes: number;
+  eventLoopLagMs: number;
+};
+
+// --- Observability: metrics history (Phase 5) ---
+// View-model for the admin metrics page. `deriveSeries` turns the cumulative
+// `ap_metric_snapshot` rollups into per-interval rates/averages; gauges pass
+// through. Points carry an epoch-ms `t`; the client formats axis/tooltip labels
+// from it per the selected range.
+
+/** Selectable history windows on the admin metrics page. */
+export type MetricRange = '1h' | '24h' | '7d' | '30d';
+
+/** One derived point — rates over the interval ending at `t`, gauges sampled at `t`. */
+export type MetricHistoryPoint = {
+  t: number;
+  esiRequestRate: number | null; // requests/min over the interval
+  esiFailurePct: number | null; // % of ESI requests with a non-success outcome
+  esiAvgLatencyMs: number | null; // mean ESI latency over the interval
+  routeAvgLatencyMs: number | null; // mean route-plan time over the interval
+  trackedCharacters: number;
+  visibleSystems: number;
+  wsConnections: number;
+  esiBreakersOpen: number;
+  jobBacklog: number;
+  jobsAbandoned: number;
+  processRssMb: number;
+  processHeapUsedMb: number;
+  eventLoopLagMs: number;
+};
+
+/** Job-run success ratio per time bucket (sourced from `ap_job_run`, not the registry). */
+export type JobSuccessPoint = {
+  t: number;
+  successPct: number | null; // null when no runs finished in the bucket
+  runs: number;
+};
+
+/** Everything the admin metrics page graphs for one `range`. */
+export type MetricHistory = {
+  range: MetricRange;
+  /** Window bounds (epoch ms) — the fixed X-axis domain, independent of how much data exists. */
+  fromMs: number;
+  toMs: number;
+  points: MetricHistoryPoint[];
+  jobRuns: JobSuccessPoint[];
+};
+
+// --- Observability: instance alerting (Phase 6) ---
+// Drives the in-process alert loop (`src/lib/alerts/`). Deliberately DB-free at
+// the type level — alert state lives in memory, not in a table, so alerting can
+// fire about a degraded DB. PII-free by construction (rule keys + counts only).
+
+/** The conditions the alert loop watches. */
+export type AlertRuleKey = 'db' | 'worker' | 'esi_breakers' | 'job_abandoned' | 'error_rate';
+
+/**
+ * A rule's evaluated status. `down`/`degraded` are bad (drive firing); `ok`
+ * resolves; `unknown` means the signal was unreachable (e.g. a DB-backed rule
+ * during a DB outage) and is a no-op — it never fires or resolves.
+ */
+export type AlertRuleStatus = 'ok' | 'degraded' | 'down' | 'unknown';
+
+/**
+ * One gather of every signal the rules read, filled by the scheduler. Each field
+ * is `null` when its source was unreachable/timed out, so the rules can map it to
+ * `unknown` rather than a false `ok`.
+ */
+export type AlertSignals = {
+  /** `SELECT 1` probe latency in ms, or `null` if it errored/timed out. */
+  dbProbeMs: number | null;
+  /** Age (ms) of the most recent finished `ap_job_run`, or `null` if unreadable. */
+  workerStaleMs: number | null;
+  /** Open ESI circuit breakers right now (in-process; always available). */
+  openBreakers: number;
+  /** Count of un-ended `ap_job_run` rows older than the abandon threshold, or `null`. */
+  abandonedJobs: number | null;
+  /** error|fatal `ap_error_log` rows in the lookback window, or `null` if unreadable. */
+  recentErrors: number | null;
+};
+
+/** One rule's evaluation result. `detail` is a PII-free, human-readable one-liner. */
+export type AlertRuleResult = {
+  key: AlertRuleKey;
+  status: AlertRuleStatus;
+  detail: string;
+};
+
+/** A state-machine transition the scheduler dispatches to Discord. */
+export type AlertTransition = {
+  key: AlertRuleKey;
+  kind: 'fire' | 'resolve';
+  /** Worst status seen while firing (`down`/`degraded`); `'ok'` on resolve. */
+  status: AlertRuleStatus;
+  detail: string;
+  /** Epoch ms the condition started firing — present on both fire and resolve. */
+  firingSince: number;
 };
