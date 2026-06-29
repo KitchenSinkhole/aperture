@@ -8,6 +8,7 @@ import { apertureConfig } from '../../../aperture.config';
 import { db } from '@/db/client';
 import { apCharacter, apMapConnection, apMapConnectionLog, universeType } from '@/db/schema';
 import { getLogger } from '@/lib/log/logger';
+import { recordCharacterJump } from '@/lib/metrics/registry';
 import type { ConnectionMassLogEntry } from '@/types';
 
 const jobLog = getLogger('job');
@@ -79,6 +80,10 @@ export async function logConnectionJump(args: LogConnectionJumpArgs): Promise<vo
       jumpedAt: row.jumpedAt.toISOString(),
     });
   }
+
+  // Real player-movement volume. Label-free — connection/ship-type ids are
+  // unbounded.
+  recordCharacterJump();
 
   // Running cumulative includes the row just inserted. Sum stays well within
   // JS safe-int range (a hole's max stable mass is ~3e9 kg).

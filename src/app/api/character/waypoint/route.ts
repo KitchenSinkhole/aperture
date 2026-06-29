@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession, assertCharacterOwnership } from '@/lib/session';
 import { esiCall, EsiHttpError, EsiTokenError } from '@/lib/esi/client';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/character/waypoint — append an on-map system as an autopilot
@@ -21,7 +22,7 @@ const bodySchema = z.object({
   destinationId: z.number().int().positive(),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withApiMetrics('/api/character/waypoint', async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session?.characterId) {
     return Response.json({ ok: false, error: 'You must be signed in.' }, { status: 401 });
@@ -74,4 +75,4 @@ export async function POST(request: NextRequest) {
       { status: 502 },
     );
   }
-}
+});

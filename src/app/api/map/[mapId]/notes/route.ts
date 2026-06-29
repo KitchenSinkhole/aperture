@@ -6,6 +6,7 @@ import { createNote } from '@/lib/map/mutations/notes';
 import { mapNoteSeverity } from '@/db/schema/ap/enums';
 import { requireMapMutate } from '../../utils';
 import { apertureConfig } from '../../../../../../aperture.config';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/notes
@@ -26,7 +27,7 @@ const createNoteBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/notes', async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -63,4 +64,4 @@ export async function POST(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

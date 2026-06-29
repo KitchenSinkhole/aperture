@@ -7,6 +7,7 @@ import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
 import { logger } from '@/lib/log/logger';
 import { connectionScope, eolStage, whJumpMass, whMass } from '@/db/schema/ap/enums';
 import { parseBigInt, requireMapMutate } from '../../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * PATCH /api/map/[mapId]/connections/[connId] — update a connection's flags.
@@ -27,7 +28,7 @@ const updateConnectionBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function PATCH(
+export const PATCH = withApiMetrics('/api/map/:mapId/connections/:connId', async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string; connId: string }> },
 ) {
@@ -75,9 +76,9 @@ export async function PATCH(
   }
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});
 
-export async function DELETE(
+export const DELETE = withApiMetrics('/api/map/:mapId/connections/:connId', async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string; connId: string }> },
 ) {
@@ -108,4 +109,4 @@ export async function DELETE(
   }
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

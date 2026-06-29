@@ -6,6 +6,7 @@ import { apMapSystem } from '@/db/schema';
 import { getSession } from '@/lib/session';
 import { loadSignaturesForSystems } from '@/lib/map/systemNode';
 import { parseBigInt, requireMapView } from '../../../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/systems/[systemId]/signatures
@@ -21,7 +22,7 @@ import { parseBigInt, requireMapView } from '../../../../utils';
 
 export const runtime = 'nodejs';
 
-export async function GET(
+export const GET = withApiMetrics('/api/map/:mapId/systems/:systemId/signatures', async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string; systemId: string }> },
 ) {
@@ -49,4 +50,4 @@ export async function GET(
 
   const data = await loadSignaturesForSystems([mapSystemId]);
   return Response.json({ ok: true, data });
-}
+});

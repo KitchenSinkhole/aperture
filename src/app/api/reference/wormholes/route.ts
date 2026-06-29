@@ -1,6 +1,7 @@
 import 'server-only';
 import { getSession } from '@/lib/session';
 import { wormholeJumpInfo } from '@/lib/eve/wormholeJumpInfo';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/reference/wormholes
@@ -11,7 +12,7 @@ import { wormholeJumpInfo } from '@/lib/eve/wormholeJumpInfo';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export const GET = withApiMetrics('/api/reference/wormholes', async function GET() {
   const session = await getSession();
   if (!session?.characterId) {
     return Response.json({ ok: false, error: 'Not authenticated.' }, { status: 401 });
@@ -19,4 +20,4 @@ export async function GET() {
 
   const data = await wormholeJumpInfo();
   return Response.json({ ok: true, data });
-}
+});

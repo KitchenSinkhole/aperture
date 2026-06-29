@@ -8,8 +8,14 @@ import {
   apMapWebhook,
   universeSystem,
 } from '@/db/schema';
-import { postDiscordWebhook, type DiscordWebhookPayload } from '@/lib/integrations/discord';
+import {
+  postDiscordWebhook,
+  type DiscordDispatchResult,
+  type DiscordWebhookPayload,
+} from '@/lib/integrations/discord';
+import { recordWebhookDelivery } from '@/lib/metrics/registry';
 import { mapEventPayloadSchema, type MapEventPayload } from '@/lib/realtime/protocol';
+import type { WebhookOutcome } from '@/types';
 import {
   formatHistoryMessage,
   formatRallyMessage,
@@ -177,12 +183,22 @@ export async function runTestWebhookDispatch(
   };
 }
 
+/** Map a Discord dispatch result to its bounded `webhook_deliveries_total` outcome. */
+function webhookOutcome(result: DiscordDispatchResult): WebhookOutcome {
+  if (result.ok) return 'success';
+  if (result.status === 429) return 'rate_limited';
+  if (result.status === undefined) return 'network_error';
+  if (result.status >= 500) return 'http_5xx';
+  return 'http_4xx';
+}
+
 async function deliver(
   webhookId: bigint,
   url: string,
   payload: DiscordWebhookPayload,
 ): Promise<{ ok: boolean }> {
   const result = await postDiscordWebhook(url, payload);
+  recordWebhookDelivery(webhookOutcome(result));
   const attemptedAt = new Date();
 
   if (result.ok) {

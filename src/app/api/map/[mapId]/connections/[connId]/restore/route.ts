@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { restoreConnection } from '@/lib/map/mutations/restoreConnection';
 import { parseBigInt, requireMapMutate } from '../../../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/connections/[connId]/restore — re-confirm a dormant
@@ -15,7 +16,7 @@ import { parseBigInt, requireMapMutate } from '../../../../utils';
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/connections/:connId/restore', async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string; connId: string }> },
 ) {
@@ -37,4 +38,4 @@ export async function POST(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

@@ -15,5 +15,6 @@ Sample every gauge once (DB counts run concurrently; process vitals are synchron
 - `openEsiBreakers` — `openBreakerCount()`.
 - `jobBacklog` — runnable `graphile_worker._private_jobs` (unlocked, due). Degrades to `0` if the worker schema isn't migrated yet.
 - `jobsAbandoned` — `ap_job_run` rows with `ended_at IS NULL` (worker died mid-job).
+- `dbPoolTotal` / `dbPoolIdle` / `dbPoolWaiting` — `pool.totalCount` / `idleCount` / `waitingCount` (synchronous `pg.Pool` reads; pool-saturation signal).
 - `processRssBytes` / `processHeapUsedBytes` / `processHeapTotalBytes` — `process.memoryUsage()`.
 - `eventLoopLagMs` — mean event-loop delay since the previous sample.

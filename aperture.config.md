@@ -54,7 +54,7 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `JOB_DELETE_BATCH_SIZE` — per-run cap for row-by-row cleanup jobs (bounds the pg_notify burst at downtime).
 
 **Observability / metrics**
-- `METRICS_ESI_LATENCY_BUCKETS_MS`, `METRICS_ROUTE_LATENCY_BUCKETS_MS` — histogram bucket upper-bounds (`le`) for the `esi_request_duration_ms` / `route_plan_duration_ms` histograms.
+- `METRICS_ESI_LATENCY_BUCKETS_MS`, `METRICS_ROUTE_LATENCY_BUCKETS_MS`, `METRICS_HTTP_LATENCY_BUCKETS_MS`, `METRICS_JOB_DURATION_BUCKETS_MS`, `METRICS_FANOUT_LATENCY_BUCKETS_MS` — histogram bucket upper-bounds (`le`) for the `esi_request_duration_ms` / `route_plan_duration_ms` / `http_request_duration_ms` / `job_duration_ms` / `realtime_fanout_duration_ms` histograms.
 - `METRICS_SNAPSHOT_CRON` — cadence for the `metrics-snapshot` job that samples the registry + gauges into `ap_metric_snapshot` (1 min; the admin metrics page buckets it per range).
 
 **Instance alerting (Phase 6)** — consumed by the in-process alert loop (`src/lib/alerts/`), booted from `server.ts` rather than graphile-worker so scheduling/state survive a degraded DB.

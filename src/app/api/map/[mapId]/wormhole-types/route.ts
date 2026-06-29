@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { wormholeTypesForSystem } from '@/lib/map/wormholeTypes';
 import { requireMapView } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/wormhole-types?systemId=<universeSystemId>
@@ -14,7 +15,7 @@ import { requireMapView } from '../../utils';
 
 export const runtime = 'nodejs';
 
-export async function GET(
+export const GET = withApiMetrics('/api/map/:mapId/wormhole-types', async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -36,4 +37,4 @@ export async function GET(
 
   const types = await wormholeTypesForSystem(systemId);
   return Response.json({ ok: true, data: types });
-}
+});

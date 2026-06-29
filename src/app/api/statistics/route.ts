@@ -7,6 +7,7 @@ import {
   resolveStatsAccess,
   type ActivityStatScope,
 } from '@/lib/stats/activity';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/statistics?scope=&period=&anchor=
@@ -31,7 +32,7 @@ const querySchema = z.object({
     .optional(),
 });
 
-export async function GET(request: NextRequest) {
+export const GET = withApiMetrics('/api/statistics', async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session?.characterId) {
     return Response.json({ ok: false, error: 'Unauthorized.' }, { status: 401 });
@@ -62,4 +63,4 @@ export async function GET(request: NextRequest) {
   });
 
   return Response.json({ ok: true, availableScopes, ...stats });
-}
+});

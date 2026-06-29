@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { getLogger } from '@/lib/log/logger';
 import { allowClientError } from '@/lib/log/clientErrorRate';
 import { apertureConfig } from '../../../../aperture.config';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/client-errors
@@ -33,7 +34,7 @@ function truncate(value: string | undefined, max: number): string | undefined {
   return value.length > max ? value.slice(0, max) : value;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withApiMetrics('/api/client-errors', async function POST(request: NextRequest) {
   const session = await getSession();
   const sessionKey = session?.characterId ?? 'anon';
 
@@ -65,4 +66,4 @@ export async function POST(request: NextRequest) {
   });
 
   return Response.json({ ok: true }, { status: 200 });
-}
+});

@@ -4,8 +4,13 @@ import type {
   CounterSnapshot,
   EsiMetricOutcome,
   HistogramSnapshot,
+  JobOutcome,
+  JwkRefreshOutcome,
+  LocationPollOutcome,
   MetricLabels,
   MetricsSnapshot,
+  TokenRefreshOutcome,
+  WebhookOutcome,
 } from '@/types';
 
 /**
@@ -29,6 +34,38 @@ export const ESI_REQUESTS_TOTAL = 'esi_requests_total';
 export const ESI_REQUEST_DURATION_MS = 'esi_request_duration_ms';
 /** Histogram: route-plan computation time. */
 export const ROUTE_PLAN_DURATION_MS = 'route_plan_duration_ms';
+
+// --- Phase 8: deepened instrumentation ---
+
+/** Counter: map mutations committed, by event `kind` (`map_events_total{task}`). */
+export const MAP_EVENTS_TOTAL = 'map_events_total';
+/** Counter: realtime envelopes fanned out, by task vocabulary. */
+export const REALTIME_BROADCASTS_TOTAL = 'realtime_broadcasts_total';
+/** Counter: `pg_notify` notifications received, by bounded channel-class. */
+export const PG_NOTIFY_RECEIVED_TOTAL = 'pg_notify_received_total';
+/** Counter: Aperture HTTP requests, by bounded route template + method + status. */
+export const HTTP_REQUESTS_TOTAL = 'http_requests_total';
+/** Counter: background job runs, by task + outcome. */
+export const JOB_RUNS_TOTAL = 'job_runs_total';
+/** Counter: location-poll invocations, by bounded outcome. */
+export const LOCATION_POLLS_TOTAL = 'location_polls_total';
+/** Counter: recorded wormhole jumps (label-free volume). */
+export const CHARACTER_JUMPS_TOTAL = 'character_jumps_total';
+/** Counter: persisted error-log rows, by source. */
+export const ERROR_LOG_EVENTS_TOTAL = 'error_log_events_total';
+/** Counter: webhook deliveries, by target + outcome. */
+export const WEBHOOK_DELIVERIES_TOTAL = 'webhook_deliveries_total';
+/** Counter: ESI token refreshes, by outcome. */
+export const ESI_TOKEN_REFRESH_TOTAL = 'esi_token_refresh_total';
+/** Counter: genuine remote JWKS fetches (cache refreshes), by outcome. */
+export const JWK_CACHE_REFRESH_TOTAL = 'jwk_cache_refresh_total';
+
+/** Histogram: in-process realtime dispatch→deliver span. */
+export const REALTIME_FANOUT_DURATION_MS = 'realtime_fanout_duration_ms';
+/** Histogram: Aperture HTTP request latency, by bounded route template. */
+export const HTTP_REQUEST_DURATION_MS = 'http_request_duration_ms';
+/** Histogram: background job run duration, by task. */
+export const JOB_DURATION_MS = 'job_duration_ms';
 
 type CounterState = {
   help: string;
@@ -71,6 +108,34 @@ class MetricsRegistry {
       ROUTE_PLAN_DURATION_MS,
       'Route-plan computation time in milliseconds.',
       apertureConfig.METRICS_ROUTE_LATENCY_BUCKETS_MS,
+    );
+
+    // Phase 8 — deepened instrumentation.
+    this.defineCounter(MAP_EVENTS_TOTAL, 'Map mutations committed, by event kind.');
+    this.defineCounter(REALTIME_BROADCASTS_TOTAL, 'Realtime envelopes fanned out, by task.');
+    this.defineCounter(PG_NOTIFY_RECEIVED_TOTAL, 'pg_notify notifications received, by channel class.');
+    this.defineCounter(HTTP_REQUESTS_TOTAL, 'Aperture HTTP requests, by route, method and status.');
+    this.defineCounter(JOB_RUNS_TOTAL, 'Background job runs, by task and outcome.');
+    this.defineCounter(LOCATION_POLLS_TOTAL, 'Location-poll invocations, by outcome.');
+    this.defineCounter(CHARACTER_JUMPS_TOTAL, 'Recorded wormhole jumps.');
+    this.defineCounter(ERROR_LOG_EVENTS_TOTAL, 'Persisted error-log rows, by source.');
+    this.defineCounter(WEBHOOK_DELIVERIES_TOTAL, 'Webhook deliveries, by target and outcome.');
+    this.defineCounter(ESI_TOKEN_REFRESH_TOTAL, 'ESI token refreshes, by outcome.');
+    this.defineCounter(JWK_CACHE_REFRESH_TOTAL, 'Remote JWKS cache refreshes, by outcome.');
+    this.defineHistogram(
+      REALTIME_FANOUT_DURATION_MS,
+      'In-process realtime dispatch-to-deliver span in milliseconds.',
+      apertureConfig.METRICS_FANOUT_LATENCY_BUCKETS_MS,
+    );
+    this.defineHistogram(
+      HTTP_REQUEST_DURATION_MS,
+      'Aperture HTTP request latency in milliseconds.',
+      apertureConfig.METRICS_HTTP_LATENCY_BUCKETS_MS,
+    );
+    this.defineHistogram(
+      JOB_DURATION_MS,
+      'Background job run duration in milliseconds.',
+      apertureConfig.METRICS_JOB_DURATION_BUCKETS_MS,
     );
   }
 
@@ -182,4 +247,57 @@ export function recordEsiRequest(
 /** Record one route-plan computation time (ms). */
 export function recordRoutePlan(durationMs: number): void {
   metrics.observeHistogram(ROUTE_PLAN_DURATION_MS, {}, durationMs);
+}
+
+/** Tally one Aperture HTTP request (counter + latency histogram). */
+export function recordHttpRequest(
+  route: string,
+  method: string,
+  status: string,
+  durationMs: number,
+): void {
+  metrics.incrementCounter(HTTP_REQUESTS_TOTAL, { route, method, status });
+  metrics.observeHistogram(HTTP_REQUEST_DURATION_MS, { route }, durationMs);
+}
+
+/** Tally one background job run (counter by outcome + duration histogram). */
+export function recordJobRun(task: string, outcome: JobOutcome, durationMs: number): void {
+  metrics.incrementCounter(JOB_RUNS_TOTAL, { task, outcome });
+  metrics.observeHistogram(JOB_DURATION_MS, { task }, durationMs);
+}
+
+/** Tally one realtime broadcast (counter by task + in-process fanout duration). */
+export function recordRealtimeBroadcast(task: string, durationMs: number): void {
+  metrics.incrementCounter(REALTIME_BROADCASTS_TOTAL, { task });
+  metrics.observeHistogram(REALTIME_FANOUT_DURATION_MS, {}, durationMs);
+}
+
+/** Tally one committed map event (`map_events_total{task}`). */
+export function recordMapEvent(task: string): void {
+  metrics.incrementCounter(MAP_EVENTS_TOTAL, { task });
+}
+
+/** Tally one location-poll invocation by bounded outcome. */
+export function recordLocationPoll(outcome: LocationPollOutcome): void {
+  metrics.incrementCounter(LOCATION_POLLS_TOTAL, { outcome });
+}
+
+/** Tally one recorded wormhole jump (label-free volume). */
+export function recordCharacterJump(): void {
+  metrics.incrementCounter(CHARACTER_JUMPS_TOTAL, {});
+}
+
+/** Tally one Discord webhook delivery by outcome. */
+export function recordWebhookDelivery(outcome: WebhookOutcome): void {
+  metrics.incrementCounter(WEBHOOK_DELIVERIES_TOTAL, { target: 'discord', outcome });
+}
+
+/** Tally one ESI token-refresh exchange by outcome. */
+export function recordTokenRefresh(outcome: TokenRefreshOutcome): void {
+  metrics.incrementCounter(ESI_TOKEN_REFRESH_TOTAL, { outcome });
+}
+
+/** Tally one genuine remote JWKS fetch (cache refresh) by outcome. */
+export function recordJwkRefresh(outcome: JwkRefreshOutcome): void {
+  metrics.incrementCounter(JWK_CACHE_REFRESH_TOTAL, { outcome });
 }

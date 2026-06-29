@@ -10,8 +10,10 @@ Wraps a raw handler so each invocation:
 
 1. INSERTs a row into `ap_job_run` with `name` + `started_at = now()` and captures `id`.
 2. Awaits `run(payload, helpers)`.
-3. On success: updates the row with `ended_at = now()`, `success = true`, `notes = <JSON-coerced return>`.
-4. On failure: updates the row with `ended_at = now()`, `success = false`, `error_text = <truncated message>`, then **re-throws** so graphile-worker handles retry/backoff.
+3. On success: records `recordJobRun(name, 'success', durationMs)` (`job_runs_total{task,outcome}` + `job_duration_ms{task}`), then updates the row with `ended_at = now()`, `success = true`, `notes = <JSON-coerced return>`.
+4. On failure: records `recordJobRun(name, 'failure', durationMs)`, updates the row with `ended_at = now()`, `success = false`, `error_text = <truncated message>`, then **re-throws** so graphile-worker handles retry/backoff.
+
+`durationMs` is the `performance.now()` span around the inner `run()`.
 
 **Parameters:**
 - `name` — graphile-worker task identifier (must match the `JobModule.name` / cron `task` field).

@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { loadMapForView } from '@/lib/map/loadMap';
 import { requireMapView } from '../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]
@@ -15,7 +16,7 @@ import { requireMapView } from '../utils';
 
 export const runtime = 'nodejs';
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ mapId: string }> }) {
+export const GET = withApiMetrics('/api/map/:mapId', async function GET(_request: NextRequest, { params }: { params: Promise<{ mapId: string }> }) {
   const session = await getSession();
   const { mapId: rawMapId } = await params;
   const guard = await requireMapView(rawMapId, session);
@@ -29,4 +30,4 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   }
 
   return Response.json({ ok: true, data });
-}
+});

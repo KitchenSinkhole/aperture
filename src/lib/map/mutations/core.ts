@@ -8,6 +8,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apMapEvent } from '@/db/schema';
 import { getLogger } from '@/lib/log/logger';
+import { recordMapEvent } from '@/lib/metrics/registry';
 import {
   mapEventPayloadSchema,
   type MapEventKind,
@@ -94,6 +95,10 @@ export async function commitMapEvent<K extends MapEventKind>(
       .insert(apMapEvent)
       .values({ id: BigInt(eventId), mapId, characterId, occurredAt, kind, payload })
       .returning({ id: apMapEvent.id });
+
+    // The canonical activity signal: one tally per committed mutation, split by
+    // the bounded 17-value event-kind vocabulary.
+    recordMapEvent(kind);
 
     return { eventId, payload, occurredAt };
   };

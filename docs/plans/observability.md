@@ -136,8 +136,9 @@ loop with in-memory dedup state**:
 - Errors land in `ap_error_log` (reused from Phase 4) and thus feed the Phase 6 error-rate rule and the Phase 5 graphs.
 **Done when:** a thrown client error produces a scrubbed `ap_error_log` row; the boundary shows a recoverable fallback; rate-limit drops a flood.
 
-## Phase 8 — Deepen instrumentation coverage
+## Phase 8 — Deepen instrumentation coverage — SHIPPED
 **Mode:** Plan mode (many hot paths; each tier picks a hook point and label cardinality is a design decision)
+**Implementation detail + recorded deviation:** see `docs/plans/observability-phase-8.md` (all five tiers shipped; per-route `route.md` companions intentionally not edited since the HTTP interface is unchanged).
 **Goal:** Close the gap between "ESI is fine" and "is *Aperture itself* serving users and pushing realtime updates." Phases 2–3 instrumented the ESI egress + route calc + infra gauges; the realtime/mutation core, the app's own HTTP surface, per-task job flow, integrations, and auth are still dark — which is exactly the part that broke in the motivating incident.
 
 **Mechanism (applies to every tier):**

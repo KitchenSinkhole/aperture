@@ -8,6 +8,7 @@ import { assignTagOnConnect } from '@/lib/tagging/service';
 import { logger } from '@/lib/log/logger';
 import { connectionScope, eolStage, whJumpMass, whMass } from '@/db/schema/ap/enums';
 import { parseBigInt, requireMapMutate } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/connections
@@ -31,7 +32,7 @@ const createConnectionBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/connections', async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -98,4 +99,4 @@ export async function POST(
   }
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

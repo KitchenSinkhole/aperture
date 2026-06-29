@@ -307,6 +307,27 @@ export const apertureConfig = {
   METRICS_ROUTE_LATENCY_BUCKETS_MS: [1, 2, 5, 10, 25, 50, 100, 250, 500],
 
   /**
+   * Histogram bucket upper-bounds (ms) for `http_request_duration_ms` —
+   * Aperture's own HTTP surface (the per-route `withApiMetrics` wrapper). Spans a
+   * trivial 4xx short-circuit (~5ms) to a slow mutation (a few seconds).
+   */
+  METRICS_HTTP_LATENCY_BUCKETS_MS: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
+
+  /**
+   * Histogram bucket upper-bounds (ms) for `job_duration_ms`. Background jobs run
+   * longer than requests — a location-poll round-trips ESI, a snapshot/reap scans
+   * partitions — so the buckets reach a full minute.
+   */
+  METRICS_JOB_DURATION_BUCKETS_MS: [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000],
+
+  /**
+   * Histogram bucket upper-bounds (ms) for `realtime_fanout_duration_ms` — the
+   * in-process `dispatch()`→deliver span in `bus.ts`. In-process fanout is
+   * sub-millisecond to tens of milliseconds.
+   */
+  METRICS_FANOUT_LATENCY_BUCKETS_MS: [1, 2, 5, 10, 25, 50, 100, 250],
+
+  /**
    * `metrics-snapshot` cron cadence. Samples the in-process registry + gauges
    * into `ap_metric_snapshot` for the admin metrics page's history graphs.
    * 1-minute resolution over the 30-day retention is ~43k rows — trivial for

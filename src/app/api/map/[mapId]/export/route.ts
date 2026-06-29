@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { buildMapExport } from '@/lib/map/transfer';
 import { requireMapMutate } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/export — serialise the map's current state to a
@@ -14,7 +15,7 @@ import { requireMapMutate } from '../../utils';
 
 export const runtime = 'nodejs';
 
-export async function GET(
+export const GET = withApiMetrics('/api/map/:mapId/export', async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -34,4 +35,4 @@ export async function GET(
       { status: 500 },
     );
   }
-}
+});

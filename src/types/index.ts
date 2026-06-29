@@ -592,6 +592,42 @@ export type EsiMetricOutcome =
   | 'rate_limited'
   | 'token_error';
 
+/** Outcome label for `job_runs_total` — the `withInstrumentation` choke point. */
+export type JobOutcome = 'success' | 'failure';
+
+/**
+ * Bounded outcome label for `location_polls_total`, one per poll invocation.
+ * Mirrors the `PollNotes` stop reasons plus the live online/offline/back-off
+ * branches so tracking health is legible without per-character labels.
+ */
+export type LocationPollOutcome =
+  | 'no-payload'
+  | 'no-tracking'
+  | 'character-inactive'
+  | 'character-missing'
+  | 'token-loss'
+  | 'online'
+  | 'offline'
+  | 'esi-outage';
+
+/** Outcome label for `webhook_deliveries_total`, from the Discord dispatch result. */
+export type WebhookOutcome =
+  | 'success'
+  | 'rate_limited'
+  | 'http_4xx'
+  | 'http_5xx'
+  | 'network_error';
+
+/** Outcome label for `esi_token_refresh_total` in the SSO refresh exchange. */
+export type TokenRefreshOutcome =
+  | 'success'
+  | 'missing_token'
+  | 'http_error'
+  | 'invalid_response';
+
+/** Outcome label for `jwk_cache_refresh_total` — one per genuine remote JWKS fetch. */
+export type JwkRefreshOutcome = 'success' | 'error';
+
 /** One counter metric: a name/help plus a value per label-set. */
 export type CounterSnapshot = {
   name: string;
@@ -628,6 +664,9 @@ export type GaugeReadings = {
   openEsiBreakers: number;
   jobBacklog: number;
   jobsAbandoned: number;
+  dbPoolTotal: number;
+  dbPoolIdle: number;
+  dbPoolWaiting: number;
   processRssBytes: number;
   processHeapUsedBytes: number;
   processHeapTotalBytes: number;

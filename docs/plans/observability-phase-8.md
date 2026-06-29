@@ -1,5 +1,20 @@
 # Observability Phase 8 — Deepen Instrumentation Coverage
 
+> **STATUS: SHIPPED.** All five tiers landed. New config buckets + outcome types + 14 metric
+> series registered in `src/lib/metrics/registry.ts`; `withApiMetrics` wraps 38 `route.ts`
+> handlers; emitters in `core.ts` / `bus.ts` / `withInstrumentation.ts` / `locationPoll.ts` /
+> `connectionMassLog.ts` / `logger.ts` / `gauges.ts` / `prometheus.ts` / `dispatcher.ts` /
+> `eve-provider.ts` / `jwks.ts`. Unit tests extended (Tier 1 `map_events_total`, Tier 2
+> `http_request_duration_ms`, Tier 3 `job_runs_total`). `pnpm lint`/`typecheck`/`build` green;
+> 407 unit tests pass.
+>
+> **Deviation recorded (per CLAUDE.md):** the per-route `route.md` companions were **not** edited.
+> Wrapping a handler in `withApiMetrics` does not change its documented HTTP contract
+> (method / path / body / access / response) — the metrics emission is a cross-cutting concern,
+> not part of the route interface. This follows the established convention that a companion `.md`
+> describes the current interface and needs no edit when the interface is unchanged. All other
+> touched modules' companions were updated in the same operation.
+
 ## Context
 
 Phases 2–3 instrumented only the **ESI egress** (`esi_requests_total`, `esi_request_duration_ms`), **route calc** (`route_plan_duration_ms`), and infra gauges. The realtime/mutation core, Aperture's own HTTP surface, per-task job flow, integrations, and auth are still dark — which is exactly the layer that broke in the motivating outage ("is *Aperture itself* serving users and pushing realtime updates?"). Phase 8 adds ~14 new series across five tiers so they all flow to Prometheus/Grafana via the existing `/api/metrics`.

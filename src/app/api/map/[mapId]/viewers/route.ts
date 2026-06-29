@@ -6,6 +6,7 @@ import { apCharacter } from '@/db/schema';
 import { getSession } from '@/lib/session';
 import { getMapViewerUserIds } from '@/lib/realtime/mapViewers';
 import { requireMapView } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/viewers — the EVE character ids whose *account* currently
@@ -26,7 +27,7 @@ import { requireMapView } from '../../utils';
 
 export const runtime = 'nodejs';
 
-export async function GET(
+export const GET = withApiMetrics('/api/map/:mapId/viewers', async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -50,4 +51,4 @@ export async function GET(
   // EVE character ids fit comfortably in Number.MAX_SAFE_INTEGER (the wire
   // convention everywhere else), and the roster keys on number.
   return Response.json({ ok: true, characterIds: rows.map((r) => Number(r.id)) });
-}
+});

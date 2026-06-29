@@ -6,6 +6,7 @@ import pino from 'pino';
 import { db } from '@/db/client';
 import { apErrorLog } from '@/db/schema';
 import { env } from '@/lib/env';
+import { metrics, ERROR_LOG_EVENTS_TOTAL } from '@/lib/metrics/registry';
 import { scrubContext } from './scrub';
 import type { ErrorSource } from '@/types';
 
@@ -77,6 +78,7 @@ async function persist(
       characterId: extractCharacterId(context),
       context: scrubContext(context) ?? null,
     });
+    metrics.incrementCounter(ERROR_LOG_EVENTS_TOTAL, { source });
   } catch {
     // swallow
   }

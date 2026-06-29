@@ -19,16 +19,27 @@ vi.mock('@/db/client', () => {
   };
 });
 
+import type { NextRequest } from 'next/server';
 import { esiCall, EsiBreakerOpenError, EsiHttpError } from '@/lib/esi/client';
 import { statusSchema } from '@/lib/esi/decoders';
 import { __resetBreakersForTest } from '@/lib/esi/breaker';
 import { planRoutes } from '@/lib/map/routePlanner';
 import {
   metrics,
+  recordMapEvent,
+  recordJobRun,
+  recordRealtimeBroadcast,
   ESI_REQUESTS_TOTAL,
   ESI_REQUEST_DURATION_MS,
   ROUTE_PLAN_DURATION_MS,
+  MAP_EVENTS_TOTAL,
+  JOB_RUNS_TOTAL,
+  JOB_DURATION_MS,
+  REALTIME_BROADCASTS_TOTAL,
+  HTTP_REQUESTS_TOTAL,
+  HTTP_REQUEST_DURATION_MS,
 } from '@/lib/metrics/registry';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 import type { MetricLabels, MetricsSnapshot } from '@/types';
 
 const NON_DOWNTIME = new Date('2026-01-01T00:00:00Z');
@@ -140,5 +151,67 @@ describe('planRoutes instrumentation', () => {
       includeEveScout: false,
     } });
     expect(histogram(metrics.snapshot(), ROUTE_PLAN_DURATION_MS)!.count).toBe(1);
+  });
+});
+
+describe('Phase 8 — Tier 1 realtime/mutation pipeline', () => {
+  it('tallies map_events_total by event kind', () => {
+    recordMapEvent('system.added');
+    recordMapEvent('system.added');
+    recordMapEvent('connection.create');
+    const snap = metrics.snapshot();
+    expect(counterValue(snap, MAP_EVENTS_TOTAL, { task: 'system.added' })).toBe(2);
+    expect(counterValue(snap, MAP_EVENTS_TOTAL, { task: 'connection.create' })).toBe(1);
+  });
+
+  it('tallies realtime_broadcasts_total and observes fanout duration', () => {
+    recordRealtimeBroadcast('mapUpdate', 3);
+    const snap = metrics.snapshot();
+    expect(counterValue(snap, REALTIME_BROADCASTS_TOTAL, { task: 'mapUpdate' })).toBe(1);
+    // realtime_fanout_duration_ms is label-free.
+    expect(histogram(snap, 'realtime_fanout_duration_ms')!.count).toBe(1);
+  });
+});
+
+describe('Phase 8 — Tier 2 withApiMetrics', () => {
+  function fakeRequest(method: string): NextRequest {
+    return { method } as unknown as NextRequest;
+  }
+
+  it('records http_requests_total and http_request_duration_ms for a handled response', async () => {
+    const handler = withApiMetrics('/api/test/:id', async () => new Response(null, { status: 204 }));
+    const res = await handler(fakeRequest('POST'), {} as never);
+    expect(res.status).toBe(204);
+
+    const snap = metrics.snapshot();
+    expect(
+      counterValue(snap, HTTP_REQUESTS_TOTAL, { route: '/api/test/:id', method: 'POST', status: '204' }),
+    ).toBe(1);
+    expect(histogram(snap, HTTP_REQUEST_DURATION_MS, { route: '/api/test/:id' })!.count).toBe(1);
+  });
+
+  it('records status 500 and re-throws when the handler throws', async () => {
+    const handler = withApiMetrics('/api/test/:id', async () => {
+      throw new Error('boom');
+    });
+    await expect(handler(fakeRequest('GET'), {} as never)).rejects.toThrow('boom');
+    expect(
+      counterValue(metrics.snapshot(), HTTP_REQUESTS_TOTAL, {
+        route: '/api/test/:id',
+        method: 'GET',
+        status: '500',
+      }),
+    ).toBe(1);
+  });
+});
+
+describe('Phase 8 — Tier 3 job-run helper', () => {
+  it('tallies job_runs_total by outcome and observes job_duration_ms', () => {
+    recordJobRun('location-poll', 'success', 12);
+    recordJobRun('location-poll', 'failure', 30);
+    const snap = metrics.snapshot();
+    expect(counterValue(snap, JOB_RUNS_TOTAL, { task: 'location-poll', outcome: 'success' })).toBe(1);
+    expect(counterValue(snap, JOB_RUNS_TOTAL, { task: 'location-poll', outcome: 'failure' })).toBe(1);
+    expect(histogram(snap, JOB_DURATION_MS, { task: 'location-poll' })!.count).toBe(2);
   });
 });

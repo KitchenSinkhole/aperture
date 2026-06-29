@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { listConnectionMassLog } from '@/lib/map/connectionMassLog';
 import { parseBigInt, requireMapView } from '../../../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/connections/[connId]/mass-log — list a connection's
@@ -14,7 +15,7 @@ import { parseBigInt, requireMapView } from '../../../../utils';
 
 export const runtime = 'nodejs';
 
-export async function GET(
+export const GET = withApiMetrics('/api/map/:mapId/connections/:connId/mass-log', async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string; connId: string }> },
 ) {
@@ -32,4 +33,4 @@ export async function GET(
 
   const data = await listConnectionMassLog({ mapId: guard.mapId, connectionId });
   return Response.json({ ok: true, data });
-}
+});

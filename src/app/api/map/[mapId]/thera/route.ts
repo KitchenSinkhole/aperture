@@ -4,6 +4,7 @@ import { getSession } from '@/lib/session';
 import { loadTheraConnections } from '@/lib/map/thera';
 import { EveScoutError } from '@/lib/integrations/evescout';
 import { requireMapView } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/thera — current EVE-Scout Thera + Turnur connections,
@@ -17,7 +18,7 @@ import { requireMapView } from '../../utils';
 
 export const runtime = 'nodejs';
 
-export async function GET(
+export const GET = withApiMetrics('/api/map/:mapId/thera', async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -38,4 +39,4 @@ export async function GET(
       { status },
     );
   }
-}
+});

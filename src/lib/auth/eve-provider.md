@@ -21,6 +21,8 @@ Refreshes a character's ESI access token via CCP's `/v2/oauth/token` (`grant_typ
 
 **Throws:** if no refresh token is stored, the HTTP call fails, or the response shape drifts. A throw rolls back the transaction (and releases the lock).
 
+**Metrics:** records `esi_token_refresh_total{outcome}` — `missing_token` / `http_error` / `invalid_response` inline at each failure site (before the throw, inside the transaction), `success` only after the transaction commits. No `character_id` label (unbounded).
+
 ---
 
 Notes:

@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { createSignature } from '@/lib/map/mutations/signatures';
 import { signatureGroupKey } from '@/db/schema';
 import { parseBigInt, requireMapMutate } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/signatures
@@ -27,7 +28,7 @@ const createSignatureBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/signatures', async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -77,4 +78,4 @@ export async function POST(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { resolveSignatureRows } from '@/lib/map/signatureReader';
 import type { ParsedSigRow } from '@/lib/map/signatureParser';
 import { requireMapView } from '../../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/signatures/resolve — best-effort preview resolver for
@@ -30,7 +31,7 @@ const resolveBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/signatures/resolve', async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -58,4 +59,4 @@ export async function POST(
 
   const resolved = await resolveSignatureRows(parsed.data.rows as ParsedSigRow[]);
   return Response.json({ ok: true, data: resolved });
-}
+});

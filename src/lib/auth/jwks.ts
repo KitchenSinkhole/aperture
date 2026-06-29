@@ -1,7 +1,8 @@
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, customFetch, jwtVerify } from 'jose';
 import { z } from 'zod';
 import { apertureConfig } from '../../../aperture.config';
 import { env } from '@/lib/env';
+import { recordJwkRefresh } from '@/lib/metrics/registry';
 
 // EVE SSO issues a JWT *access token* (no OIDC id_token). We verify it against
 // CCP's published JWK set. `createRemoteJWKSet`'s `cooldownDuration` enforces
@@ -12,12 +13,27 @@ function jwksUri(): URL {
   return new URL(apertureConfig.SSO_JWKS_PATH, env.AUTH_EVE_SSO_BASE);
 }
 
+// Counts genuine remote JWKS fetches (cache refreshes — the thing capped at one
+// per 10s), not per-token verifies: jose only invokes this when it actually
+// reloads the key set.
+const instrumentedFetch: typeof fetch = async (...args) => {
+  try {
+    const res = await fetch(...args);
+    recordJwkRefresh('success');
+    return res;
+  } catch (err) {
+    recordJwkRefresh('error');
+    throw err;
+  }
+};
+
 let keySet: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 function eveKeySet(): ReturnType<typeof createRemoteJWKSet> {
   if (!keySet) {
     keySet = createRemoteJWKSet(jwksUri(), {
       cooldownDuration: apertureConfig.JWK_REFETCH_MIN_INTERVAL_MS,
+      [customFetch]: instrumentedFetch,
     });
   }
   return keySet;

@@ -8,7 +8,7 @@
 ### locationPoll: JobModule
 - `name`: `'location-poll'`
 - `cron`: **omitted** — the loop is self-perpetuating after the first enqueue from `startTrackingCharacter`.
-- `run`: `withInstrumentation('location-poll', poll)`.
+- `run`: `withInstrumentation('location-poll', instrumentedPoll)` — `instrumentedPoll` wraps `poll` to emit exactly one `location_polls_total{outcome}` per invocation (see below), then `withInstrumentation` adds the generic `job_runs_total`/`job_duration_ms`.
 
 ### locationPollJobKey(characterId): string
 Stable job key per character (`'location-poll:<id>'`). Used by both the handler's `addJob` (`jobKeyMode: 'replace'`) and `tracking.ts`'s `startTrackingCharacter` so at most one in-flight + one pending poll exists per character at any time.
@@ -28,6 +28,9 @@ Algorithm:
 8. **Broadcast** — emit `characterUpdate(online: true, systemId, shipTypeId, shipName, locationAt)` on every tracked map channel. Goes out *after* the fold so the client receives `system.added` / `connection.create` first and the breadcrumb lands on a canvas that already knows the new system.
 
 Returns `PollNotes` with whichever subset of `{ stopped, online, previousSystemId, currentSystemId, reenqueuedInMs, jumpClass, folds }` applied. `stopped` is one of `'no-payload' | 'no-tracking' | 'character-inactive' | 'character-missing' | 'token-loss'`.
+
+### instrumentedPoll(payload, helpers): PollNotes
+Thin wrapper around `poll` that records `location_polls_total{outcome}` once per invocation (`recordLocationPoll`). The outcome is the `stopped` reason when present, else `'online'`/`'offline'` from `notes.online`. On a thrown ESI back-off (`EsiBreakerOpenError` / `EsiDowntimeError` / 401 `EsiHttpError`) it records `'esi-outage'` and re-throws; unexpected throws go uncounted (not a tracking-health signal).
 
 ### Failure handling
 A single `try/catch` wraps steps 3–8:

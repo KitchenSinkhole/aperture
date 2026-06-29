@@ -8,7 +8,7 @@
 ### commitMapEvent<K extends MapEventKind>(args: CommitMapEventArgs<K>): Promise<ActionResult<MapEventPayload>>
 Opens a `db.transaction` (or joins `args.tx` if passed), pre-allocates the next `ap_map_event.id` from the table sequence (via `pg_get_serial_sequence`), runs `args.mutate(tx, eventId)` for the row write(s), builds `{ kind, eventId, ...patch }`, validates it against `mapEventPayloadSchema`, and inserts exactly one `ap_map_event` row with that explicit id. The pre-allocated `eventId` is embedded in the payload *before* the insert so the trigger's notify carries it (the client dedupe key).
 
-Side effects: one event-row insert (the trigger fires `pg_notify`); nothing else — no app-level `pg_notify`, no dual-write. A throwing `mutate` or a payload that fails validation rolls back the active transaction; in standalone mode it surfaces as `{ ok: false }`, in joined-tx mode the error re-throws so the caller's outer transaction aborts.
+Side effects: one event-row insert (the trigger fires `pg_notify`); nothing else — no app-level `pg_notify`, no dual-write. After the insert succeeds it calls `recordMapEvent(kind)` (`map_events_total{task=kind}`, the canonical activity signal). A throwing `mutate` or a payload that fails validation rolls back the active transaction; in standalone mode it surfaces as `{ ok: false }`, in joined-tx mode the error re-throws so the caller's outer transaction aborts.
 
 **Parameters:**
 - `args.mapId` — `ap_map_event.map_id` (bigint).

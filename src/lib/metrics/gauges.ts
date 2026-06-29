@@ -1,6 +1,6 @@
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { eq, isNull, sql } from 'drizzle-orm';
-import { db } from '@/db/client';
+import { db, pool } from '@/db/client';
 import { apJobRun, apMapCharacterTracking, apMapSystem } from '@/db/schema';
 import { openBreakerCount } from '@/lib/esi/breaker';
 import { wsConnectionCount } from '@/lib/realtime/wsConnections';
@@ -40,6 +40,11 @@ export async function sampleGauges(): Promise<GaugeReadings> {
     openEsiBreakers: openBreakerCount(),
     jobBacklog: jobQueue.backlog,
     jobsAbandoned: jobQueue.abandoned,
+    // pg.Pool exposes these synchronously; pool saturation is a classic silent
+    // killer and a free read.
+    dbPoolTotal: pool.totalCount,
+    dbPoolIdle: pool.idleCount,
+    dbPoolWaiting: pool.waitingCount,
     processRssBytes: mem.rss,
     processHeapUsedBytes: mem.heapUsed,
     processHeapTotalBytes: mem.heapTotal,

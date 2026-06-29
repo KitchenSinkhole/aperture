@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { searchCorporations } from '@/lib/structures/corpSearch';
 import { EsiHttpError, EsiTokenError } from '@/lib/esi/client';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/structures/corp-search?q=<query> — corporation name autocomplete for
@@ -15,7 +16,7 @@ import { EsiHttpError, EsiTokenError } from '@/lib/esi/client';
 
 export const runtime = 'nodejs';
 
-export async function GET(request: NextRequest) {
+export const GET = withApiMetrics('/api/structures/corp-search', async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session?.characterId) {
     return Response.json({ ok: false, error: 'You must be signed in.' }, { status: 401 });
@@ -40,4 +41,4 @@ export async function GET(request: NextRequest) {
       { status: 502 },
     );
   }
-}
+});

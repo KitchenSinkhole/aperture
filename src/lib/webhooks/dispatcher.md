@@ -25,6 +25,7 @@ Single-event dispatch. Called by the `webhook-dispatch` graphile-worker task wit
 - Rally webhooks only fire when `isRallySetEvent(event)` is true (rally-clear and other system updates flow to `history` only).
 - On success: stamps `last_status`, clears `last_error`, sets `last_attempted_at`, resets `consecutive_failures` to 0.
 - On failure: stamps `last_status`/`last_error`/`last_attempted_at`, increments `consecutive_failures`. Never throws (graphile-worker would re-deliver to webhooks that already succeeded, causing duplicates).
+- Every `deliver()` (real and test-fire) records `webhook_deliveries_total{target='discord', outcome}` — outcome mapped from the Discord result: `success` / `rate_limited` (429) / `http_5xx` / `http_4xx` / `network_error` (no status).
 
 ---
 

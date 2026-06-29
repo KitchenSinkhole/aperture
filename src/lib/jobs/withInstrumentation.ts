@@ -3,6 +3,7 @@ import type { JobHelpers, Task } from 'graphile-worker';
 import { apertureConfig } from '../../../aperture.config';
 import { db } from '@/db/client';
 import { apJobRun } from '@/db/schema';
+import { recordJobRun } from '@/lib/metrics/registry';
 
 /**
  * Wrap a graphile-worker task handler so every invocation is recorded in
@@ -33,8 +34,10 @@ export function withInstrumentation<TPayload>(
       .returning({ id: apJobRun.id });
     const id = inserted[0]!.id;
 
+    const startedAt = performance.now();
     try {
       const result = await run(payload as TPayload, helpers);
+      recordJobRun(name, 'success', performance.now() - startedAt);
       await db
         .update(apJobRun)
         .set({
@@ -44,6 +47,7 @@ export function withInstrumentation<TPayload>(
         })
         .where(eq(apJobRun.id, id));
     } catch (err) {
+      recordJobRun(name, 'failure', performance.now() - startedAt);
       await db
         .update(apJobRun)
         .set({

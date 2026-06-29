@@ -2,6 +2,11 @@ import { Client } from 'pg';
 import { env } from '@/lib/env';
 import { apertureConfig } from '../../../aperture.config';
 import {
+  metrics,
+  recordRealtimeBroadcast,
+  PG_NOTIFY_RECEIVED_TOTAL,
+} from '@/lib/metrics/registry';
+import {
   characterLogoutLoadSchema,
   characterUpdateLoadSchema,
   connectionMassLogLoadSchema,
@@ -163,6 +168,9 @@ class RealtimeBus {
 
   private dispatch(channel: string, raw: string | undefined): void {
     if (!channel.startsWith(PREFIX)) return;
+    // Collapse the unbounded `map:<id>` channel to a bounded class label so a
+    // notify-stall is observable without per-map cardinality.
+    metrics.incrementCounter(PG_NOTIFY_RECEIVED_TOTAL, { channel: 'map' });
     const mapId = BigInt(channel.slice(PREFIX.length));
     const set = this.listeners.get(mapId);
     if (!set || set.size === 0) return;
@@ -219,6 +227,9 @@ class RealtimeBus {
       };
     }
 
+    // Time the in-process dispatch→deliver span (not wall-clock from the
+    // pg_notify emit — envelopes carry no consistent emit timestamp).
+    const startedAt = performance.now();
     for (const listener of set) {
       try {
         listener(message);
@@ -226,6 +237,7 @@ class RealtimeBus {
         // A misbehaving listener must not stall fan-out to the others.
       }
     }
+    recordRealtimeBroadcast(message.task, performance.now() - startedAt);
   }
 }
 
