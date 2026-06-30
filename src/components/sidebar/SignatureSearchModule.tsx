@@ -59,9 +59,14 @@ export function SignatureSearchModule({
   const [sortField, setSortField] = useState<SigSortField>('sigId');
   const [sortDir, setSortDir] = useState<SigSortDir>('asc');
   const [inputName, setInputName] = useState(filters.name);
-  const [now] = useState(Date.now);
+  const [now, setNow] = useState(() => Date.now());
   const filtersRef = useRef(filters);
   useLayoutEffect(() => { filtersRef.current = filters; });
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => {
