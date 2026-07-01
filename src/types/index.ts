@@ -457,6 +457,9 @@ export type { SignatureGroupOption } from '@/lib/map/signatureGroups';
 // Localized signature Class catalog (src/lib/map/signatureClasses.ts).
 export type { SignatureClassKind, SignatureClassOption } from '@/lib/map/signatureClasses';
 
+// Site-safety (combat vs exploration) classifier (src/lib/map/siteActivity.ts).
+export type { SignatureActivity } from '@/lib/map/siteActivity';
+
 // ESI opKey identifiers (map in src/lib/esi/opkeys.ts).
 export type { OpKey, OpDef } from '@/lib/esi/opkeys';
 
