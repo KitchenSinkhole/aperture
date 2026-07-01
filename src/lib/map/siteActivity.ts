@@ -67,12 +67,14 @@ export function siteActivity(
 /**
  * The effective site-safety shown to the user: a persisted `activityOverride`
  * wins over the derived value, otherwise fall back to `siteActivity`. `null`
- * means no glyph — nothing is known and nothing was overridden.
+ * means no glyph — nothing is known and nothing was overridden. Wormholes are
+ * never classified or overridable, so they always return `null`.
  */
 export function effectiveSignatureActivity(sig: {
   name: string | null;
   groupKey: SignatureGroupKey | null;
   activityOverride?: SignatureActivity | null;
 }): SignatureActivity | null {
+  if (sig.groupKey === 'wormhole') return null;
   return sig.activityOverride ?? siteActivity(sig.name, sig.groupKey);
 }

@@ -88,4 +88,14 @@ describe('effectiveSignatureActivity', () => {
       }),
     ).toBe('combat');
   });
+
+  it('never classifies a wormhole, even with an override set', () => {
+    expect(
+      effectiveSignatureActivity({
+        name: 'B274',
+        groupKey: 'wormhole',
+        activityOverride: 'combat',
+      }),
+    ).toBeNull();
+  });
 });

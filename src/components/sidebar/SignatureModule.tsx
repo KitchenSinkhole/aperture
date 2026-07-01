@@ -518,10 +518,10 @@ function ActionsCell({ row, table }: CellContext<MapSignature, unknown>) {
 
 const signatureColumns = [
   columnHelper.display({ id: 'classKind', header: '', cell: ClassKindCell }),
-  columnHelper.display({ id: 'activity', header: '', cell: ActivityCell }),
   columnHelper.accessor('sigId', { header: 'Sig', enableSorting: true, cell: SigIdCell }),
   columnHelper.accessor('groupKey', { header: 'Group', enableSorting: true, cell: GroupCell }),
   columnHelper.display({ id: 'type', header: 'Type', cell: TypeColumnCell }),
+  columnHelper.display({ id: 'activity', header: '', cell: ActivityCell }),
   columnHelper.display({ id: 'description', header: 'Description', cell: DescriptionCell }),
   columnHelper.display({ id: 'leadsTo', header: 'Leads to', cell: LeadsToCell }),
   columnHelper.display({ id: 'eol', header: 'EOL', cell: EolCell }),
@@ -597,24 +597,25 @@ function SignatureRow({
   pasteFlash?: Record<string, 'created' | 'updated'>;
   onPatch: (signatureId: string, patch: UpdateSignatureBody) => void;
 }) {
+  const rowClassName = cn(
+    'border-t border-foreground/10 align-middle even:bg-foreground/[0.03]',
+    row.original.id === flashSigId && 'ap-sig-flash',
+    pasteFlash?.[row.original.id] === 'created' && 'ap-sig-flash-created',
+    pasteFlash?.[row.original.id] === 'updated' && 'ap-sig-flash-updated',
+  );
+  const cells = row.getVisibleCells().map((cell) => (
+    <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+  ));
+
+  // Wormholes have no site-safety classification, so they get no activity glyph
+  // and no re-mark menu — the row is a plain, non-interactive <tr>.
+  if (row.original.groupKey === 'wormhole') {
+    return <tr className={rowClassName}>{cells}</tr>;
+  }
+
   return (
     <ContextMenu.Root>
-      <ContextMenu.Trigger
-        render={
-          <tr
-            className={cn(
-              'border-t border-foreground/10 align-middle even:bg-foreground/[0.03]',
-              row.original.id === flashSigId && 'ap-sig-flash',
-              pasteFlash?.[row.original.id] === 'created' && 'ap-sig-flash-created',
-              pasteFlash?.[row.original.id] === 'updated' && 'ap-sig-flash-updated',
-            )}
-          />
-        }
-      >
-        {row.getVisibleCells().map((cell) => (
-          <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
-        ))}
-      </ContextMenu.Trigger>
+      <ContextMenu.Trigger render={<tr className={rowClassName} />}>{cells}</ContextMenu.Trigger>
       <SignatureActivityMenu sig={row.original} onPatch={onPatch} />
     </ContextMenu.Root>
   );

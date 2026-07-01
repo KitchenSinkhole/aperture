@@ -24,7 +24,7 @@ Derived site-safety from a signature's resolved site `name` and scanner `groupKe
 ---
 
 ### effectiveSignatureActivity(sig): SignatureActivity | null
-The value the UI shows: `sig.activityOverride ?? siteActivity(sig.name, sig.groupKey)`. A persisted override wins over the derived default.
+The value the UI shows: `sig.activityOverride ?? siteActivity(sig.name, sig.groupKey)`. A persisted override wins over the derived default. Wormholes (`groupKey === 'wormhole'`) always return `null` — they are never classified or overridable, even if an `activityOverride` is set.
 
 **Parameters:**
 - `sig` — `{ name: string | null; groupKey: SignatureGroupKey | null; activityOverride?: SignatureActivity | null }` (accepts a `MapSignature`).
