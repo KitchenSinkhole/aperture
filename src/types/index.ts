@@ -593,6 +593,9 @@ export type EsiMetricOutcome =
   | 'rate_limited'
   | 'token_error';
 
+/** Display phase for the Eve-time clock around CCP's daily downtime. */
+export type EveClockPhase = 'normal' | 'pre' | 'downtime';
+
 /** Outcome label for `job_runs_total` — the `withInstrumentation` choke point. */
 export type JobOutcome = 'success' | 'failure';
 

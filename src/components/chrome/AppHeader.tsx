@@ -4,6 +4,7 @@ import type { SignatureIndicatorAccountSettings } from '@/types';
 import pkg from '../../../package.json';
 import { fetchChangelogReleases, type ChangelogRelease } from '@/lib/integrations/github';
 import { CharacterPanel, type PanelCharacter } from './CharacterPanel';
+import { EveTimeClock } from './EveTimeClock';
 import { ReferenceMenu } from './ReferenceMenu';
 import { StatisticsButton } from './StatisticsButton';
 import { VersionChip } from './VersionChip';
@@ -43,6 +44,7 @@ export async function AppHeader({
         <div className="flex items-center gap-1">
           <StatisticsButton />
           <ReferenceMenu />
+          <EveTimeClock />
           <CharacterPanel
             active={active}
             characters={characters}

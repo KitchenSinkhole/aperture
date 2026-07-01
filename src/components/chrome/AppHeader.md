@@ -14,7 +14,7 @@
 | signatureIndicators | SignatureIndicatorAccountSettings | yes | The account's signature-indicator settings, forwarded to the panel |
 
 ### Renders
-A compact (`h-9`) full-width bordered header bar with no max-width cap: on the left, the Aperture logo image followed by the "Aperture" text as a link to `/maps`, with the `VersionChip` immediately beside it (reads as "Aperture v1.0.0-…"); on the right, the `StatisticsButton` and `ReferenceMenu` info menu next to the `CharacterPanel`.
+A compact (`h-9`) full-width bordered header bar with no max-width cap: on the left, the Aperture logo image followed by the "Aperture" text as a link to `/maps`, with the `VersionChip` immediately beside it (reads as "Aperture v1.0.0-…"); on the right, the `EveTimeClock`, `StatisticsButton`, and `ReferenceMenu` info menu next to the `CharacterPanel`.
 
 ### Behaviour & Interactions
 - Async server component. Fetches the cached changelog releases (`fetchChangelogReleases`) and passes them to `VersionChip`. A fetch failure is swallowed (empty array) so a GitHub outage never breaks the header.
@@ -22,6 +22,7 @@ A compact (`h-9`) full-width bordered header bar with no max-width cap: on the l
 
 ### Depends On
 - `VersionChip` (client) — version label + changelog entry point.
+- `EveTimeClock` (client) — live EVE time (UTC) with downtime countdown.
 - `CharacterPanel` (client) — the data props are resolved server-side in `(app)/layout.tsx`.
 - `ReferenceMenu` (client) — header entry point for the static reference dialogs.
 - `StatisticsButton` (client) — launches the Statistics dialog.
