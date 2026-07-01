@@ -122,7 +122,7 @@ A free-form dashboard (the page scrolls). A full-width toolbar row sits above a 
 - `mapInfoOpen: boolean` — whether the `MapInfoDialog` is open.
 - `settingsOpen: boolean` — whether the `MapSettingsDialog` is open.
 - `addSystemOpen: boolean` — whether the `AddSystemDialog` is open.
-- `sigSearchFilters: SigSearchFilters` — the live filter state for the `sigSearch` panel's `SignatureSearchModule` (name, groupKey, maxAgeHours, securityClasses).
+- `sigSearchFilters: SigSearchFilters` — the live filter state for the `sigSearch` panel's `SignatureSearchModule` (name, groupKey, maxAgeHours, securityClasses, includeAnomalies, includeSignatures).
 - `flashSigId: string | null` — a signature id to highlight in the signature panel for 3s after search navigation; clears itself via a setTimeout when set.
 - `flowInstance: ReactFlowInstance | null` (ref) — captured in `onInit`; used to map screen → flow coords for manual system placement.
 - `flowWrapperRef: HTMLDivElement | null` (ref) — the canvas wrapper, for its bounding rect (viewport centre).
