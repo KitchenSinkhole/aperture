@@ -82,7 +82,7 @@ export function eveTimezoneRows(now: Date): TimezoneRow[] {
 
 /**
  * Header widget showing the current EVE time (UTC) as `HH:MM`. In the hour
- * before CCP's daily downtime it turns orange and appends a `DT -Xm` countdown;
+ * before CCP's daily downtime it turns orange and appends a `DT-Xm` countdown;
  * inside the downtime window it reads `Scheduled Downtime`. Clicking it opens a
  * popover with the current local time range for each major player timezone bloc.
  */
@@ -107,7 +107,7 @@ export function EveTimeClock() {
     phase === 'downtime'
       ? 'Scheduled Downtime'
       : phase === 'pre'
-        ? `DT -${minutesUntilDowntime(now)}m`
+        ? `DT-${minutesUntilDowntime(now)}m`
         : null;
   const rows = eveTimezoneRows(now);
 

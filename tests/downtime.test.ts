@@ -23,7 +23,7 @@ describe('eveClockPhase', () => {
     expect(eveClockPhase(at('2026-07-01T04:00:00Z'))).toBe('normal');
   });
 
-  it('is pre-downtime in the hour before, including the DT -54m case', () => {
+  it('is pre-downtime in the hour before, including the DT-54m case', () => {
     expect(eveClockPhase(at('2026-07-01T10:06:00Z'))).toBe('pre');
     expect(eveClockPhase(at('2026-07-01T10:59:00Z'))).toBe('pre');
   });

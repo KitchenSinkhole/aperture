@@ -4,7 +4,7 @@
 **File:** `src/components/chrome/EveTimeClock.tsx`
 
 ### Renders
-An inline bordered monospaced clock pill showing the EVE time (24h UTC) as `EVE HH:MM`. In the hour before CCP downtime the pill turns orange and appends a `DT -Xm` countdown; inside the padded downtime window it appends `Scheduled Downtime`. Clicking opens a popover with a `Downtime in HH:MM` countdown to the next downtime, then a rule and each player timezone bloc (AU / EU / US) with its local weekday and local wall-clock range.
+An inline bordered monospaced clock pill showing the EVE time (24h UTC) as `EVE HH:MM`. In the hour before CCP downtime the pill turns orange and appends a `DT-Xm` countdown; inside the padded downtime window it appends `Scheduled Downtime`. Clicking opens a popover with a `Downtime in HH:MM` countdown to the next downtime, then a rule and each player timezone bloc (AU / EU / US) with its local weekday and local wall-clock range.
 
 ### Behaviour & Interactions
 - Re-renders on each UTC minute rollover, driven by a shared `useSyncExternalStore` tick store; the popover contents recompute on the same cadence while open.
