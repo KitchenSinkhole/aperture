@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ClipboardPaste, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ClipboardPaste, Plus, ShieldCheck, Swords, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   createColumnHelper,
@@ -10,8 +10,10 @@ import {
   getSortedRowModel,
   useReactTable,
   type CellContext,
+  type Row,
   type SortingState,
 } from '@tanstack/react-table';
+import { ContextMenu } from '@base-ui/react/context-menu';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -22,6 +24,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  MenuGroupLabel,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+} from '@/components/ui/menu';
 import { WormholeTypeSelect } from './WormholeTypeSelect';
 import { SignatureGroupSelect } from './SignatureGroupSelect';
 import { ConnectionSelect } from './ConnectionSelect';
@@ -34,6 +42,7 @@ import type {
   MapEventPayload,
   MapSignature,
   MapSystemNode,
+  SignatureActivity,
   SignatureGroupKey,
 } from '@/types';
 import type {
@@ -48,6 +57,7 @@ import {
   type WhJumpMass,
 } from '@/lib/map/enumLabels';
 import { fetchWormholeCatalog, resolveSignatureDestinationOnServer } from '@/lib/map/client';
+import { effectiveSignatureActivity, siteActivity } from '@/lib/map/siteActivity';
 import { SIGNATURE_GROUP_CATALOG } from '@/lib/map/signatureGroups';
 import { formatAgoFromMs } from '@/lib/map/relativeTime';
 import { cn } from '@/lib/utils';
@@ -103,6 +113,7 @@ const columnHelper = createColumnHelper<MapSignature>();
 
 const colHeaderClass: Record<string, string> = {
   classKind: 'w-6 px-1 py-0.5',
+  activity: 'w-6 px-1 py-0.5',
   sigId: 'w-24 px-2 py-0.5 text-left',
   groupKey: 'w-32 px-3 py-0.5 text-left',
   type: 'w-56 px-3 py-0.5 text-left',
@@ -241,6 +252,35 @@ function ClassKindCell({ row }: CellContext<MapSignature, unknown>) {
     <span className="flex items-center justify-center px-1 py-px">
       {classKind === 'signature' && <SignatureIcon className="size-3.5" />}
       {classKind === 'anomaly' && <AnomalyIcon className="size-2.5" />}
+    </span>
+  );
+}
+
+// Site-safety glyph: red swords = combat site, green shield-check = exploration.
+// Driven by the effective value (`activityOverride ?? siteActivity`), so an
+// unidentified or wormhole sig (`null`) shows nothing. A small amber dot + a
+// "(manual)" title suffix mark a row whose override diverges from the derived
+// classification, distinguishing a hand-marked site from an auto one.
+function ActivityCell({ row }: CellContext<MapSignature, unknown>) {
+  const sig = row.original;
+  const activity = effectiveSignatureActivity(sig);
+  if (!activity) return <span className="flex items-center justify-center px-1 py-px" />;
+  const overridden =
+    sig.activityOverride != null &&
+    sig.activityOverride !== siteActivity(sig.name, sig.groupKey);
+  const Icon = activity === 'combat' ? Swords : ShieldCheck;
+  const title = `${activity === 'combat' ? 'Combat' : 'Exploration'} site${overridden ? ' (manual)' : ''}`;
+  return (
+    <span className="relative flex items-center justify-center px-1 py-px" title={title}>
+      <Icon
+        className={cn('size-3.5', activity === 'combat' ? 'text-red-500' : 'text-emerald-500')}
+      />
+      {overridden && (
+        <span
+          aria-hidden
+          className="absolute right-0 top-0 size-1.5 rounded-full bg-amber-400 ring-1 ring-background"
+        />
+      )}
     </span>
   );
 }
@@ -478,6 +518,7 @@ function ActionsCell({ row, table }: CellContext<MapSignature, unknown>) {
 
 const signatureColumns = [
   columnHelper.display({ id: 'classKind', header: '', cell: ClassKindCell }),
+  columnHelper.display({ id: 'activity', header: '', cell: ActivityCell }),
   columnHelper.accessor('sigId', { header: 'Sig', enableSorting: true, cell: SigIdCell }),
   columnHelper.accessor('groupKey', { header: 'Group', enableSorting: true, cell: GroupCell }),
   columnHelper.display({ id: 'type', header: 'Type', cell: TypeColumnCell }),
@@ -488,6 +529,96 @@ const signatureColumns = [
   columnHelper.accessor('updatedAt', { header: 'Updated', enableSorting: true, cell: UpdatedCell }),
   columnHelper.display({ id: 'actions', header: '', cell: ActionsCell }),
 ];
+
+/** Radio sentinel for "no override — use the derived classification". */
+const ACTIVITY_AUTO = '__auto__';
+
+const ACTIVITY_MENU_POPUP =
+  'min-w-44 overflow-hidden rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md transition duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0';
+
+/**
+ * Right-click menu on a signature row that re-marks its site safety. The radio
+ * reflects the current `activityOverride` (or Auto when unset); picking a value
+ * PATCHes `activityOverride` through the same optimistic pathway as every other
+ * in-row edit, and Auto clears it back to the derived value.
+ */
+function SignatureActivityMenu({
+  sig,
+  onPatch,
+}: {
+  sig: MapSignature;
+  onPatch: (signatureId: string, patch: UpdateSignatureBody) => void;
+}) {
+  return (
+    <ContextMenu.Portal>
+      <ContextMenu.Positioner align="start" className="z-50 outline-none">
+        <ContextMenu.Popup data-slot="signature-activity-menu" className={ACTIVITY_MENU_POPUP}>
+          <MenuGroupLabel>Site safety</MenuGroupLabel>
+          <MenuRadioGroup
+            value={sig.activityOverride ?? ACTIVITY_AUTO}
+            onValueChange={(value) =>
+              onPatch(sig.id, {
+                activityOverride:
+                  value === ACTIVITY_AUTO ? null : (value as SignatureActivity),
+              })
+            }
+          >
+            <MenuRadioItem value="combat">
+              <Swords className="size-3.5 text-red-500" />
+              Mark as combat
+            </MenuRadioItem>
+            <MenuRadioItem value="exploration">
+              <ShieldCheck className="size-3.5 text-emerald-500" />
+              Mark as exploration
+            </MenuRadioItem>
+            <MenuSeparator />
+            <MenuRadioItem value={ACTIVITY_AUTO}>Auto (derived)</MenuRadioItem>
+          </MenuRadioGroup>
+        </ContextMenu.Popup>
+      </ContextMenu.Positioner>
+    </ContextMenu.Portal>
+  );
+}
+
+/**
+ * One table row wrapped in its own context menu. The `<tr>` is the context-menu
+ * trigger (right-click anywhere on the row), so the activity re-mark menu opens
+ * at the cursor. Module-level so cell identities stay stable across realtime
+ * re-renders (see the note on the cell components above).
+ */
+function SignatureRow({
+  row,
+  flashSigId,
+  pasteFlash,
+  onPatch,
+}: {
+  row: Row<MapSignature>;
+  flashSigId: string | null;
+  pasteFlash?: Record<string, 'created' | 'updated'>;
+  onPatch: (signatureId: string, patch: UpdateSignatureBody) => void;
+}) {
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger
+        render={
+          <tr
+            className={cn(
+              'border-t border-foreground/10 align-middle even:bg-foreground/[0.03]',
+              row.original.id === flashSigId && 'ap-sig-flash',
+              pasteFlash?.[row.original.id] === 'created' && 'ap-sig-flash-created',
+              pasteFlash?.[row.original.id] === 'updated' && 'ap-sig-flash-updated',
+            )}
+          />
+        }
+      >
+        {row.getVisibleCells().map((cell) => (
+          <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+        ))}
+      </ContextMenu.Trigger>
+      <SignatureActivityMenu sig={row.original} onPatch={onPatch} />
+    </ContextMenu.Root>
+  );
+}
 
 /**
  * Standalone Signatures panel rendered below the map. Presentational —
@@ -899,21 +1030,13 @@ function SignaturePanelBody({
               </tr>
             )}
             {table.getRowModel().rows.map((row) => (
-              <tr
+              <SignatureRow
                 key={row.id}
-                className={cn(
-                  'border-t border-foreground/10 align-middle even:bg-foreground/[0.03]',
-                  row.original.id === flashSigId && 'ap-sig-flash',
-                  pasteFlash?.[row.original.id] === 'created' && 'ap-sig-flash-created',
-                  pasteFlash?.[row.original.id] === 'updated' && 'ap-sig-flash-updated',
-                )}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
+                row={row}
+                flashSigId={flashSigId}
+                pasteFlash={pasteFlash}
+                onPatch={onPatch}
+              />
             ))}
           </tbody>
         </table>
