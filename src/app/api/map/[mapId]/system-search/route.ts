@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { searchSystems } from '@/lib/map/systemSearch';
 import { requireMapView } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/system-search?q=<query>
@@ -15,7 +16,7 @@ import { requireMapView } from '../../utils';
 
 export const runtime = 'nodejs';
 
-export async function GET(
+export const GET = withApiMetrics('/api/map/:mapId/system-search', async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -29,4 +30,4 @@ export async function GET(
   const query = request.nextUrl.searchParams.get('q') ?? '';
   const data = await searchSystems(query);
   return Response.json({ ok: true, data });
-}
+});

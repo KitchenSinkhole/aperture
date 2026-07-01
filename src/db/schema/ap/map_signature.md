@@ -11,7 +11,8 @@
 - `map_system_id` — `bigint` FK → `ap_map_system.id` `ON DELETE CASCADE`.
 - `map_connection_id` — `bigint` FK → `ap_map_connection.id` `ON DELETE CASCADE`, nullable. Bound only when the sig is the wormhole.
 - `sig_id` — `text`, required (in-game 3-char id, e.g. "ABC").
-- `group_id` — `integer` FK → `universe_group.id` `ON DELETE SET NULL`.
+- `group_key` — `signature_group_key` enum, nullable. Scanner-level group (replaced `group_id`, migration 0015).
+- `class_kind` — `signature_class_kind` enum (`signature` | `anomaly`), nullable. Paste-derived from EVE's "Cosmic Signature" / "Cosmic Anomaly" Class column; null for legacy/manual rows. Added migration 0045.
 - `type_id` — `integer` FK → `universe_type.id` `ON DELETE SET NULL`.
 - `name`, `description` — `text`, nullable.
 - `created_at` / `updated_at` — `timestamptz`, default `now()`.

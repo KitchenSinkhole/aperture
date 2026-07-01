@@ -27,14 +27,16 @@ const CATEGORY_KINDS: Record<AuditEventCategory, MapEventKind[]> = {
   system: ['system.added', 'system.removed', 'system.updated'],
   connection: ['connection.create', 'connection.update', 'connection.delete'],
   signature: ['signature.create', 'signature.update', 'signature.delete'],
+  note: ['note.created', 'note.updated', 'note.deleted'],
   map: ['map.create', 'map.update', 'map.delete', 'map.restore', 'map.purge'],
 };
-const CATEGORIES: AuditEventCategory[] = ['system', 'connection', 'signature', 'map'];
+const CATEGORIES: AuditEventCategory[] = ['system', 'connection', 'signature', 'note', 'map'];
 const ALL_KINDS: MapEventKind[] = CATEGORIES.flatMap((c) => CATEGORY_KINDS[c]);
 const DESTRUCTIVE_KINDS: MapEventKind[] = [
   'system.removed',
   'connection.delete',
   'signature.delete',
+  'note.deleted',
   'map.delete',
   'map.purge',
 ];
@@ -43,6 +45,7 @@ const CATEGORY_LABEL: Record<AuditEventCategory, string> = {
   system: 'System',
   connection: 'Connection',
   signature: 'Signature',
+  note: 'Note',
   map: 'Map',
 };
 

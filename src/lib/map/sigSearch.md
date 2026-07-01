@@ -1,6 +1,6 @@
 ## sigSearch.ts
 
-**Purpose:** Pure client-side filter + sort over map signatures for `SignatureSearchDialog`.
+**Purpose:** Pure client-side filter + sort over map signatures for the `sigSearch` panel (`SignatureSearchModule`).
 **File:** `src/lib/map/sigSearch.ts`
 
 ---

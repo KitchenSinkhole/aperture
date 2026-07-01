@@ -27,6 +27,7 @@ function signature(id: string, mapConnectionId: string | null): MapSignature {
     mapConnectionId,
     sigId: 'ABC',
     groupKey: null,
+    classKind: null,
     typeId: null,
     wormholeCode: null,
     name: null,
@@ -50,6 +51,7 @@ function viewData(overrides: Partial<MapViewData> = {}): MapViewData {
     systems: [],
     connections: [],
     signatures: [],
+    notes: [],
     presence: [],
     ...overrides,
   };

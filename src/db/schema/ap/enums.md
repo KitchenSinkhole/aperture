@@ -20,6 +20,9 @@
 ### systemStatus
 `pgEnum('system_status', ['unknown', 'friendly', 'occupied', 'hostile', 'empty', 'unscanned'])` — per-system intel state driving node colour. On `ap_map_system`, default `unknown`.
 
+### mapNoteSeverity
+`pgEnum('map_note_severity', ['neutral', 'green', 'yellow', 'red'])` — severity band of a free-standing map note, driving the note node's border colour. On `ap_map_note`, default `neutral`. Added migration 0044 (map notes, issue #5).
+
 ### connectionScope
 `pgEnum('connection_scope', ['wh', 'stargate', 'jumpbridge', 'abyssal'])` — what kind of link a connection is. On `ap_map_connection`.
 
@@ -44,6 +47,12 @@
 ### mapRight
 `pgEnum('map_right', ['map_create', 'map_update', 'map_delete', 'map_import', 'map_export', 'map_share'])` — the map-management rights vocabulary, reserved for the future title-delegation overlay (R4). No table stores these (the `ap_corporation_right` matrix was retired in 0041); at the baseline the mutate guards take a `MapRight` argument but ignore it (authority is the binary `canManageMap`).
 
+### signatureGroupKey
+`pgEnum('signature_group_key', ['combat', 'relic', 'data', 'gas', 'wormhole', 'ore', 'ghost'])` — scanner-level group of a cosmic signature (the seven keys EVE's probe scanner emits in its "Group" column). Nullable on `ap_map_signature.group_key`; replaced the prior `group_id` FK to `universe_group` (migration 0015), which couldn't represent the cosmic six.
+
+### signatureClassKind
+`pgEnum('signature_class_kind', ['signature', 'anomaly'])` — whether a scanner entry must be scanned down (`signature`) or is instantly warpable (`anomaly`). Paste-derived from EVE's localized "Cosmic Signature" / "Cosmic Anomaly" Class column via `signatureClassKind` (`src/lib/map/signatureClasses.ts`). Nullable on `ap_map_signature.class_kind` (legacy + low-information manual rows have no known kind). Added migration 0045.
+
 ### roleSource
 `pgEnum('role_source', ['builtin', 'corp_title', 'external'])` — where an `ap_role` row originates. `corp_title` rows are mirrored from EVE corporation titles; `external_ref` is `'<corp_id>:<title_id>'`. `external` rows come from Discord/third-party syncs.
 
@@ -64,3 +73,9 @@
 
 ### accessCapability
 `pgEnum('access_capability', ['login', 'admin', 'view', 'edit'])` — what an `ap_access_grant` row permits. `login`/`admin` are instance-scoped (allowlist entry / super-admin); `view`/`edit` are map-scoped and reserved for the temporary-sharing feature (declared to avoid a future `ALTER TYPE`). A CHECK pairs capability with scope. The `manage` capability (the old manager hand-grant) was retired in migration 0041.
+
+### errorLevel
+`pgEnum('error_level', ['warn', 'error', 'fatal'])` — severity of an `ap_error_log` row, mirroring the pino levels the structured logger ([[logger]]) emits. Only `error`/`fatal` are persisted today (the persist threshold in `src/lib/log/logger.ts`); `warn` is declared so the threshold could be lowered later without an `ALTER TYPE`. Added migration 0045 (observability phase 4).
+
+### errorSource
+`pgEnum('error_source', ['server', 'job', 'client'])` — where an `ap_error_log` row originated: `server` (request/action path), `job` (background worker), `client` (browser ingest, Phase 7). `client` is declared now to avoid a later `ALTER TYPE`. Added migration 0045.

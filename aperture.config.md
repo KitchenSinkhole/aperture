@@ -40,10 +40,11 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 
 **Authz / character cleanup**
 - `CHARACTER_CLEANUP_CRON`, `CHARACTER_AUTHZ_RESYNC_STALE_AFTER_MS`, `CHARACTER_AUTHZ_RESYNC_BATCH_SIZE` — cadence and throttle for the `character-cleanup` job's kick-expiry + authz resync passes.
+- `HEALTH_WORKER_STALE_MS` — `/api/health/ready` flags the `worker` component unhealthy if no `ap_job_run` finished within this window (15 min ≈ 3 `character-cleanup` ticks).
 - `AUTHZ_ADMIN_ROLE` — the ESI corporation role (`Director`) that resolves a character to `manager`.
 
 **Wormhole / signature lifetimes**
-- `WORMHOLE_EOL_LIFETIME_MS` (4h + 15m buffer), `WORMHOLE_EOL_CRITICAL_LIFETIME_MS` (1h + 15m), `WORMHOLE_DEFAULT_LIFETIME_MS` (48h) — drive the canvas countdowns and the reap-job purge thresholds.
+- `WORMHOLE_EOL_LIFETIME_MS` (4h + 15% / 36m buffer), `WORMHOLE_EOL_CRITICAL_LIFETIME_MS` (1h + 15m), `WORMHOLE_DEFAULT_LIFETIME_MS` (48h) — drive the canvas countdowns and the reap-job purge thresholds.
 - `SIGNATURE_DEFAULT_TTL_MS` — default `expires_at` offset for new signatures (5 days).
 
 **Job runtime / instrumentation**
@@ -51,6 +52,23 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `JOB_INSTRUMENTATION_ERROR_MAX_LENGTH`, `JOB_INSTRUMENTATION_NOTES_MAX_BYTES` — caps for `ap_job_run.error_text` / `notes`.
 - `MAP_PURGE_GRACE_DAYS` — grace window before hard-purging soft-deleted maps at downtime.
 - `JOB_DELETE_BATCH_SIZE` — per-run cap for row-by-row cleanup jobs (bounds the pg_notify burst at downtime).
+
+**Observability / metrics**
+- `METRICS_ESI_LATENCY_BUCKETS_MS`, `METRICS_ROUTE_LATENCY_BUCKETS_MS`, `METRICS_HTTP_LATENCY_BUCKETS_MS`, `METRICS_JOB_DURATION_BUCKETS_MS`, `METRICS_FANOUT_LATENCY_BUCKETS_MS` — histogram bucket upper-bounds (`le`) for the `esi_request_duration_ms` / `route_plan_duration_ms` / `http_request_duration_ms` / `job_duration_ms` / `realtime_fanout_duration_ms` histograms.
+- `METRICS_SNAPSHOT_CRON` — cadence for the `metrics-snapshot` job that samples the registry + gauges into `ap_metric_snapshot` (1 min; the admin metrics page buckets it per range).
+
+**Instance alerting (Phase 6)** — consumed by the in-process alert loop (`src/lib/alerts/`), booted from `server.ts` rather than graphile-worker so scheduling/state survive a degraded DB.
+- `ALERT_EVALUATE_INTERVAL_MS` — alert-loop `setInterval` cadence (1 min).
+- `ALERT_DB_PROBE_TIMEOUT_MS`, `ALERT_DB_SLOW_MS` — `SELECT 1` probe timeout (→ `down`) and the slow-but-succeeded threshold (→ `degraded`).
+- `ALERT_DEBOUNCE_EVALUATIONS` — consecutive bad ticks before a rule fires; the debounce that honors "open > X min" and swallows single-tick blips.
+- `ALERT_ESI_BREAKERS_OPEN_THRESHOLD` — open-breaker count at/above which the `esi_breakers` rule goes bad.
+- `ALERT_JOB_ABANDONED_MS` — age past which an un-ended `ap_job_run` row counts as an abandoned (worker-died) handler.
+- `ALERT_ERROR_RATE_WINDOW_MS`, `ALERT_ERROR_RATE_THRESHOLD` — lookback window and error|fatal `ap_error_log` count that trips the `error_rate` rule. Worker staleness reuses `HEALTH_WORKER_STALE_MS`.
+
+**Client error capture (Phase 7)** — consumed by the `/api/client-errors` ingest route + its in-process limiter (`src/lib/log/clientErrorRate.ts`).
+- `CLIENT_ERROR_RATE_WINDOW_MS` — fixed-window length for the ingest rate limiter; per-session and global counters reset each window.
+- `CLIENT_ERROR_MAX_PER_SESSION`, `CLIENT_ERROR_MAX_GLOBAL` — per-session and global caps; exceeding either drops the report (429) without writing, so a browser render loop can't flood `ap_error_log`.
+- `CLIENT_ERROR_MESSAGE_MAX_LENGTH`, `CLIENT_ERROR_STACK_MAX_LENGTH` — truncation caps on the ingested `message` and `stack`/`componentStack` before persistence.
 
 Per-task cron expressions live as `cron` strings on each task module in `src/lib/jobs/tasks/`, not here.
 

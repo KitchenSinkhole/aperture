@@ -9,6 +9,7 @@ function sig(overrides: Partial<MapSignature>): MapSignature {
     mapConnectionId: null,
     sigId: 'ABC',
     groupKey: 'wormhole',
+    classKind: null,
     typeId: null,
     wormholeCode: null,
     name: null,

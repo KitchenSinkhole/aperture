@@ -28,6 +28,9 @@ app.prepare().then(async () => {
   const { startWorker, stopWorker } = await import('@/lib/jobs/runner');
   const { env } = await import('@/lib/env');
   const { startZkbFeed, stopZkbFeed } = await import('@/lib/integrations/zkbFeed');
+  const { startAlertLoop, stopAlertLoop } = await import('@/lib/alerts/scheduler');
+  const { getLogger } = await import('@/lib/log/logger');
+  const log = getLogger('server');
 
   const server = createServer((req, res) => {
     handle(req, res);
@@ -36,16 +39,23 @@ app.prepare().then(async () => {
   attachWsServer(server);
 
   server.listen(port, async () => {
-    console.log(`▲ Aperture ready on http://${hostname}:${port} (ws ${dev ? 'dev' : 'prod'})`);
+    log.info('Aperture ready', { url: `http://${hostname}:${port}`, ws: dev ? 'dev' : 'prod' });
     try {
       await startWorker();
-      console.log('▲ graphile-worker started');
+      log.info('graphile-worker started');
     } catch (err) {
-      console.error('graphile-worker boot failed:', err);
+      log.error('graphile-worker boot failed', { err });
     }
     if (env.ZKB_FEED_ENABLED) {
       startZkbFeed();
-      console.log('▲ zKillboard feed started');
+      log.info('zKillboard feed started');
+    }
+    // In-process instance alerting (Phase 6). No-ops unless an alert webhook is
+    // configured; runs here rather than as a graphile-worker cron so it can still
+    // alert when the DB (and thus the worker) is degraded.
+    startAlertLoop();
+    if (env.ALERT_WEBHOOK_URL || env.STATUS_WEBHOOK_URL) {
+      log.info('instance alerting started');
     }
   });
 
@@ -55,16 +65,17 @@ app.prepare().then(async () => {
   const shutdown = async (signal: NodeJS.Signals) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`Received ${signal}, shutting down…`);
+    log.info('Shutting down', { signal });
+    stopAlertLoop();
     try {
       await stopZkbFeed();
     } catch (err) {
-      console.error('stopZkbFeed failed:', err);
+      log.error('stopZkbFeed failed', { err });
     }
     try {
       await stopWorker();
     } catch (err) {
-      console.error('stopWorker failed:', err);
+      log.error('stopWorker failed', { err });
     }
     server.close(() => process.exit(0));
   };

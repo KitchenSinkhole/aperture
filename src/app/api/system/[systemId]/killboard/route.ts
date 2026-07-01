@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { killboardForSystem } from '@/lib/map/killboard';
 import { ZkbHttpError, ZkbRateLimitError } from '@/lib/integrations/zkb';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/system/[systemId]/killboard?limit=
@@ -22,7 +23,7 @@ export const runtime = 'nodejs';
 const paramsSchema = z.object({ systemId: z.coerce.number().int().positive() });
 const querySchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(20) });
 
-export async function GET(
+export const GET = withApiMetrics('/api/system/:systemId/killboard', async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ systemId: string }> },
 ) {
@@ -57,4 +58,4 @@ export async function GET(
     }
     return Response.json({ ok: false, error: 'Failed to load killboard.' }, { status: 500 });
   }
-}
+});

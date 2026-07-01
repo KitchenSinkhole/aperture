@@ -1,4 +1,4 @@
-import type { MapConnectionEdge, MapSignature, MapSystemNode, MapViewData } from '@/types';
+import type { MapConnectionEdge, MapNote, MapSignature, MapSystemNode, MapViewData } from '@/types';
 import type { MapEventPayload } from '@/lib/realtime/protocol';
 
 /**
@@ -156,6 +156,40 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
 
     case 'signature.delete':
       return { ...state, signatures: state.signatures.filter((s) => s.id !== payload.id) };
+
+    case 'note.created': {
+      // payload structurally satisfies MapNote (full body).
+      const note = payload as unknown as MapNote;
+      const exists = state.notes.some((n) => n.id === note.id);
+      if (exists) {
+        return { ...state, notes: state.notes.map((n) => (n.id === note.id ? note : n)) };
+      }
+      return { ...state, notes: [...state.notes, note] };
+    }
+
+    case 'note.updated': {
+      return {
+        ...state,
+        notes: state.notes.map((n): MapNote => {
+          if (n.id !== payload.id) return n;
+          const next = { ...n };
+          // `title` always rides; the rest only when changed.
+          next.title = payload.title;
+          if (payload.content !== undefined) next.content = payload.content;
+          if (payload.severity !== undefined) next.severity = payload.severity;
+          if (payload.locked !== undefined) next.locked = payload.locked;
+          if (payload.positionX !== undefined) next.positionX = payload.positionX;
+          if (payload.positionY !== undefined) next.positionY = payload.positionY;
+          next.lastEditedByCharacterId = payload.lastEditedByCharacterId;
+          next.lastEditedByName = payload.lastEditedByName;
+          next.updatedAt = payload.updatedAt;
+          return next;
+        }),
+      };
+    }
+
+    case 'note.deleted':
+      return { ...state, notes: state.notes.filter((n) => n.id !== payload.id) };
 
     case 'map.create':
     case 'map.delete':

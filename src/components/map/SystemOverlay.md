@@ -10,7 +10,7 @@
 | viewData | MapViewData | yes | The live map snapshot the canvas already maintains (systems + connections). Provides `map.id` used by the Ping and Rally API calls. |
 
 ### Renders
-A compact, low-chrome vertical panel tuned to be as tight as possible (it lives in a Document PiP window that steals screen space from the game client): a single class+tag+name header line, a self-excluding pilots list, and a connections list of thin rows. The section labels ("Pilots in system" / "Connections") are intentionally **omitted** — the colour mass dot on each connection row and a hairline top border are the only separators. No interactivity, no tooltips (synthetic events don't cross the PiP document).
+A compact, low-chrome vertical panel tuned to be as tight as possible (it lives in a Document PiP window that steals screen space from the game client): a single class+tag+name header line, a self-excluding pilots table, and a connections list of thin rows. The section labels ("Pilots in system" / "Connections") are intentionally **omitted** — the colour mass dot on each connection row and a hairline top border are the only separators. No interactivity, no tooltips (synthetic events don't cross the PiP document).
 
 ### Behaviour & Interactions
 - Reads `useMapActiveChar()` for `activeCharId` / `activeCharSystemId` and `usePresenceForSystem(activeCharSystemId)` for the in-system roster — so it re-renders live off the presence store's `characterUpdate` folding with no extra wiring.
@@ -19,7 +19,7 @@ A compact, low-chrome vertical panel tuned to be as tight as possible (it lives 
 - **Rally button** (right-aligned in header, next to Ping): toggles `ap_map_system.rally_at` via `updateSystemOnServer` — sets to the current ISO timestamp when unset, clears to null when already set. Border colour `#9036e4` matches `RALLY_UNDERGLOW.color`. Disabled when no node or request is in flight. **Easter egg:** shift-clicking while *setting* (not clearing) a rally point plays `/sounds/rally.mp3` via the Web Audio API.
 - **Off-map fallback:** when the active char's system has no placed node, the header falls back to a roster entry's `systemSecurity` / `systemTrueSec` / `systemName`; no tag, and the connections section is hidden.
 - **No located character** (`activeCharSystemId == null`): renders a neutral "No tracked character located" placeholder.
-- **Pilots:** roster filtered to `characterId !== activeCharId`; each row is `characterName · shipTypeName` plus the custom hull name only when it differs from the type (mirrors `PilotRoster`). Empty state: "Alone in system". No section heading.
+- **Pilots:** roster filtered to `characterId !== activeCharId`; rendered as a compact three-column `table-fixed` table with equal-width columns (Pilot | Name | Type). Column headers are sortable (asc/desc toggle with chevron indicator); default sort is Type asc. Blank custom-ship-name values always sink to the bottom regardless of direction. Empty state: "Alone in system" text (no table rendered).
 - **Connections:** `viewData.connections` incident to the current node and `scope !== 'abyssal'`; each row is `[mass dot] [sig] [class] [tag] [far name] [badges] [EOL countdown]`. The mass dot is coloured by `connectionStyle(edge).stroke` (mass status for WH, scope colour otherwise); the **sig** is the 3-char `sigId` of the in-system signature that resolves to this connection (`viewData.signatures` filtered to `mapSystemId === node.id && mapConnectionId === edge.id` — the sig as seen on *this* scanner, not the far side; `.slice(0, 3)` defensively), muted/mono, between the dot and the class; the far-end node gives the class colour + tag/name; `connectionBadges` minus the EOL badge (STATIC / size); a live EOL countdown when `eolStage !== 'none'`. The section has a hairline top border instead of a label; no heading.
 
 ### Depends On
@@ -29,9 +29,11 @@ A compact, low-chrome vertical panel tuned to be as tight as possible (it lives 
 - `UNDERGLOW_PRESETS`, `RALLY_UNDERGLOW` (`./underglowPresets`) — button border colours
 - `connectionTimeLeftMs` (`@/lib/map/connectionState`), `formatRelativeFromMs` (`@/lib/map/relativeTime`) — the EOL countdown
 - `cn` (`@/lib/utils`)
+- `ChevronDown`, `ChevronUp` from `lucide-react` — pilot table sort indicators
 - Types from `@/types`: `MapViewData`, `MapSystemNode`, `MapConnectionEdge`, `MapPresenceEntry`
 
 ### Local State
 - `useEolCountdown(edge)` — per-connection-row hook ticking a `now` clock every 30s while the edge is EOL; returns a formatted "time left" string or null.
 - `pinging: boolean` (Header) — true while a ping POST is in flight; disables the Ping button.
 - `togglingRally: boolean` (Header) — true while a rally PATCH is in flight; disables the Rally button.
+- `sort: PilotSort` (Pilots) — `{ key: PilotSortKey; dir: 'asc' | 'desc' }` tracking the active pilot table sort column and direction.

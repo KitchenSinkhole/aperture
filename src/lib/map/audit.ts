@@ -29,7 +29,7 @@ import { describeMapEvent, type WebhookEventContext } from '@/lib/webhooks/forma
  * rather than the dispatcher's one-event-at-a-time joins.
  */
 
-export type AuditEventCategory = 'system' | 'connection' | 'signature' | 'map';
+export type AuditEventCategory = 'system' | 'connection' | 'signature' | 'note' | 'map';
 
 /** One rendered commit for the audit table. Ids cross the wire as strings (bigint). */
 export interface AuditEventRow {
@@ -86,6 +86,7 @@ const DESTRUCTIVE_KINDS: ReadonlySet<MapEventKind> = new Set([
   'system.removed',
   'connection.delete',
   'signature.delete',
+  'note.deleted',
   'map.delete',
   'map.purge',
 ]);
@@ -98,6 +99,12 @@ const DESTRUCTIVE_KINDS: ReadonlySet<MapEventKind> = new Set([
  * ambiguity). Null payloads on non-`system.updated` rows are unaffected.
  */
 const excludePositionOnly: SQL = sql`not (${apMapEvent.kind} = 'system.updated' and jsonb_exists(${apMapEvent.payload}, 'positionX') and not jsonb_exists_any(${apMapEvent.payload}, array['status','alias','tag','intelNotes','locked','rallyAt']))`;
+
+// Same drag-noise drop for note position-only `note.updated` rows. `title` always
+// rides a note update (the descriptor), so the meaningful-field set deliberately
+// excludes it: a pure drag carries positionX and none of [content,severity,locked],
+// while a title rename carries no positionX and so is never excluded here.
+const excludeNotePositionOnly: SQL = sql`not (${apMapEvent.kind} = 'note.updated' and jsonb_exists(${apMapEvent.payload}, 'positionX') and not jsonb_exists_any(${apMapEvent.payload}, array['content','severity','locked']))`;
 
 // Audit attribution rolls every commit up to the acting character's account "main"
 // — the human identity. Once an alt is re-homed onto a main's account (issue #116),
@@ -171,7 +178,11 @@ export async function listAuditActors(mapId: bigint): Promise<AuditActor[]> {
 
 /** Shared filter clauses (everything except the keyset cursor). */
 function filterClauses(params: AuditQueryParams): SQL[] {
-  const clauses: SQL[] = [eq(apMapEvent.mapId, params.mapId), excludePositionOnly];
+  const clauses: SQL[] = [
+    eq(apMapEvent.mapId, params.mapId),
+    excludePositionOnly,
+    excludeNotePositionOnly,
+  ];
   if (params.characterId === 'none') {
     clauses.push(isNull(apMapEvent.characterId));
   } else if (params.characterId !== undefined) {
@@ -194,6 +205,7 @@ function filterClauses(params: AuditQueryParams): SQL[] {
         sql`(${apMapEvent.payload} ->> 'name') ilike ${pat}`,
         sql`(${apMapEvent.payload} ->> 'alias') ilike ${pat}`,
         sql`(${apMapEvent.payload} ->> 'tag') ilike ${pat}`,
+        sql`(${apMapEvent.payload} ->> 'title') ilike ${pat}`,
       )!,
     );
   }
@@ -416,7 +428,7 @@ export async function auditActorSummary(
   from?: Date,
   to?: Date,
 ): Promise<ActorSummary> {
-  const clauses: SQL[] = [eq(apMapEvent.mapId, mapId), excludePositionOnly];
+  const clauses: SQL[] = [eq(apMapEvent.mapId, mapId), excludePositionOnly, excludeNotePositionOnly];
   clauses.push(
     // The id is an account main; aggregate every commit by any character in it.
     characterId === 'none'
@@ -438,6 +450,7 @@ export async function auditActorSummary(
     system: 0,
     connection: 0,
     signature: 0,
+    note: 0,
     map: 0,
   };
   let total = 0;

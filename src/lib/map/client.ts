@@ -26,6 +26,7 @@ import type {
 import type {
   ConnectionScope,
   EolStage,
+  NoteSeverity,
   SystemStatus,
   WhJumpMass,
   WhMass,
@@ -86,6 +87,23 @@ export type UpdateConnectionBody = {
   preserveMass?: boolean;
   isRolling?: boolean;
   isStatic?: boolean;
+};
+
+export type CreateNoteBody = {
+  title: string;
+  content?: string | null;
+  severity?: NoteSeverity;
+  positionX: number;
+  positionY: number;
+};
+
+export type UpdateNoteBody = {
+  title?: string;
+  content?: string | null;
+  severity?: NoteSeverity;
+  locked?: boolean;
+  positionX?: number;
+  positionY?: number;
 };
 
 export type CreateSignatureBody = {
@@ -198,6 +216,36 @@ export function removeSystemOnServer(args: {
     'DELETE',
     `/api/map/${args.mapId}/systems/${args.mapSystemId}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Note mutations
+// ---------------------------------------------------------------------------
+
+export function addNoteOnServer(args: {
+  mapId: string;
+  body: CreateNoteBody;
+}): Promise<ActionResult<MapEventPayload>> {
+  return mutationFetch<MapEventPayload>('POST', `/api/map/${args.mapId}/notes`, args.body);
+}
+
+export function updateNoteOnServer(args: {
+  mapId: string;
+  noteId: string;
+  patch: UpdateNoteBody;
+}): Promise<ActionResult<MapEventPayload>> {
+  return mutationFetch<MapEventPayload>(
+    'PATCH',
+    `/api/map/${args.mapId}/notes/${args.noteId}`,
+    args.patch,
+  );
+}
+
+export function deleteNoteOnServer(args: {
+  mapId: string;
+  noteId: string;
+}): Promise<ActionResult<MapEventPayload>> {
+  return mutationFetch<MapEventPayload>('DELETE', `/api/map/${args.mapId}/notes/${args.noteId}`);
 }
 
 // ---------------------------------------------------------------------------

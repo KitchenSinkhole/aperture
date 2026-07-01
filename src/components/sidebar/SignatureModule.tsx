@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ClipboardPaste, Search, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ClipboardPaste, Trash2 } from 'lucide-react';
 import {
   createColumnHelper,
   flexRender,
@@ -12,13 +12,15 @@ import {
   type SortingState,
 } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { WormholeTypeSelect } from './WormholeTypeSelect';
 import { SignatureGroupSelect } from './SignatureGroupSelect';
 import { ConnectionSelect } from './ConnectionSelect';
 import { SiteTypeCombobox } from './SiteTypeCombobox';
 import { SignaturePasteDialog } from '@/components/dialogs/SignaturePasteDialog';
+import { SignatureIcon } from '@/components/icons/SignatureIcon';
+import { AnomalyIcon } from '@/components/icons/AnomalyIcon';
 import type {
   MapConnectionEdge,
   MapEventPayload,
@@ -87,6 +89,7 @@ const FLAT_INPUT =
 const columnHelper = createColumnHelper<MapSignature>();
 
 const colHeaderClass: Record<string, string> = {
+  classKind: 'w-6 px-1 py-0.5',
   sigId: 'w-24 px-2 py-0.5 text-left',
   groupKey: 'w-32 px-3 py-0.5 text-left',
   type: 'w-56 px-3 py-0.5 text-left',
@@ -187,6 +190,20 @@ type SignatureTableMeta = {
 // `assignedConnectionIds` → the columns memo). Hoisting the cells and routing
 // volatile data through `table.options.meta` keeps the identities stable, so a
 // realtime update re-renders the cells in place instead of remounting them.
+// Signature-vs-anomaly glyph. No colour class → inherits the row's foreground
+// text colour (matches SigIdCell). Each icon carries its own label/tooltip.
+// Unknown class (null, e.g. a manually-added or pre-paste sig) shows nothing
+// rather than guessing.
+function ClassKindCell({ row }: CellContext<MapSignature, unknown>) {
+  const { classKind } = row.original;
+  return (
+    <span className="flex items-center justify-center px-1 py-px">
+      {classKind === 'signature' && <SignatureIcon className="size-3.5" />}
+      {classKind === 'anomaly' && <AnomalyIcon className="size-2.5" />}
+    </span>
+  );
+}
+
 function SigIdCell({ row }: CellContext<MapSignature, string>) {
   return <span className="px-2 py-px font-mono text-xs">{row.original.sigId}</span>;
 }
@@ -321,6 +338,7 @@ function ActionsCell({ row, table }: CellContext<MapSignature, unknown>) {
 }
 
 const signatureColumns = [
+  columnHelper.display({ id: 'classKind', header: '', cell: ClassKindCell }),
   columnHelper.accessor('sigId', { header: 'Sig', enableSorting: true, cell: SigIdCell }),
   columnHelper.accessor('groupKey', { header: 'Group', enableSorting: true, cell: GroupCell }),
   columnHelper.display({ id: 'type', header: 'Type', cell: TypeColumnCell }),
@@ -360,37 +378,35 @@ export function SignatureModule({
   flashSigId?: string | null;
 }) {
   return (
-    <Card>
-      <CardContent>
-        {!system ? (
-          <p className="text-xs text-muted-foreground">
-            Select a system on the map to view its signatures.
-          </p>
-        ) : (
-          <SignaturePanelBody
-            key={system.id}
-            system={system}
-            signatures={signatures}
-            connections={connections}
-            systems={systems}
-            onCreate={onCreate}
-            onPatch={onPatch}
-            onDelete={onDelete}
-            onConnectionPatch={onConnectionPatch}
-            flashSigId={flashSigId}
-          />
-        )}
-      </CardContent>
+    <Card className="flex h-full flex-col gap-3 p-3">
+      {!system ? (
+        <p className="text-xs text-muted-foreground">
+          Select a system on the map to view its signatures.
+        </p>
+      ) : (
+        <SignaturePanelBody
+          key={system.id}
+          system={system}
+          signatures={signatures}
+          connections={connections}
+          systems={systems}
+          onCreate={onCreate}
+          onPatch={onPatch}
+          onDelete={onDelete}
+          onConnectionPatch={onConnectionPatch}
+          flashSigId={flashSigId}
+        />
+      )}
     </Card>
   );
 }
 
 /**
- * Header actions for the Signatures panel — the **Search** button, **Lazy delete** arm toggle, and
+ * Header actions for the Signatures panel — the **Lazy delete** arm toggle and
  * the **Paste from scanner** button. Rendered into the `MapPanel` header
  * (`headerRight`) rather than inside the card, so they sit beside the panel
- * title alongside the drag handle and hide button. The search button is always
- * rendered; lazy delete and paste are only shown when a system is selected.
+ * title alongside the drag handle and hide button. Both are only shown when a
+ * system is selected.
  */
 export function SignatureModuleHeaderActions({
   mapId,
@@ -399,7 +415,6 @@ export function SignatureModuleHeaderActions({
   onBulkPaste,
   lazyDelete,
   onLazyDeleteChange,
-  onOpenSearch,
 }: {
   mapId: string;
   system: MapSystemNode | null;
@@ -407,14 +422,9 @@ export function SignatureModuleHeaderActions({
   onBulkPaste: (payloads: MapEventPayload[]) => void;
   lazyDelete: boolean;
   onLazyDeleteChange: (next: boolean) => void;
-  onOpenSearch: () => void;
 }) {
   return (
     <>
-      <Button type="button" variant="outline" size="sm" onClick={onOpenSearch}>
-        <Search className="size-3.5" />
-        Sig Search
-      </Button>
       {system && (
         <>
           <LazyDeleteToggle armed={lazyDelete} onArmedChange={onLazyDeleteChange} />
@@ -626,16 +636,16 @@ function SignaturePanelBody({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <SignatureFilterBar
         groupFilter={groupFilter}
         onGroupFilterChange={setGroupFilter}
         scanFilter={scanFilter}
         onScanFilterChange={setScanFilter}
       />
-      <div className="overflow-hidden rounded-md ring-1 ring-foreground/10">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-md ring-1 ring-foreground/10">
         <table className="w-full text-sm [&_[data-slot=input]]:h-6 [&_[data-slot=select-trigger]]:h-6">
-          <thead className="bg-muted/40 text-[11px] uppercase text-muted-foreground">
+          <thead className="sticky top-0 z-10 bg-[color-mix(in_oklab,var(--muted)_50%,var(--card))] text-[11px] uppercase text-muted-foreground">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 {hg.headers.map((header) => {
@@ -661,7 +671,7 @@ function SignaturePanelBody({
           <tbody>
             {table.getRowModel().rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-2 py-3 text-center text-xs text-muted-foreground">
+                <td colSpan={10} className="px-2 py-3 text-center text-xs text-muted-foreground">
                   {rows.length > 0 ? 'No signatures match the filter.' : 'No signatures.'}
                 </td>
               </tr>
@@ -685,7 +695,7 @@ function SignaturePanelBody({
         </table>
       </div>
 
-      <div className="flex items-end gap-2">
+      <div className="flex shrink-0 items-end gap-2">
         <div className="flex flex-col gap-1">
           <span className="text-[11px] text-muted-foreground">Sig</span>
           <Input
@@ -854,7 +864,7 @@ function SignatureFilterBar({
     },
   };
   return (
-    <div className="flex flex-wrap items-center justify-between gap-1.5">
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-1.5">
       <div className="flex flex-wrap items-center gap-1">
         {SIGNATURE_GROUP_CATALOG.map(({ key, label }) => (
           <FilterToggle

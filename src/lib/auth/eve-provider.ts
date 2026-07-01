@@ -6,6 +6,7 @@ import { db } from '@/db/client';
 import { apCharacter } from '@/db/schema';
 import { env } from '@/lib/env';
 import { decryptToken, encryptToken } from '@/lib/crypto';
+import { recordTokenRefresh } from '@/lib/metrics/registry';
 import { verifyEveAccessToken, type EveAccessTokenClaims } from './jwks';
 
 const ssoBase = () => env.AUTH_EVE_SSO_BASE;
@@ -89,7 +90,7 @@ export function eveProvider(): OAuthConfig<EveProfile> {
  * @returns the freshly-issued access token (plaintext, for immediate use).
  */
 export async function refreshAccessToken(characterId: bigint): Promise<string> {
-  return db.transaction(async (tx) => {
+  const accessToken = await db.transaction(async (tx) => {
     // Transaction-scoped lock keyed on the character id; auto-released on
     // commit/rollback. `hashtextextended` maps the id into the single-arg
     // advisory-lock keyspace.
@@ -102,6 +103,7 @@ export async function refreshAccessToken(characterId: bigint): Promise<string> {
       .from(apCharacter)
       .where(eq(apCharacter.id, characterId));
     if (!row?.esiRefreshToken) {
+      recordTokenRefresh('missing_token');
       throw new Error(`No stored refresh token for character ${characterId}`);
     }
     const refreshToken = decryptToken(row.esiRefreshToken);
@@ -116,9 +118,16 @@ export async function refreshAccessToken(characterId: bigint): Promise<string> {
       body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
     });
     if (!res.ok) {
+      recordTokenRefresh('http_error');
       throw new Error(`EVE SSO token refresh failed: ${res.status} ${await res.text()}`);
     }
-    const tokens = tokenResponseSchema.parse(await res.json());
+    let tokens: z.infer<typeof tokenResponseSchema>;
+    try {
+      tokens = tokenResponseSchema.parse(await res.json());
+    } catch (err) {
+      recordTokenRefresh('invalid_response');
+      throw err;
+    }
 
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
     // Persist the rotated refresh token (and the new access token) BEFORE the
@@ -135,4 +144,8 @@ export async function refreshAccessToken(characterId: bigint): Promise<string> {
 
     return tokens.access_token;
   });
+  // Recorded only after the transaction commits — a rolled-back exchange already
+  // recorded its specific failure outcome inside the transaction.
+  recordTokenRefresh('success');
+  return accessToken;
 }

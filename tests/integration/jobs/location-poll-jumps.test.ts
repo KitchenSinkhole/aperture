@@ -24,7 +24,16 @@ vi.mock('@/lib/esi/client', async (importOriginal) => {
   return { ...actual, esiCall: vi.fn() };
 });
 
+// The fold's `addNewSystems` gate asks whether the moving pilot's account has
+// this map open in a live WS socket. That roster is in-process and empty under
+// test, so without a mock every wormhole jump would be suppressed. Treat the
+// tracked pilot as present on every map (set per-suite once `userId` is known).
+vi.mock('@/lib/realtime/mapViewers', () => ({
+  getMapViewerUserIds: vi.fn((): number[] => []),
+}));
+
 import { esiCall } from '@/lib/esi/client';
+import { getMapViewerUserIds } from '@/lib/realtime/mapViewers';
 import { locationPoll } from '@/lib/jobs/tasks/locationPoll';
 import { SLOT_X, SLOT_Y, overlaps, snapToGrid } from '@/lib/map/placement';
 import {
@@ -165,6 +174,8 @@ describe.skipIf(!run)('Stage 12.2 location-poll jump classification + fan-out (r
 
     const [u] = await db.insert(apUser).values({}).returning({ id: apUser.id });
     userId = u!.id;
+    // Pilot's account is "viewing" every map → the presence gate lets the fold add systems.
+    vi.mocked(getMapViewerUserIds).mockReturnValue([userId]);
     await db.insert(apCharacter).values({
       id: CHAR_ID,
       userId,
@@ -340,24 +351,32 @@ describe.skipIf(!run)('Stage 12.2 location-poll jump classification + fan-out (r
     expect(notes!.jumpClass).toBe('wormhole');
   });
 
-  it('re-adding a previously-hidden system restores its old coordinates', async () => {
-    // Prime the map with a B→C jump, then nudge C to a hand-picked spot and hide it.
+  it('re-adding a previously-hidden system re-places it off the new parent, not at its stale coords', async () => {
+    // Prime the map with a B→C jump, then shove C to a far-off spot and hide it —
+    // simulating a now-defunct chain where C sat somewhere unrelated.
     await db.update(apCharacter).set({ lastSystemId: SYS_B }).where(eq(apCharacter.id, CHAR_ID));
     mockEsi({ online: true, systemId: SYS_C });
     await locationPoll.run({ characterId: CHAR_ID.toString() }, makeHelpers().helpers);
 
-    const moved = { x: 1234, y: -5678 };
+    const stale = { x: 1234, y: -5678 };
     await db
       .update(apMapSystem)
-      .set({ positionX: moved.x, positionY: moved.y, visible: false })
+      .set({ positionX: stale.x, positionY: stale.y, visible: false })
       .where(and(eq(apMapSystem.mapId, mapA), eq(apMapSystem.systemId, SYS_C)));
 
-    // Re-fire the same jump; C re-adds through the onConflictDoUpdate path.
+    // Re-fire the same jump; C re-adds through the onConflictDoUpdate path and must
+    // be re-placed adjacent to its parent (B), not restored to the stale coords.
     await db.update(apCharacter).set({ lastSystemId: SYS_B }).where(eq(apCharacter.id, CHAR_ID));
     await locationPoll.run({ characterId: CHAR_ID.toString() }, makeHelpers().helpers);
 
+    const posB = await systemPos(mapA, SYS_B);
     const posC = await systemPos(mapA, SYS_C);
-    expect(posC).toEqual(moved);
+    expect(posC).not.toEqual(stale);
+    expect(snapToGrid(posC)).toEqual(posC);
+    expect(overlaps(posB, posC)).toBe(false);
+    // Re-placed within the first placement ring of the parent on each axis.
+    expect(Math.abs(posC.x - posB.x)).toBeLessThanOrEqual(SLOT_X);
+    expect(Math.abs(posC.y - posB.y)).toBeLessThanOrEqual(SLOT_Y);
   });
 
   it('repeated wormhole jump is idempotent (no new events)', async () => {
@@ -387,6 +406,41 @@ describe.skipIf(!run)('Stage 12.2 location-poll jump classification + fan-out (r
           toSystemAdded: false,
           connectionCreated: false,
         }),
+      ]),
+    );
+  });
+
+  it('jumping a dormant connection re-confirms it (regression: removed+re-added system)', async () => {
+    // Prime a B→C jump so the connection exists, then dormant it the way
+    // removeSystem(B) would (NULL confirmed_at) without deleting the row —
+    // re-adding B leaves the wh link hidden. The pilot jumping B→C again must
+    // bring it back, not silently treat the dormant row as already-present.
+    await db.update(apCharacter).set({ lastSystemId: SYS_B }).where(eq(apCharacter.id, CHAR_ID));
+    mockEsi({ online: true, systemId: SYS_C });
+    await locationPoll.run({ characterId: CHAR_ID.toString() }, makeHelpers().helpers);
+
+    await db
+      .update(apMapConnection)
+      .set({ confirmedAt: null })
+      .where(eq(apMapConnection.mapId, mapA));
+    const baselineA = await eventCount(mapA);
+
+    // Re-fire the same jump.
+    await db.update(apCharacter).set({ lastSystemId: SYS_B }).where(eq(apCharacter.id, CHAR_ID));
+    await locationPoll.run({ characterId: CHAR_ID.toString() }, makeHelpers().helpers);
+
+    // The dormant edge is re-confirmed and re-broadcast as connection.create.
+    expect(await eventCount(mapA)).toBe(baselineA + 1);
+    const [conn] = await db
+      .select({ confirmedAt: apMapConnection.confirmedAt })
+      .from(apMapConnection)
+      .where(eq(apMapConnection.mapId, mapA));
+    expect(conn!.confirmedAt).not.toBeNull();
+
+    const notes = await lastJobNotes();
+    expect(notes!.folds).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ connectionCreated: true }),
       ]),
     );
   });

@@ -34,7 +34,7 @@ The companion `.md` files (see below) are the index of the codebase: read them f
 
 **This is a standing instruction that applies to every file edit in this project, without exception:**
 
-> Whenever you create or modify a `.ts` or `.tsx` file, you must update its companion `.md` file in the same operation. If no companion exists yet, create it. Use the formats defined below.
+> Whenever you create or modify a `.ts` or `.tsx` file, you must keep its companion `.md` **accurate** in the same operation — which frequently means making **no change at all**. If no companion exists yet, create it. Use the formats defined below.
 
 Every `.ts` and `.tsx` source file in the codebase has a companion `.md` file at the same path with the same base name. These files serve as a cheap, always-current index of the codebase for Claude Code. Rather than reading entire source files to understand relationships and interfaces, Claude Code reads the `.md` files first and only opens the source when it actually needs to modify it.
 
@@ -56,6 +56,24 @@ src/
 ```
 
 Companion files are maintained by Claude Code as a standing instruction. They are never edited by hand and require no external script or API call. The companion must be written or updated **before** the edit is considered complete.
+
+#### The companion indexes current state — it is not a changelog
+
+The companion describes what a module **is and does right now**: its interface (props, exports, emits, dependencies) and its non-obvious behaviours. It is **not** a record of what changed or why. Before touching a companion, apply this gate:
+
+- **Did the documented interface or an externally-observable behaviour change?** — props, exports, emitted events, dependencies, what it renders, a user-visible behaviour. If yes, update the affected section. If the change is purely internal — a refactor, a bug fix that restores already-documented behaviour, a performance tweak, a styling change — the companion needs **no edit**; confirming it still reads accurately satisfies the standing instruction. Do not manufacture an edit to show work.
+
+When an edit *is* warranted, still apply the rules below **line by line**: a legitimate update (e.g. a changed prop list) must not smuggle in a clause whose only job is to explain the change. Most of the bloat this prevents rides along inside otherwise-valid edits, not in wholesale unnecessary ones.
+
+**Never put these in a companion** — they belong in a code comment or the commit message, not the index:
+- **Change-rationale / justification** — *why* a line is the way it is, what bug it fixes, what it works around. This bans **change**-rationale (why it differs from a previous version, what prompted the change), **not** a non-obvious **invariant or guarantee the current code upholds** — a security check ("a foreign system 404s so a viewer can't harvest another map's sigs"), an ordering or mass-balance constraint. State the invariant in the present tense; drop the story of how it came to be.
+- **History** — "previously X, now Y", "no longer does Z", "moved from the dialog", anything that only makes sense as a diff. A temporal word in a description (*no longer, now, still, used to, was, moved to*) is the smell — rewrite in plain present tense stating only what is true now.
+- **Implementation strings** — exact Tailwind class lists, CSS values, `color-mix(...)` / colours, magic numbers. Name the behaviour ("sticky, opaque header"), not its spelling in code; the source carries the literal value.
+- **Cross-references as rationale** — "matches `OtherModule`".
+
+**The test:** would the line read identically if the code had always been written this way? If a sentence only makes sense as the explanation of a *change*, it does not belong in the index.
+
+**Schema companions (`src/db/schema/**`) — provenance exception:** a schema `.md` may cite the migration that established a column or constraint as bare provenance (e.g. `(migration 0015)`), since it aids navigating the migration history. It must still drop the justification tail and temporal framing — `replaced the prior group_id FK to universe_group (migration 0015), which couldn't represent the cosmic six` becomes `the seven keys the probe scanner emits (migration 0015)`.
 
 #### For `.tsx` component files
 

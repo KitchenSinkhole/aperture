@@ -3,7 +3,7 @@ import { and, eq, type InferInsertModel } from 'drizzle-orm';
 import { apMapConnection, apMapSignature, apMapSystem, universeWormhole } from '@/db/schema';
 import { commitMapEvent, type ActionResult, type Tx } from './core';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
-import type { SignatureGroupKey } from '@/types';
+import type { SignatureClassKind, SignatureGroupKey } from '@/types';
 
 /**
  * Signature-level map mutations, each a single `commitMapEvent` call.
@@ -26,6 +26,7 @@ export type CreateSignatureInput = {
   characterId: bigint | null;
   sigId: string;
   groupKey?: SignatureGroupKey | null;
+  classKind?: SignatureClassKind | null;
   typeId?: number | null;
   name?: string | null;
   description?: string | null;
@@ -37,6 +38,7 @@ export type UpdateSignaturePatch = {
   mapConnectionId?: bigint | null;
   sigId?: string;
   groupKey?: SignatureGroupKey | null;
+  classKind?: SignatureClassKind | null;
   typeId?: number | null;
   name?: string | null;
   description?: string | null;
@@ -75,6 +77,7 @@ export function createSignature(
           mapConnectionId: input.mapConnectionId ?? null,
           sigId: input.sigId,
           groupKey: input.groupKey ?? null,
+          classKind: input.classKind ?? null,
           typeId: input.typeId ?? null,
           name: input.name ?? null,
           description: input.description ?? null,
@@ -86,6 +89,7 @@ export function createSignature(
           mapConnectionId: apMapSignature.mapConnectionId,
           sigId: apMapSignature.sigId,
           groupKey: apMapSignature.groupKey,
+          classKind: apMapSignature.classKind,
           typeId: apMapSignature.typeId,
           name: apMapSignature.name,
           description: apMapSignature.description,
@@ -104,6 +108,7 @@ export function createSignature(
         mapConnectionId: row!.mapConnectionId?.toString() ?? null,
         sigId: row!.sigId,
         groupKey: row!.groupKey,
+        classKind: row!.classKind,
         typeId: row!.typeId,
         wormholeCode,
         name: row!.name,
@@ -184,6 +189,7 @@ export function updateSignature(
       if ('mapConnectionId' in patch) set.mapConnectionId = patch.mapConnectionId;
       if ('sigId' in patch) set.sigId = patch.sigId;
       if ('groupKey' in patch) set.groupKey = patch.groupKey;
+      if ('classKind' in patch) set.classKind = patch.classKind;
       if ('typeId' in patch) set.typeId = patch.typeId;
       if ('name' in patch) set.name = patch.name;
       if ('description' in patch) set.description = patch.description;
@@ -199,6 +205,7 @@ export function updateSignature(
           mapConnectionId: apMapSignature.mapConnectionId,
           sigId: apMapSignature.sigId,
           groupKey: apMapSignature.groupKey,
+          classKind: apMapSignature.classKind,
           typeId: apMapSignature.typeId,
           name: apMapSignature.name,
           description: apMapSignature.description,
@@ -238,6 +245,7 @@ export function updateSignature(
             : null;
       }
       if ('groupKey' in patch) out.groupKey = patch.groupKey;
+      if ('classKind' in patch) out.classKind = patch.classKind;
       if ('typeId' in patch) {
         out.typeId = patch.typeId;
         out.wormholeCode = wormholeCode;
@@ -255,6 +263,7 @@ export function updateSignature(
         mapConnectionId: row.mapConnectionId?.toString() ?? null,
         sigId: row.sigId,
         groupKey: row.groupKey,
+        classKind: row.classKind,
         typeId: row.typeId,
         wormholeCode,
         name: row.name,

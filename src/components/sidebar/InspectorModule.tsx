@@ -18,34 +18,43 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConnectionMassLog } from '@/components/sidebar/ConnectionMassLog';
 import type {
   MapConnectionEdge,
+  MapNote,
   MapSystemNode,
   MapViewData,
 } from '@/types';
 import type {
   UpdateConnectionBody,
+  UpdateNoteBody,
   UpdateSystemBody,
 } from '@/lib/map/client';
 import {
   CONNECTION_SCOPES,
   EOL_STAGE_LABELS,
   EOL_STAGES,
+  NOTE_SEVERITIES,
+  NOTE_SEVERITY_LABELS,
   SYSTEM_STATUSES,
   WH_JUMP_MASSES,
   WH_MASSES,
   WH_MASS_LABELS,
   type ConnectionScope,
   type EolStage,
+  type NoteSeverity,
   type SystemStatus,
   type WhJumpMass,
   type WhMass,
 } from '@/lib/map/enumLabels';
 import { systemDisplayName } from '@/lib/eve/drifterSystems';
+import { NoteContent } from '@/components/map/NoteContent';
+import { NOTE_TEXT_COLOR_NAMES } from '@/lib/map/noteMarkdown';
+import { apertureConfig } from '../../../aperture.config';
 
 const NONE_JUMP_MASS = '__none__';
 
 export type SelectionRef =
   | { kind: 'system'; id: string }
-  | { kind: 'connection'; id: string };
+  | { kind: 'connection'; id: string }
+  | { kind: 'note'; id: string };
 
 export function InspectorModule(props: {
   selected: SelectionRef | null;
@@ -54,6 +63,8 @@ export function InspectorModule(props: {
   onSystemRemove: (mapSystemId: string) => void;
   onConnectionPatch: (connectionId: string, patch: UpdateConnectionBody) => void;
   onConnectionDelete: (connectionId: string) => void;
+  onNotePatch: (noteId: string, patch: UpdateNoteBody) => void;
+  onNoteRemove: (noteId: string) => void;
 }) {
   const { selected, viewData } = props;
 
@@ -68,6 +79,19 @@ export function InspectorModule(props: {
         system={system}
         onPatch={(patch) => props.onSystemPatch(system.id, patch)}
         onRemove={() => props.onSystemRemove(system.id)}
+      />
+    );
+  }
+
+  if (selected.kind === 'note') {
+    const note = viewData.notes.find((n) => n.id === selected.id);
+    if (!note) return <EmptyInspector />;
+    return (
+      <NoteInspector
+        key={note.id}
+        note={note}
+        onPatch={(patch) => props.onNotePatch(note.id, patch)}
+        onRemove={() => props.onNoteRemove(note.id)}
       />
     );
   }
@@ -93,7 +117,7 @@ function EmptyInspector() {
   return (
     <Card>
       <CardContent className="text-xs text-muted-foreground">
-        Select a system or connection to edit.
+        Select a system, connection, or note to edit.
       </CardContent>
     </Card>
   );
@@ -242,6 +266,130 @@ function SystemInspector({
             size="sm"
             onClick={onRemove}
             disabled={system.locked}
+            className="gap-1.5"
+          >
+            <Trash2 className="size-3.5" />
+            Remove
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Note
+// ---------------------------------------------------------------------------
+
+function NoteInspector({
+  note,
+  onPatch,
+  onRemove,
+}: {
+  note: MapNote;
+  onPatch: (patch: UpdateNoteBody) => void;
+  onRemove: () => void;
+}) {
+  // Local drafts seeded from the stored value, committed on blur/Enter so PATCHes
+  // don't fire per keystroke. The parent renders with `key={note.id}`, so drafts
+  // re-seed when the selected note changes.
+  const [titleDraft, setTitleDraft] = useState(note.title);
+  const [contentDraft, setContentDraft] = useState(note.content ?? '');
+
+  return (
+    <Card size="sm" className="data-[size=sm]:pb-0">
+      <CardHeader>
+        <CardTitle className="text-sm">Note</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2 text-xs">
+        <Row label="Title">
+          <Input
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={() => {
+              const next = titleDraft.trim();
+              // Title is required (it's the on-node label) — empty reverts.
+              if (next.length === 0) setTitleDraft(note.title);
+              else if (next !== note.title) onPatch({ title: next });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
+            className="h-7"
+            maxLength={apertureConfig.MAP_NOTE_TITLE_MAX_LENGTH}
+          />
+        </Row>
+
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] text-muted-foreground">Content</span>
+          <textarea
+            value={contentDraft}
+            onChange={(e) => setContentDraft(e.target.value)}
+            onBlur={() => {
+              const next = contentDraft.length > 0 ? contentDraft : null;
+              if (next !== (note.content ?? null)) onPatch({ content: next });
+            }}
+            maxLength={apertureConfig.MAP_NOTE_CONTENT_MAX_LENGTH}
+            placeholder="Markdown and color tags supported."
+            className="h-24 resize-none rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+          />
+          <span className="text-[10px] text-muted-foreground">
+            Markdown + colour tags: <code>[red]…[/red]</code> ({NOTE_TEXT_COLOR_NAMES.join(', ')})
+          </span>
+          {contentDraft.trim().length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-muted-foreground">Preview</span>
+              <div className="rounded-md border border-border bg-background px-2 py-1 text-xs">
+                <NoteContent content={contentDraft} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <Row label="Severity">
+          <Select<string>
+            value={note.severity}
+            onValueChange={(v) => v && onPatch({ severity: v as NoteSeverity })}
+            items={Object.fromEntries(NOTE_SEVERITIES.map((s) => [s, NOTE_SEVERITY_LABELS[s]]))}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {NOTE_SEVERITIES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {NOTE_SEVERITY_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Row>
+
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={note.locked}
+            onChange={(e) => onPatch({ locked: e.target.checked })}
+          />
+          <span>Locked</span>
+        </label>
+
+        <div className="text-[10px] text-muted-foreground">
+          Created by {note.createdByName ?? '—'} · Last edited by {note.lastEditedByName ?? '—'}
+        </div>
+
+        {/* A locked note can't be removed — mirror the server guard so the button
+            greys out with a hint to unlock it first (the Locked checkbox is above). */}
+        <div className="flex items-center justify-end gap-2">
+          {note.locked && (
+            <span className="text-[10px] text-muted-foreground">Unlock to remove</span>
+          )}
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={onRemove}
+            disabled={note.locked}
             className="gap-1.5"
           >
             <Trash2 className="size-3.5" />

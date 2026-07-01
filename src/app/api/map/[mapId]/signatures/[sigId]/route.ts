@@ -3,8 +3,9 @@ import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { deleteSignature, updateSignature } from '@/lib/map/mutations/signatures';
-import { signatureGroupKey } from '@/db/schema';
+import { signatureClassKind, signatureGroupKey } from '@/db/schema';
 import { parseBigInt, requireMapMutate } from '../../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * PATCH /api/map/[mapId]/signatures/[sigId] — update a signature's fields.
@@ -19,6 +20,7 @@ const updateSignatureBodySchema = z.object({
   mapConnectionId: z.string().regex(/^\d+$/).nullable().optional(),
   sigId: z.string().min(1).max(7).optional(),
   groupKey: z.enum(signatureGroupKey.enumValues).nullable().optional(),
+  classKind: z.enum(signatureClassKind.enumValues).nullable().optional(),
   typeId: z.number().int().positive().nullable().optional(),
   name: z.string().max(100).nullable().optional(),
   description: z.string().nullable().optional(),
@@ -27,7 +29,7 @@ const updateSignatureBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function PATCH(
+export const PATCH = withApiMetrics('/api/map/:mapId/signatures/:sigId', async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string; sigId: string }> },
 ) {
@@ -69,6 +71,7 @@ export async function PATCH(
   }
   if ('sigId' in parsed.data) patch.sigId = parsed.data.sigId;
   if ('groupKey' in parsed.data) patch.groupKey = parsed.data.groupKey;
+  if ('classKind' in parsed.data) patch.classKind = parsed.data.classKind;
   if ('typeId' in parsed.data) patch.typeId = parsed.data.typeId;
   if ('name' in parsed.data) patch.name = parsed.data.name;
   if ('description' in parsed.data) patch.description = parsed.data.description;
@@ -84,9 +87,9 @@ export async function PATCH(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});
 
-export async function DELETE(
+export const DELETE = withApiMetrics('/api/map/:mapId/signatures/:sigId', async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string; sigId: string }> },
 ) {
@@ -107,4 +110,4 @@ export async function DELETE(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

@@ -3,7 +3,9 @@ import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { deleteDisconnected } from '@/lib/map/mutations/subchain';
 import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
+import { logger } from '@/lib/log/logger';
 import { requireMapMutate } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/disconnected — delete every visible system with no path
@@ -19,7 +21,7 @@ import { requireMapMutate } from '../../utils';
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/disconnected', async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -42,9 +44,9 @@ export async function POST(
     try {
       await applyHomeStaticExemption(guard.mapId, guard.characterId);
     } catch (err) {
-      console.warn('home-static exemption reconcile failed (map=%s):', guard.mapId.toString(), err);
+      logger.warn('home-static exemption reconcile failed', { mapId: guard.mapId.toString(), err });
     }
   }
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

@@ -10,7 +10,7 @@ import {
 import { universeType } from '../universe/items';
 import { apMapConnection } from './map_connection';
 import { apMapSystem } from './map_system';
-import { signatureGroupKey } from './enums';
+import { signatureClassKind, signatureGroupKey } from './enums';
 
 // An in-game scan signature inside a system, optionally bound to the
 // connection it resolves to (the wormhole itself). Reaped by the signature-reap
@@ -36,6 +36,9 @@ export const apMapSignature = pgTable(
     // In-game 3-char id, e.g. "ABC".
     sigId: text('sig_id').notNull(),
     groupKey: signatureGroupKey('group_key'),
+    // Signature vs anomaly. Paste-derived
+    // only; nullable for legacy/manual rows whose kind was never observed.
+    classKind: signatureClassKind('class_kind'),
     typeId: integer('type_id').references(() => universeType.id, { onDelete: 'set null' }),
     name: text('name'),
     description: text('description'),

@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -75,6 +76,25 @@ function readRouteSource(): RouteSource {
   }
 }
 
+// Server render (and the first hydration pass) always sees the default, so the
+// markup matches; `useSyncExternalStore` swaps in the persisted value right
+// after hydration — SSR-safe without reading localStorage during render.
+function serverRouteSource(): RouteSource {
+  return 'character';
+}
+
+const routeSourceListeners = new Set<() => void>();
+
+function subscribeRouteSource(onChange: () => void): () => void {
+  routeSourceListeners.add(onChange);
+  return () => routeSourceListeners.delete(onChange);
+}
+
+function writeRouteSource(v: RouteSource): void {
+  try { localStorage.setItem(ROUTE_SOURCE_KEY, v); } catch {}
+  for (const cb of routeSourceListeners) cb();
+}
+
 export function RoutePlannerModule({
   mapId,
   selectedSystemId,
@@ -100,11 +120,14 @@ export function RoutePlannerModule({
   const [computing, setComputing] = useState(false);
   const [, startPrefs] = useTransition();
 
-  const [routeSource, setRouteSourceState] = useState<RouteSource>(readRouteSource);
+  const routeSource = useSyncExternalStore(
+    subscribeRouteSource,
+    readRouteSource,
+    serverRouteSource,
+  );
 
   const setRouteSource = useCallback((v: RouteSource) => {
-    setRouteSourceState(v);
-    try { localStorage.setItem(ROUTE_SOURCE_KEY, v); } catch {}
+    writeRouteSource(v);
   }, []);
 
   const sourceSystemId =

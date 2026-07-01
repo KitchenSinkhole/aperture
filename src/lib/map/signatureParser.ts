@@ -13,11 +13,13 @@
  * after warping in. Manual WH-code entry lives in the existing
  * `WormholeTypeSelect` dropdown on each sig row.
  *
- * Class and Distance are used/validated but not carried in the output — only
- * the four fields the resolver needs survive in `ParsedSigRow`.
+ * Distance is validated but not carried in the output. The Class cell is both
+ * a gate (rows whose class isn't a recognized signature/anomaly label are
+ * dropped) and a persisted value — its resolved `signature`/`anomaly` kind
+ * rides along in `ParsedSigRow.classKind`.
  */
 
-import { isValidSignatureClass } from './signatureClasses';
+import { signatureClassKind, type SignatureClassKind } from './signatureClasses';
 
 export type ParsedSigRow = {
   /** In-game 3-char + 3-digit id, e.g. `ABC-123`. Always uppercased. */
@@ -28,6 +30,8 @@ export type ParsedSigRow = {
   groupName: string | null;
   /** Signal-strength cell as printed (e.g. `100.0%`, `4.2%`), `null` if absent. */
   signal: string | null;
+  /** Resolved Class column: `signature` (must scan) or `anomaly` (warpable). */
+  classKind: SignatureClassKind;
 };
 
 const SIG_ID_RE = /^[A-Z]{3}-\d{3}$/i;
@@ -59,7 +63,8 @@ export function parseSignaturePaste(text: string): ParsedSigRow[] {
     const sigId = (cells[0] ?? '').trim().toUpperCase();
     if (!SIG_ID_RE.test(sigId)) continue; // header row or garbage
 
-    if (!isValidSignatureClass(cells[1])) continue; // not a signature/anomaly line
+    const classKind = signatureClassKind(cells[1]);
+    if (classKind === null) continue; // not a signature/anomaly line
 
     // Pad to 6 cells so partial rows (no group/name/signal) still parse.
     while (cells.length < 6) cells.push('');
@@ -68,7 +73,7 @@ export function parseSignaturePaste(text: string): ParsedSigRow[] {
     const name = blankToNull(cells[3]);
     const signal = blankToNull(cells[4]);
 
-    out.push({ sigId, name, groupName, signal });
+    out.push({ sigId, name, groupName, signal, classKind });
   }
 
   return out;

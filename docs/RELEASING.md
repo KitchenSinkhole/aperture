@@ -12,6 +12,22 @@ A release is just `dev` merged into `master`, tagged, and published. The version
 changelog entry are authored on `dev` **before** the merge, so the merge commit on `master`
 already carries them — master never needs a follow-up "fix version" commit.
 
+## Hotfixes — land on `dev`, never on `master`
+
+**`master` only ever advances by merging `dev`. There are no exceptions, not even emergencies.**
+Never commit, cherry-pick, or open a PR directly against `master`.
+
+A bug in production is also present on `dev` (master came from dev), so the fix belongs on
+`dev` like any other change. To ship it fast, commit it to `dev` and then cut an
+**out-of-cadence release** — the normal Steps below — straight away, instead of waiting for the
+next scheduled release. That gets the fix to production while keeping `master` a clean,
+conflict-free reflection of `dev`.
+
+A hotfix applied to `master` directly seems faster, but it strands a commit that `dev` doesn't
+have: every later `dev → master` merge then re-conflicts on those files until someone
+back-merges it, and in the meantime `dev` silently keeps shipping the very bug that was already
+fixed in production. Always go through `dev`.
+
 ## Versioning
 
 - Single source of truth is `version` in `package.json`.

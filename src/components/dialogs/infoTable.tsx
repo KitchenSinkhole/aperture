@@ -3,20 +3,31 @@
  * panels and the pilot roster popover). Plain styled table elements — no state.
  */
 
+import { cn } from '@/lib/utils';
+
+/**
+ * Full-width `text-xs` `<table>`. Wrap in `ScrollTable` for a height-capped,
+ * bordered scroll region.
+ */
+export function InfoTable({ children }: { children: React.ReactNode }) {
+  return <table className="w-full text-xs">{children}</table>;
+}
+
+/** Height-capped, bordered scroll container — wrap an `InfoTable` (or its rows) in it. */
 export function ScrollTable({ children }: { children: React.ReactNode }) {
   return (
     <div className="max-h-[60vh] overflow-auto rounded-md ring-1 ring-foreground/10">
-      <table className="w-full text-xs">{children}</table>
+      {children}
     </div>
   );
 }
 
 export function Th({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <th className={`px-2 py-1.5 text-left font-medium ${className ?? ''}`}>{children}</th>;
+  return <th className={cn('px-2 py-1.5 text-left font-medium', className)}>{children}</th>;
 }
 
 export function Td({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <td className={`px-2 py-1.5 ${className ?? ''}`}>{children}</td>;
+  return <td className={cn('px-2 py-1.5', className)}>{children}</td>;
 }
 
 export function EmptyRow({ children }: { children: React.ReactNode }) {

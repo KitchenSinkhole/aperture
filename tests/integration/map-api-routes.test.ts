@@ -187,6 +187,23 @@ describe.skipIf(!run)('map API routes — signature mutations + broadcast (real 
       // Audit descriptors ride every update: owning system + the (here unchanged) code.
       mapSystemId: mapSystemIdA.toString(),
       sigId: 'ABC',
+      // Full post-update snapshot (self-heal); carries the paste-derived classKind.
+      snapshot: {
+        id: signatureId.toString(),
+        mapSystemId: mapSystemIdA.toString(),
+        mapConnectionId: null,
+        sigId: 'ABC',
+        groupKey: 'wormhole',
+        classKind: null,
+        typeId: expect.any(Number),
+        wormholeCode: null,
+        name: 'Renamed Sig',
+        description: 'gas site',
+        expiresAt: expect.any(String),
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+        leadsToMapSystemId: null,
+      },
     });
     expect(await eventCount()).toBe(before + 1);
 

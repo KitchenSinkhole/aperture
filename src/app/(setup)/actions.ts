@@ -26,6 +26,7 @@ import {
 } from '@/lib/auth/instanceConfig';
 import { env } from '@/lib/env';
 import { onDemandJobModules } from '@/lib/jobs/registry';
+import { logger } from '@/lib/log/logger';
 
 /**
  * Setup-wizard Server Actions. All gated except `setupUnlockAction`
@@ -35,10 +36,11 @@ import { onDemandJobModules } from '@/lib/jobs/registry';
  * prevent enumeration.
  *
  * Cross-cuts:
- *   - Every gated action emits a `console.warn` with the client's
- *     `x-forwarded-for` (if proxied) and the action name so proxy + app logs
- *     can be correlated. No DB audit row — CLAUDE.md forbids parallel audit
- *     tables and `ap_map_event` is map-scoped.
+ *   - Every gated action emits a structured `warn` log (the logger, `source='server'`)
+ *     with the client's `x-forwarded-for` (if proxied) and the action name so proxy
+ *     + app logs can be correlated. `warn` is stdout-only — the IP is never persisted
+ *     to `ap_error_log`. No DB audit row — CLAUDE.md forbids parallel audit tables and
+ *     `ap_map_event` is map-scoped.
  *   - Operator-only actions never touch `ap_map_event` and bypass realtime —
  *     the wizard isn't a map surface, it's an ops console.
  */
@@ -54,7 +56,9 @@ async function clientIpHint(): Promise<string> {
 
 async function logAction(name: string, extra?: Record<string, unknown>): Promise<void> {
   const ip = await clientIpHint();
-  console.warn(`[setup] action=${name} ip=${ip}${extra ? ` ${JSON.stringify(extra)}` : ''}`);
+  // stdout-only (warn); `ip` is for proxy/app-log correlation and never reaches
+  // `ap_error_log`.
+  logger.warn('setup action', { action: name, ip, ...extra });
 }
 
 async function gate(): Promise<ActionResult> {

@@ -11,6 +11,7 @@ import {
   eolStage,
   mapScope,
   mapType,
+  signatureClassKind,
   signatureGroupKey,
   systemStatus,
   whJumpMass,
@@ -54,6 +55,7 @@ const connectionScopeEnum = z.enum(connectionScope.enumValues);
 const whMassEnum = z.enum(whMass.enumValues);
 const whJumpMassEnum = z.enum(whJumpMass.enumValues);
 const signatureGroupKeyEnum = z.enum(signatureGroupKey.enumValues);
+const signatureClassKindEnum = z.enum(signatureClassKind.enumValues);
 
 const exportSystemSchema = z.object({
   /** Export-local `ap_map_system.id`; only used to wire up connections/signatures in-file. */
@@ -91,6 +93,9 @@ const exportSignatureSchema = z.object({
   mapConnectionId: z.string().nullable(),
   sigId: z.string().min(1).max(7),
   groupKey: signatureGroupKeyEnum.nullable(),
+  // Optional + default for forward-compat: exports predating the class-kind
+  // column omit it, and import treats a missing kind as unknown.
+  classKind: signatureClassKindEnum.nullable().optional().default(null),
   typeId: z.number().int().nullable(),
   name: z.string().nullable(),
   description: z.string().nullable(),
@@ -189,6 +194,7 @@ export async function buildMapExport(mapId: bigint): Promise<MapExportFile> {
           mapConnectionId: apMapSignature.mapConnectionId,
           sigId: apMapSignature.sigId,
           groupKey: apMapSignature.groupKey,
+          classKind: apMapSignature.classKind,
           typeId: apMapSignature.typeId,
           name: apMapSignature.name,
           description: apMapSignature.description,
@@ -229,6 +235,7 @@ export async function buildMapExport(mapId: bigint): Promise<MapExportFile> {
       mapConnectionId: r.mapConnectionId ? r.mapConnectionId.toString() : null,
       sigId: r.sigId,
       groupKey: r.groupKey,
+      classKind: r.classKind,
       typeId: r.typeId,
       name: r.name,
       description: r.description,
@@ -383,6 +390,7 @@ export async function importMapData(args: {
           characterId,
           sigId: sig.sigId,
           groupKey: sig.groupKey,
+          classKind: sig.classKind,
           typeId: sig.typeId,
           name: sig.name,
           description: sig.description,

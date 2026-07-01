@@ -10,6 +10,7 @@ const ITEMS = [
   { path: '/admin', label: 'Dashboard' },
   { path: '/admin/maps', label: 'Maps' },
   { path: '/admin/members', label: 'Members' },
+  { path: '/admin/metrics', label: 'Metrics' },
   { path: '/admin/settings', label: 'Settings' },
 ] as const;
 

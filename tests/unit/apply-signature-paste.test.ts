@@ -9,7 +9,9 @@ import { pasteSignaturesOnServer } from '@/lib/map/client';
 import { applySignaturePaste, FAST_PASTE_OPTIONS } from '@/lib/map/applySignaturePaste';
 import type { BulkPasteResult, MapEventPayload, ParsedSigRow } from '@/types';
 
-const ROWS: ParsedSigRow[] = [{ sigId: 'ABC-123', name: null, groupName: 'Wormhole', signal: '100.0%' }];
+const ROWS: ParsedSigRow[] = [
+  { sigId: 'ABC-123', name: null, groupName: 'Wormhole', signal: '100.0%', classKind: 'signature' },
+];
 
 function ok(summary: BulkPasteResult['summary']): { ok: true; data: BulkPasteResult; eventId: number } {
   const payloads = [{ kind: 'signature.create', eventId: 7 }] as unknown as MapEventPayload[];

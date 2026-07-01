@@ -10,6 +10,7 @@ import {
 } from '@/lib/map/audit';
 import { MAP_EVENT_KINDS, type MapEventKind } from '@/lib/realtime/protocol';
 import { requireMapView } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/audit
@@ -38,7 +39,7 @@ function parseDate(value: string | null): Date | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ mapId: string }> }) {
+export const GET = withApiMetrics('/api/map/:mapId/audit', async function GET(_request: NextRequest, { params }: { params: Promise<{ mapId: string }> }) {
   const session = await getSession();
   const { mapId: rawMapId } = await params;
 
@@ -96,4 +97,4 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const actors = query.cursor ? undefined : await listAuditActors(query.mapId);
 
   return Response.json({ ok: true, data: { ...page, actorSummary, actors } });
-}
+});

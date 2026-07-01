@@ -3,10 +3,12 @@ import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { pasteSignatures } from '@/lib/map/mutations/bulkSignatures';
+import { signatureClassKind } from '@/db/schema';
 import { resolveSignatureRows } from '@/lib/map/signatureReader';
 import type { ParsedSigRow } from '@/lib/map/signatureParser';
 import { apertureConfig } from '../../../../../../../aperture.config';
 import { parseBigInt, requireMapMutate } from '../../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/map/[mapId]/signatures/bulk — diff a paste against a system's sigs
@@ -25,6 +27,7 @@ const parsedRowSchema = z.object({
   name: z.string().nullable(),
   groupName: z.string().nullable(),
   signal: z.string().nullable(),
+  classKind: z.enum(signatureClassKind.enumValues),
 });
 
 const bulkPasteBodySchema = z.object({
@@ -40,7 +43,7 @@ const bulkPasteBodySchema = z.object({
 
 export const runtime = 'nodejs';
 
-export async function POST(
+export const POST = withApiMetrics('/api/map/:mapId/signatures/bulk', async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -82,4 +85,4 @@ export async function POST(
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });
-}
+});

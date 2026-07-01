@@ -7,12 +7,15 @@ import {
   apMap,
   apMapCharacterTracking,
   apMapConnection,
+  apMapNote,
   apMapSystem,
   apUser,
   connectionScope,
   eolStage,
+  mapNoteSeverity,
   mapScope,
   mapType,
+  signatureClassKind,
   signatureGroupKey,
   systemStatus,
   tagScheme,
@@ -41,7 +44,9 @@ type WhJumpMass = (typeof whJumpMass.enumValues)[number];
 type MapScope = (typeof mapScope.enumValues)[number];
 type MapType = (typeof mapType.enumValues)[number];
 type SignatureGroupKey = (typeof signatureGroupKey.enumValues)[number];
+type SignatureClassKind = (typeof signatureClassKind.enumValues)[number];
 type TagScheme = (typeof tagScheme.enumValues)[number];
+type NoteSeverity = (typeof mapNoteSeverity.enumValues)[number];
 
 /** A visible system on a map, flattened with its `universe_system` metadata. */
 export type MapSystemNode = {
@@ -104,6 +109,8 @@ export type MapSignature = {
   sigId: string;
   /** Scanner-level group; null for "unknown". */
   groupKey: SignatureGroupKey | null;
+  /** Cosmic Signature (`signature`, must scan) vs Cosmic Anomaly (`anomaly`, warpable). Paste-derived; null when unknown. */
+  classKind: SignatureClassKind | null;
   /** `universe_type.id`. Only meaningful when `groupKey === 'wormhole'` (points to a `universe_wormhole` row); otherwise null. */
   typeId: number | null;
   /** Display-only wormhole code (e.g. "B274"), resolved server-side from `universe_wormhole.name`. Null when `typeId` is null or not a wormhole. */
@@ -115,6 +122,33 @@ export type MapSignature = {
   /** ISO timestamp; `Date` serialised over the Server→Client boundary. */
   expiresAt: string;
   /** ISO timestamp the row was inserted. */
+  createdAt: string;
+  /** ISO timestamp of the last field change. */
+  updatedAt: string;
+};
+
+/**
+ * A free-standing note placed on a map (`ap_map_note`). Mirrors the realtime
+ * `note.*` payload body. Attribution is denormalized: the creator/last-editor
+ * character ids ride with their resolved names (LEFT JOIN `ap_character` twice),
+ * so the inspector renders "created by X · last edited by Y" without a lookup.
+ */
+export type MapNote = {
+  /** `ap_map_note.id` as a string (xyflow node id). */
+  id: string;
+  title: string;
+  content: string | null;
+  severity: NoteSeverity;
+  locked: boolean;
+  positionX: number;
+  positionY: number;
+  /** EVE character id of the creator; null if the character was erased. */
+  createdByCharacterId: number | null;
+  /** Resolved creator name; null when the id is null or the row is gone. */
+  createdByName: string | null;
+  lastEditedByCharacterId: number | null;
+  lastEditedByName: string | null;
+  /** ISO timestamp. */
   createdAt: string;
   /** ISO timestamp of the last field change. */
   updatedAt: string;
@@ -167,6 +201,7 @@ export type MapViewData = {
   systems: MapSystemNode[];
   connections: MapConnectionEdge[];
   signatures: MapSignature[];
+  notes: MapNote[];
   /** Tracked characters online + located on this map at load time. Realtime updates fold on top of this on the client. */
   presence: MapPresenceEntry[];
 };
@@ -317,6 +352,32 @@ export async function loadMapForView(
     : [];
   const signatures = await loadSignaturesForSystems(visibleSystemIds);
 
+  // Notes are independent of systems (no `visible` join) — load every note on the
+  // map, resolving creator + last-editor names via two LEFT JOINs on ap_character.
+  const noteCreator = alias(apCharacter, 'note_creator');
+  const noteEditor = alias(apCharacter, 'note_editor');
+  const noteRows = await db
+    .select({
+      id: apMapNote.id,
+      title: apMapNote.title,
+      content: apMapNote.content,
+      severity: apMapNote.severity,
+      locked: apMapNote.locked,
+      positionX: apMapNote.positionX,
+      positionY: apMapNote.positionY,
+      createdByCharacterId: apMapNote.createdByCharacterId,
+      createdByName: noteCreator.name,
+      lastEditedByCharacterId: apMapNote.lastEditedByCharacterId,
+      lastEditedByName: noteEditor.name,
+      createdAt: apMapNote.createdAt,
+      updatedAt: apMapNote.updatedAt,
+    })
+    .from(apMapNote)
+    .leftJoin(noteCreator, eq(noteCreator.id, apMapNote.createdByCharacterId))
+    .leftJoin(noteEditor, eq(noteEditor.id, apMapNote.lastEditedByCharacterId))
+    .where(eq(apMapNote.mapId, mapId))
+    .orderBy(apMapNote.id);
+
   const presence = await loadMapPresence(mapId);
 
   return {
@@ -370,6 +431,22 @@ export async function loadMapForView(
       createdAt: c.createdAt.toISOString(),
     })),
     signatures,
+    notes: noteRows.map((n) => ({
+      id: n.id.toString(),
+      title: n.title,
+      content: n.content,
+      severity: n.severity,
+      locked: n.locked,
+      positionX: n.positionX,
+      positionY: n.positionY,
+      createdByCharacterId: n.createdByCharacterId === null ? null : Number(n.createdByCharacterId),
+      createdByName: n.createdByName,
+      lastEditedByCharacterId:
+        n.lastEditedByCharacterId === null ? null : Number(n.lastEditedByCharacterId),
+      lastEditedByName: n.lastEditedByName,
+      createdAt: n.createdAt.toISOString(),
+      updatedAt: n.updatedAt.toISOString(),
+    })),
     presence,
   };
 }

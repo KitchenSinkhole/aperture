@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMapActiveChar } from '@/components/map/MapActiveCharContext';
 import { usePresenceForSystem } from '@/components/map/MapPresenceContext';
 import { connectionBadges, connectionStyle, systemClassColor } from '@/components/map/styling';
-import { Flag } from 'lucide-react';
+import { ChevronDown, ChevronUp, Flag } from 'lucide-react';
 import { connectionTimeLeftMs } from '@/lib/map/connectionState';
 import { formatRelativeFromMs } from '@/lib/map/relativeTime';
 import { pingSystemOnServer, updateSystemOnServer } from '@/lib/map/client';
@@ -26,6 +26,30 @@ function classLabel(security: string | null, trueSec: number | null): string {
 /** The pilot's *custom* hull name, or '' when un-renamed (ESI defaults it to the type). */
 function customShipName(p: MapPresenceEntry): string {
   return p.shipName && p.shipName !== p.shipTypeName ? p.shipName : '';
+}
+
+type PilotSortKey = 'name' | 'ship-type' | 'ship-name';
+type PilotSort = { key: PilotSortKey; dir: 'asc' | 'desc' };
+
+function pilotSortValue(p: MapPresenceEntry, key: PilotSortKey): string {
+  switch (key) {
+    case 'name':
+      return p.characterName;
+    case 'ship-type':
+      return p.shipTypeName ?? '';
+    case 'ship-name':
+      return customShipName(p);
+  }
+}
+
+function comparePilots(a: MapPresenceEntry, b: MapPresenceEntry, sort: PilotSort): number {
+  const av = pilotSortValue(a, sort.key);
+  const bv = pilotSortValue(b, sort.key);
+  // Blank values always sink to the bottom regardless of direction.
+  if (av === '' && bv !== '') return 1;
+  if (bv === '' && av !== '') return -1;
+  const base = av.localeCompare(bv) || a.characterName.localeCompare(b.characterName);
+  return sort.dir === 'asc' ? base : -base;
 }
 
 // Live EOL countdown for one connection, mirroring ConnectionEdge's hook. Null
@@ -127,22 +151,69 @@ function Header({
 }
 
 function Pilots({ others }: { others: readonly MapPresenceEntry[] }) {
+  const [sort, setSort] = useState<PilotSort>({ key: 'ship-type', dir: 'asc' });
+
+  const onSort = (key: PilotSortKey) =>
+    setSort((prev) =>
+      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
+    );
+
+  const sorted = useMemo(
+    () => [...others].sort((a, b) => comparePilots(a, b, sort)),
+    [others, sort],
+  );
+
   if (others.length === 0) {
     return <div className="text-[11px] italic text-muted-foreground">Alone in system</div>;
   }
+
+  const COLS: { key: PilotSortKey; label: string }[] = [
+    { key: 'name', label: 'Pilot' },
+    { key: 'ship-name', label: 'Name' },
+    { key: 'ship-type', label: 'Type' },
+  ];
+
   return (
-    <ul className="flex flex-col gap-0.5">
-      {others.map((p) => {
-        const ship = customShipName(p);
-        return (
-          <li key={p.characterId} className="flex items-baseline gap-1.5 text-xs">
-            <span className="truncate">{p.characterName}</span>
-            <span className="text-muted-foreground">· {p.shipTypeName ?? '—'}</span>
-            {ship && <span className="text-muted-foreground/70">({ship})</span>}
-          </li>
-        );
-      })}
-    </ul>
+    <table className="w-full table-fixed text-xs">
+      <colgroup>
+        <col className="w-1/3" />
+        <col className="w-1/3" />
+        <col className="w-1/3" />
+      </colgroup>
+      <thead className="text-[10px] uppercase text-muted-foreground">
+        <tr>
+          {COLS.map(({ key, label }) => {
+            const active = sort.key === key;
+            return (
+              <th key={key} className="pb-1 text-left font-medium">
+                <button
+                  type="button"
+                  onClick={() => onSort(key)}
+                  className="flex w-full items-center gap-1 transition-colors hover:text-foreground"
+                >
+                  {label}
+                  {active &&
+                    (sort.dir === 'asc' ? (
+                      <ChevronUp className="size-3" aria-hidden />
+                    ) : (
+                      <ChevronDown className="size-3" aria-hidden />
+                    ))}
+                </button>
+              </th>
+            );
+          })}
+        </tr>
+      </thead>
+      <tbody>
+        {sorted.map((p) => (
+          <tr key={p.characterId} className="border-t border-foreground/10">
+            <td className="truncate py-0.5 pr-1 text-muted-foreground">{p.characterName}</td>
+            <td className="truncate py-0.5 pr-1">{customShipName(p) || '—'}</td>
+            <td className="truncate py-0.5 text-emerald-400">{p.shipTypeName ?? '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

@@ -11,7 +11,7 @@
 ---
 
 ### mapExportSchema
-Zod schema validating an import file. Shape: `{ version, map: { name, scope, type, icon, deleteExpiredConnections, deleteEolConnections, trackAbyssalJumps, logActivity }, systems[], connections[], signatures[] }`. Each connection carries `isStatic` (optional + defaults `false`, so pre-0032 export files still import). Arrays are bounded defensively. System/connection `id` fields are **export-local** strings used only for in-file referencing (connections reference `systems[].id`; wormhole signatures reference `connections[].id`); they are not trusted as DB ids on import.
+Zod schema validating an import file. Shape: `{ version, map: { name, scope, type, icon, deleteExpiredConnections, deleteEolConnections, trackAbyssalJumps, logActivity }, systems[], connections[], signatures[] }`. Each connection carries `isStatic` (optional + defaults `false`, so pre-0032 export files still import). Each signature carries `classKind` (`signature`/`anomaly`, optional + defaults `null`, so export files predating the class-kind column still import). Arrays are bounded defensively. System/connection `id` fields are **export-local** strings used only for in-file referencing (connections reference `systems[].id`; wormhole signatures reference `connections[].id`); they are not trusted as DB ids on import.
 
 **Exported type:** `MapExportFile = z.infer<typeof mapExportSchema>`.
 

@@ -9,9 +9,9 @@ No `server-only`, React, or DB imports — runs anywhere and is unit-testable in
 
 ### Constants
 - `GRID_SIZE = 10` — snap granularity.
-- `NODE_WIDTH = 180`, `NODE_HEIGHT = 60` — collision footprint of a system node.
-- `PLACEMENT_GAP = 10` — minimum empty space between footprints.
-- `SLOT_X = 190`, `SLOT_Y = 70` — half-extent of a node's exclusion zone, the `NODE_*` + gap footprint rounded up to a whole grid cell so candidates stay grid-aligned.
+- `NODE_WIDTH = 145`, `NODE_HEIGHT = 45` — collision footprint of a system node.
+- `PLACEMENT_GAP = 20` — minimum empty space between footprints.
+- `SLOT_X = 170`, `SLOT_Y = 70` — half-extent of a node's exclusion zone, the `NODE_*` + gap footprint rounded up to a whole grid cell so candidates stay grid-aligned.
 
 ### Types
 - `Point = { x: number; y: number }` — top-left coordinate.

@@ -6,11 +6,12 @@ import { parseSignaturePaste } from '@/lib/map/signatureParser';
  *
  * Format (current EVE client): six tab-separated columns in fixed order
  *   `ID, Class, Group, Name, Signal, Distance`
- * (see docs/reference/signature-scan-results.md). Class and Distance are
- * used/validated but discarded from the output. A row is accepted only when
- * cell 0 is a valid `AAA-NNN` sig id and cell 1 is a recognized localized
- * Class label. The probe scanner never emits a wormhole-type code (A239,
- * K162, etc.), so the parser doesn't try to extract one.
+ * (see docs/reference/signature-scan-results.md). Distance is used/validated
+ * but discarded; the Class cell both gates the row and is carried out as
+ * `classKind` (`signature` | `anomaly`). A row is accepted only when cell 0 is
+ * a valid `AAA-NNN` sig id and cell 1 is a recognized localized Class label.
+ * The probe scanner never emits a wormhole-type code (A239, K162, etc.), so the
+ * parser doesn't try to extract one.
  */
 
 describe('parseSignaturePaste', () => {
@@ -22,18 +23,20 @@ describe('parseSignaturePaste', () => {
     ].join('\n');
 
     expect(parseSignaturePaste(text)).toEqual([
-      { sigId: 'AXP-378', name: null, groupName: null, signal: '0.0%' },
+      { sigId: 'AXP-378', name: null, groupName: null, signal: '0.0%', classKind: 'signature' },
       {
         sigId: 'BIF-460',
         name: 'Forgotten Perimeter Habitation Coils',
         groupName: 'Relic Site',
         signal: '100.0%',
+        classKind: 'signature',
       },
       {
         sigId: 'UNO-708',
         name: 'Unstable Wormhole',
         groupName: 'Wormhole',
         signal: '100.0%',
+        classKind: 'signature',
       },
     ]);
   });
@@ -45,12 +48,12 @@ describe('parseSignaturePaste', () => {
     ].join('\n');
 
     expect(parseSignaturePaste(text)).toEqual([
-      { sigId: 'AXP-378', name: null, groupName: null, signal: '0.0%' },
-      { sigId: 'BIF-460', name: null, groupName: null, signal: '0.0%' },
+      { sigId: 'AXP-378', name: null, groupName: null, signal: '0.0%', classKind: 'signature' },
+      { sigId: 'BIF-460', name: null, groupName: null, signal: '0.0%', classKind: 'signature' },
     ]);
   });
 
-  it('parses a Cosmic Anomaly row (Case D)', () => {
+  it('parses a Cosmic Anomaly row, carrying classKind="anomaly" (Case D)', () => {
     const text =
       'ASE-500\tCosmic Anomaly\tOre Site\tOrdinary Perimeter Deposit\t100.0%\t14.55 AU';
 
@@ -60,6 +63,7 @@ describe('parseSignaturePaste', () => {
         name: 'Ordinary Perimeter Deposit',
         groupName: 'Ore Site',
         signal: '100.0%',
+        classKind: 'anomaly',
       },
     ]);
   });
@@ -86,6 +90,7 @@ describe('parseSignaturePaste', () => {
         name: 'Unstable Wormhole',
         groupName: 'Wormhole',
         signal: '100.0%',
+        classKind: 'signature',
       },
     ]);
   });
@@ -121,6 +126,7 @@ describe('parseSignaturePaste', () => {
         name: 'Unstable Wormhole',
         groupName: 'Wormhole',
         signal: '100.0%',
+        classKind: 'signature',
       },
     ]);
   });
@@ -133,12 +139,13 @@ describe('parseSignaturePaste', () => {
         sigId: 'XFV-531',
         name: 'Suspicious Signal: Block the Broadcast',
         groupName: 'Homefront Operation Site - Combat Site',
-        signal: '100.0%'
+        signal: '100.0%',
+        classKind: 'anomaly'
       }
     ]);
 
   });
-  
+
   it('parses factional warfare anomalies', () => {
     const text =
       'ABC-531\tCosmic Anomaly\tFactional Warfare Site - Combat Site\tMinmatar Large ADV-1\t100.0%\t68.93 AU'
@@ -147,7 +154,8 @@ describe('parseSignaturePaste', () => {
         sigId: 'ABC-531',
         name: 'Minmatar Large ADV-1',
         groupName: 'Factional Warfare Site - Combat Site',
-        signal: '100.0%'
+        signal: '100.0%',
+        classKind: 'anomaly'
       }
     ]);
   });

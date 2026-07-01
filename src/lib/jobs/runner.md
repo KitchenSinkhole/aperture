@@ -26,3 +26,4 @@ Whether `startWorker` has booted in this process. For tests/health.
 - **Graceful shutdown still primary.** `server.ts` catches SIGTERM/SIGINT → `stopWorker()` → `runner.stop()`, releasing all locks cleanly. That covers prod redeploys and Ctrl+C; the re-arm above is the safety net for the cases where no catchable signal is delivered.
 - The `graphile_worker` schema name is the library default — kept as-is; no operational reason to rename.
 - `concurrency` and `pollInterval` come from `apertureConfig`. LISTEN/NOTIFY drives the fast dispatch path; the poll interval is only the fallback for scheduled retries.
+- The re-arm count is reported through the structured logger ([[logger]], `source='job'`) at `info`.

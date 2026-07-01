@@ -16,6 +16,8 @@ Each helper returns `ActionResult<MapEventPayload>` — same shape as the route 
 | `UpdateConnectionBody` | `updateConnectionOnServer` | Includes `isStatic` (designate as the source system's static). |
 | `CreateSignatureBody` | `createSignatureOnServer` | `mapSystemId` digits; `expiresAt` ISO string. |
 | `UpdateSignatureBody` | `updateSignatureOnServer` | `mapConnectionId` digits or null; `expiresAt` optional ISO. |
+| `CreateNoteBody` | `addNoteOnServer` | Mirrors `POST /api/map/[mapId]/notes`. `severity` defaults to `neutral` server-side; `positionX`/`positionY` required. |
+| `UpdateNoteBody` | `updateNoteOnServer` | All fields optional; mirrors `PATCH /api/map/[mapId]/notes/[noteId]`. |
 
 ---
 
@@ -30,6 +32,15 @@ PATCH. Intended to be called optimistically (apply locally first, then commit/ro
 
 ### removeSystemOnServer({ mapId, mapSystemId }): Promise<ActionResult<MapEventPayload>>
 DELETE. Optimistic.
+
+### addNoteOnServer({ mapId, body }): Promise<ActionResult<MapEventPayload>>
+POST `/api/map/{mapId}/notes`. Create a free-standing note. Returns the `note.created` payload — await-then-apply (or optimistic, MapCanvas's choice). `body` is `CreateNoteBody`.
+
+### updateNoteOnServer({ mapId, noteId, patch }): Promise<ActionResult<MapEventPayload>>
+PATCH `/api/map/{mapId}/notes/{noteId}`. Update a note's fields. Optimistic (drag / inspector edits). `patch` is `UpdateNoteBody`.
+
+### deleteNoteOnServer({ mapId, noteId }): Promise<ActionResult<MapEventPayload>>
+DELETE `/api/map/{mapId}/notes/{noteId}`. Hard-delete a note. Optimistic.
 
 ### createConnectionOnServer({ mapId, body }): Promise<ActionResult<MapEventPayload>>
 POST. Await-then-apply.

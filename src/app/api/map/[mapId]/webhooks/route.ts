@@ -6,6 +6,7 @@ import { apMapWebhook } from '@/db/schema';
 import { getSession } from '@/lib/session';
 import { canManageMap } from '@/lib/auth/rights';
 import { requireMapView } from '../../utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/webhooks
@@ -22,7 +23,7 @@ import { requireMapView } from '../../utils';
 
 export const runtime = 'nodejs';
 
-export async function GET(
+export const GET = withApiMetrics('/api/map/:mapId/webhooks', async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ mapId: string }> },
 ) {
@@ -66,4 +67,4 @@ export async function GET(
   }));
 
   return Response.json({ ok: true, data: { webhooks } });
-}
+});

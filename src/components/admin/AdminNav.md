@@ -8,7 +8,7 @@
 None — the active section is derived from `usePathname()`.
 
 ### Renders
-A `<nav>` containing one `<Link>` per admin section: Dashboard (`/admin`), Maps (`/admin/maps`), Members (`/admin/members`), Settings (`/admin/settings`). The active item gets `aria-current="page"` and a muted background.
+A `<nav>` containing one `<Link>` per admin section: Dashboard (`/admin`), Maps (`/admin/maps`), Members (`/admin/members`), Metrics (`/admin/metrics`), Settings (`/admin/settings`). The active item gets `aria-current="page"` and a muted background.
 
 ### Behaviour & Interactions
 - Active-match rule: `/admin` matches only exactly; every other section also matches descendant paths (`/admin/maps/123` is "Maps").

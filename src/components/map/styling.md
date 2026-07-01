@@ -23,6 +23,9 @@ Maps a `system_status` enum value to a hex colour (unknown→grey, friendly→bl
 ### homeAccentColor(): string
 Returns the amber/gold accent (`#fbbf24`) used to mark the map's designated Home system (accent ring + header icon in `SystemNode`). Deliberately distinct from the status palette so it never reads as a system status.
 
+### noteSeverityColor(severity: NoteSeverity): string
+Border colour for a map note (`MapNoteNode`), by `map_note_severity`: `neutral`→grey `#6b7280` (the file's default, so an unflagged note reads as "no severity"), `green`→`#22c55e`, `yellow`→`#eab308`, `red`→`#ef4444`.
+
 ### connectionStyle(edge: MapConnectionEdge): EdgeStyle
 Returns `{ stroke, strokeWidth, strokeDasharray? }`. Scope sets the base colour; wormholes are recoloured by `massStatus` (fresh/reduced/critical). `eolStage` dashes the line — `critical` (1h) dashes tighter (`2 3`) than `eol` (4h, `6 4`) to read as more urgent; `jumpMassClass === 's'` thins the stroke (frigate/small holes).
 

@@ -128,6 +128,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         name: 'Unstable Wormhole',
         groupName: 'Wormhole',
         signal: '100.0%',
+        classKind: 'signature',
         groupKey: 'wormhole',
         typeId: TYPE_UNSTABLE,
       },
@@ -136,6 +137,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         name: 'Barren Reservoir',
         groupName: 'Gas Site',
         signal: '100.0%',
+        classKind: 'signature',
         groupKey: 'gas',
         typeId: null,
       },
@@ -144,6 +146,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         name: null,
         groupName: null,
         signal: '4.2%',
+        classKind: 'signature',
         groupKey: null,
         typeId: null,
       },
@@ -192,6 +195,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         sigId: apMapSignature.sigId,
         name: apMapSignature.name,
         groupKey: apMapSignature.groupKey,
+        classKind: apMapSignature.classKind,
       })
       .from(apMapSignature)
       .where(eq(apMapSignature.mapSystemId, mapSystemIdA));
@@ -202,6 +206,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
     expect(abcRow).toMatchObject({
       name: 'preserve me', // unchanged — paste shouldn't clobber name
       groupKey: 'wormhole',
+      classKind: 'signature', // filled from the paste (seeded null → 'signature')
     });
 
     // Clean for the next test.
@@ -246,6 +251,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
           name: 'Barren Reservoir',
           groupName: 'Gas Site',
           signal: '100.0%',
+          classKind: 'signature',
           groupKey: 'gas',
           typeId: null,
         },
@@ -254,6 +260,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
           name: 'Vast Frontier Reservoir',
           groupName: 'Gas Site',
           signal: '100.0%',
+          classKind: 'signature',
           groupKey: 'gas',
           typeId: null,
         },
@@ -275,6 +282,69 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
     expect(sigs.find((s) => s.sigId === 'BLN-001')?.name).toBe('Barren Reservoir');
     // Non-blank existing name is preserved — paste never clobbers typed input.
     expect(sigs.find((s) => s.sigId === 'TYP-002')?.name).toBe('hand typed name');
+
+    await db.delete(apMapSignature).where(eq(apMapSignature.mapSystemId, mapSystemIdA));
+  });
+
+  it('sweeps an already-expired (unreaped) ghost and re-creates the sig cleanly instead of silently dropping it', async () => {
+    // Seed a sig whose expiry is already in the past — the reap cron hasn't run
+    // yet, so the ghost row still occupies the (map_system_id, sig_id) slot. A
+    // paste of the same sigId must delete the ghost and create a fresh row with
+    // a future expiry, NOT "update" the dead row (which would leave it expired
+    // and invisible). The ghost delete fires an event but is uncounted.
+    const past = new Date(Date.now() - 60_000);
+    const seed = await createSignature({
+      mapId,
+      mapSystemId: mapSystemIdA,
+      characterId: null,
+      sigId: 'EXP-001',
+      groupKey: 'gas',
+      typeId: null,
+      name: null,
+      expiresAt: past,
+    });
+    expect(seed.ok).toBe(true);
+    const ghostId = (seed as { ok: true; data: { id: string } }).data.id;
+
+    const future = new Date(Date.now() + 86_400_000);
+    const result = await pasteSignatures({
+      mapId,
+      mapSystemId: mapSystemIdA,
+      characterId: null,
+      rows: [
+        {
+          sigId: 'EXP-001',
+          name: 'Barren Reservoir',
+          groupName: 'Gas Site',
+          signal: '100.0%',
+          classKind: 'signature',
+          groupKey: 'gas',
+          typeId: null,
+        },
+      ],
+      options: {
+        addMissing: true,
+        updateExisting: true,
+        removeMissing: false,
+        removeOrphanedConnections: false,
+      },
+      defaultExpiresAt: future,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Ghost is swept (uncounted) and the sig re-created — a clean add, no update.
+    expect(result.data.summary).toMatchObject({ added: 1, updated: 0, removed: 0 });
+    // Ghost delete + fresh create both ride payloads even though only the add counts.
+    expect(result.data.payloads).toHaveLength(2);
+
+    const rows = await db
+      .select({ id: apMapSignature.id, expiresAt: apMapSignature.expiresAt })
+      .from(apMapSignature)
+      .where(eq(apMapSignature.mapSystemId, mapSystemIdA));
+    // Exactly one row, with a future expiry, and it is NOT the swept ghost.
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.expiresAt.getTime()).toBe(future.getTime());
+    expect(rows[0]!.id.toString()).not.toBe(ghostId);
 
     await db.delete(apMapSignature).where(eq(apMapSignature.mapSystemId, mapSystemIdA));
   });
@@ -342,7 +412,8 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         sigId: 'XFV-531',
         name: 'Suspicious Signal: Block the Broadcast',
         groupName: 'Homefront Operation Site - Combat Site',
-        signal: '100.0%'
+        signal: '100.0%',
+        classKind: 'anomaly'
       }
     ]);
 
@@ -361,7 +432,8 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
         sigId: 'VBA-720',
         name: 'Minmatar Small ADV-1',
         groupName: 'Factional Warfare Site - Combat Site',
-        signal: '100.0%'
+        signal: '100.0%',
+        classKind: 'anomaly'
       }
     ]);
 
@@ -376,24 +448,26 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
 
   it('resolveSignatureRows: classifies the seven scanner groups + WH name → typeId', async () => {
     const rows = await resolveSignatureRows([
-      { sigId: 'WH1-001', name: 'X901', groupName: 'Wormhole', signal: '100.0%' },
+      { sigId: 'WH1-001', name: 'X901', groupName: 'Wormhole', signal: '100.0%', classKind: 'signature' },
       // Low-strength wormhole: EVE emits "Wormhole" in both Name and Group.
-      { sigId: 'WH2-002', name: 'Wormhole', groupName: 'Wormhole', signal: '4.2%' },
+      { sigId: 'WH2-002', name: 'Wormhole', groupName: 'Wormhole', signal: '4.2%', classKind: 'signature' },
       // Cosmic-site row: name carried through, typeId null.
       {
         sigId: 'REL-003',
         name: 'Forgotten Perimeter Habitation Coils',
         groupName: 'Relic Site',
         signal: '100.0%',
+        classKind: 'signature',
       },
       // Unknown group: low-strength row with no Group cell.
-      { sigId: 'UNK-004', name: null, groupName: null, signal: '4.2%' },
+      { sigId: 'UNK-004', name: null, groupName: null, signal: '4.2%', classKind: 'signature' },
       // Combat scanner group.
       {
         sigId: 'COM-005',
         name: 'Fortification Frontier Stronghold',
         groupName: 'Combat Site',
         signal: '100.0%',
+        classKind: 'signature',
       },
     ]);
 
@@ -470,6 +544,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
           name: null,
           groupName: 'Wormhole',
           signal: '100.0%',
+          classKind: 'signature',
           groupKey: 'wormhole',
           typeId: null,
         },
@@ -479,6 +554,7 @@ describe.skipIf(!run)('bulk signature paste — diff / atomic commit (real Postg
           name: null,
           groupName: null,
           signal: '100%',
+          classKind: 'signature',
           groupKey: null,
           typeId: null,
         },

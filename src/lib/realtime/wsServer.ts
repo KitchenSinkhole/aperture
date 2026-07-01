@@ -6,9 +6,13 @@ import { env } from '@/lib/env';
 import { apertureConfig } from '../../../aperture.config';
 import { canViewMap } from '@/lib/auth/rights';
 import { seedTrackingForMap } from '@/lib/jobs/tracking';
+import { getLogger } from '@/lib/log/logger';
 import { bus } from './bus';
 import { addMapViewer, removeMapViewer } from './mapViewers';
+import { decWsConnection, incWsConnection } from './wsConnections';
 import { clientToServerMessageSchema, type ServerToClientMessage } from './protocol';
+
+const wsLog = getLogger('server');
 
 /**
  * Node-runtime WebSocket server attached to the same HTTP server as Next.js.
@@ -69,7 +73,7 @@ async function resolveSession(req: IncomingMessage): Promise<SessionClaims | nul
 }
 
 function send(socket: WebSocket, message: ServerToClientMessage): void {
-  console.log('Sending message to client:', message);
+  wsLog.debug('Sending message to client', { task: message.task });
   if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
 }
 
@@ -113,6 +117,7 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
   wss.on('connection', (ws: WebSocket, _req: IncomingMessage, session: SessionClaims) => {
     const state: ClientState = { session, isAlive: true, subscriptions: new Map() };
     clients.set(ws, state);
+    incWsConnection();
 
     ws.on('pong', () => {
       state.isAlive = true;
@@ -143,6 +148,7 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       }
       state.subscriptions.clear();
       clients.delete(ws);
+      decWsConnection();
     });
   });
 

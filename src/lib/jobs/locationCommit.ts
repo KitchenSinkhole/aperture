@@ -5,6 +5,9 @@ import { commitMapEvent } from '@/lib/map/mutations/core';
 import { buildSystemNode } from '@/lib/map/systemNode';
 import { findOpenPosition, type Point } from '@/lib/map/placement';
 import { assignTagOnAdd, assignTagOnConnect } from '@/lib/tagging/service';
+import { getLogger } from '@/lib/log/logger';
+
+const jobLog = getLogger('job');
 
 /**
  * The per-map fold for a detected wormhole jump from the
@@ -147,10 +150,11 @@ async function ensureSystemVisible(
     return { mapSystemId: existing.id, emitted: false };
   }
 
-  // Only a truly fresh insert gets computed placement. A re-add of a hidden row
-  // takes the `onConflictDoUpdate` path below, whose `set` clause omits position
-  // and so preserves the system's prior coordinates.
-  const placement = existing ? null : await computePlacement(mapId, opts?.anchorSystemId);
+  // A hidden re-add is a brand-new appearance in a (usually) different chain, so
+  // its old coordinates are stale — recompute placement anchored on the system the
+  // pilot came from, same as a first-time insert. Metadata (alias/tag/status/intel)
+  // still rides through the `onConflictDoUpdate` path untouched.
+  const placement = await computePlacement(mapId, opts?.anchorSystemId);
 
   let mapSystemId: bigint | null = null;
   const result = await commitMapEvent({
@@ -165,12 +169,20 @@ async function ensureSystemVisible(
           mapId,
           systemId,
           visible: true,
-          ...(placement ? { positionX: placement.x, positionY: placement.y } : {}),
+          positionX: placement.x,
+          positionY: placement.y,
         })
         .onConflictDoUpdate({
           target: [apMapSystem.mapId, apMapSystem.systemId],
-          // Preserve alias/tag/status/intel/position on a re-add.
-          set: { visible: true, lastVisibleAt: now, updatedAt: now },
+          // Preserve alias/tag/status/intel on a re-add, but re-place the node:
+          // the old coordinates belong to a prior, now-defunct chain.
+          set: {
+            visible: true,
+            lastVisibleAt: now,
+            updatedAt: now,
+            positionX: placement.x,
+            positionY: placement.y,
+          },
         })
         .returning({ id: apMapSystem.id });
       mapSystemId = row!.id;
@@ -239,7 +251,7 @@ async function ensureConnection(
   }
 
   const existing = await db
-    .select({ id: apMapConnection.id })
+    .select({ id: apMapConnection.id, confirmedAt: apMapConnection.confirmedAt })
     .from(apMapConnection)
     .where(
       and(
@@ -257,7 +269,17 @@ async function ensureConnection(
       ),
     )
     .limit(1);
-  if (existing.length > 0) return { connectionId: existing[0]!.id, created: false };
+  if (existing.length > 0) {
+    const row = existing[0]!;
+    // A confirmed connection is already on the map — observe-only, no event.
+    if (row.confirmedAt !== null) return { connectionId: row.id, created: false };
+    // The row is dormant: an endpoint was removed (NULLing confirmed_at) and not
+    // restored via the sig path, so the link is hidden. The pilot physically
+    // traversing the hole is a fresh observation — re-confirm and re-broadcast as
+    // `connection.create` (the client upserts edges by id, so this is idempotent),
+    // mirroring restoreConnection. Without this the hole would stay invisible.
+    return reconfirmConnection(mapId, row.id, characterId);
+  }
 
   let newConnectionId: bigint | null = null;
   const result = await commitMapEvent({
@@ -321,6 +343,66 @@ async function ensureConnection(
 }
 
 /**
+ * Re-confirm a dormant `wh` connection traversed by a jump: flip `confirmed_at`
+ * back to now and re-broadcast the full edge body as `connection.create`. The
+ * row keeps its observed WH state (type/mass/EOL/static); we never delete and
+ * recreate it (that would cascade the attached signature). Mirrors
+ * `restoreConnection`'s re-confirm-and-rebroadcast contract.
+ */
+async function reconfirmConnection(
+  mapId: bigint,
+  connectionId: bigint,
+  characterId: bigint,
+): Promise<EnsureConnectionOutcome> {
+  const result = await commitMapEvent({
+    mapId,
+    characterId,
+    kind: 'connection.create',
+    mutate: async (tx) => {
+      const [row] = await tx
+        .update(apMapConnection)
+        .set({ confirmedAt: sql`now()`, updatedAt: sql`now()` })
+        .where(and(eq(apMapConnection.id, connectionId), eq(apMapConnection.mapId, mapId)))
+        .returning({
+          id: apMapConnection.id,
+          source: apMapConnection.sourceMapSystemId,
+          target: apMapConnection.targetMapSystemId,
+          scope: apMapConnection.scope,
+          massStatus: apMapConnection.massStatus,
+          jumpMassClass: apMapConnection.jumpMassClass,
+          eolStage: apMapConnection.eolStage,
+          preserveMass: apMapConnection.preserveMass,
+          isRolling: apMapConnection.isRolling,
+          isStatic: apMapConnection.isStatic,
+          eolAt: apMapConnection.eolAt,
+          createdAt: apMapConnection.createdAt,
+        });
+      if (!row) throw new Error(`Dormant connection ${connectionId} vanished before re-confirm.`);
+      return {
+        id: row.id.toString(),
+        source: row.source.toString(),
+        target: row.target.toString(),
+        scope: row.scope,
+        massStatus: row.massStatus,
+        jumpMassClass: row.jumpMassClass,
+        eolStage: row.eolStage,
+        preserveMass: row.preserveMass,
+        isRolling: row.isRolling,
+        isStatic: row.isStatic,
+        eolAt: row.eolAt ? row.eolAt.toISOString() : null,
+        createdAt: row.createdAt.toISOString(),
+      };
+    },
+  });
+  if (!result.ok) {
+    throw new Error(`Failed to re-confirm dormant connection ${connectionId} on map ${mapId}: ${result.error}`);
+  }
+  // `created: true` so the caller writes a mass-log entry for the traversal — the
+  // hole is freshly back on the map, same as a brand-new fold.
+  return { connectionId, created: true };
+}
+
+/**
  * After a jump's endpoints + edge are folded, assign the 0121 child
  * tag (if any) as its own `system.updated` event. `systems.ts` carries
  * `'server-only'` and can't be imported here, so the tag write goes through
@@ -349,6 +431,6 @@ async function tagOnJump(
       },
     });
   } catch (err) {
-    console.warn('auto-tag on jump failed (map=%s):', mapId.toString(), err);
+    jobLog.warn('auto-tag on jump failed', { mapId: mapId.toString(), err });
   }
 }

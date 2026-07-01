@@ -33,4 +33,5 @@ Adds `characterId`/`userId` to `Session` and `characterId`/`userId`/`accessToken
 Notes:
 - Corp/alliance ids are refreshed by `syncCharacterAuthz` on every sign-in (and by the `character-cleanup` affiliation sweep thereafter), resolved from the ~1h-cached affiliation endpoint via `fetchAffiliations`.
 - The session re-gate makes login eligibility enforced continuously (throttled), not just at sign-in.
+- Best-effort failures (login-gate affiliation fetch, post-login `syncCharacterAuthz`/seed) are logged via the structured logger ([[logger]], `source='server'`) at `warn` and swallowed (login never fails open / closed on them).
 - Node runtime only (crypto + pg).

@@ -27,9 +27,11 @@ import { classifyJump, type JumpClass } from '@/lib/map/locationToConnection';
 import { logConnectionJump } from '@/lib/map/connectionMassLog';
 import { getMapViewerUserIds } from '@/lib/realtime/mapViewers';
 import { shipMass } from '@/lib/eve/shipMass';
+import { recordLocationPoll } from '@/lib/metrics/registry';
 import { foldWormholeJumpOntoMap } from '../locationCommit';
 import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
+import type { LocationPollOutcome } from '@/types';
 
 /**
  * Per-character location-poll. Scheduled via `addJob` only — no cron entry;
@@ -315,6 +317,37 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
   }
 }
 
+/**
+ * Map a poll's result (or a known ESI back-off throw) to its bounded outcome
+ * label, so `location_polls_total` carries one tally per invocation without a
+ * per-character label. Unexpected throws (handler bugs) go uncounted — they're
+ * not a tracking-health signal.
+ */
+function pollOutcome(notes: PollNotes): LocationPollOutcome {
+  if (notes.stopped) return notes.stopped;
+  return notes.online ? 'online' : 'offline';
+}
+
+async function instrumentedPoll(
+  payload: LocationPollPayload,
+  helpers: JobHelpers,
+): Promise<PollNotes> {
+  try {
+    const notes = await poll(payload, helpers);
+    recordLocationPoll(pollOutcome(notes));
+    return notes;
+  } catch (err) {
+    if (
+      err instanceof EsiBreakerOpenError ||
+      err instanceof EsiDowntimeError ||
+      (err instanceof EsiHttpError && err.status === 401)
+    ) {
+      recordLocationPoll('esi-outage');
+    }
+    throw err;
+  }
+}
+
 async function loadActiveTrackedMaps(characterId: bigint): Promise<bigint[]> {
   const rows = await db
     .select({ mapId: apMap.id })
@@ -419,5 +452,5 @@ export const locationPoll: JobModule = {
   name: NAME,
   // No cron — scheduled via `addJob` only. `startTrackingCharacter` enqueues
   // the first tick; the handler re-enqueues itself thereafter.
-  run: withInstrumentation(NAME, poll),
+  run: withInstrumentation(NAME, instrumentedPoll),
 };

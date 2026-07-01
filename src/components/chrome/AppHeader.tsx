@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import type { SignatureIndicatorAccountSettings } from '@/types';
 import pkg from '../../../package.json';
@@ -33,7 +34,8 @@ export async function AppHeader({
     <header className="border-b border-border">
       <div className="flex h-9 items-center justify-between px-4">
         <div className="flex items-center gap-1.5">
-          <Link href="/maps" className="font-heading text-lg font-semibold tracking-tight">
+          <Link href="/maps" className="flex items-center gap-2 font-heading text-lg font-semibold tracking-tight">
+            <Image src="/aperture logo.png" alt="Aperture" width={20} height={20} className="h-5 w-5" />
             Aperture
           </Link>
           <VersionChip version={pkg.version} releases={releases} />

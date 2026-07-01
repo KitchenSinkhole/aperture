@@ -13,6 +13,9 @@ import { syncCharacterAuthz } from '@/lib/auth/syncCharacterAuthz';
 import { seedTrackingForGainedAccess } from '@/lib/jobs/tracking';
 import { AUTH_COOKIE_OPTIONS } from '@/lib/cookies';
 import { fetchAffiliations } from '@/lib/esi/affiliation';
+import { getLogger } from '@/lib/log/logger';
+
+const log = getLogger('server');
 
 // Auth.js v5, stateless JWT sessions (no DB session store, no Redis).
 // The JWT carries only the active character/user ids; ESI tokens never leave
@@ -114,7 +117,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // character-level checks: explicit character grants and the bootstrap
         // path still admit known characters, while owner/corp/alliance-only
         // entitlements are denied until ESI recovers. Never fail open.
-        console.warn(`[auth] login-gate affiliation fetch failed for ${characterId}:`, err);
+        log.warn('login-gate affiliation fetch failed', { characterId, err });
       }
       return isLoginAllowed({ characterId, corporationId, allianceId });
     },
@@ -166,10 +169,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // a freshly-added alt lands tracked without waiting for the cron.
           await seedTrackingForGainedAccess(eve.characterId);
         } catch (err) {
-          console.warn(
-            `[auth] syncCharacterAuthz failed for character ${eve.characterId}:`,
-            err,
-          );
+          log.warn('syncCharacterAuthz failed', { characterId: eve.characterId, err });
         }
         // The `signIn` gate just ran — stamp the re-gate clock so we don't
         // immediately re-check on the next request.

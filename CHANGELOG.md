@@ -1,5 +1,75 @@
 # Changelog
 
+## v1.0.0-rc.10
+
+This release adds a full observability suite — metrics, an admin metrics page, instance alerting and client-error capture — and lets signature entries record whether they are a signature or an anomaly. It also refreshes the app's branding with the Aperture logo.
+
+### New features
+
+- **Observability suite** — Aperture now exposes Prometheus-style metrics across ESI, route planning, its own HTTP surface, background jobs and realtime fanout, sampled into `ap_metric_snapshot` for the new admin metrics page's history graphs. An in-process instance-alerting loop (booted from `server.ts` so it survives DB degradation) evaluates rules for breaker state, abandoned jobs and error rates, and a new `/api/client-errors` endpoint captures browser-side errors into `ap_error_log` under per-session and global rate limits. *(MonoliYoda)*
+- **Signatures vs anomalies** — a scanned entry now records and displays whether it is a signature or an anomaly, instead of treating everything as a signature. *(Ionis en Gravonere)*
+
+### Improvements
+
+- **Aperture logo** now appears in the favicon, the app header and the login page. *(Caillou)*
+- **Compact pilot table** — the system-presence popup uses a compact variant of the pilot table, keeping the full roster columns in a tighter footprint. *(Ionis en Gravonere)*
+- **Dormant connections re-confirm on jump** — a wormhole connection that had gone dormant is re-confirmed when a tracked pilot is observed jumping through it. *(MonoliYoda)*
+- **J377 wormhole** added to the wormhole-classes data. *(Ionis en Gravonere)*
+
+### Fixes
+
+- **Route planner no longer hydration-mismatches** on a persisted source system, fixing a client/server render mismatch when a saved source was restored. *(MonoliYoda)*
+
+### Tuning
+
+- **EOL wormhole safety buffer widened to 15%** (≈36 min on the 4h nominal lifetime), giving a more conservative collapse countdown on EOL-flagged connections. *(MonoliYoda)*
+
+### Misc
+
+- GitHub Actions workflow to announce releases on Discord. *(MonoliYoda)*
+- CI guard that fails any PR targeting `master` (work lands on `dev`). *(MonoliYoda)*
+- Runtime Docker image now bundles the `public` directory. *(MonoliYoda)*
+
+### Contributors
+
+- **MonoliYoda** — observability suite, dormant-connection re-confirm, route-planner hydration fix, EOL buffer tuning, release/CI/Docker tooling
+- **Ionis en Gravonere** — signature/anomaly distinction, compact pilot table, J377 wormhole data
+- **Caillou** — Aperture logo branding
+
+## v1.0.0-rc.9
+
+This release adds collaborative map notes, replaces the system presence popup with a full pilot table, and lets you share dashboard layouts as a file.
+
+### New features
+
+- **Map notes** — drop free-form notes anywhere on the map as their own nodes, edited inline and shared live with everyone viewing the map. Notes are a first-class map entity (`ap_map_note`) with their own create/edit/delete API and audit trail. *(MonoliYoda)*
+
+### Improvements
+
+- **System presence shows a pilot table** — clicking a system node's presence badge now opens a pilot table with the same columns as the pilot roster view instead of the old popup. `PilotRosterTable` was extracted from `PilotRoster` so both share the same columns. *(Ionis en Gravonere, MonoliYoda)*
+- **Shareable dashboard layouts** — export the current map dashboard layout to `aperture-layout.json` and import it back on any map; imported files are re-validated and panels re-placed before the layout is applied. *(MonoliYoda)*
+
+### Contributors
+
+- **MonoliYoda** — map notes feature, dashboard layout export/import, presence-table integration
+- **Ionis en Gravonere** — system presence pilot-roster table
+
+## v1.0.0-rc.8
+
+This release fixes an intermittent failure where adding a heavily-scanned system to the map could silently roll back, and refreshes the Docker deployment setup.
+
+### Fixes
+
+- **Adding a heavily-scanned system no longer fails intermittently** — re-adding a system that carried many surviving signatures embedded those signatures into the `system.added` event, whose `pg_notify` payload could exceed Postgres' 8 KB limit (37 signatures ≈ 11 KB). The overflow raised "payload string too long" inside the `AFTER INSERT` trigger and rolled back the insert, so the system silently failed to add. `system.added` is now a pure node delta again, and a (re)added system's signatures are hydrated on demand through a new view-gated signatures endpoint, mirroring the live-added-system backfill. *(MonoliYoda)*
+
+### Misc
+
+- Refreshed Docker deployment configuration and the related README / CONTRIBUTING notes. *(MonoliYoda)*
+
+### Contributors
+
+- **MonoliYoda** — signature-hydration regression fix, Docker deployment update
+
 ## v1.0.0-rc.7
 
 This release fixes a regression from rc.6 where wormhole connections drawn automatically — by a tracked pilot jumping a hole, by Thera ingest, or by a map transfer — would show up live and then silently vanish the next time the map was loaded.

@@ -6,6 +6,7 @@ import { requireStructureMutate } from '@/lib/structures/guard';
 import { deleteStructure, updateStructure } from '@/lib/structures/mutations';
 import { withTypeName } from '@/lib/structures/read';
 import { parseBigInt } from '../../map/utils';
+import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * PATCH / DELETE /api/structures/[structureId] — edit or remove a manual
@@ -23,7 +24,7 @@ const updateStructureBodySchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
 });
 
-export async function PATCH(
+export const PATCH = withApiMetrics('/api/structures/:structureId', async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ structureId: string }> },
 ) {
@@ -69,9 +70,9 @@ export async function PATCH(
       { status: 400 },
     );
   }
-}
+});
 
-export async function DELETE(
+export const DELETE = withApiMetrics('/api/structures/:structureId', async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ structureId: string }> },
 ) {
@@ -90,4 +91,4 @@ export async function DELETE(
   const row = await deleteStructure({ structureId, characterId: guard.characterId });
   if (!row) return Response.json({ ok: false, error: 'Structure not found.' }, { status: 404 });
   return Response.json({ ok: true, data: { id: row.id.toString() } });
-}
+});

@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { EmptyRow, ScrollTable, Td, Th } from '@/components/dialogs/infoTable';
+import { EmptyRow, InfoTable, ScrollTable, Td, Th } from '@/components/dialogs/infoTable';
 import { usePresenceForMap } from '@/components/map/MapPresenceContext';
 import type { MapConnectionEdge, MapSystemNode, MapViewData } from '@/types';
 
@@ -71,13 +71,7 @@ export function MapInfoDialog({
   );
 }
 
-function SummaryPanel({
-  viewData,
-  pilotCount,
-}: {
-  viewData: MapViewData;
-  pilotCount: number;
-}) {
+function SummaryPanel({ viewData, pilotCount }: { viewData: MapViewData; pilotCount: number }) {
   const shareLink =
     typeof window === 'undefined'
       ? `/map/${viewData.map.id}`
@@ -133,31 +127,33 @@ function SystemsPanel({ systems }: { systems: MapSystemNode[] }) {
 
   return (
     <ScrollTable>
-      <thead className="sticky top-0 bg-muted/60 text-[10px] uppercase text-muted-foreground">
-        <tr>
-          <Th>System</Th>
-          <Th>Region / Constellation</Th>
-          <Th className="text-right">Sec</Th>
-          <Th>Status</Th>
-          <Th>Statics</Th>
-        </tr>
-      </thead>
-      <tbody>
-        {sorted.map((s) => (
-          <tr key={s.id} className="border-t border-foreground/10">
-            <Td>
-              {s.name}
-              {s.alias ? <span className="text-muted-foreground"> ({s.alias})</span> : null}
-            </Td>
-            <Td className="text-muted-foreground">
-              {s.regionName} / {s.constellationName}
-            </Td>
-            <Td className="text-right font-mono tabular-nums">{s.security ?? '—'}</Td>
-            <Td className="capitalize">{s.status}</Td>
-            <Td className="font-mono">{s.statics.length ? s.statics.join(', ') : '—'}</Td>
+      <InfoTable>
+        <thead className="sticky top-0 bg-muted/60 text-[10px] uppercase text-muted-foreground">
+          <tr>
+            <Th>System</Th>
+            <Th>Region / Constellation</Th>
+            <Th className="text-right">Sec</Th>
+            <Th>Status</Th>
+            <Th>Statics</Th>
           </tr>
-        ))}
-      </tbody>
+        </thead>
+        <tbody>
+          {sorted.map((s) => (
+            <tr key={s.id} className="border-t border-foreground/10">
+              <Td>
+                {s.name}
+                {s.alias ? <span className="text-muted-foreground"> ({s.alias})</span> : null}
+              </Td>
+              <Td className="text-muted-foreground">
+                {s.regionName} / {s.constellationName}
+              </Td>
+              <Td className="text-right font-mono tabular-nums">{s.security ?? '—'}</Td>
+              <Td className="capitalize">{s.status}</Td>
+              <Td className="font-mono">{s.statics.length ? s.statics.join(', ') : '—'}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </InfoTable>
     </ScrollTable>
   );
 }
@@ -175,39 +171,40 @@ function ConnectionsPanel({
 
   return (
     <ScrollTable>
-      <thead className="sticky top-0 bg-muted/60 text-[10px] uppercase text-muted-foreground">
-        <tr>
-          <Th>Connection</Th>
-          <Th>Scope</Th>
-          <Th>Mass</Th>
-          <Th>Size</Th>
-          <Th>EOL</Th>
-        </tr>
-      </thead>
-      <tbody>
-        {connections.map((c) => (
-          <tr key={c.id} className="border-t border-foreground/10">
-            <Td>
-              {label(c.source)} <span className="text-muted-foreground">→</span> {label(c.target)}
-            </Td>
-            <Td className="capitalize">{c.scope}</Td>
-            <Td className="capitalize">{c.massStatus}</Td>
-            <Td className="uppercase">{c.jumpMassClass ?? '—'}</Td>
-            <Td
-              className={
-                c.eolStage === 'critical'
-                  ? 'font-medium text-destructive'
-                  : c.eolStage === 'eol'
-                    ? 'text-destructive'
-                    : 'text-muted-foreground'
-              }
-            >
-              {c.eolStage === 'critical' ? 'EOL 1h' : c.eolStage === 'eol' ? 'EOL' : '—'}
-            </Td>
+      <InfoTable>
+        <thead className="sticky top-0 bg-muted/60 text-[10px] uppercase text-muted-foreground">
+          <tr>
+            <Th>Connection</Th>
+            <Th>Scope</Th>
+            <Th>Mass</Th>
+            <Th>Size</Th>
+            <Th>EOL</Th>
           </tr>
-        ))}
-      </tbody>
+        </thead>
+        <tbody>
+          {connections.map((c) => (
+            <tr key={c.id} className="border-t border-foreground/10">
+              <Td>
+                {label(c.source)} <span className="text-muted-foreground">→</span> {label(c.target)}
+              </Td>
+              <Td className="capitalize">{c.scope}</Td>
+              <Td className="capitalize">{c.massStatus}</Td>
+              <Td className="uppercase">{c.jumpMassClass ?? '—'}</Td>
+              <Td
+                className={
+                  c.eolStage === 'critical'
+                    ? 'font-medium text-destructive'
+                    : c.eolStage === 'eol'
+                      ? 'text-destructive'
+                      : 'text-muted-foreground'
+                }
+              >
+                {c.eolStage === 'critical' ? 'EOL 1h' : c.eolStage === 'eol' ? 'EOL' : '—'}
+              </Td>
+            </tr>
+          ))}
+        </tbody>
+      </InfoTable>
     </ScrollTable>
   );
 }
-

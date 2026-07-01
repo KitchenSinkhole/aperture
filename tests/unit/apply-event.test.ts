@@ -11,6 +11,7 @@ const makeState = (overrides?: Partial<MapViewData>): MapViewData => ({
   systems: [],
   connections: [],
   signatures: [],
+  notes: [],
   presence: [],
   ...overrides,
 });
@@ -86,6 +87,7 @@ describe('applyEvent — system.added', () => {
       mapConnectionId: null,
       sigId: 'ABC-123',
       groupKey: null,
+      classKind: null,
       typeId: null,
       wormholeCode: null,
       name: null,
@@ -278,6 +280,7 @@ const sig1: MapSignature = {
   mapConnectionId: null,
   sigId: 'ABC',
   groupKey: null,
+  classKind: null,
   typeId: null,
   wormholeCode: null,
   name: null,

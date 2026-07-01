@@ -11,6 +11,7 @@ import { isAdmin } from '@/lib/auth/rights';
 import { commitMapEvent, type ActionResult } from '@/lib/map/mutations/core';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
+import { logger } from '@/lib/log/logger';
 
 /**
  * Admin map actions — the `/admin` operator's cross-tenant oversight surface,
@@ -221,7 +222,7 @@ export async function adminUpdateMapSettings(
     try {
       await applyHomeStaticExemption(id, characterId);
     } catch (err) {
-      console.warn('home-static exemption reconcile failed (map=%s):', id.toString(), err);
+      logger.warn('home-static exemption reconcile failed', { mapId: id.toString(), err });
     }
   }
 

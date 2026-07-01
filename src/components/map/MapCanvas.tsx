@@ -61,8 +61,12 @@ import {
   updateConnectionOnServer,
   updateSignatureOnServer,
   updateSystemOnServer,
+  addNoteOnServer,
+  updateNoteOnServer,
+  deleteNoteOnServer,
   type CreateSignatureBody,
   type UpdateConnectionBody,
+  type UpdateNoteBody,
   type UpdateSignatureBody,
   type UpdateSystemBody,
 } from '@/lib/map/client';
@@ -88,7 +92,7 @@ import {
   SignatureModule,
   SignatureModuleHeaderActions,
 } from '@/components/sidebar/SignatureModule';
-import { Info, LayoutDashboard, Plus, RotateCcw, ScrollText, Search, Settings, Trash2, User } from 'lucide-react';
+import { Download, Info, LayoutDashboard, RotateCcw, ScrollText, Settings, Trash2, Upload, User } from 'lucide-react';
 import { Tooltip } from '@base-ui/react/tooltip';
 import { Button } from '@/components/ui/button';
 import {
@@ -111,7 +115,7 @@ import { PilotRosterButton } from './PilotRosterButton';
 import { SystemOverlayButton } from './SystemOverlayButton';
 import { MapSettingsDialog } from '@/components/dialogs/MapSettingsDialog';
 import { MapAuditDialog } from '@/components/map/manage/MapAuditDialog';
-import { SignatureSearchDialog } from '@/components/dialogs/SignatureSearchDialog';
+import { SignatureSearchModule } from '@/components/sidebar/SignatureSearchModule';
 import { AddSystemDialog } from './AddSystemDialog';
 import { ConnectionEdge, type ConnectionEdgeData } from './ConnectionEdge';
 import { MapPresenceProvider } from './MapPresenceContext';
@@ -123,13 +127,16 @@ import { MapTravelProvider, TravelBridge } from './MapTravelContext';
 import { MapUnderglowProvider } from './MapUnderglowContext';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
 import { SystemNode, type SystemNodeData } from './SystemNode';
+import { MapNoteNode, type MapNoteNodeData } from './MapNoteNode';
 import { MapContextMenu } from './MapContextMenu';
 import { SubchainDeletePrompt } from './SubchainDeletePrompt';
 import { RestoreConnectionPrompt } from './RestoreConnectionPrompt';
 import { MapLayoutGrid } from './layout/MapLayoutGrid';
 import { MapPanel } from './layout/MapPanel';
 import { DEFAULT_MAP_LAYOUT, PANELS, ensurePanelsPlaced } from '@/lib/map/layout/panels';
+import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
 import { setMapLayoutAction } from '@/app/(app)/actions/account';
+import { toast } from 'sonner';
 
 // Debounce window for persisting layout edits (drag/resize/hide) to the server.
 const LAYOUT_SAVE_DEBOUNCE_MS = 600;
@@ -212,8 +219,14 @@ function mergeLayouts(
   return next;
 }
 
-const nodeTypes = { system: SystemNode };
+const nodeTypes = { system: SystemNode, note: MapNoteNode };
 const edgeTypes = { connection: ConnectionEdge };
+
+// xyflow node ids must be unique, but `ap_map_system.id` and `ap_map_note.id` are
+// independent identity sequences and so collide numerically. Namespace note nodes
+// (`note:<id>`) in xyflow; their real `ap_map_note.id` stays on `data.id`.
+type CanvasNode = Node<SystemNodeData> | Node<MapNoteNodeData>;
+const noteNodeId = (noteId: string) => `note:${noteId}`;
 
 /** A pending "also delete the subchain?" offer raised by a deleted wormhole sig. */
 type SubchainSigOffer = {
@@ -304,7 +317,6 @@ export function MapCanvas({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [addSystemOpen, setAddSystemOpen] = useState(false);
-  const [sigSearchOpen, setSigSearchOpen] = useState(false);
   const [sigSearchFilters, setSigSearchFilters] = useState<SigSearchFilters>({
     name: '',
     groupKey: null,
@@ -320,7 +332,7 @@ export function MapCanvas({
   // Captured via ReactFlow's onInit so the manual-add flow can place new nodes
   // at the current viewport centre rather than (0,0).
   const flowInstance = useRef<ReactFlowInstance<
-    Node<SystemNodeData>,
+    CanvasNode,
     Edge<ConnectionEdgeData>
   > | null>(null);
   const flowWrapperRef = useRef<HTMLDivElement>(null);
@@ -369,8 +381,8 @@ export function MapCanvas({
     });
   }, [viewData.systems, data.map.id]);
 
-  const [nodes, setNodes] = useState<Node<SystemNodeData>[]>(() =>
-    data.systems.map((s) => ({
+  const [nodes, setNodes] = useState<CanvasNode[]>(() => [
+    ...data.systems.map((s) => ({
       id: s.id,
       type: 'system' as const,
       position: { x: s.positionX, y: s.positionY },
@@ -383,7 +395,15 @@ export function MapCanvas({
       selected: false,
       draggable: !s.locked,
     })),
-  );
+    ...data.notes.map((n) => ({
+      id: noteNodeId(n.id),
+      type: 'note' as const,
+      position: { x: n.positionX, y: n.positionY },
+      data: { ...n },
+      selected: false,
+      draggable: !n.locked,
+    })),
+  ]);
   const appliedEventIds = useRef<Set<number>>(new Set());
 
   // Signatures no longer ride the `system.added` event (that breached the 8 KB
@@ -512,11 +532,59 @@ export function MapCanvas({
     saveLayout(next);
   }, [saveLayout]);
 
+  // Download the current arrangement as a shareable JSON file. The exported blob
+  // is exactly `MapLayoutConfig` — the same shape the import validator accepts.
+  const handleExportLayout = useCallback(() => {
+    const blob = new Blob([JSON.stringify(layout, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'aperture-layout.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [layout]);
+
+  // Hidden picker for importing someone else's exported layout file.
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleImportFile = useCallback(
+    async (file: File) => {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(await file.text());
+      } catch {
+        toast.error('Not a valid layout file.');
+        return;
+      }
+      // Re-validate the untrusted file at this boundary; `ensurePanelsPlaced`
+      // then back-fills any panels absent from a layout saved by another build.
+      const parsed = mapLayoutConfigSchema.safeParse(raw);
+      if (!parsed.success) {
+        toast.error('This file is not a valid Aperture layout.');
+        return;
+      }
+      const next = ensurePanelsPlaced(parsed.data);
+      setLayout(next);
+      saveLayout(next);
+      toast.success('Layout imported.');
+    },
+    [saveLayout],
+  );
+
   const handleNavigateToSig = useCallback((systemId: string, sigId: string) => {
-    setSigSearchOpen(false);
     setSelected({ kind: 'system', id: systemId });
     setSelectedSystemIds(new Set([systemId]));
-    flowInstance.current?.fitView({ nodes: [{ id: systemId }], padding: 0.5, duration: 400 });
+    const inst = flowInstance.current;
+    const node = inst?.getNode(systemId);
+    if (inst && node) {
+      const w = node.measured?.width ?? node.width ?? 0;
+      const h = node.measured?.height ?? node.height ?? 0;
+      // Snap (no animation) to the system, preserving the current zoom level.
+      inst.setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+        zoom: inst.getZoom(),
+        duration: 0,
+      });
+    }
     if (flashTimer.current) clearTimeout(flashTimer.current);
     setFlashSigId(sigId);
     flashTimer.current = setTimeout(() => setFlashSigId(null), 3000);
@@ -631,7 +699,7 @@ export function MapCanvas({
   // ---- xyflow → server callbacks -----------------------------------------
   const mapId = viewData.map.id;
 
-  const onNodesChange = useCallback((changes: NodeChange<Node<SystemNodeData>>[]) => {
+  const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes((nds) => applyNodeChanges(changes, nds));
   }, []);
 
@@ -667,6 +735,49 @@ export function MapCanvas({
 
   const onNodeDragStop = useCallback(
     (_event: React.MouseEvent | unknown, node: Node) => {
+      // Notes drag independently and may overlap anything — snap, then commit the
+      // position optimistically (no collision nudge). Notes aren't tracked in
+      // `selectedSystemIds`, but xyflow still group-drags every node it selected
+      // (e.g. a box-select over several notes) in unison, so commit each selected
+      // note — not just the grabbed one, or the others snap back on release. Read
+      // the live store (authoritative at dragStop); the grabbed node is always
+      // included even if its `selected` flag hasn't landed yet. The real
+      // `ap_map_note.id` lives on `data.id` (the xyflow id is namespaced).
+      if (node.type === 'note') {
+        const live = flowInstance.current?.getNodes() ?? [];
+        const draggedNotes = live.filter(
+          (n) => n.type === 'note' && (n.selected || n.id === node.id),
+        );
+        for (const noteNode of draggedNotes) {
+          const noteId = (noteNode.data as MapNoteNodeData).id;
+          const note = viewData.notes.find((n) => n.id === noteId);
+          if (!note) continue;
+          const snapped = snapPointToGrid(noteNode.position);
+          if (note.positionX === snapped.x && note.positionY === snapped.y) continue;
+          runOptimistic(
+            {
+              kind: 'note.updated',
+              eventId: 0,
+              id: noteId,
+              title: note.title,
+              positionX: snapped.x,
+              positionY: snapped.y,
+              // Carry the current attribution so the optimistic apply doesn't blank
+              // "last edited by"; the authoritative echo overwrites it with the actor.
+              lastEditedByCharacterId: note.lastEditedByCharacterId,
+              lastEditedByName: note.lastEditedByName,
+              updatedAt: new Date().toISOString(),
+            },
+            () =>
+              updateNoteOnServer({
+                mapId,
+                noteId,
+                patch: { positionX: snapped.x, positionY: snapped.y },
+              }),
+          );
+        }
+        return;
+      }
       // Dragging any member of a multi-selection moves the whole group; commit
       // every selected system's new position, not just the grabbed node.
       if (selectedSystemIds.size > 1 && selectedSystemIds.has(node.id)) {
@@ -697,7 +808,7 @@ export function MapCanvas({
         () => updateSystemOnServer({ mapId, mapSystemId: node.id, patch }),
       );
     },
-    [mapId, viewData.systems, selectedSystemIds, commitGroupMove, runOptimistic],
+    [mapId, viewData.systems, viewData.notes, selectedSystemIds, commitGroupMove, runOptimistic],
   );
 
   const onConnect = useCallback(
@@ -770,12 +881,80 @@ export function MapCanvas({
     setAddSystemOpen(true);
   }, []);
 
+  // ---- Note callbacks ----------------------------------------------------
+  // Select a note into the inspector (wired to the node's double-click via the
+  // sync block's `data.onOpen`). Stable for the component lifetime.
+  const onOpenNote = useCallback((noteId: string) => {
+    setSelected({ kind: 'note', id: noteId });
+    setSelectedSystemIds(new Set());
+  }, []);
+
+  // Pane "Add note here": convert the cursor's client point to flow coords, snap,
+  // and POST immediately (notes need no picker dialog). The awaited payload folds
+  // the new note in; the user double-clicks it to edit.
+  const onAddNoteAt = useCallback(
+    (clientX: number, clientY: number) => {
+      setContextMenu(null);
+      const inst = flowInstance.current;
+      const point: Point = inst
+        ? inst.screenToFlowPosition({ x: clientX, y: clientY })
+        : { x: 0, y: 0 };
+      const pos = snapPointToGrid(point);
+      awaitServer(() =>
+        addNoteOnServer({
+          mapId,
+          body: { title: 'New note', positionX: pos.x, positionY: pos.y },
+        }),
+      );
+    },
+    [mapId, awaitServer],
+  );
+
+  const onNotePatch = useCallback(
+    (noteId: string, patch: UpdateNoteBody) => {
+      const note = viewData.notes.find((n) => n.id === noteId);
+      // `note.updated` always carries title + editor attribution + updatedAt; the
+      // changed fields ride from `patch`. Optimistic attribution keeps the current
+      // values (the authoritative echo replaces them with the real actor).
+      const opt: MapEventPayload = {
+        kind: 'note.updated',
+        eventId: 0,
+        id: noteId,
+        title: note?.title ?? '',
+        lastEditedByCharacterId: note?.lastEditedByCharacterId ?? null,
+        lastEditedByName: note?.lastEditedByName ?? null,
+        updatedAt: new Date().toISOString(),
+        ...patch,
+      };
+      runOptimistic(opt, () => updateNoteOnServer({ mapId, noteId, patch }));
+    },
+    [mapId, viewData.notes, runOptimistic],
+  );
+
+  const onNoteRemove = useCallback(
+    (noteId: string) => {
+      const note = viewData.notes.find((n) => n.id === noteId);
+      runOptimistic(
+        { kind: 'note.deleted', eventId: 0, id: noteId, title: note?.title ?? '' },
+        () => deleteNoteOnServer({ mapId, noteId }),
+      );
+      setSelected(null);
+    },
+    [mapId, viewData.notes, runOptimistic],
+  );
+
   // Click selection is driven by direct handlers (they own single + Ctrl+click
   // toggle), while `onSelectionChange` is used only as a box-select reconciler
   // (see below). The two don't fight because the reconciler ignores size<=1 and
   // no-ops when xyflow's set already matches ours.
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
+      // Notes select singly into the inspector — no multi-select / group semantics.
+      if (node.type === 'note') {
+        setSelected({ kind: 'note', id: (node.data as MapNoteNodeData).id });
+        setSelectedSystemIds(new Set());
+        return;
+      }
       // Ctrl/Cmd+click toggles the node in the group. The inspector primary is
       // cleared whenever 2+ are selected — a multi-select group drives no
       // inspector / per-system module (which would otherwise thrash on refetch);
@@ -808,6 +987,15 @@ export function MapCanvas({
   // cursor point + target; selection is intentionally left untouched.
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
     event.preventDefault();
+    if (node.type === 'note') {
+      setContextMenu({
+        kind: 'note',
+        id: (node.data as MapNoteNodeData).id,
+        x: event.clientX,
+        y: event.clientY,
+      });
+      return;
+    }
     setContextMenu({ kind: 'system', id: node.id, x: event.clientX, y: event.clientY });
   }, []);
 
@@ -827,6 +1015,20 @@ export function MapCanvas({
 
   const onSelectionEnd = useCallback(() => {
     boxSelecting.current = false;
+    // Mixed multi-selection is unsupported: if the box caught systems *and* notes,
+    // prioritize systems and drop the notes from xyflow's selection — otherwise the
+    // notes group-drag with the systems but commit through a different path and
+    // rubber-band back on release. A pure-note box is left intact (its multi-note
+    // drag reads xyflow's selection directly). Done once at box end so it never
+    // fights xyflow's per-move re-selection during the draw.
+    const live = flowInstance.current?.getNodes() ?? [];
+    const hasSystem = live.some((n) => n.type === 'system' && n.selected);
+    const hasNote = live.some((n) => n.type === 'note' && n.selected);
+    if (hasSystem && hasNote) {
+      setNodes((prev) =>
+        prev.map((n) => (n.type === 'note' && n.selected ? { ...n, selected: false } : n)),
+      );
+    }
   }, []);
 
   // Box-select-only reconciler. xyflow fires `onSelectionChange` for *every*
@@ -838,8 +1040,12 @@ export function MapCanvas({
   // the per-system modules as nodes enter the rectangle.
   const onSelectionChange = useCallback(
     ({ nodes: selNodes }: OnSelectionChangeParams) => {
-      if (!boxSelecting.current || selNodes.length <= 1) return;
-      const ids = selNodes.map((n) => n.id);
+      if (!boxSelecting.current) return;
+      // `selectedSystemIds` holds system ids only — group ops (move, "Remove N")
+      // route through the systems endpoints. Notes caught by the box select
+      // singly into the inspector, never the group; drop them here.
+      const ids = selNodes.filter((n) => n.type === 'system').map((n) => n.id);
+      if (ids.length <= 1) return;
       if (ids.length === selectedSystemIds.size && ids.every((id) => selectedSystemIds.has(id))) {
         return;
       }
@@ -1213,41 +1419,64 @@ export function MapCanvas({
   // with empty deps).
   const [lastSync, setLastSync] = useState<{
     systems: MapViewData['systems'];
+    notes: MapViewData['notes'];
     selectedSystemIds: Set<string>;
+    // The note-node halo is driven by the inspector `selected` ref (notes have no
+    // multi-select set), so a note selection change must trigger a re-sync.
+    selected: SelectionRef | null;
     intel: Record<number, SystemIntelSummary>;
   } | null>(null);
   if (
     !lastSync ||
     lastSync.systems !== viewData.systems ||
+    lastSync.notes !== viewData.notes ||
     lastSync.selectedSystemIds !== selectedSystemIds ||
+    lastSync.selected !== selected ||
     // `intel` is replaced by reference when a live-added system's data backfills;
     // re-sync so its decorators (sov/FW/incursion) appear without a systems change.
     lastSync.intel !== intel
   ) {
-    setLastSync({ systems: viewData.systems, selectedSystemIds, intel });
+    setLastSync({ systems: viewData.systems, notes: viewData.notes, selectedSystemIds, selected, intel });
     setNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]));
-      return viewData.systems.map((s) => {
-        const existing = prevById.get(s.id);
-        const position = existing?.dragging
-          ? existing.position
-          : { x: s.positionX, y: s.positionY };
-        return {
-          ...(existing ?? {}),
-          id: s.id,
-          type: 'system' as const,
-          position,
-          data: {
-            ...s,
-            onAliasOrTagCommit,
-            isHome: s.id === viewData.map.homeMapSystemId,
-            inFactionWarfare: intel[s.systemId]?.factionWar != null,
-            hasIncursion: intel[s.systemId]?.incursion != null,
-          },
-          selected: selectedSystemIds.has(s.id),
-          draggable: !s.locked,
-        };
-      });
+      return [
+        ...viewData.systems.map((s) => {
+          const existing = prevById.get(s.id);
+          const position = existing?.dragging
+            ? existing.position
+            : { x: s.positionX, y: s.positionY };
+          return {
+            ...(existing ?? {}),
+            id: s.id,
+            type: 'system' as const,
+            position,
+            data: {
+              ...s,
+              onAliasOrTagCommit,
+              isHome: s.id === viewData.map.homeMapSystemId,
+              inFactionWarfare: intel[s.systemId]?.factionWar != null,
+              hasIncursion: intel[s.systemId]?.incursion != null,
+            },
+            selected: selectedSystemIds.has(s.id),
+            draggable: !s.locked,
+          };
+        }),
+        ...viewData.notes.map((n) => {
+          const existing = prevById.get(noteNodeId(n.id));
+          const position = existing?.dragging
+            ? existing.position
+            : { x: n.positionX, y: n.positionY };
+          return {
+            ...(existing ?? {}),
+            id: noteNodeId(n.id),
+            type: 'note' as const,
+            position,
+            data: { ...n, onOpen: onOpenNote },
+            selected: selected?.kind === 'note' && selected.id === n.id,
+            draggable: !n.locked,
+          };
+        }),
+      ];
     });
   }
 
@@ -1480,6 +1709,10 @@ export function MapCanvas({
               onDeleteSubchainPick={onDeleteSubchainPick}
               onDeleteDisconnected={onDeleteDisconnected}
               onPingSystem={onPingSystem}
+              notes={viewData.notes}
+              onAddNoteAt={onAddNoteAt}
+              onNotePatch={onNotePatch}
+              onNoteRemove={onNoteRemove}
             />
           </div>
         );
@@ -1497,6 +1730,16 @@ export function MapCanvas({
             flashSigId={flashSigId}
           />
         );
+      case 'sigSearch':
+        return (
+          <SignatureSearchModule
+            signatures={viewData.signatures}
+            systems={viewData.systems}
+            filters={sigSearchFilters}
+            onFiltersChange={setSigSearchFilters}
+            onNavigate={handleNavigateToSig}
+          />
+        );
       case 'inspector':
         return (
           <InspectorModule
@@ -1506,6 +1749,8 @@ export function MapCanvas({
             onSystemRemove={onSystemRemove}
             onConnectionPatch={onConnectionPatch}
             onConnectionDelete={onConnectionDelete}
+            onNotePatch={onNotePatch}
+            onNoteRemove={onNoteRemove}
           />
         );
       case 'route':
@@ -1563,7 +1808,6 @@ export function MapCanvas({
           onBulkPaste={onSignaturePasteResult}
           lazyDelete={lazyDeleteSigs}
           onLazyDeleteChange={setLazyDeleteSigs}
-          onOpenSearch={() => setSigSearchOpen(true)}
         />
       );
     }
@@ -1627,20 +1871,32 @@ export function MapCanvas({
                     </MenuCheckboxItem>
                   ))}
                   <MenuSeparator />
-                  <MenuItem icon={<RotateCcw />} onClick={handleResetLayout}>
+                  <MenuItem icon={<Download className="size-3.5" />} onClick={handleExportLayout}>
+                    Export layout
+                  </MenuItem>
+                  <MenuItem
+                    icon={<Upload className="size-3.5" />}
+                    onClick={() => importInputRef.current?.click()}
+                  >
+                    Import layout
+                  </MenuItem>
+                  <MenuItem icon={<RotateCcw className="size-3.5" />} onClick={handleResetLayout}>
                     Reset layout
                   </MenuItem>
                 </MenuContent>
               </Menu>
-              <Button variant="ghost" size="sm" onClick={() => setAddSystemOpen(true)}>
-                <Plus />
-                Add system
-              </Button>
-
-              <Button variant="ghost" size="sm" onClick={() => setSigSearchOpen(true)}>
-                <Search />
-                Sig Search
-              </Button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  // Reset so re-selecting the same file fires `change` again.
+                  e.target.value = '';
+                  if (file) void handleImportFile(file);
+                }}
+              />
               <Button variant="ghost" size="sm" onClick={() => setMapInfoOpen(true)}>
                 <Info />
                 Map info
@@ -1700,15 +1956,6 @@ export function MapCanvas({
           mapId={mapId}
           existingSystemIds={existingSystemIds}
           onAdd={onAddSystem}
-        />
-        <SignatureSearchDialog
-          open={sigSearchOpen}
-          onOpenChange={setSigSearchOpen}
-          signatures={viewData.signatures}
-          systems={viewData.systems}
-          filters={sigSearchFilters}
-          onFiltersChange={setSigSearchFilters}
-          onNavigate={handleNavigateToSig}
         />
         </MapSignatureIndicatorProvider>
         </MapUnderglowProvider>

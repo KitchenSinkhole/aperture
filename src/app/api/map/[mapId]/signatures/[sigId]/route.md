@@ -6,7 +6,7 @@
 ### PATCH
 Updates only the fields present in the body. Ownership validated through `apMapSystem.mapId`. Returns `{ ok, data, eventId }` where `data` is the `signature.update` patch.
 
-**Body:** `{ mapConnectionId?: string | null, sigId?, groupId?, typeId?, name?, description?, expiresAt? }` — all optional. `mapConnectionId` and `expiresAt` are a bigint string and ISO datetime string respectively.
+**Body:** `{ mapConnectionId?: string | null, sigId?, groupKey?, classKind?, typeId?, name?, description?, expiresAt? }` — all optional. `classKind` is `signature` | `anomaly` | null. `mapConnectionId` and `expiresAt` are a bigint string and ISO datetime string respectively.
 
 ### DELETE
 Hard-deletes the signature row. Returns `{ ok, data, eventId }` where `data` is the `signature.delete` payload.

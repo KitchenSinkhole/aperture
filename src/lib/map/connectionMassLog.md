@@ -24,8 +24,11 @@ broadcasts a `connectionMassLog` envelope to the map channel.
 - `mass` — kg for this jump. **When `null` the call is a no-op** (warns): an unresolved mass would
   corrupt the cumulative sum, and the column is NOT NULL.
 
-**Side effects:** one INSERT, one `SUM` read, one `pg_notify`. Cumulative stays within JS safe-int
-range (a hole's max stable mass is ~3e9 kg).
+**Side effects:** one INSERT, one `SUM` read, one `pg_notify`, and one `recordCharacterJump()`
+(`character_jumps_total`, label-free real-movement volume) after the insert. Cumulative stays within
+JS safe-int range (a hole's max stable mass is ~3e9 kg).
+
+**Logging:** via the structured logger ([[logger]], `source='job'`). The unresolved-mass skip and the per-jump trace are `warn`/`debug` (stdout only); a missing insert id is `error` (persisted to `ap_error_log`).
 
 ---
 

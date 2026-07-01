@@ -8,13 +8,13 @@ export const GRID_SIZE = 10;
 export const NODE_WIDTH = 145;
 export const NODE_HEIGHT = 45;
 /** Minimum empty space kept between two node footprints. */
-export const PLACEMENT_GAP = 0;
+export const PLACEMENT_GAP = 20;
 /**
  * Half-extent of a node's exclusion zone, rounded up to a whole grid cell so every
- * candidate stays grid-aligned (180+10=190, 60+10=70). The footprint+gap is the floor;
- * rounding up only ever widens the gap, never overlaps.
+ * candidate stays grid-aligned (145+20=165→170, 45+20=65→70). The footprint+gap is the
+ * floor; rounding up only ever widens the gap, never overlaps.
  */
-export const SLOT_X = Math.ceil((NODE_WIDTH + PLACEMENT_GAP) / GRID_SIZE) * GRID_SIZE; // 190
+export const SLOT_X = Math.ceil((NODE_WIDTH + PLACEMENT_GAP) / GRID_SIZE) * GRID_SIZE; // 170
 export const SLOT_Y = Math.ceil((NODE_HEIGHT + PLACEMENT_GAP) / GRID_SIZE) * GRID_SIZE; // 70
 
 export type Point = { x: number; y: number };
