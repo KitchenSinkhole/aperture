@@ -553,7 +553,6 @@ function SignatureActivityMenu({
     <ContextMenu.Portal>
       <ContextMenu.Positioner align="start" className="z-50 outline-none">
         <ContextMenu.Popup data-slot="signature-activity-menu" className={ACTIVITY_MENU_POPUP}>
-          <MenuGroupLabel>Site safety</MenuGroupLabel>
           <MenuRadioGroup
             value={sig.activityOverride ?? ACTIVITY_AUTO}
             onValueChange={(value) =>
@@ -563,6 +562,7 @@ function SignatureActivityMenu({
               })
             }
           >
+            <MenuGroupLabel>Site safety</MenuGroupLabel>
             <MenuRadioItem value="combat">
               <Swords className="size-3.5 text-red-500" />
               Mark as combat

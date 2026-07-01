@@ -2,6 +2,7 @@ import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 // Type-only (erased at compile) — `Layout` is RGL's `readonly LayoutItem[]`. Safe to
 // pull into this server-imported barrel; no runtime client/server coupling.
 import type { Layout } from 'react-grid-layout';
+import type { SignatureActivity } from '@/lib/map/siteActivity';
 import type {
   apAccessGrant,
   apCharacter,
@@ -458,7 +459,7 @@ export type { SignatureGroupOption } from '@/lib/map/signatureGroups';
 export type { SignatureClassKind, SignatureClassOption } from '@/lib/map/signatureClasses';
 
 // Site-safety (combat vs exploration) classifier (src/lib/map/siteActivity.ts).
-export type { SignatureActivity } from '@/lib/map/siteActivity';
+export type { SignatureActivity };
 
 // ESI opKey identifiers (map in src/lib/esi/opkeys.ts).
 export type { OpKey, OpDef } from '@/lib/esi/opkeys';
@@ -596,6 +597,8 @@ export type SigSearchFilters = {
   includeAnomalies: boolean;
   /** Show sigs classed as Cosmic Signature. Sigs with no group bypass this. */
   includeSignatures: boolean;
+  /** Effective site-safety to include; `null` = any. */
+  activity: SignatureActivity | null;
 };
 
 // --- Observability: health probe (Phase 1) ---

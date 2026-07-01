@@ -342,6 +342,7 @@ export function MapCanvas({
     securityClasses: [],
     includeAnomalies: true,
     includeSignatures: true,
+    activity: null,
   });
   const [flashSigId, setFlashSigId] = useState<string | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

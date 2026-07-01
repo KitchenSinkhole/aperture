@@ -57,6 +57,7 @@ const BASE: SigSearchFilters = {
   securityClasses: [],
   includeAnomalies: true,
   includeSignatures: true,
+  activity: null,
 };
 
 describe('buildSigSearchResults', () => {
@@ -93,6 +94,22 @@ describe('buildSigSearchResults', () => {
     const rows = buildSigSearchResults([gas, wh], [sys], { ...BASE, groupKey: 'gas' }, 'sigId', 'asc', NOW);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.sig.sigId).toBe('AAA');
+  });
+
+  it('filters by activity over the effective value, respecting overrides', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    // gas → derived combat
+    const gas = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'gas', name: 'Barren Perimeter Reservoir' });
+    // ore → derived exploration
+    const ore = makeSig({ id: '2', sigId: 'BBB', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'ore', name: 'Common Perimeter Deposit' });
+    // gas but overridden to exploration (cleared site) — should read as exploration
+    const cleared = makeSig({ id: '3', sigId: 'CCC', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'gas', name: 'Vast Frontier Reservoir', activityOverride: 'exploration' });
+
+    const combat = buildSigSearchResults([gas, ore, cleared], [sys], { ...BASE, activity: 'combat' }, 'sigId', 'asc', NOW);
+    expect(combat.map((r) => r.sig.sigId)).toEqual(['AAA']);
+
+    const explo = buildSigSearchResults([gas, ore, cleared], [sys], { ...BASE, activity: 'exploration' }, 'sigId', 'asc', NOW);
+    expect(explo.map((r) => r.sig.sigId)).toEqual(['BBB', 'CCC']);
   });
 
   it('filters by maxAgeHours', () => {

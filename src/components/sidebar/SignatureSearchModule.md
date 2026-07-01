@@ -9,12 +9,14 @@
 |---|---|---|---|
 | signatures | MapSignature[] | yes | All signatures on the map (searched across systems) |
 | systems | MapSystemNode[] | yes | All map systems, joined to signatures for system name/security/tag |
-| filters | SigSearchFilters | yes | Current filter state (name, group, max age, security classes); owned by `MapCanvas` |
+| filters | SigSearchFilters | yes | Current filter state (name, group, activity, max age, security classes); owned by `MapCanvas` |
 | onFiltersChange | (f: SigSearchFilters) => void | yes | Commits a filter change back to the owner |
 | onNavigate | (systemId: string, sigId: string) => void | yes | Called when a result's "Go" is clicked — selects/centers the system and flashes the row |
 
 ### Renders
-A single frameless `Card` (panel body) with a filter bar (name, group, max-age, type toggles, system-class toggles) above a scrollable, sortable results table (Group, Sig, System, Name, Age, Go) and a result-count line. Empty-state row when no signatures match. Body rows are zebra-striped (even rows tinted) with a hover highlight that takes over on the pointed row.
+A single frameless `Card` (panel body) with a filter bar (name, group, activity, max-age, class-kind toggles, system-class toggles) above a scrollable, sortable results table (activity glyph, Sig, Group, System, Name, Age, Go) and a result-count line. Empty-state row when no signatures match. Body rows are zebra-striped (even rows tinted) with a hover highlight that takes over on the pointed row.
+
+The activity control is a tri-state Any / Combat / Exploration select. Each result row's leading glyph is the effective site-safety (`combat` → red `Swords`, `exploration` → green `ShieldCheck`, `null` → blank); read-only here (overrides are edited in `SignatureModule`).
 
 ### Behaviour & Interactions
 - Name input is debounced 150ms before firing `onFiltersChange`; a `filtersRef` (synced via `useLayoutEffect`) keeps the debounce callback from clobbering concurrent non-name filter edits.
@@ -27,6 +29,7 @@ A single frameless `Card` (panel body) with a filter bar (name, group, max-age, 
 ### Depends On
 - `buildSigSearchResults`, `SigSortField`, `SigSortDir` — `@/lib/map/sigSearch`
 - `SIGNATURE_GROUP_CATALOG`, `labelForSignatureGroupKey` — `@/lib/map/signatureGroups`
+- `effectiveSignatureActivity` — `@/lib/map/siteActivity` (drives the result-row activity glyph)
 - `formatAgoFromMs` — `@/lib/map/relativeTime`
 - `systemClassColor` — `@/components/map/styling`
 

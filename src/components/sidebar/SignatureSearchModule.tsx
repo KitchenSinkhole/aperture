@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
-import { ArrowDown, ArrowRight, ArrowUp } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, ShieldCheck, Swords } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -14,12 +14,15 @@ import {
 } from '@/components/ui/select';
 import { buildSigSearchResults, type SigSortField, type SigSortDir } from '@/lib/map/sigSearch';
 import { SIGNATURE_GROUP_CATALOG, labelForSignatureGroupKey } from '@/lib/map/signatureGroups';
+import { effectiveSignatureActivity } from '@/lib/map/siteActivity';
 import { formatAgoFromMs } from '@/lib/map/relativeTime';
 import { systemClassColor } from '@/components/map/styling';
+import { cn } from '@/lib/utils';
 import type {
   MapSignature,
   MapSystemNode,
   SigSearchFilters,
+  SignatureActivity,
   SignatureClassKind,
   SignatureGroupKey,
 } from '@/types';
@@ -51,6 +54,26 @@ const SECURITY_CLASS_GROUPS: { heading: string; options: { value: string; label:
     ],
   },
 ];
+
+const ACTIVITY_LABELS: Record<'_all' | SignatureActivity, string> = {
+  _all: 'Any',
+  combat: 'Combat',
+  exploration: 'Exploration',
+};
+
+function ActivityGlyph({ sig }: { sig: MapSignature }) {
+  const activity = effectiveSignatureActivity(sig);
+  if (!activity) return null;
+  const Icon = activity === 'combat' ? Swords : ShieldCheck;
+  const title = activity === 'combat' ? 'Combat site' : 'Exploration site';
+  return (
+    <span className="flex items-center justify-center" title={title}>
+      <Icon
+        className={cn('size-3.5', activity === 'combat' ? 'text-red-500' : 'text-emerald-500')}
+      />
+    </span>
+  );
+}
 
 interface Props {
   signatures: MapSignature[];
@@ -164,6 +187,28 @@ export function SignatureSearchModule({
         </div>
 
         <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-muted-foreground">Activity</label>
+          <Select
+            value={filters.activity ?? '_all'}
+            onValueChange={(v) =>
+              onFiltersChange({
+                ...filters,
+                activity: v === '_all' ? null : (v as SignatureActivity),
+              })
+            }
+          >
+            <SelectTrigger className="h-7 w-32 text-xs">
+              <SelectValue>{ACTIVITY_LABELS[filters.activity ?? '_all']}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_all">Any</SelectItem>
+              <SelectItem value="combat">Combat</SelectItem>
+              <SelectItem value="exploration">Exploration</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-muted-foreground">Max age (h)</label>
           <Input
             type="number"
@@ -239,6 +284,7 @@ export function SignatureSearchModule({
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-[color-mix(in_oklab,var(--muted)_50%,var(--card))] text-[11px] uppercase text-muted-foreground">
             <tr>
+              <th className="w-6 px-1 py-0.5" />
               <th
                 className="w-16 px-2 py-0.5 text-left cursor-pointer select-none"
                 onClick={() => handleSortHeader('sigId')}
@@ -266,7 +312,7 @@ export function SignatureSearchModule({
             {rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-2 py-3 text-center text-xs text-muted-foreground"
                 >
                   No signatures match your filters.
@@ -278,6 +324,9 @@ export function SignatureSearchModule({
                 key={sig.id}
                 className="group border-t border-foreground/10 align-middle even:bg-foreground/[0.03] hover:bg-muted/30"
               >
+                <td className="px-1 py-px">
+                  <ActivityGlyph sig={sig} />
+                </td>
                 <td className="px-2 py-px font-mono text-xs">{sig.sigId}</td>
                 <td className="px-2 py-px">
                   {labelForSignatureGroupKey(sig.groupKey) ?? '—'}

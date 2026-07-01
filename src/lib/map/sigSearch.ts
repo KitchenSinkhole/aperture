@@ -1,4 +1,5 @@
 import type { MapSignature, MapSystemNode, SigSearchFilters } from '@/types';
+import { effectiveSignatureActivity } from '@/lib/map/siteActivity';
 
 export type SigSearchRow = {
   sig: MapSignature;
@@ -37,6 +38,7 @@ export function buildSigSearchResults(
     // (classKind null) matches neither and always shows.
     if (sig.classKind === 'anomaly' && !filters.includeAnomalies) continue;
     if (sig.classKind === 'signature' && !filters.includeSignatures) continue;
+    if (filters.activity !== null && effectiveSignatureActivity(sig) !== filters.activity) continue;
     if (
       filters.securityClasses.length > 0 &&
       (system.security === null || !filters.securityClasses.includes(system.security))
