@@ -13,6 +13,7 @@ import type {
   ResolvedSigRow,
   ResolveDestinationResult,
   RestoreConnectionResult,
+  SignatureActivity,
   SignatureGroupKey,
   StructureIntel,
   SubchainDeleteResult,
@@ -112,6 +113,7 @@ export type CreateSignatureBody = {
   mapConnectionId?: string | null;
   sigId: string;
   groupKey?: SignatureGroupKey | null;
+  activityOverride?: SignatureActivity | null;
   typeId?: number | null;
   eolStage?: EolStage;
   name?: string | null;
@@ -124,6 +126,7 @@ export type UpdateSignatureBody = {
   mapConnectionId?: string | null;
   sigId?: string;
   groupKey?: SignatureGroupKey | null;
+  activityOverride?: SignatureActivity | null;
   typeId?: number | null;
   eolStage?: EolStage;
   name?: string | null;

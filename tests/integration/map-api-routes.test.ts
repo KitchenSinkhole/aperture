@@ -195,6 +195,7 @@ describe.skipIf(!run)('map API routes — signature mutations + broadcast (real 
         sigId: 'ABC',
         groupKey: 'wormhole',
         classKind: null,
+        activityOverride: null,
         typeId: expect.any(Number),
         wormholeCode: null,
         name: 'Renamed Sig',

@@ -28,6 +28,7 @@ function signature(id: string, mapConnectionId: string | null): MapSignature {
     sigId: 'ABC',
     groupKey: null,
     classKind: null,
+    activityOverride: null,
     typeId: null,
     eolStage: 'none',
     wormholeCode: null,

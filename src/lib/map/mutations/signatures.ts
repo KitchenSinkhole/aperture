@@ -3,7 +3,7 @@ import { and, eq, type InferInsertModel } from 'drizzle-orm';
 import { apMapConnection, apMapSignature, apMapSystem, eolStage, universeWormhole } from '@/db/schema';
 import { commitMapEvent, type ActionResult, type Tx } from './core';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
-import type { SignatureClassKind, SignatureGroupKey } from '@/types';
+import type { SignatureActivity, SignatureClassKind, SignatureGroupKey } from '@/types';
 
 type EolStage = (typeof eolStage.enumValues)[number];
 
@@ -29,6 +29,7 @@ export type CreateSignatureInput = {
   sigId: string;
   groupKey?: SignatureGroupKey | null;
   classKind?: SignatureClassKind | null;
+  activityOverride?: SignatureActivity | null;
   typeId?: number | null;
   eolStage?: EolStage;
   name?: string | null;
@@ -42,6 +43,7 @@ export type UpdateSignaturePatch = {
   sigId?: string;
   groupKey?: SignatureGroupKey | null;
   classKind?: SignatureClassKind | null;
+  activityOverride?: SignatureActivity | null;
   typeId?: number | null;
   eolStage?: EolStage;
   name?: string | null;
@@ -82,6 +84,7 @@ export function createSignature(
           sigId: input.sigId,
           groupKey: input.groupKey ?? null,
           classKind: input.classKind ?? null,
+          activityOverride: input.activityOverride ?? null,
           typeId: input.typeId ?? null,
           eolStage: input.eolStage ?? 'none',
           name: input.name ?? null,
@@ -95,6 +98,7 @@ export function createSignature(
           sigId: apMapSignature.sigId,
           groupKey: apMapSignature.groupKey,
           classKind: apMapSignature.classKind,
+          activityOverride: apMapSignature.activityOverride,
           typeId: apMapSignature.typeId,
           eolStage: apMapSignature.eolStage,
           name: apMapSignature.name,
@@ -115,6 +119,7 @@ export function createSignature(
         sigId: row!.sigId,
         groupKey: row!.groupKey,
         classKind: row!.classKind,
+        activityOverride: row!.activityOverride,
         typeId: row!.typeId,
         eolStage: row!.eolStage,
         wormholeCode,
@@ -197,6 +202,7 @@ export function updateSignature(
       if ('sigId' in patch) set.sigId = patch.sigId;
       if ('groupKey' in patch) set.groupKey = patch.groupKey;
       if ('classKind' in patch) set.classKind = patch.classKind;
+      if ('activityOverride' in patch) set.activityOverride = patch.activityOverride;
       if ('typeId' in patch) set.typeId = patch.typeId;
       if ('eolStage' in patch) set.eolStage = patch.eolStage;
       if ('name' in patch) set.name = patch.name;
@@ -214,6 +220,7 @@ export function updateSignature(
           sigId: apMapSignature.sigId,
           groupKey: apMapSignature.groupKey,
           classKind: apMapSignature.classKind,
+          activityOverride: apMapSignature.activityOverride,
           typeId: apMapSignature.typeId,
           eolStage: apMapSignature.eolStage,
           name: apMapSignature.name,
@@ -255,6 +262,7 @@ export function updateSignature(
       }
       if ('groupKey' in patch) out.groupKey = patch.groupKey;
       if ('classKind' in patch) out.classKind = patch.classKind;
+      if ('activityOverride' in patch) out.activityOverride = patch.activityOverride;
       if ('typeId' in patch) {
         out.typeId = patch.typeId;
         out.wormholeCode = wormholeCode;
@@ -274,6 +282,7 @@ export function updateSignature(
         sigId: row.sigId,
         groupKey: row.groupKey,
         classKind: row.classKind,
+        activityOverride: row.activityOverride,
         typeId: row.typeId,
         eolStage: row.eolStage,
         wormholeCode,

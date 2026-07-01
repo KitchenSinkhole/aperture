@@ -138,6 +138,19 @@ export const signatureClassKind = pgEnum('signature_class_kind', [
 ]);
 
 /**
+ * Site-safety of a cosmic signature: whether running the site pits you against
+ * rats (`combat`) or is an unguarded scan-down (`exploration`). The override
+ * axis behind `ap_map_signature.activity_override` (migration 0048) — the
+ * derived default comes from `siteActivity` (`src/lib/map/siteActivity.ts`).
+ * Orthogonal to `signature_group_key`: a `relic` site can be a `combat`
+ * activity, so this is its own type, not a group value.
+ */
+export const signatureActivity = pgEnum('signature_activity', [
+  'combat',
+  'exploration'
+]);
+
+/**
  * Where an `ap_role` row originates.
  * - `builtin` — created by the app itself (e.g. seed roles, admin-panel hand-grants).
  * - `corp_title` — mirrored from an EVE corporation title pulled via

@@ -379,6 +379,13 @@
       "when": 1780208400000,
       "tag": "0054_wormhole_target_system",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1780224000000,
+      "tag": "0055_signature_activity_override",
+      "breakpoints": true
     }
   ]
 }

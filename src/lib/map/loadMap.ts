@@ -15,6 +15,7 @@ import {
   mapNoteSeverity,
   mapScope,
   mapType,
+  signatureActivity,
   signatureClassKind,
   signatureGroupKey,
   systemStatus,
@@ -45,6 +46,7 @@ type MapScope = (typeof mapScope.enumValues)[number];
 type MapType = (typeof mapType.enumValues)[number];
 type SignatureGroupKey = (typeof signatureGroupKey.enumValues)[number];
 type SignatureClassKind = (typeof signatureClassKind.enumValues)[number];
+type SignatureActivity = (typeof signatureActivity.enumValues)[number];
 type TagScheme = (typeof tagScheme.enumValues)[number];
 type NoteSeverity = (typeof mapNoteSeverity.enumValues)[number];
 
@@ -115,6 +117,8 @@ export type MapSignature = {
   groupKey: SignatureGroupKey | null;
   /** Cosmic Signature (`signature`, must scan) vs Cosmic Anomaly (`anomaly`, warpable). Paste-derived; null when unknown. */
   classKind: SignatureClassKind | null;
+  /** Manual site-safety override (combat vs exploration). Wins over the derived `siteActivity`; null means use the derived value. */
+  activityOverride: SignatureActivity | null;
   /** `universe_type.id`. Only meaningful when `groupKey === 'wormhole'` (points to a `universe_wormhole` row); otherwise null. */
   typeId: number | null;
   /** Pre-jump EOL stage for a wormhole sig; transferred to the connection's `eolStage` on populate. Shares the connection's three-stage enum. */

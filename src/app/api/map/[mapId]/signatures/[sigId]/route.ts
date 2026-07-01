@@ -3,7 +3,7 @@ import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { deleteSignature, updateSignature } from '@/lib/map/mutations/signatures';
-import { eolStage, signatureClassKind, signatureGroupKey } from '@/db/schema';
+import { eolStage, signatureActivity, signatureClassKind, signatureGroupKey } from '@/db/schema';
 import { parseBigInt, requireMapMutate } from '../../../utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
@@ -21,6 +21,7 @@ const updateSignatureBodySchema = z.object({
   sigId: z.string().min(1).max(7).optional(),
   groupKey: z.enum(signatureGroupKey.enumValues).nullable().optional(),
   classKind: z.enum(signatureClassKind.enumValues).nullable().optional(),
+  activityOverride: z.enum(signatureActivity.enumValues).nullable().optional(),
   typeId: z.number().int().positive().nullable().optional(),
   eolStage: z.enum(eolStage.enumValues).optional(),
   name: z.string().max(100).nullable().optional(),
@@ -73,6 +74,7 @@ export const PATCH = withApiMetrics('/api/map/:mapId/signatures/:sigId', async f
   if ('sigId' in parsed.data) patch.sigId = parsed.data.sigId;
   if ('groupKey' in parsed.data) patch.groupKey = parsed.data.groupKey;
   if ('classKind' in parsed.data) patch.classKind = parsed.data.classKind;
+  if ('activityOverride' in parsed.data) patch.activityOverride = parsed.data.activityOverride;
   if ('typeId' in parsed.data) patch.typeId = parsed.data.typeId;
   if ('eolStage' in parsed.data) patch.eolStage = parsed.data.eolStage;
   if ('name' in parsed.data) patch.name = parsed.data.name;

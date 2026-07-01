@@ -53,6 +53,9 @@
 ### signatureClassKind
 `pgEnum('signature_class_kind', ['signature', 'anomaly'])` — whether a scanner entry must be scanned down (`signature`) or is instantly warpable (`anomaly`). Paste-derived from EVE's localized "Cosmic Signature" / "Cosmic Anomaly" Class column via `signatureClassKind` (`src/lib/map/signatureClasses.ts`). Nullable on `ap_map_signature.class_kind` (legacy + low-information manual rows have no known kind). Added migration 0045.
 
+### signatureActivity
+`pgEnum('signature_activity', ['combat', 'exploration'])` — site-safety of a cosmic signature: whether running the site pits you against rats (`combat`) or is an unguarded scan-down (`exploration`). The override axis behind `ap_map_signature.activity_override`; the derived default comes from `siteActivity` (`src/lib/map/siteActivity.ts`). Orthogonal to `signature_group_key` (a `relic` site can be a `combat` activity), so it is its own type. Added migration 0048.
+
 ### roleSource
 `pgEnum('role_source', ['builtin', 'corp_title', 'external'])` — where an `ap_role` row originates. `corp_title` rows are mirrored from EVE corporation titles; `external_ref` is `'<corp_id>:<title_id>'`. `external` rows come from Discord/third-party syncs.
 

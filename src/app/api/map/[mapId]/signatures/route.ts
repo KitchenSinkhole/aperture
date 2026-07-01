@@ -3,7 +3,7 @@ import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { createSignature } from '@/lib/map/mutations/signatures';
-import { eolStage, signatureClassKind, signatureGroupKey } from '@/db/schema';
+import { eolStage, signatureActivity, signatureClassKind, signatureGroupKey } from '@/db/schema';
 import { parseBigInt, requireMapMutate } from '../../utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
@@ -21,6 +21,7 @@ const createSignatureBodySchema = z.object({
   sigId: z.string().min(1).max(7),
   groupKey: z.enum(signatureGroupKey.enumValues).nullable().optional(),
   classKind: z.enum(signatureClassKind.enumValues).nullable().optional(),
+  activityOverride: z.enum(signatureActivity.enumValues).nullable().optional(),
   typeId: z.number().int().positive().nullable().optional(),
   eolStage: z.enum(eolStage.enumValues).optional(),
   name: z.string().max(100).nullable().optional(),
@@ -74,6 +75,7 @@ export const POST = withApiMetrics('/api/map/:mapId/signatures', async function 
     sigId: parsed.data.sigId,
     groupKey: parsed.data.groupKey,
     classKind: parsed.data.classKind,
+    activityOverride: parsed.data.activityOverride,
     typeId: parsed.data.typeId,
     eolStage: parsed.data.eolStage,
     name: parsed.data.name,

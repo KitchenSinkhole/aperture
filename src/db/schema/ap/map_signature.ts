@@ -10,7 +10,7 @@ import {
 import { universeType } from '../universe/items';
 import { apMapConnection } from './map_connection';
 import { apMapSystem } from './map_system';
-import { eolStage, signatureClassKind, signatureGroupKey } from './enums';
+import { eolStage, signatureActivity, signatureClassKind, signatureGroupKey } from './enums';
 
 // An in-game scan signature inside a system, optionally bound to the
 // connection it resolves to (the wormhole itself). Reaped by the signature-reap
@@ -39,6 +39,9 @@ export const apMapSignature = pgTable(
     // Signature vs anomaly. Paste-derived
     // only; nullable for legacy/manual rows whose kind was never observed.
     classKind: signatureClassKind('class_kind'),
+    // Manual site-safety override. When set it wins over the derived
+    // `siteActivity`; null means "use the derived value".
+    activityOverride: signatureActivity('activity_override'),
     typeId: integer('type_id').references(() => universeType.id, { onDelete: 'set null' }),
     // Pre-jump EOL stage for a wormhole sig: set before a connection exists,
     // transferred onto the connection's eol_stage on populate. Shares the

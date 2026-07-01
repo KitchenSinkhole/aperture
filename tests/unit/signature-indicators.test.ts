@@ -21,6 +21,7 @@ function sig(overrides: Partial<MapSignature> = {}): MapSignature {
     sigId: 'ABC',
     groupKey: 'data',
     classKind: null,
+    activityOverride: null,
     typeId: null,
     eolStage: 'none',
     wormholeCode: null,

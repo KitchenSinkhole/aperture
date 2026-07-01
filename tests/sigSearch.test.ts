@@ -11,6 +11,7 @@ function makeSig(
     mapConnectionId: null,
     groupKey: null,
     classKind: null,
+    activityOverride: null,
     typeId: null,
     eolStage: 'none',
     wormholeCode: null,
