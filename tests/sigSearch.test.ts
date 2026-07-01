@@ -50,6 +50,8 @@ const BASE: SigSearchFilters = {
   groupKey: null,
   maxAgeHours: null,
   securityClasses: [],
+  includeAnomalies: true,
+  includeSignatures: true,
 };
 
 describe('buildSigSearchResults', () => {
@@ -219,12 +221,52 @@ describe('buildSigSearchResults', () => {
     const rows = buildSigSearchResults(
       [match, wrongName, wrongGroup, wrongSec],
       [c3, hs],
-      { name: 'vast', groupKey: 'gas', maxAgeHours: null, securityClasses: ['C3'] },
+      { ...BASE, name: 'vast', groupKey: 'gas', securityClasses: ['C3'] },
       'sigId',
       'asc',
       NOW,
     );
     expect(rows.map((r) => r.sig.sigId)).toEqual(['AAA']);
+  });
+
+  it('hides anomalies when includeAnomalies is false', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    const anom = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'combat', classKind: 'anomaly' });
+    const sig = makeSig({ id: '2', sigId: 'BBB', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'relic', classKind: 'signature' });
+    const rows = buildSigSearchResults([anom, sig], [sys], { ...BASE, includeAnomalies: false }, 'sigId', 'asc', NOW);
+    expect(rows.map((r) => r.sig.sigId)).toEqual(['BBB']);
+  });
+
+  it('hides signatures when includeSignatures is false', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    const anom = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'combat', classKind: 'anomaly' });
+    const sig = makeSig({ id: '2', sigId: 'BBB', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'relic', classKind: 'signature' });
+    const rows = buildSigSearchResults([anom, sig], [sys], { ...BASE, includeSignatures: false }, 'sigId', 'asc', NOW);
+    expect(rows.map((r) => r.sig.sigId)).toEqual(['AAA']);
+  });
+
+  it('hides a classed sig with no group when its class toggle is off', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    // A pasted Cosmic Signature with no resolved group is still classKind 'signature'.
+    const ungrouped = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: null, classKind: 'signature' });
+    const rows = buildSigSearchResults([ungrouped], [sys], { ...BASE, includeSignatures: false }, 'sigId', 'asc', NOW);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('always shows a sig with an unknown class even when both toggles are off', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    const nullClass = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: null, classKind: null });
+    const rows = buildSigSearchResults([nullClass], [sys], { ...BASE, includeAnomalies: false, includeSignatures: false }, 'sigId', 'asc', NOW);
+    expect(rows.map((r) => r.sig.sigId)).toEqual(['AAA']);
+  });
+
+  it('with both class toggles off, only unknown-class rows remain', () => {
+    const sys = makeSystem({ id: 's1', name: 'J123456' });
+    const anom = makeSig({ id: '1', sigId: 'AAA', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'combat', classKind: 'anomaly' });
+    const sig = makeSig({ id: '2', sigId: 'BBB', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: null, classKind: 'signature' });
+    const nullClass = makeSig({ id: '3', sigId: 'CCC', mapSystemId: 's1', createdAt: new Date(NOW).toISOString(), groupKey: 'gas', classKind: null });
+    const rows = buildSigSearchResults([anom, sig, nullClass], [sys], { ...BASE, includeAnomalies: false, includeSignatures: false }, 'sigId', 'asc', NOW);
+    expect(rows.map((r) => r.sig.sigId)).toEqual(['CCC']);
   });
 
   it('returns an empty array for empty signatures input', () => {

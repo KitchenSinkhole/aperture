@@ -33,6 +33,10 @@ export function buildSigSearchResults(
 
     if (nameLower && !(sig.name?.toLowerCase().includes(nameLower) ?? false)) continue;
     if (filters.groupKey !== null && sig.groupKey !== filters.groupKey) continue;
+    // The class toggles gate sigs whose class is known; a sig with no class
+    // (classKind null) matches neither and always shows.
+    if (sig.classKind === 'anomaly' && !filters.includeAnomalies) continue;
+    if (sig.classKind === 'signature' && !filters.includeSignatures) continue;
     if (
       filters.securityClasses.length > 0 &&
       (system.security === null || !filters.securityClasses.includes(system.security))

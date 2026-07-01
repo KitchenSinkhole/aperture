@@ -547,6 +547,10 @@ export type SigSearchFilters = {
   maxAgeHours: number | null;
   /** `MapSystemNode.security` labels to include; empty = all. */
   securityClasses: string[];
+  /** Show sigs classed as Cosmic Anomaly. Sigs with no group bypass this. */
+  includeAnomalies: boolean;
+  /** Show sigs classed as Cosmic Signature. Sigs with no group bypass this. */
+  includeSignatures: boolean;
 };
 
 // --- Observability: health probe (Phase 1) ---

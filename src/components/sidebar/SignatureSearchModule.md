@@ -14,12 +14,13 @@
 | onNavigate | (systemId: string, sigId: string) => void | yes | Called when a result's "Go" is clicked — selects/centers the system and flashes the row |
 
 ### Renders
-A single frameless `Card` (panel body) with a filter bar (name, group, max-age, system-class toggles) above a scrollable, sortable results table (Group, Sig, System, Name, Age, Go) and a result-count line. Empty-state row when no signatures match.
+A single frameless `Card` (panel body) with a filter bar (name, group, max-age, type toggles, system-class toggles) above a scrollable, sortable results table (Group, Sig, System, Name, Age, Go) and a result-count line. Empty-state row when no signatures match.
 
 ### Behaviour & Interactions
 - Name input is debounced 150ms before firing `onFiltersChange`; a `filtersRef` (synced via `useLayoutEffect`) keeps the debounce callback from clobbering concurrent non-name filter edits.
 - Sort headers (Sig / System / Age) toggle asc/desc; clicking a new field resets to asc.
 - System-class toggle buttons multi-select; colored via `systemClassColor`.
+- Type toggle buttons (Anomalies / Signatures) filter by `sig.classKind`; a sig with an unknown class (neither) ignores them and always shows.
 - Results computed by `buildSigSearchResults` (pure, client-side); `now` ticks every 30s via a `setInterval` effect, so the Age column, age sort, and max-age filter stay live without other interaction. 30s matches the Age label's minute-floor granularity while keeping the `useMemo` from recomputing every render.
 - Unlike the former dialog, the panel persists open after navigation — `onNavigate` does not close anything.
 

@@ -16,7 +16,18 @@ import { buildSigSearchResults, type SigSortField, type SigSortDir } from '@/lib
 import { SIGNATURE_GROUP_CATALOG, labelForSignatureGroupKey } from '@/lib/map/signatureGroups';
 import { formatAgoFromMs } from '@/lib/map/relativeTime';
 import { systemClassColor } from '@/components/map/styling';
-import type { MapSignature, MapSystemNode, SigSearchFilters, SignatureGroupKey } from '@/types';
+import type {
+  MapSignature,
+  MapSystemNode,
+  SigSearchFilters,
+  SignatureClassKind,
+  SignatureGroupKey,
+} from '@/types';
+
+const CLASS_KIND_TOGGLES: { kind: SignatureClassKind; label: string; title: string }[] = [
+  { kind: 'anomaly', label: 'Anoms', title: 'Anomalies' },
+  { kind: 'signature', label: 'Sigs', title: 'Signatures' },
+];
 
 const SECURITY_CLASS_GROUPS: { heading: string; options: { value: string; label: string }[] }[] = [
   {
@@ -99,6 +110,11 @@ export function SignatureSearchModule({
     });
   }
 
+  function toggleClassKind(kind: SignatureClassKind) {
+    const key = kind === 'anomaly' ? 'includeAnomalies' : 'includeSignatures';
+    onFiltersChange({ ...filters, [key]: !filters[key] });
+  }
+
   function sortIcon(field: SigSortField) {
     if (sortField !== field) return null;
     return sortDir === 'asc' ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />;
@@ -162,6 +178,32 @@ export function SignatureSearchModule({
             }
             className="h-7 w-28 text-xs"
           />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-muted-foreground">Type</label>
+          <div className="flex flex-wrap gap-1">
+            {CLASS_KIND_TOGGLES.map(({ kind, label, title }) => {
+              const active =
+                kind === 'anomaly' ? filters.includeAnomalies : filters.includeSignatures;
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  title={title}
+                  aria-pressed={active}
+                  onClick={() => toggleClassKind(kind)}
+                  className={`h-7 rounded-full border px-2 text-xs transition-colors ${
+                    active
+                      ? 'border-primary/40 bg-primary/15 text-foreground'
+                      : 'border-border bg-transparent text-muted-foreground hover:bg-muted/40'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="flex flex-col gap-1.5">
