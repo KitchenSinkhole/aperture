@@ -5,19 +5,21 @@
 
 ---
 
-### withInstrumentation<TPayload>(name, run): Task
-Wraps a raw handler so each invocation:
+### withInstrumentation<TPayload>(name, run, opts?): Task
+Wraps a raw handler in one of two write modes. `recordJobRun(name, outcome, durationMs)` (`job_runs_total{task,outcome}` + `job_duration_ms{task}`) fires on **every** invocation in both modes and is the sampling-immune source of truth; `durationMs` is the `performance.now()` span around the inner `run()`.
 
+**Full-fidelity mode** (default, `successSampleRate` absent or ≤ 1):
 1. INSERTs a row into `ap_job_run` with `name` + `started_at = now()` and captures `id`.
 2. Awaits `run(payload, helpers)`.
-3. On success: records `recordJobRun(name, 'success', durationMs)` (`job_runs_total{task,outcome}` + `job_duration_ms{task}`), then updates the row with `ended_at = now()`, `success = true`, `notes = <JSON-coerced return>`.
-4. On failure: records `recordJobRun(name, 'failure', durationMs)`, updates the row with `ended_at = now()`, `success = false`, `error_text = <truncated message>`, then **re-throws** so graphile-worker handles retry/backoff.
+3. On success: updates the row with `ended_at = now()`, `success = true`, `notes = <JSON-coerced return>`.
+4. On failure: updates the row with `ended_at = now()`, `success = false`, `error_text = <truncated message>`, then **re-throws** so graphile-worker handles retry/backoff.
 
-`durationMs` is the `performance.now()` span around the inner `run()`.
+**Sampled mode** (`successSampleRate = N > 1`, for high-frequency writers like `location-poll`): no in-flight row is written. On success, a single completed row (`weight = N`) is inserted only ~1-in-`N`; on failure, a single completed row (`weight = 1`) is always inserted, then **re-throws**. `started_at` is the handler's real start time.
 
 **Parameters:**
 - `name` — graphile-worker task identifier (must match the `JobModule.name` / cron `task` field).
 - `run` — the inner handler. Receives the cron payload + `JobHelpers`; may return any JSON-serialisable value for the `notes` field, or `void`.
+- `opts.successSampleRate` — 1-in-N success sampling for high-frequency tasks; every failure is still persisted.
 
 **Returns:** A `Task` ready to drop into the registry / `TaskList`.
 
@@ -29,4 +31,4 @@ Wraps a raw handler so each invocation:
 
 ### Notes
 - The row write uses the app's drizzle `db` client, **not** `helpers.withPgClient` — the run row is intentionally outside the graphile-worker job transaction so it survives a handler crash mid-transaction.
-- Operators inspecting `ap_job_run` see in-flight handlers as `ended_at IS NULL`. A worker that dies mid-handler will leave such a row; the operability sweep reports those as "abandoned".
+- Operators inspecting `ap_job_run` see in-flight full-fidelity handlers as `ended_at IS NULL`. A worker that dies mid-handler leaves such a row; the operability sweep reports those as "abandoned". Sampled tasks write no in-flight row, so they never contribute to the abandoned count.

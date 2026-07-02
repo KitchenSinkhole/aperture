@@ -330,6 +330,13 @@
       "when": 1780023600000,
       "tag": "0047_signature_class_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1780026000000,
+      "tag": "0048_job_run_partition",
+      "breakpoints": true
     }
   ]
 }

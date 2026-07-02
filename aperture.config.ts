@@ -279,6 +279,14 @@ export const apertureConfig = {
   JOB_INSTRUMENTATION_NOTES_MAX_BYTES: 8_000,
 
   /**
+   * 1-in-N success sampling for high-frequency `ap_job_run` writers (location-poll
+   * is ~98% of all rows). Every failure is still persisted; a sampled success row
+   * carries `weight = N` so the admin job-success chart scales the sample back up.
+   * N = 1 disables sampling (every success persisted).
+   */
+  JOB_INSTRUMENTATION_SUCCESS_SAMPLE: 50,
+
+  /**
    * Maps soft-deleted (`ap_map.deleted_at IS NOT NULL`) more than this many
    * days ago are hard-purged at EVE downtime.
    */

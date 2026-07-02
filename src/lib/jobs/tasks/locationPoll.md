@@ -8,7 +8,7 @@
 ### locationPoll: JobModule
 - `name`: `'location-poll'`
 - `cron`: **omitted** — the loop is self-perpetuating after the first enqueue from `startTrackingCharacter`.
-- `run`: `withInstrumentation('location-poll', instrumentedPoll)` — `instrumentedPoll` wraps `poll` to emit exactly one `location_polls_total{outcome}` per invocation (see below), then `withInstrumentation` adds the generic `job_runs_total`/`job_duration_ms`.
+- `run`: `withInstrumentation('location-poll', instrumentedPoll, { successSampleRate })` — `instrumentedPoll` wraps `poll` to emit exactly one `location_polls_total{outcome}` per invocation (see below), then `withInstrumentation` adds the generic `job_runs_total`/`job_duration_ms`. As the dominant `ap_job_run` writer it samples successful runs (`JOB_INSTRUMENTATION_SUCCESS_SAMPLE`); every failure still writes a row.
 
 ### locationPollJobKey(characterId): string
 Stable job key per character (`'location-poll:<id>'`). Used by both the handler's `addJob` (`jobKeyMode: 'replace'`) and `tracking.ts`'s `startTrackingCharacter` so at most one in-flight + one pending poll exists per character at any time.

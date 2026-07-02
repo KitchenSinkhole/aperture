@@ -452,5 +452,9 @@ export const locationPoll: JobModule = {
   name: NAME,
   // No cron — scheduled via `addJob` only. `startTrackingCharacter` enqueues
   // the first tick; the handler re-enqueues itself thereafter.
-  run: withInstrumentation(NAME, instrumentedPoll),
+  // High-frequency writer (~98% of ap_job_run volume) — sample successes so the
+  // table stops growing linearly with tracked characters. Failures still persist.
+  run: withInstrumentation(NAME, instrumentedPoll, {
+    successSampleRate: apertureConfig.JOB_INSTRUMENTATION_SUCCESS_SAMPLE,
+  }),
 };

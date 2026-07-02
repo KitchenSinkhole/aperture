@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { desc, eq } from 'drizzle-orm';
 import type { JobHelpers } from 'graphile-worker';
@@ -91,5 +91,56 @@ describe.skipIf(!run)('withInstrumentation (real Postgres)', () => {
     await expect(task(null, FAKE_HELPERS)).rejects.toThrow();
     const row = await lastRunFor('smoke-oversize-error');
     expect(row!.errorText?.length).toBe(apertureConfig.JOB_INSTRUMENTATION_ERROR_MAX_LENGTH);
+  });
+
+  describe('success sampling (successSampleRate > 1)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('persists a sampled-in success weighted by the sample rate', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0); // 0 * N < 1 → always persist
+      const task = withInstrumentation<unknown>('smoke-sampled-hit', async () => ({ ok: true }), {
+        successSampleRate: 50,
+      });
+      await task(null, FAKE_HELPERS);
+
+      const row = await lastRunFor('smoke-sampled-hit');
+      expect(row).toBeDefined();
+      expect(row!.success).toBe(true);
+      expect(row!.weight).toBe(50);
+      expect(row!.endedAt).not.toBeNull();
+      expect(row!.notes).toEqual({ ok: true });
+    });
+
+    it('writes no row for a sampled-out success', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.9); // 0.9 * 50 ≥ 1 → drop
+      const task = withInstrumentation<unknown>('smoke-sampled-miss', async () => ({ ok: true }), {
+        successSampleRate: 50,
+      });
+      await task(null, FAKE_HELPERS);
+
+      expect(await lastRunFor('smoke-sampled-miss')).toBeUndefined();
+    });
+
+    it('always persists a failure at weight 1 and re-throws, even when sampling', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.9); // would drop a success
+      const task = withInstrumentation<unknown>(
+        'smoke-sampled-failure',
+        async () => {
+          throw new Error('sampled boom');
+        },
+        { successSampleRate: 50 },
+      );
+
+      await expect(task(null, FAKE_HELPERS)).rejects.toThrow('sampled boom');
+
+      const row = await lastRunFor('smoke-sampled-failure');
+      expect(row).toBeDefined();
+      expect(row!.success).toBe(false);
+      expect(row!.weight).toBe(1);
+      expect(row!.errorText).toBe('sampled boom');
+      expect(row!.endedAt).not.toBeNull();
+    });
   });
 });

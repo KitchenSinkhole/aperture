@@ -142,8 +142,8 @@ export async function loadMetricHistory(range: MetricRange): Promise<MetricHisto
   const jobRes = await db.execute<RawSnapshotRow>(sql`
     SELECT
       date_bin(${bucket}::interval, ended_at, timestamptz 'epoch') AS bucket,
-      count(*)::int AS runs,
-      sum(CASE WHEN success THEN 1 ELSE 0 END)::int AS succeeded
+      sum(weight)::int AS runs,
+      sum(CASE WHEN success THEN weight ELSE 0 END)::int AS succeeded
     FROM ap_job_run
     WHERE ended_at IS NOT NULL AND ended_at >= ${windowStart}
     GROUP BY bucket
