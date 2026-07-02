@@ -666,6 +666,9 @@ export type MetricsSnapshot = {
  * Instantaneous gauges sampled at scrape/snapshot time. Not held in the
  * registry — they're computed on demand from the DB and the live process.
  */
+/** One table's estimated row count (`pg_class.reltuples`), partitions summed under the parent. */
+export type TableRowEstimate = { table: string; rows: number };
+
 export type GaugeReadings = {
   trackedCharacters: number;
   visibleSystems: number;
@@ -680,6 +683,8 @@ export type GaugeReadings = {
   processHeapUsedBytes: number;
   processHeapTotalBytes: number;
   eventLoopLagMs: number;
+  /** Per-table row estimates; rendered as the labelled `db_table_rows{table}` gauge. */
+  tableRows: TableRowEstimate[];
 };
 
 // --- Observability: metrics history (Phase 5) ---

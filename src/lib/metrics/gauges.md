@@ -18,3 +18,4 @@ Sample every gauge once (DB counts run concurrently; process vitals are synchron
 - `dbPoolTotal` / `dbPoolIdle` / `dbPoolWaiting` — `pool.totalCount` / `idleCount` / `waitingCount` (synchronous `pg.Pool` reads; pool-saturation signal).
 - `processRssBytes` / `processHeapUsedBytes` / `processHeapTotalBytes` — `process.memoryUsage()`.
 - `eventLoopLagMs` — mean event-loop delay since the previous sample.
+- `tableRows` — `TableRowEstimate[]`, one entry per logical `ap_*` / `universe_*` table. Row counts come from `pg_class.reltuples` (planner estimate, no table scan); partition leaves are summed under their parent so the label set stays bounded to logical tables rather than growing one series per daily partition. Negative reltuples (never-analyzed) clamp to 0; a query error degrades to `[]`. Rendered as the labelled `db_table_rows{table}` gauge; not persisted to `ap_metric_snapshot` (dynamic table set — Prometheus-only).

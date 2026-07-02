@@ -4,7 +4,7 @@ import { db, pool } from '@/db/client';
 import { apJobRun, apMapCharacterTracking, apMapSystem } from '@/db/schema';
 import { openBreakerCount } from '@/lib/esi/breaker';
 import { wsConnectionCount } from '@/lib/realtime/wsConnections';
-import type { GaugeReadings } from '@/types';
+import type { GaugeReadings, TableRowEstimate } from '@/types';
 
 /**
  * Instantaneous metric gauges — sampled fresh on every scrape/snapshot rather
@@ -23,10 +23,11 @@ loopDelay.enable();
 
 /** Sample every gauge once. DB counts run concurrently; process vitals are sync. */
 export async function sampleGauges(): Promise<GaugeReadings> {
-  const [trackedCharacters, visibleSystems, jobQueue] = await Promise.all([
+  const [trackedCharacters, visibleSystems, jobQueue, tableRows] = await Promise.all([
     countTrackedCharacters(),
     countVisibleSystems(),
     sampleJobQueue(),
+    sampleTableRows(),
   ]);
 
   const mem = process.memoryUsage();
@@ -49,7 +50,38 @@ export async function sampleGauges(): Promise<GaugeReadings> {
     processHeapUsedBytes: mem.heapUsed,
     processHeapTotalBytes: mem.heapTotal,
     eventLoopLagMs: Number.isFinite(lagMeanMs) ? lagMeanMs : 0,
+    tableRows,
   };
+}
+
+/**
+ * Estimated rows per logical table from `pg_class.reltuples` — the planner's
+ * estimate, maintained by autovacuum/ANALYZE, so this never scans a table (safe
+ * to sample on every scrape). Partition leaves are summed under their parent so
+ * the label set stays bounded to the ~dozens of `ap_*` / `universe_*` tables
+ * instead of growing a series per daily partition. Never-analyzed relations
+ * report `reltuples = -1` (PG14+); clamp negatives to 0. A query failure
+ * degrades to an empty set rather than sinking the whole scrape.
+ */
+async function sampleTableRows(): Promise<TableRowEstimate[]> {
+  try {
+    const res = await db.execute<{ table_name: string; rows: string }>(
+      sql`SELECT COALESCE(p.relname, c.relname) AS table_name,
+                 sum(GREATEST(c.reltuples, 0))::bigint AS rows
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
+            LEFT JOIN pg_class p ON p.oid = i.inhparent
+           WHERE c.relkind = 'r'
+             AND n.nspname = 'public'
+             AND COALESCE(p.relname, c.relname) ~ '^(ap|universe)_'
+           GROUP BY 1
+           ORDER BY 1`,
+    );
+    return res.rows.map((r) => ({ table: r.table_name, rows: Number(r.rows) }));
+  } catch {
+    return [];
+  }
 }
 
 async function countTrackedCharacters(): Promise<number> {

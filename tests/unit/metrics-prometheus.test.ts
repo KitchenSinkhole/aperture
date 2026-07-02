@@ -24,6 +24,10 @@ const GAUGES: GaugeReadings = {
   processHeapUsedBytes: 45_000_000,
   processHeapTotalBytes: 60_000_000,
   eventLoopLagMs: 0.5,
+  tableRows: [
+    { table: 'ap_job_run', rows: 14_532_586 },
+    { table: 'universe_killmail', rows: 1234 },
+  ],
 };
 
 function lines(body: string): string[] {
@@ -67,5 +71,12 @@ describe('renderPrometheus', () => {
     expect(out).toContain('visible_systems 47');
     expect(out).toContain('process_resident_memory_bytes 123456789');
     expect(out).toContain('event_loop_lag_ms 0.5');
+  });
+
+  it('renders per-table row estimates as a labelled db_table_rows gauge', () => {
+    const out = lines(renderPrometheus(metrics.snapshot(), GAUGES));
+    expect(out).toContain('# TYPE db_table_rows gauge');
+    expect(out).toContain('db_table_rows{table="ap_job_run"} 14532586');
+    expect(out).toContain('db_table_rows{table="universe_killmail"} 1234');
   });
 });

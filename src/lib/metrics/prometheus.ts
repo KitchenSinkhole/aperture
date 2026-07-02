@@ -15,7 +15,13 @@ import type { GaugeReadings, MetricLabels, MetricsSnapshot } from '@/types';
  * Prometheus gauges. Order is the emission order. Names follow Prometheus
  * conventions (`*_bytes`, `*_ms`) so a generic dashboard reads them correctly.
  */
-const GAUGE_METRICS: ReadonlyArray<{ key: keyof GaugeReadings; name: string; help: string }> = [
+// `tableRows` is the one non-scalar gauge (a labelled series set), rendered
+// separately below — the flat table only maps numeric keys.
+const GAUGE_METRICS: ReadonlyArray<{
+  key: Exclude<keyof GaugeReadings, 'tableRows'>;
+  name: string;
+  help: string;
+}> = [
   { key: 'trackedCharacters', name: 'tracked_characters', help: 'Characters with server-side location tracking.' },
   { key: 'visibleSystems', name: 'visible_systems', help: 'Systems currently visible across all maps.' },
   { key: 'wsConnections', name: 'ws_connections', help: 'Active realtime WebSocket connections.' },
@@ -82,6 +88,16 @@ export function renderPrometheus(snapshot: MetricsSnapshot, gauges: GaugeReading
     lines.push(`# HELP ${g.name} ${escapeHelp(g.help)}`);
     lines.push(`# TYPE ${g.name} gauge`);
     lines.push(`${g.name} ${formatNumber(gauges[g.key])}`);
+  }
+
+  // Row-count gauge carries a `table` label, so it lives outside the flat
+  // GAUGE_METRICS table: one series per logical table.
+  lines.push(
+    '# HELP db_table_rows Estimated live rows per table (pg_class.reltuples), partitions summed under the parent.',
+  );
+  lines.push('# TYPE db_table_rows gauge');
+  for (const t of gauges.tableRows) {
+    lines.push(`db_table_rows${formatLabels({ table: t.table })} ${formatNumber(t.rows)}`);
   }
 
   // Exposition format wants a trailing newline.
