@@ -6,7 +6,10 @@
 ---
 
 ### normalizeShipName(raw: string): string
-Undoes a long-standing ESI bug: `get_characters_character_id_ship` returns `ship_name` as a Python `repr()` string (`u'๓...'`) when the name contains non-ASCII characters, but as a plain string otherwise. Detects the `u'…'` / `u"…"` wrapper and decodes the inner Python string escapes (`\uXXXX`, `\U00XXXXXX`, `\xXX`, and the simple `\n \t \\ \' …` set). Any value not matching the wrapper is returned verbatim, so well-formed names are untouched.
+Cleans two independent ESI quirks in `get_characters_character_id_ship`'s `ship_name`, in order:
+
+1. **Python `repr()` wrapper** — the field comes back as `u'๓...'` when the name contains non-ASCII characters (plain string otherwise). Detects the `u'…'` / `u"…"` wrapper and decodes the inner Python string escapes (`\uXXXX`, `\U00XXXXXX`, `\xXX`, and the simple `\n \t \\ \' …` set). A value not matching the wrapper passes to step 2 unchanged.
+2. **HTML entity encoding** — ESI entity-encodes the reserved characters `< > &`, so the `><>` fish name arrives as `&gt;&lt;&gt;`. Decodes the named entities `&amp; &lt; &gt; &quot; &apos;` plus any decimal (`&#62;`) or hex (`&#x3c;`) numeric reference. Unknown named entities and bare `&` are left verbatim.
 
 **Returns:** The real Unicode ship name.
 

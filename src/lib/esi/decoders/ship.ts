@@ -29,7 +29,44 @@ const SIMPLE_ESCAPES: Record<string, string> = {
   '0': '\0',
 };
 
-export function normalizeShipName(raw: string): string {
+/**
+ * ESI HTML-encodes the reserved characters `< > &` in name fields, so a pilot
+ * who renames their ship to the `><>` fish sees `&gt;&lt;&gt;`. Decode the
+ * entities EVE emits (the three named reserved ones plus any decimal/hex numeric
+ * reference) back to their characters. Unknown named entities pass through
+ * verbatim, so a literal `&notanentity;` in a name is left alone.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+};
+
+const HTML_ENTITY = /&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);/g;
+
+function decodeHtmlEntities(input: string): string {
+  return input.replace(HTML_ENTITY, (match, body: string) => {
+    if (body[0] === '#') {
+      const codePoint =
+        body[1] === 'x'
+          ? parseInt(body.slice(2), 16)
+          : parseInt(body.slice(1), 10);
+      if (!Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
+        return match;
+      }
+      try {
+        return String.fromCodePoint(codePoint);
+      } catch {
+        return match;
+      }
+    }
+    return NAMED_ENTITIES[body] ?? match;
+  });
+}
+
+function decodePythonRepr(raw: string): string {
   const wrapped = PYTHON_UNICODE_REPR.exec(raw);
   if (!wrapped) return raw;
   // Group 2 is `[\s\S]*` — it always participates when the match succeeds, so
@@ -44,6 +81,10 @@ export function normalizeShipName(raw: string): string {
       return SIMPLE_ESCAPES[simple] ?? simple;
     },
   );
+}
+
+export function normalizeShipName(raw: string): string {
+  return decodeHtmlEntities(decodePythonRepr(raw));
 }
 
 /**

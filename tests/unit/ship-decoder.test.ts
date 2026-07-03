@@ -29,6 +29,32 @@ describe('normalizeShipName', () => {
   it('does not treat an ordinary name starting with u as a repr', () => {
     expect(normalizeShipName('undocked')).toBe('undocked');
   });
+
+  it('decodes the HTML entities ESI emits for reserved characters', () => {
+    // The reported case: the `><>` fish ship name comes back entity-encoded.
+    expect(normalizeShipName('&gt;&lt;&gt;')).toBe('><>');
+    expect(normalizeShipName('Rock &amp; Roll')).toBe('Rock & Roll');
+    expect(normalizeShipName('&quot;Nano&quot;')).toBe('"Nano"');
+  });
+
+  it('decodes decimal and hex numeric HTML references', () => {
+    expect(normalizeShipName('&#62;&#60;&#62;')).toBe('><>');
+    expect(normalizeShipName('&#x3c;3')).toBe('<3');
+  });
+
+  it('leaves unknown named entities untouched', () => {
+    expect(normalizeShipName('&notanentity; and &frac12;')).toBe(
+      '&notanentity; and &frac12;',
+    );
+  });
+
+  it('decodes entities inside a repr-wrapped non-ASCII name', () => {
+    expect(normalizeShipName("u'caf\\xe9 &lt;3'")).toBe('café <3');
+  });
+
+  it('leaves a bare ampersand that is not an entity alone', () => {
+    expect(normalizeShipName('Salt & Pepper')).toBe('Salt & Pepper');
+  });
 });
 
 describe('characterShipSchema', () => {
