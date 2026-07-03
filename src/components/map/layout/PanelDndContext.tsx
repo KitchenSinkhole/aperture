@@ -7,6 +7,7 @@ import {
   pointerWithin,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
@@ -15,9 +16,20 @@ import { type ReactNode, useState } from 'react';
 import { PANELS } from '@/lib/map/layout/panels';
 import type { PanelId } from '@/types';
 
+import { GRID_DROPPABLE_ID } from './MapLayoutGrid';
+
 const PANEL_TITLES: Record<PanelId, string> = Object.fromEntries(
   PANELS.map((p) => [p.id, p.title]),
 ) as Record<PanelId, string>;
+
+// `pointerWithin`, but the whole-grid drop surface only wins when the pointer is
+// over no group header/tab — so a tab dropped on a header merges/reorders while one
+// dropped in open grid space tears off.
+const collisionDetection: CollisionDetection = (args) => {
+  const collisions = pointerWithin(args);
+  const specific = collisions.filter((c) => c.id !== GRID_DROPPABLE_ID);
+  return specific.length > 0 ? specific : collisions;
+};
 
 export interface PanelDndContextProps {
   /**
@@ -50,7 +62,7 @@ export function PanelDndContext({ onDragEnd, children }: PanelDndContextProps) {
       // diverges between server and client).
       id="map-panel-dnd"
       sensors={sensors}
-      collisionDetection={pointerWithin}
+      collisionDetection={collisionDetection}
       onDragStart={(e: DragStartEvent) => setActivePanel(e.active.id as PanelId)}
       onDragCancel={() => setActivePanel(null)}
       onDragEnd={(e: DragEndEvent) => {

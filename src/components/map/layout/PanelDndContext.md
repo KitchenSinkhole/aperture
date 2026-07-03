@@ -15,10 +15,11 @@ Its `children` plus a `DragOverlay` showing the dragged panel's title (resolved 
 
 ### Behaviour & Interactions
 - `PointerSensor` with a 5px activation distance, so a plain tab click still fires the tab's `onClick` (switch) rather than starting a drag.
-- Collision detection is `pointerWithin`, matching the header the pointer is over.
+- Collision detection is `pointerWithin` with the grid surface (`GRID_DROPPABLE_ID`) deprioritised: when the pointer is over both a group header/tab and the grid surface, the header/tab wins; the grid surface is the `over` only when the pointer is outside every header. This partitions merge/reorder (header/tab drops) from tear-off (open-grid drops, handled by `MapLayoutGrid`).
 - Tracks the active panel id locally between `onDragStart` and `onDragEnd`/`onDragCancel` to feed the overlay; on end it reports `active.id` + `over.id` upward and clears the overlay.
 - Passes a fixed `id` to `DndContext` so each tab's accessibility `aria-describedby` is identical on the server and client — dnd-kit's default id is a module-global counter that diverges across SSR/hydration.
 
 ### Depends On
 - `@dnd-kit/core` — `DndContext`, `DragOverlay`, `PointerSensor`, `pointerWithin`, `useSensor`/`useSensors`.
+- `GRID_DROPPABLE_ID` (`./MapLayoutGrid`) — the grid-surface droppable id its collision detection deprioritises.
 - `PANELS` (`@/lib/map/layout/panels`) — resolves the overlay title.

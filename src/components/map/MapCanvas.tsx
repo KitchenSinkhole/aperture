@@ -28,6 +28,7 @@ import type {
   MapSignature,
   MapSystemNode,
   MapViewData,
+  PanelGroup,
   PanelId,
   RouteDestinationView,
   RoutePrefs,
@@ -135,7 +136,14 @@ import { RestoreConnectionPrompt } from './RestoreConnectionPrompt';
 import { MapLayoutGrid } from './layout/MapLayoutGrid';
 import { MapPanelGroup } from './layout/MapPanelGroup';
 import { PanelDndContext } from './layout/PanelDndContext';
-import { DEFAULT_MAP_LAYOUT, PANELS, ensurePanelsPlaced, migrateLayout } from '@/lib/map/layout/panels';
+import {
+  DEFAULT_MAP_LAYOUT,
+  PANELS,
+  PANEL_COLS,
+  PANEL_MIN,
+  ensurePanelsPlaced,
+  migrateLayout,
+} from '@/lib/map/layout/panels';
 import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
 import { setMapLayoutAction } from '@/app/(app)/actions/account';
 import { toast } from 'sonner';
@@ -565,6 +573,9 @@ export function MapCanvas({
         const source = prev.groups[bp].find((g) => g.members.includes(sourcePanel));
         if (!source || source.id === targetGroupId) return prev;
         const droppedIds = new Set<string>();
+        // Old group id → new anchor id, when removing the source's anchor member
+        // forces a re-key; its `layouts[bp]` item is renamed to match.
+        const renamed = new Map<string, PanelId>();
         const groupsBp = prev.groups[bp].flatMap((g) => {
           if (g.id === source.id) {
             const members = g.members.filter((m) => m !== sourcePanel);
@@ -573,6 +584,13 @@ export function MapCanvas({
               return [];
             }
             const active = g.active === sourcePanel ? members[0]! : g.active;
+            // A group's id must stay one of its members. If the removed panel was
+            // the anchor id, re-key to the new active so the freed PanelId isn't
+            // later reused for a second cell with a colliding id (duplicate keys).
+            if (g.id === sourcePanel) {
+              renamed.set(g.id, active);
+              return [{ id: active, members, active }];
+            }
             return [{ ...g, members, active }];
           }
           if (g.id === targetGroupId) {
@@ -582,8 +600,16 @@ export function MapCanvas({
         });
         const groups = { ...prev.groups, [bp]: groupsBp };
         const layouts =
-          droppedIds.size > 0
-            ? { ...prev.layouts, [bp]: prev.layouts[bp].filter((i) => !droppedIds.has(i.i)) }
+          droppedIds.size > 0 || renamed.size > 0
+            ? {
+                ...prev.layouts,
+                [bp]: prev.layouts[bp]
+                  .filter((i) => !droppedIds.has(i.i))
+                  .map((it) => {
+                    const newId = renamed.get(it.i);
+                    return newId ? { ...it, i: newId, ...PANEL_MIN[newId] } : it;
+                  }),
+              }
             : prev.layouts;
         const next: MapLayoutConfig = { ...prev, groups, layouts };
         saveLayout(next);
@@ -614,9 +640,72 @@ export function MapCanvas({
     [breakpoint, saveLayout],
   );
 
+  // Split a member out of its group into its own new singleton cell at a snapped
+  // grid position (active breakpoint only). The new group/layout-item id is the
+  // panel's `PanelId` (grid ids live in the `PanelId` space). When the panel is its
+  // group's anchor id, the source group + its layout item are first re-keyed to a
+  // remaining member so the id isn't claimed by two cells. A singleton source has no
+  // group to split — it already owns item `i === source.id`, so this just moves it.
+  const tearOffTab = useCallback(
+    (panel: PanelId, x: number, y: number) => {
+      setLayout((prev) => {
+        const bp = breakpoint;
+        const source = prev.groups[bp].find((g) => g.members.includes(panel));
+        if (!source) return prev;
+        const cols = PANEL_COLS[bp];
+        const { minW, minH } = PANEL_MIN[panel];
+        const w = Math.min(cols, minW);
+        const clampedX = Math.max(0, Math.min(x, cols - w));
+        const clampedY = Math.max(0, y);
+
+        if (source.members.length === 1) {
+          const layoutsBp = prev.layouts[bp].map((it) =>
+            it.i === source.id ? { ...it, x: clampedX, y: clampedY } : it,
+          );
+          const next: MapLayoutConfig = { ...prev, layouts: { ...prev.layouts, [bp]: layoutsBp } };
+          saveLayout(next);
+          return next;
+        }
+
+        const remaining = source.members.filter((m) => m !== panel);
+        const newActive = source.active === panel ? remaining[0]! : source.active;
+
+        let groupsBp: PanelGroup[];
+        let layoutsBp = prev.layouts[bp];
+        if (source.id === panel) {
+          const newSourceId = newActive;
+          groupsBp = prev.groups[bp].map((g) =>
+            g.id === source.id ? { id: newSourceId, members: remaining, active: newActive } : g,
+          );
+          layoutsBp = layoutsBp.map((it) =>
+            it.i === source.id ? { ...it, i: newSourceId, ...PANEL_MIN[newSourceId] } : it,
+          );
+        } else {
+          groupsBp = prev.groups[bp].map((g) =>
+            g.id === source.id ? { ...g, members: remaining, active: newActive } : g,
+          );
+        }
+
+        groupsBp = [...groupsBp, { id: panel, members: [panel], active: panel }];
+        layoutsBp = [...layoutsBp, { i: panel, x: clampedX, y: clampedY, w, h: minH, minW, minH }];
+
+        const next: MapLayoutConfig = {
+          ...prev,
+          groups: { ...prev.groups, [bp]: groupsBp },
+          layouts: { ...prev.layouts, [bp]: layoutsBp },
+        };
+        saveLayout(next);
+        return next;
+      });
+    },
+    [breakpoint, saveLayout],
+  );
+
   // dnd-kit drop dispatcher: `overId` is either a `grp:<groupId>` header or a
   // bare `PanelId` tab. Same group ⇒ reorder; different group (or a header) ⇒
-  // merge. Resolved against the active breakpoint's groups.
+  // merge. Resolved against the active breakpoint's groups. A drop on the open grid
+  // surface (tear-off) is handled separately by `MapLayoutGrid` and falls through
+  // here as a no-op (its `overId` matches no `grp:` prefix and no member).
   const handlePanelDrop = useCallback(
     (activePanel: PanelId, overId: string) => {
       const groupsBp = layout.groups[breakpoint] ?? [];
@@ -2036,6 +2125,7 @@ export function MapCanvas({
               layouts={layout.layouts}
               onLayoutChange={handleLayoutChange}
               onBreakpointChange={setBreakpoint}
+              onTearOff={tearOffTab}
             >
               {visibleGroups.map((g) => (
                 <div key={g.id}>
