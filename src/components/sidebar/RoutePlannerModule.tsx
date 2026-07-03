@@ -400,7 +400,7 @@ function RouteBreadcrumb({
   }
   if (!plan.reachable) return <span className="text-destructive">No route found.</span>;
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="flex flex-wrap items-center gap-[3px]">
       {plan.hops.map((hop, i) => (
         <HopSquare key={`${hop.systemId}-${i}`} hop={hop} />
       ))}
@@ -438,8 +438,8 @@ function HopSquare({ hop }: { hop: RouteHop }) {
     <Tooltip.Root>
       <Tooltip.Trigger
         render={<span />}
-        className={`size-3 shrink-0 border ${isWormhole ? 'rounded-full' : 'rounded-[2px]'}`}
-        style={{ backgroundColor: systemSecurityColor(hop.security, hop.securityStatus), borderColor: viaRingColor(hop.via) }}
+        className={`size-3 shrink-0 ${isWormhole ? 'rounded-full' : ''}`}
+        style={{ backgroundColor: systemSecurityColor(hop.security, hop.securityStatus) }}
         aria-label={hop.name}
       />
       <Tooltip.Portal>
