@@ -17,6 +17,7 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { arrayMove } from '@dnd-kit/sortable';
 import type { Layout, ResponsiveLayouts } from 'react-grid-layout';
 import type {
   Breakpoint,
@@ -27,7 +28,6 @@ import type {
   MapSignature,
   MapSystemNode,
   MapViewData,
-  PanelGroup,
   PanelId,
   RouteDestinationView,
   RoutePrefs,
@@ -134,6 +134,7 @@ import { SubchainDeletePrompt } from './SubchainDeletePrompt';
 import { RestoreConnectionPrompt } from './RestoreConnectionPrompt';
 import { MapLayoutGrid } from './layout/MapLayoutGrid';
 import { MapPanelGroup } from './layout/MapPanelGroup';
+import { PanelDndContext } from './layout/PanelDndContext';
 import { DEFAULT_MAP_LAYOUT, PANELS, ensurePanelsPlaced, migrateLayout } from '@/lib/map/layout/panels';
 import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
 import { setMapLayoutAction } from '@/app/(app)/actions/account';
@@ -218,26 +219,6 @@ function mergeLayouts(
     next[bp] = [...incomingBp, ...kept];
   }
   return next;
-}
-
-// Temporary Stage-2 aid: with no DnD yet, real tabbed groups can't be created in
-// the UI. Flip this to true locally to seed one 2-member group (Intel tabbed onto
-// Routes) so the tab strip and switching can be exercised. Left false so normal
-// runs render exactly as before.
-const DEV_SEED_TABBED_GROUP: boolean = false;
-
-function devSeedTabbedGroup(config: MapLayoutConfig): MapLayoutConfig {
-  const host: PanelId = 'route';
-  const guest: PanelId = 'intel';
-  const layouts = {} as Record<Breakpoint, Layout>;
-  const groups = {} as Record<Breakpoint, PanelGroup[]>;
-  for (const bp of Object.keys(config.groups) as Breakpoint[]) {
-    layouts[bp] = config.layouts[bp].filter((item) => item.i !== guest);
-    groups[bp] = config.groups[bp]
-      .filter((g) => g.id !== guest)
-      .map((g) => (g.id === host ? { ...g, members: [host, guest], active: host } : g));
-  }
-  return { ...config, layouts, groups };
 }
 
 const nodeTypes = { system: SystemNode, note: MapNoteNode };
@@ -487,10 +468,9 @@ export function MapCanvas({
   // saved layout (a panel that shipped after the user last saved). Both are
   // forward-compat normalisers, no data migration. No-ops for
   // `DEFAULT_MAP_LAYOUT` (already current and complete).
-  const [layout, setLayout] = useState<MapLayoutConfig>(() => {
-    const base = ensurePanelsPlaced(migrateLayout(mapLayout ?? DEFAULT_MAP_LAYOUT));
-    return DEV_SEED_TABBED_GROUP ? devSeedTabbedGroup(base) : base;
-  });
+  const [layout, setLayout] = useState<MapLayoutConfig>(() =>
+    ensurePanelsPlaced(migrateLayout(mapLayout ?? DEFAULT_MAP_LAYOUT)),
+  );
   // The grid's active responsive breakpoint (reported by `MapLayoutGrid`). Grouping
   // is per-breakpoint, so the rendered cells read from `layout.groups[breakpoint]`.
   const [breakpoint, setBreakpoint] = useState<Breakpoint>('lg');
@@ -571,6 +551,90 @@ export function MapCanvas({
       });
     },
     [saveLayout],
+  );
+
+  // Move a member panel out of its current group and append it as a new active
+  // tab of `targetGroupId`, scoped to the active breakpoint (grouping is
+  // per-breakpoint). If the source group empties it is dropped, along with its
+  // grid item in `layouts[bp]` — `mergeLayouts` keeps only `prev` items, so a
+  // removed item is not resurrected by RGL's next `onLayoutChange`.
+  const mergePanelIntoGroup = useCallback(
+    (sourcePanel: PanelId, targetGroupId: string) => {
+      setLayout((prev) => {
+        const bp = breakpoint;
+        const source = prev.groups[bp].find((g) => g.members.includes(sourcePanel));
+        if (!source || source.id === targetGroupId) return prev;
+        const droppedIds = new Set<string>();
+        const groupsBp = prev.groups[bp].flatMap((g) => {
+          if (g.id === source.id) {
+            const members = g.members.filter((m) => m !== sourcePanel);
+            if (members.length === 0) {
+              droppedIds.add(g.id);
+              return [];
+            }
+            const active = g.active === sourcePanel ? members[0]! : g.active;
+            return [{ ...g, members, active }];
+          }
+          if (g.id === targetGroupId) {
+            return [{ ...g, members: [...g.members, sourcePanel], active: sourcePanel }];
+          }
+          return [g];
+        });
+        const groups = { ...prev.groups, [bp]: groupsBp };
+        const layouts =
+          droppedIds.size > 0
+            ? { ...prev.layouts, [bp]: prev.layouts[bp].filter((i) => !droppedIds.has(i.i)) }
+            : prev.layouts;
+        const next: MapLayoutConfig = { ...prev, groups, layouts };
+        saveLayout(next);
+        return next;
+      });
+    },
+    [breakpoint, saveLayout],
+  );
+
+  // Reorder a tab within its own group's header (active breakpoint only). No-op
+  // if either panel is missing or the order is unchanged.
+  const reorderTab = useCallback(
+    (groupId: string, fromPanel: PanelId, toPanel: PanelId) => {
+      setLayout((prev) => {
+        const bp = breakpoint;
+        const group = prev.groups[bp].find((g) => g.id === groupId);
+        if (!group) return prev;
+        const from = group.members.indexOf(fromPanel);
+        const to = group.members.indexOf(toPanel);
+        if (from < 0 || to < 0 || from === to) return prev;
+        const members = arrayMove(group.members, from, to);
+        const groupsBp = prev.groups[bp].map((g) => (g.id === groupId ? { ...g, members } : g));
+        const next: MapLayoutConfig = { ...prev, groups: { ...prev.groups, [bp]: groupsBp } };
+        saveLayout(next);
+        return next;
+      });
+    },
+    [breakpoint, saveLayout],
+  );
+
+  // dnd-kit drop dispatcher: `overId` is either a `grp:<groupId>` header or a
+  // bare `PanelId` tab. Same group ⇒ reorder; different group (or a header) ⇒
+  // merge. Resolved against the active breakpoint's groups.
+  const handlePanelDrop = useCallback(
+    (activePanel: PanelId, overId: string) => {
+      const groupsBp = layout.groups[breakpoint] ?? [];
+      if (overId.startsWith('grp:')) {
+        mergePanelIntoGroup(activePanel, overId.slice(4));
+        return;
+      }
+      const overPanel = overId as PanelId;
+      const overGroup = groupsBp.find((g) => g.members.includes(overPanel));
+      const sourceGroup = groupsBp.find((g) => g.members.includes(activePanel));
+      if (!overGroup || !sourceGroup) return;
+      if (overGroup.id === sourceGroup.id) {
+        reorderTab(sourceGroup.id, activePanel, overPanel);
+      } else {
+        mergePanelIntoGroup(activePanel, overGroup.id);
+      }
+    },
+    [layout.groups, breakpoint, mergePanelIntoGroup, reorderTab],
   );
 
   // Reset to the shipped arrangement. Clone so later immutable updates can never
@@ -1967,27 +2031,29 @@ export function MapCanvas({
               )}
             </div>
           </div>
-          <MapLayoutGrid
-            layouts={layout.layouts}
-            onLayoutChange={handleLayoutChange}
-            onBreakpointChange={setBreakpoint}
-          >
-            {visibleGroups.map((g) => (
-              <div key={g.id}>
-                <MapPanelGroup
-                  group={g}
-                  hidden={layout.hidden}
-                  onSetActive={handleSetActiveTab}
-                  onHideMember={handleHide}
-                  renderContent={panelContent}
-                  renderHeaderRight={panelHeaderRight}
-                  contentClassName={(id) =>
-                    id === 'canvas' ? 'min-h-0 flex-1 overflow-hidden p-0' : undefined
-                  }
-                />
-              </div>
-            ))}
-          </MapLayoutGrid>
+          <PanelDndContext onDragEnd={handlePanelDrop}>
+            <MapLayoutGrid
+              layouts={layout.layouts}
+              onLayoutChange={handleLayoutChange}
+              onBreakpointChange={setBreakpoint}
+            >
+              {visibleGroups.map((g) => (
+                <div key={g.id}>
+                  <MapPanelGroup
+                    group={g}
+                    hidden={layout.hidden}
+                    onSetActive={handleSetActiveTab}
+                    onHideMember={handleHide}
+                    renderContent={panelContent}
+                    renderHeaderRight={panelHeaderRight}
+                    contentClassName={(id) =>
+                      id === 'canvas' ? 'min-h-0 flex-1 overflow-hidden p-0' : undefined
+                    }
+                  />
+                </div>
+              ))}
+            </MapLayoutGrid>
+          </PanelDndContext>
         </div>
 
         <MapInfoDialog open={mapInfoOpen} onOpenChange={setMapInfoOpen} viewData={viewData} />
