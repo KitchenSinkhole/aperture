@@ -6,6 +6,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+    globalSetup: ['./tests/globalSetup.ts'],
     // Defaults so `@/lib/env` (parsed at import time) and crypto work in tests.
     // A real `.env.local`/CI env overrides these via process.env.
     env: {
