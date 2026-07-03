@@ -337,6 +337,13 @@
       "when": 1780026000000,
       "tag": "0048_job_run_partition",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1780027200000,
+      "tag": "0049_universe_killmail",
+      "breakpoints": true
     }
   ]
 }

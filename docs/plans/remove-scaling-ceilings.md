@@ -38,6 +38,7 @@ Context, measured on prod (335 tracked chars, 43 concurrent viewers, alliance ac
 - **Retention reaper** `killmail-cleanup` (graphile cron, batched like other cleanup jobs): `DELETE FROM universe_killmail WHERE killmail_time < now() - KILLMAIL_CACHE_RETENTION` (default 30 days). Relevance decays and zKB only returns recent kills, so age-by-kill-time is the right key. Not partitioned — expected volume is modest and a simple indexed reaper suffices.
 - **Rate-limit posture:** with the cache, the 429/`Retry-After` client work drops from required to a cheap defensive follow-up (protects cold-cache bursts, e.g. many systems added at once, and other unauthenticated endpoints). Track separately, not a blocker.
 **Done when:** repeat killboard opens of the same system issue zero `getKillmail` calls (verify via `esi_requests_total{operationId="GetKillmailsKillmailIdKillmailHash"}` staying flat across opens), the reaper bounds `universe_killmail` by kill age, CI green.
+**Status: implemented.** `universe_killmail` table (schema + migration 0049, applied to dev DB), cache-aside `loadKillmails` in `killboard.ts`, `killmail-cleanup` daily reaper registered, `KILLMAIL_CACHE_RETENTION_DAYS`/`KILLMAIL_CLEANUP_CRON` config. `pnpm lint`/`typecheck`/`build` green; cache-write `ON CONFLICT DO NOTHING` idempotency and the batched reaper delete validated against the DB. Not yet committed.
 
 ---
 

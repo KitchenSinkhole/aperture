@@ -5,6 +5,7 @@ import { csvIngest } from './tasks/csvIngest';
 import { eolExpiry } from './tasks/eolExpiry';
 import { expiredConnections } from './tasks/expiredConnections';
 import { incursionRefresh } from './tasks/incursionRefresh';
+import { killmailCleanup } from './tasks/killmailCleanup';
 import { locationPoll } from './tasks/locationPoll';
 import { mapPurge } from './tasks/mapPurge';
 import { metricsSnapshot } from './tasks/metricsSnapshot';
@@ -51,6 +52,8 @@ const modules: readonly JobModule[] = [
   sovFwRefresh,
   // Active-incursion feed from ESI (5-min ESI cache).
   incursionRefresh,
+  // Age-by-kill-time retention reaper for the universe_killmail cache.
+  killmailCleanup,
   // Activity-log materialized-view refresh.
   activityRollupRefresh,
   // pg_partman maintenance (premake + retention).

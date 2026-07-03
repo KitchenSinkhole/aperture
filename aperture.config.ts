@@ -61,6 +61,20 @@ export const apertureConfig = {
    */
   ZKB_FEED_MAX_CATCHUP: 200,
 
+  /**
+   * Retention for the `universe_killmail` cache, in days. Killmail relevance
+   * decays and zKillboard only surfaces recent kills, so the `killmail-cleanup`
+   * reaper deletes rows whose `killmail_time` is older than this.
+   */
+  KILLMAIL_CACHE_RETENTION_DAYS: 30,
+
+  /**
+   * `killmail-cleanup` cron cadence. Age-by-kill-time retention is not
+   * time-critical, so a daily sweep well outside the 11:00 EVE downtime window
+   * suffices.
+   */
+  KILLMAIL_CLEANUP_CRON: '20 4 * * *',
+
   /** Repository slug used by the changelog integration. Must match the `origin` remote. */
   GITHUB_CHANGELOG_REPO: 'KitchenSinkhole/aperture',
 

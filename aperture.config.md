@@ -27,6 +27,7 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `INTEGRATION_REQUEST_TIMEOUT_MS`, `INTEGRATION_USER_AGENT` — shared timeout + UA for zKillboard / EVE-Scout / GitHub.
 - `ZKB_R2Z2_BASE`, `ZKB_FEED_POLL_MS` (≥6s hard floor), `ZKB_FEED_INDEX_REFRESH_MS`, `ZKB_FEED_MAX_CATCHUP` — zKillboard R2Z2 live-feed config.
 - `GITHUB_CHANGELOG_REPO`, `GITHUB_CHANGELOG_REVALIDATE_S` — GitHub releases changelog feed.
+- `KILLMAIL_CACHE_RETENTION_DAYS` (30), `KILLMAIL_CLEANUP_CRON` — retention window and daily sweep cadence for the `universe_killmail` cache reaper (`killmail-cleanup`).
 
 **Realtime / WebSocket**
 - `MAP_EVENT_NOTIFY_CHANNEL_PREFIX` — `pg_notify` channel prefix for `ap_map_event` fanout.

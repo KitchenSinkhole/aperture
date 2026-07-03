@@ -37,6 +37,7 @@ import type {
   universeSystemStatic,
   universeSovereigntyMap,
   universeFactionWarSystem,
+  universeKillmail,
   universeType,
   universeTypeAttribute,
   universeTypeOverride,
@@ -101,6 +102,9 @@ export type NewUniverseFactionWarSystem = InferInsertModel<typeof universeFactio
 
 export type UniverseWormhole = InferSelectModel<typeof universeWormhole>;
 export type NewUniverseWormhole = InferInsertModel<typeof universeWormhole>;
+
+export type UniverseKillmail = InferSelectModel<typeof universeKillmail>;
+export type NewUniverseKillmail = InferInsertModel<typeof universeKillmail>;
 
 export type ApUser = InferSelectModel<typeof apUser>;
 export type NewApUser = InferInsertModel<typeof apUser>;
