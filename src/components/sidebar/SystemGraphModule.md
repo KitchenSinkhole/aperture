@@ -10,7 +10,7 @@
 | system | MapSystemNode \| null | yes | Selected system; null / wormhole → n/a state |
 
 ### Renders
-A `Card` (panel name "System Graph" supplied by the surrounding `MapPanel` chrome — no in-card title) with a 24h/7d/30d range toggle and three stacked mini area charts (Jumps, Ship kills, NPC kills), each themed a distinct color and carrying small muted tick labels on both axes (time on X, count on Y). Y-axis counts ≥1k are abbreviated (`1.3k`, `10k`, `2M`) so they fit the narrow axis gutter. Shows select-a-system / wormhole-n/a / loading / error states.
+A `Card` (panel name "System Graph" supplied by the surrounding `MapPanelGroup` chrome — no in-card title) with a 24h/7d/30d range toggle and three stacked mini area charts (Jumps, Ship kills, NPC kills), each themed a distinct color and carrying small muted tick labels on both axes (time on X, count on Y). Y-axis counts ≥1k are abbreviated (`1.3k`, `10k`, `2M`) so they fit the narrow axis gutter. Shows select-a-system / wormhole-n/a / loading / error states.
 
 ### Behaviour & Interactions
 - K-space only: wormholes (via the shared `isWormholeSystem`) show "Not tracked in wormhole space." and never fetch.

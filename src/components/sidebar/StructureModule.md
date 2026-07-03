@@ -14,7 +14,7 @@
 | onDelete | (structureId: string) => void | yes | Delete a structure |
 
 ### Renders
-A `Card` with a right-aligned "Add" button (only when a system is selected) and a list of structure rows (name, type, owner, notes, "added by"), each with edit/delete icon buttons. The panel name ("Structures") comes from the surrounding `MapPanel` chrome — no in-card title. The owner line shows the corp's CCP logo (`ccpImageUrl`) when `ownerCorporationId` is set.
+A `Card` with a right-aligned "Add" button (only when a system is selected) and a list of structure rows (name, type, owner, notes, "added by"), each with edit/delete icon buttons. The panel name ("Structures") comes from the surrounding `MapPanelGroup` chrome — no in-card title. The owner line shows the corp's CCP logo (`ccpImageUrl`) when `ownerCorporationId` is set.
 
 ### Behaviour & Interactions
 - Empty states: "Select a system…" (no system) / "No structures recorded." (none).

@@ -12,7 +12,7 @@
 | onBulkPaste | (payloads: MapEventPayload[]) => void | yes | Folds the synced systems/edges onto the canvas (shared with signature paste / import). |
 
 ### Renders
-A `Card` listing EVE-Scout connections grouped under `Thera` / `Turnur` sub-headers. Each row: a status dot (green = on map, amber = missing), the target system name, its class/security label (coloured via `systemClassColor`), and either a `✓` (on map) or a `+` add button (missing). Header has a link icon (opens https://www.eve-scout.com/ in a new tab), **Sync all** (missing rows), and a refresh button — but no in-card title; the panel name ("Eve-Scout") comes from the surrounding `MapPanel` chrome.
+A `Card` listing EVE-Scout connections grouped under `Thera` / `Turnur` sub-headers. Each row: a status dot (green = on map, amber = missing), the target system name, its class/security label (coloured via `systemClassColor`), and either a `✓` (on map) or a `+` add button (missing). Header has a link icon (opens https://www.eve-scout.com/ in a new tab), **Sync all** (missing rows), and a refresh button — but no in-card title; the panel name ("Eve-Scout") comes from the surrounding `MapPanelGroup` chrome.
 
 ### Behaviour & Interactions
 - Always rendered (not gated on a selected system) — Thera connections are global scope.

@@ -17,11 +17,11 @@
 | onConnectionPatch | (connectionId: string, patch: UpdateConnectionBody) => void | yes | Used to auto-set a linked connection's jump-mass size from the WH type (see below). Wired to `MapCanvas`'s `onConnectionPatch` (optimistic). |
 | flashSigId | string \| null | no | When set, the matching signature row flashes with `ap-sig-flash` for 3 s. Cleared by MapCanvas after the timeout. Known limitation: if the target sig is hidden by the in-panel group/scan filter, the flash silently no-ops. |
 
-The **Lazy delete** and **Paste from scanner** actions are no longer rendered by this card — they live in `SignatureModuleHeaderActions` (also exported from this file), which `MapCanvas` renders into the `MapPanel` header via `headerRight`. See that component's props below.
+The **Lazy delete** and **Paste from scanner** actions are no longer rendered by this card — they live in `SignatureModuleHeaderActions` (also exported from this file), which `MapCanvas` renders into the `MapPanelGroup` header (for the active tab) via `renderHeaderRight`. See that component's props below.
 
 ### Renders
 A frameless `Card` (no card header) with:
-- Body only: when no system is selected, a placeholder message. When a system is selected: a **filter bar** (`SignatureFilterBar`) above the table, the nine-column TanStack Table, and a draft-input row below. Created and Updated are backward "time ago" strings (`formatAgoFromMs`). The panel name ("Signatures"), drag handle and hide button come from the surrounding `MapPanel` chrome.
+- Body only: when no system is selected, a placeholder message. When a system is selected: a **filter bar** (`SignatureFilterBar`) above the table, the nine-column TanStack Table, and a draft-input row below. Created and Updated are backward "time ago" strings (`formatAgoFromMs`). The panel name ("Signatures"), drag handle and hide button come from the surrounding `MapPanelGroup` chrome.
 - **Static controls, scrollable table:** the filter bar and the bottom draft "Add" row stay pinned while only the table region scrolls, so a long signature list scrolls within the panel without moving the filters or add form.
 - The **Sig**, **Group**, **Created**, and **Updated** column headers are sortable (click to sort ascending, click again to reverse, arrow indicator shows active sort). Default sort is Sig ascending. Other columns (class-kind icon, Type, Description, Leads to, delete) are non-interactive headers.
 - **Class-kind icon column:** the headerless left-most column (`ClassKindCell`) shows whether the row is a Cosmic Signature (`SignatureIcon`, ＋) or a Cosmic Anomaly (`AnomalyIcon`, ◯), driven by `MapSignature.classKind`. Unknown (`null` — manual or pre-paste sigs) renders nothing. Each icon carries its own colour (signature red `#E30001`, anomaly green `#038005`) and `<title>` ("Signature"/"Anomaly") for the hover hint since the column has no header. The two glyphs are swappable app-wide via `@/components/icons/SignatureIcon` and `@/components/icons/AnomalyIcon`.
@@ -52,7 +52,7 @@ A frameless `Card` (no card header) with:
 
 ## SignatureModuleHeaderActions
 
-**Purpose:** The **Lazy delete** arm toggle and **Paste from scanner** button for the Signatures panel, rendered into the `MapPanel` header (`headerRight`) beside the panel title rather than inside the card.
+**Purpose:** The **Lazy delete** arm toggle and **Paste from scanner** button for the Signatures panel, rendered into the `MapPanelGroup` header (via `renderHeaderRight` for the active tab) beside the panel title rather than inside the card.
 **Exported from:** `src/components/sidebar/SignatureModule.tsx`
 
 ### Props

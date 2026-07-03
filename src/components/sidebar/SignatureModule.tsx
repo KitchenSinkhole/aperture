@@ -387,10 +387,10 @@ export function SignatureModule({
 
 /**
  * Header actions for the Signatures panel — the **Lazy delete** arm toggle and
- * the **Paste from scanner** button. Rendered into the `MapPanel` header
- * (`headerRight`) rather than inside the card, so they sit beside the panel
- * title alongside the drag handle and hide button. Both are only shown when a
- * system is selected.
+ * the **Paste from scanner** button. Rendered into the `MapPanelGroup` header
+ * (`renderHeaderRight` for the active tab) rather than inside the card, so they
+ * sit beside the panel title alongside the drag handle and hide button. Both are
+ * only shown when a system is selected.
  */
 export function SignatureModuleHeaderActions({
   mapId,

@@ -27,6 +27,7 @@ import type {
   MapSignature,
   MapSystemNode,
   MapViewData,
+  PanelGroup,
   PanelId,
   RouteDestinationView,
   RoutePrefs,
@@ -132,7 +133,7 @@ import { MapContextMenu } from './MapContextMenu';
 import { SubchainDeletePrompt } from './SubchainDeletePrompt';
 import { RestoreConnectionPrompt } from './RestoreConnectionPrompt';
 import { MapLayoutGrid } from './layout/MapLayoutGrid';
-import { MapPanel } from './layout/MapPanel';
+import { MapPanelGroup } from './layout/MapPanelGroup';
 import { DEFAULT_MAP_LAYOUT, PANELS, ensurePanelsPlaced, migrateLayout } from '@/lib/map/layout/panels';
 import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
 import { setMapLayoutAction } from '@/app/(app)/actions/account';
@@ -217,6 +218,26 @@ function mergeLayouts(
     next[bp] = [...incomingBp, ...kept];
   }
   return next;
+}
+
+// Temporary Stage-2 aid: with no DnD yet, real tabbed groups can't be created in
+// the UI. Flip this to true locally to seed one 2-member group (Intel tabbed onto
+// Routes) so the tab strip and switching can be exercised. Left false so normal
+// runs render exactly as before.
+const DEV_SEED_TABBED_GROUP: boolean = false;
+
+function devSeedTabbedGroup(config: MapLayoutConfig): MapLayoutConfig {
+  const host: PanelId = 'route';
+  const guest: PanelId = 'intel';
+  const layouts = {} as Record<Breakpoint, Layout>;
+  const groups = {} as Record<Breakpoint, PanelGroup[]>;
+  for (const bp of Object.keys(config.groups) as Breakpoint[]) {
+    layouts[bp] = config.layouts[bp].filter((item) => item.i !== guest);
+    groups[bp] = config.groups[bp]
+      .filter((g) => g.id !== guest)
+      .map((g) => (g.id === host ? { ...g, members: [host, guest], active: host } : g));
+  }
+  return { ...config, layouts, groups };
 }
 
 const nodeTypes = { system: SystemNode, note: MapNoteNode };
@@ -466,9 +487,13 @@ export function MapCanvas({
   // saved layout (a panel that shipped after the user last saved). Both are
   // forward-compat normalisers, no data migration. No-ops for
   // `DEFAULT_MAP_LAYOUT` (already current and complete).
-  const [layout, setLayout] = useState<MapLayoutConfig>(() =>
-    ensurePanelsPlaced(migrateLayout(mapLayout ?? DEFAULT_MAP_LAYOUT)),
-  );
+  const [layout, setLayout] = useState<MapLayoutConfig>(() => {
+    const base = ensurePanelsPlaced(migrateLayout(mapLayout ?? DEFAULT_MAP_LAYOUT));
+    return DEV_SEED_TABBED_GROUP ? devSeedTabbedGroup(base) : base;
+  });
+  // The grid's active responsive breakpoint (reported by `MapLayoutGrid`). Grouping
+  // is per-breakpoint, so the rendered cells read from `layout.groups[breakpoint]`.
+  const [breakpoint, setBreakpoint] = useState<Breakpoint>('lg');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // RGL fires `onLayoutChange` once on mount with its normalized layout; that
   // first call updates local state but must not persist (no spurious write per
@@ -521,6 +546,26 @@ export function MapCanvas({
           ? prev.hidden.filter((h) => h !== id)
           : [...prev.hidden, id];
         const next: MapLayoutConfig = { ...prev, hidden };
+        saveLayout(next);
+        return next;
+      });
+    },
+    [saveLayout],
+  );
+
+  // Switch a group's active tab. Applies to every breakpoint that holds a group
+  // with this id whose members include the panel (a singleton/reused id spans
+  // breakpoints; a per-breakpoint-only group matches only where it exists).
+  const handleSetActiveTab = useCallback(
+    (groupId: string, panel: PanelId) => {
+      setLayout((prev) => {
+        const groups = { ...prev.groups };
+        for (const bp of Object.keys(prev.groups) as Breakpoint[]) {
+          groups[bp] = prev.groups[bp].map((g) =>
+            g.id === groupId && g.members.includes(panel) ? { ...g, active: panel } : g,
+          );
+        }
+        const next: MapLayoutConfig = { ...prev, groups };
         saveLayout(next);
         return next;
       });
@@ -1580,7 +1625,12 @@ export function MapCanvas({
 
   // Panels the user hasn't hidden, in registry order. Order is cosmetic — the
   // grid positions by each item's `i`, not by child order.
-  const visiblePanels = PANELS.filter((p) => !layout.hidden.includes(p.id));
+  // One grid cell per group in the active breakpoint whose members aren't all
+  // hidden. `layout.groups[breakpoint]` may be undefined before the first
+  // breakpoint report resolves against a hand-authored blob.
+  const visibleGroups = (layout.groups[breakpoint] ?? []).filter((g) =>
+    g.members.some((m) => !layout.hidden.includes(m)),
+  );
 
   // The JSX for one panel's body. The canvas keeps its own positioned wrapper
   // (overlays + menu + dialog); the rest are the existing sidebar/signature
@@ -1917,20 +1967,24 @@ export function MapCanvas({
               )}
             </div>
           </div>
-          <MapLayoutGrid layouts={layout.layouts} onLayoutChange={handleLayoutChange}>
-            {visiblePanels.map((p) => (
-              <div key={p.id}>
-                <MapPanel
-                  id={p.id}
-                  title={p.title}
-                  onHide={handleHide}
-                  headerRight={panelHeaderRight(p.id)}
-                  contentClassName={
-                    p.id === 'canvas' ? 'min-h-0 flex-1 overflow-hidden p-0' : undefined
+          <MapLayoutGrid
+            layouts={layout.layouts}
+            onLayoutChange={handleLayoutChange}
+            onBreakpointChange={setBreakpoint}
+          >
+            {visibleGroups.map((g) => (
+              <div key={g.id}>
+                <MapPanelGroup
+                  group={g}
+                  hidden={layout.hidden}
+                  onSetActive={handleSetActiveTab}
+                  onHideMember={handleHide}
+                  renderContent={panelContent}
+                  renderHeaderRight={panelHeaderRight}
+                  contentClassName={(id) =>
+                    id === 'canvas' ? 'min-h-0 flex-1 overflow-hidden p-0' : undefined
                   }
-                >
-                  {panelContent(p.id)}
-                </MapPanel>
+                />
               </div>
             ))}
           </MapLayoutGrid>
