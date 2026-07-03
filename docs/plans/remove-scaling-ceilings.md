@@ -38,7 +38,7 @@ Context, measured on prod (335 tracked chars, 43 concurrent viewers, alliance ac
 - **Retention reaper** `killmail-cleanup` (graphile cron, batched like other cleanup jobs): `DELETE FROM universe_killmail WHERE killmail_time < now() - KILLMAIL_CACHE_RETENTION` (default 30 days). Relevance decays and zKB only returns recent kills, so age-by-kill-time is the right key. Not partitioned — expected volume is modest and a simple indexed reaper suffices.
 - **Rate-limit posture:** with the cache, the 429/`Retry-After` client work drops from required to a cheap defensive follow-up (protects cold-cache bursts, e.g. many systems added at once, and other unauthenticated endpoints). Track separately, not a blocker.
 **Done when:** repeat killboard opens of the same system issue zero `getKillmail` calls (verify via `esi_requests_total{operationId="GetKillmailsKillmailIdKillmailHash"}` staying flat across opens), the reaper bounds `universe_killmail` by kill age, CI green.
-**Status: implemented.** `universe_killmail` table (schema + migration 0049, applied to dev DB), cache-aside `loadKillmails` in `killboard.ts`, `killmail-cleanup` daily reaper registered, `KILLMAIL_CACHE_RETENTION_DAYS`/`KILLMAIL_CLEANUP_CRON` config. `pnpm lint`/`typecheck`/`build` green; cache-write `ON CONFLICT DO NOTHING` idempotency and the batched reaper delete validated against the DB. Not yet committed.
+**Status: implemented.** `universe_killmail` table (schema + migration 0049, applied to dev DB), cache-aside `loadKillmails` in `killboard.ts`, `killmail-cleanup` daily reaper registered, `KILLMAIL_CACHE_RETENTION_DAYS`/`KILLMAIL_CLEANUP_CRON` config. `pnpm lint`/`typecheck`/`build` green; cache-write `ON CONFLICT DO NOTHING` idempotency and the batched reaper delete validated against the DB.
 
 ---
 
@@ -53,7 +53,7 @@ Context, measured on prod (335 tracked chars, 43 concurrent viewers, alliance ac
 - Scope to `ap_*` / `universe_*` by name prefix so the set is self-maintaining (new tables appear automatically). Fail soft to `[]` on query error rather than sinking the scrape.
 - **Scrape-only** — not persisted to `ap_metric_snapshot` (the table set is dynamic and wouldn't fit fixed columns); Prometheus owns retention. The admin metrics history page is unaffected.
 **Done when:** `db_table_rows{table}` emits one series per logical table, partitions aggregate under the parent (no per-partition leakage), and the render unit test + typecheck are green.
-**Status: implemented.** `src/types/index.ts`, `src/lib/metrics/gauges.ts`, `src/lib/metrics/prometheus.ts` + companions and `tests/unit/metrics-prometheus.test.ts`. Render test 5/5, `pnpm typecheck` clean, query validated against prod (45 bounded logical-table series; partitions aggregate). Not yet committed.
+**Status: implemented.** `src/types/index.ts`, `src/lib/metrics/gauges.ts`, `src/lib/metrics/prometheus.ts` + companions and `tests/unit/metrics-prometheus.test.ts`. Render test 5/5, `pnpm typecheck` clean, query validated against prod (45 bounded logical-table series; partitions aggregate).
 
 ---
 
