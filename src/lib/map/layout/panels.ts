@@ -125,21 +125,29 @@ const APPENDED_PANEL_W = 4;
 const APPENDED_PANEL_H = 4;
 
 /**
- * Forward-compat normaliser: ensures every registered panel has a layout item in
- * every breakpoint. A `PanelId` added to `PANELS` after the user last saved is
- * missing from their stored `layouts[bp]`; we append it below the existing items
- * (at its `minW`/`minH`) rather than leave it for RGL to drop at the origin. This
- * lets new panels ship without a data migration. Returns the input unchanged when
- * nothing is missing (referential stability for the common case).
+ * Forward-compat normaliser: ensures every registered, non-hidden panel has a
+ * layout item in every breakpoint. A `PanelId` added to `PANELS` after the user
+ * last saved is missing from their stored `layouts[bp]`; we append it below the
+ * existing items (at its `minW`/`minH`) rather than leave it for RGL to drop at
+ * the origin. This lets new panels ship without a data migration, and doubles as
+ * the "re-show" placement: a panel dropped from `hidden` reappears here as a fresh
+ * singleton group. A panel still in `hidden` is skipped, so hiding (which removes
+ * its layout item) survives reloads. Returns the input unchanged when nothing is
+ * missing (referential stability for the common case).
  */
 export function ensurePanelsPlaced(config: MapLayoutConfig): MapLayoutConfig {
   let changed = false;
   const layouts = { ...config.layouts };
   const groups = { ...config.groups };
+  const hidden = new Set(config.hidden);
   for (const bp of Object.keys(PANEL_COLS) as Breakpoint[]) {
     const existing = layouts[bp] ?? [];
-    const present = new Set(existing.map((item) => item.i));
-    const missing = PANELS.filter((p) => !present.has(p.id));
+    // A panel is "placed" if it's a member of any group in this breakpoint. A
+    // tabbed member shares its group's grid item and has no layout id of its own,
+    // so keying on layout item ids alone would wrongly treat it as missing and
+    // re-add it as a duplicate standalone cell on every reload.
+    const present = new Set((groups[bp] ?? []).flatMap((g) => g.members));
+    const missing = PANELS.filter((p) => !present.has(p.id) && !hidden.has(p.id));
     if (missing.length === 0) continue;
     changed = true;
     const cols = PANEL_COLS[bp];
@@ -178,4 +186,104 @@ export function migrateLayout(config: StoredMapLayout): MapLayoutConfig {
     groups[bp] = singletonGroups(config.layouts[bp] ?? []);
   }
   return { ...config, version: LAYOUT_CONFIG_VERSION, groups };
+}
+
+/**
+ * Remove a panel from the group model in every breakpoint. The panel leaves its
+ * group's tab strip; if it was the active tab a sibling takes over, if it was the
+ * group's anchor id the group and its grid item are re-keyed to a surviving
+ * member (a group id must always be one of its members), and if it was the sole
+ * member the group and its grid item are dropped. Surviving groups keep their
+ * geometry. Used by hide — the panel then lands in `hidden`, and `ensurePanelsPlaced`
+ * re-adds it as a fresh singleton on show. Returns the input unchanged when the
+ * panel is in no group.
+ */
+export function removePanelFromLayout(config: MapLayoutConfig, panel: PanelId): MapLayoutConfig {
+  let changed = false;
+  const layouts = { ...config.layouts };
+  const groups = { ...config.groups };
+  for (const bp of Object.keys(PANEL_COLS) as Breakpoint[]) {
+    const groupsBp = config.groups[bp] ?? [];
+    const source = groupsBp.find((g) => g.members.includes(panel));
+    if (!source) continue;
+    changed = true;
+    const droppedIds = new Set<string>();
+    const renamed = new Map<string, PanelId>();
+    groups[bp] = groupsBp.flatMap((g) => {
+      if (g.id !== source.id) return [g];
+      const members = g.members.filter((m) => m !== panel);
+      if (members.length === 0) {
+        droppedIds.add(g.id);
+        return [];
+      }
+      const active = g.active === panel ? members[0]! : g.active;
+      if (g.id === panel) {
+        renamed.set(g.id, active);
+        return [{ id: active, members, active }];
+      }
+      return [{ ...g, members, active }];
+    });
+    if (droppedIds.size > 0 || renamed.size > 0) {
+      layouts[bp] = (config.layouts[bp] ?? [])
+        .filter((it) => !droppedIds.has(it.i))
+        .map((it) => {
+          const newId = renamed.get(it.i);
+          return newId ? { ...it, i: newId, ...PANEL_MIN[newId] } : it;
+        });
+    }
+  }
+  return changed ? { ...config, layouts, groups } : config;
+}
+
+/**
+ * Repair normaliser: enforces the invariant that a panel is a member of at most
+ * one group per breakpoint. The first occurrence (in `groups[bp]` order) wins;
+ * later duplicate memberships are stripped. A group emptied by de-duplication is
+ * dropped along with its grid item; a group whose anchor id was a stripped
+ * duplicate is re-keyed to a surviving member. Heals layouts saved while
+ * `ensurePanelsPlaced` keyed placement off layout ids (which resurrected a tabbed
+ * member as a second standalone cell). Returns the input unchanged when every
+ * panel already appears once.
+ */
+export function dedupeGroups(config: MapLayoutConfig): MapLayoutConfig {
+  let changed = false;
+  const layouts = { ...config.layouts };
+  const groups = { ...config.groups };
+  for (const bp of Object.keys(PANEL_COLS) as Breakpoint[]) {
+    const seen = new Set<PanelId>();
+    const droppedIds = new Set<string>();
+    const renamed = new Map<string, PanelId>();
+    let bpChanged = false;
+    const nextGroupsBp = (config.groups[bp] ?? []).flatMap((g) => {
+      const members = g.members.filter((m) => {
+        if (seen.has(m)) return false;
+        seen.add(m);
+        return true;
+      });
+      if (members.length === g.members.length) return [g];
+      bpChanged = true;
+      if (members.length === 0) {
+        droppedIds.add(g.id);
+        return [];
+      }
+      const active = members.includes(g.active) ? g.active : members[0]!;
+      if (!members.includes(g.id as PanelId)) {
+        renamed.set(g.id, active);
+        return [{ id: active, members, active }];
+      }
+      return [{ ...g, members, active }];
+    });
+    if (!bpChanged) continue;
+    changed = true;
+    groups[bp] = nextGroupsBp;
+    if (droppedIds.size > 0 || renamed.size > 0) {
+      layouts[bp] = (config.layouts[bp] ?? [])
+        .filter((it) => !droppedIds.has(it.i))
+        .map((it) => {
+          const newId = renamed.get(it.i);
+          return newId ? { ...it, i: newId, ...PANEL_MIN[newId] } : it;
+        });
+    }
+  }
+  return changed ? { ...config, layouts, groups } : config;
 }

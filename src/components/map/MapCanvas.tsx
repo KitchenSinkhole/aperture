@@ -141,8 +141,10 @@ import {
   PANELS,
   PANEL_COLS,
   PANEL_MIN,
+  dedupeGroups,
   ensurePanelsPlaced,
   migrateLayout,
+  removePanelFromLayout,
 } from '@/lib/map/layout/panels';
 import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
 import { setMapLayoutAction } from '@/app/(app)/actions/account';
@@ -472,12 +474,13 @@ export function MapCanvas({
   // ---- Free-form dashboard layout (map-layout-builder) -------------------
   // Seeded from the saved per-account layout; `null` ⇒ the default arrangement.
   // `migrateLayout` upgrades a pre-v2 blob (no grouping) to singleton groups;
-  // `ensurePanelsPlaced` then auto-places any registered panel missing from a
-  // saved layout (a panel that shipped after the user last saved). Both are
-  // forward-compat normalisers, no data migration. No-ops for
-  // `DEFAULT_MAP_LAYOUT` (already current and complete).
+  // `dedupeGroups` heals any panel that a stale build resurrected as a duplicate
+  // cell; `ensurePanelsPlaced` then auto-places any registered panel missing from
+  // a saved layout (a panel that shipped after the user last saved). All are
+  // normalisers, no data migration. No-ops for `DEFAULT_MAP_LAYOUT` (already
+  // current and complete).
   const [layout, setLayout] = useState<MapLayoutConfig>(() =>
-    ensurePanelsPlaced(migrateLayout(mapLayout ?? DEFAULT_MAP_LAYOUT)),
+    ensurePanelsPlaced(dedupeGroups(migrateLayout(mapLayout ?? DEFAULT_MAP_LAYOUT))),
   );
   // The grid's active responsive breakpoint (reported by `MapLayoutGrid`). Grouping
   // is per-breakpoint, so the rendered cells read from `layout.groups[breakpoint]`.
@@ -512,11 +515,15 @@ export function MapCanvas({
     [saveLayout],
   );
 
+  // Hide a panel (tab ✕ or panels-menu uncheck). The panel leaves its group's
+  // tab strip in every breakpoint (`removePanelFromLayout` re-keys/drops the
+  // group as needed, picking a new active tab) and lands in `hidden`.
   const handleHide = useCallback(
     (id: PanelId) => {
       setLayout((prev) => {
         if (prev.hidden.includes(id)) return prev;
-        const next: MapLayoutConfig = { ...prev, hidden: [...prev.hidden, id] };
+        const removed = removePanelFromLayout(prev, id);
+        const next: MapLayoutConfig = { ...removed, hidden: [...prev.hidden, id] };
         saveLayout(next);
         return next;
       });
@@ -525,15 +532,20 @@ export function MapCanvas({
   );
 
   // Panels-menu checkbox: flip a panel between hidden and visible. Re-showing a
-  // panel returns it to its preserved slot — `mergeLayouts` keeps a hidden
-  // panel's geometry, so the grid replaces it where it was, not at the bottom.
+  // panel drops it from `hidden` and `ensurePanelsPlaced` re-adds it as a fresh
+  // singleton group at the bottom of each breakpoint (a hidden panel has no
+  // preserved slot — hiding removed its group). Hiding routes through the same
+  // group-aware removal as the tab ✕.
   const handleToggleVisible = useCallback(
     (id: PanelId) => {
       setLayout((prev) => {
-        const hidden = prev.hidden.includes(id)
-          ? prev.hidden.filter((h) => h !== id)
-          : [...prev.hidden, id];
-        const next: MapLayoutConfig = { ...prev, hidden };
+        let next: MapLayoutConfig;
+        if (prev.hidden.includes(id)) {
+          next = ensurePanelsPlaced({ ...prev, hidden: prev.hidden.filter((h) => h !== id) });
+        } else {
+          const removed = removePanelFromLayout(prev, id);
+          next = { ...removed, hidden: [...prev.hidden, id] };
+        }
         saveLayout(next);
         return next;
       });
@@ -765,7 +777,7 @@ export function MapCanvas({
         toast.error('This file is not a valid Aperture layout.');
         return;
       }
-      const next = ensurePanelsPlaced(migrateLayout(parsed.data));
+      const next = ensurePanelsPlaced(dedupeGroups(migrateLayout(parsed.data)));
       setLayout(next);
       saveLayout(next);
       toast.success('Layout imported.');
