@@ -11,6 +11,7 @@ import {
   requireSession,
 } from '@/lib/session';
 import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
+import { migrateLayout } from '@/lib/map/layout/panels';
 
 // Account self-service. Low-frequency, user-initiated state changes
 // over ap_user — Server Actions per the CLAUDE.md mutation pathways.
@@ -113,9 +114,12 @@ export async function setMapLayoutAction(config: unknown): Promise<AccountAction
   if (!parsed.success) {
     return { ok: false, error: 'Invalid layout.' };
   }
+  // Normalise to the current version (fill singleton groups) so a legacy or
+  // client-sent pre-v2 blob never reaches the column ungrouped.
+  const layout = migrateLayout(parsed.data);
   await db
     .update(apUser)
-    .set({ mapLayout: parsed.data, updatedAt: new Date() })
+    .set({ mapLayout: layout, updatedAt: new Date() })
     .where(eq(apUser.id, session.userId));
   revalidatePath('/', 'layout');
   return { ok: true };

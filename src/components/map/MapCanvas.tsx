@@ -133,7 +133,7 @@ import { SubchainDeletePrompt } from './SubchainDeletePrompt';
 import { RestoreConnectionPrompt } from './RestoreConnectionPrompt';
 import { MapLayoutGrid } from './layout/MapLayoutGrid';
 import { MapPanel } from './layout/MapPanel';
-import { DEFAULT_MAP_LAYOUT, PANELS, ensurePanelsPlaced } from '@/lib/map/layout/panels';
+import { DEFAULT_MAP_LAYOUT, PANELS, ensurePanelsPlaced, migrateLayout } from '@/lib/map/layout/panels';
 import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
 import { setMapLayoutAction } from '@/app/(app)/actions/account';
 import { toast } from 'sonner';
@@ -461,11 +461,13 @@ export function MapCanvas({
 
   // ---- Free-form dashboard layout (map-layout-builder) -------------------
   // Seeded from the saved per-account layout; `null` ⇒ the default arrangement.
-  // `ensurePanelsPlaced` auto-places any registered panel missing from a saved
-  // layout (a panel that shipped after the user last saved) — forward-compat,
-  // no data migration. A no-op for `DEFAULT_MAP_LAYOUT` (already complete).
+  // `migrateLayout` upgrades a pre-v2 blob (no grouping) to singleton groups;
+  // `ensurePanelsPlaced` then auto-places any registered panel missing from a
+  // saved layout (a panel that shipped after the user last saved). Both are
+  // forward-compat normalisers, no data migration. No-ops for
+  // `DEFAULT_MAP_LAYOUT` (already current and complete).
   const [layout, setLayout] = useState<MapLayoutConfig>(() =>
-    ensurePanelsPlaced(mapLayout ?? DEFAULT_MAP_LAYOUT),
+    ensurePanelsPlaced(migrateLayout(mapLayout ?? DEFAULT_MAP_LAYOUT)),
   );
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // RGL fires `onLayoutChange` once on mount with its normalized layout; that
@@ -565,7 +567,7 @@ export function MapCanvas({
         toast.error('This file is not a valid Aperture layout.');
         return;
       }
-      const next = ensurePanelsPlaced(parsed.data);
+      const next = ensurePanelsPlaced(migrateLayout(parsed.data));
       setLayout(next);
       saveLayout(next);
       toast.success('Layout imported.');

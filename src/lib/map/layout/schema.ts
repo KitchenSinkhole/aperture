@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { MapLayoutConfig, PanelId } from '@/types';
+import type { PanelId, StoredMapLayout } from '@/types';
 import { PANELS } from './panels';
 
 // System boundary: the layout config is user-supplied JSON (posted by the grid's
@@ -24,6 +24,21 @@ const layoutItem = z.object({
 
 const breakpointLayout = z.array(layoutItem).max(50);
 
+const panelGroup = z
+  .object({
+    id: z.string().min(1).max(100),
+    members: z.array(panelId).min(1).max(50),
+    active: panelId,
+  })
+  .refine((g) => new Set(g.members).size === g.members.length, {
+    message: 'group members must be unique',
+  })
+  .refine((g) => g.members.includes(g.active), {
+    message: 'active tab must be a group member',
+  });
+
+const breakpointGroups = z.array(panelGroup).max(50);
+
 export const mapLayoutConfigSchema = z.object({
   version: z.number().int().min(0).max(1_000_000),
   layouts: z.object({
@@ -31,11 +46,22 @@ export const mapLayoutConfigSchema = z.object({
     md: breakpointLayout,
     sm: breakpointLayout,
   }),
+  // Optional so a legacy v1 file (no grouping) still parses; `migrateLayout`
+  // derives singleton groups after this boundary.
+  groups: z
+    .object({
+      lg: breakpointGroups,
+      md: breakpointGroups,
+      sm: breakpointGroups,
+    })
+    .optional(),
   hidden: z.array(panelId).max(50),
 });
 
-// Compile-time guarantee the parser's output is a valid `MapLayoutConfig`.
+// Compile-time guarantee the parser's output is a valid pre-normalisation layout
+// (`groups` optional here; `migrateLayout` fills it before it becomes a
+// `MapLayoutConfig`).
 export type ParsedMapLayout = z.infer<typeof mapLayoutConfigSchema>;
-type _AssignableToConfig = ParsedMapLayout extends MapLayoutConfig ? true : never;
-const _check: _AssignableToConfig = true;
+type _AssignableToStored = ParsedMapLayout extends StoredMapLayout ? true : never;
+const _check: _AssignableToStored = true;
 void _check;

@@ -520,17 +520,44 @@ export type PanelId =
 export type Breakpoint = 'lg' | 'md' | 'sm';
 
 /**
+ * A grid cell's occupants: an ordered list of member panels shown as tabs, plus
+ * the currently-active tab. A single-member group is an untabbed panel. `id` is
+ * the grid item `i` in `layouts[bp]`; a singleton reuses its member's `PanelId`.
+ */
+export interface PanelGroup {
+  /** Grid item `i`; for a singleton, `id === members[0]`. */
+  id: string;
+  /** Ordered = tab order; nonempty, unique. */
+  members: PanelId[];
+  /** The shown tab; always one of `members`. */
+  active: PanelId;
+}
+
+/**
  * The stored layout. `layouts[bp]` is react-grid-layout's `Layout` (a
  * `readonly LayoutItem[]` — `{ i, x, y, w, h, minW?, minH?, … }`); each item's `i` is a
- * `PanelId` (enforced at the Zod boundary, not the structural type). A `PanelId` present
- * in the registry but missing from a saved breakpoint is auto-placed on load, so new
- * panels need no data migration. `hidden` is the set the user removed from the grid.
+ * group id (a singleton group's id is its member `PanelId`), enforced at the Zod
+ * boundary. `groups[bp]` maps each grid item to its member panels and active tab;
+ * grouping is per-breakpoint, parallel to `layouts`. A `PanelId` present in the
+ * registry but missing from a saved breakpoint is auto-placed as a new singleton
+ * group on load, so new panels need no data migration. `hidden` is the flat,
+ * breakpoint-independent set the user removed from the grid.
  */
 export interface MapLayoutConfig {
   version: number;
   layouts: Record<Breakpoint, Layout>;
+  groups: Record<Breakpoint, PanelGroup[]>;
   hidden: PanelId[];
 }
+
+/**
+ * A layout blob as read from storage or an imported file, before normalisation:
+ * a pre-v2 blob has no `groups`. `migrateLayout` turns this into a complete
+ * `MapLayoutConfig` by deriving singleton groups.
+ */
+export type StoredMapLayout = Omit<MapLayoutConfig, 'groups'> & {
+  groups?: Record<Breakpoint, PanelGroup[]>;
+};
 
 /**
  * A right-click target on the map canvas, carrying both the kind/id of what was

@@ -1,4 +1,5 @@
-import type { Breakpoint, MapLayoutConfig, PanelId } from '@/types';
+import type { Layout } from 'react-grid-layout';
+import type { Breakpoint, MapLayoutConfig, PanelGroup, PanelId, StoredMapLayout } from '@/types';
 
 // Single source of truth for the map dashboard's panels and their default
 // arrangement. `DEFAULT_MAP_LAYOUT` is the built-in fixed two-column layout:
@@ -6,7 +7,7 @@ import type { Breakpoint, MapLayoutConfig, PanelId } from '@/types';
 // modules stacked in a right column.
 
 /** Bumped when the stored shape changes incompatibly; gates a reset/migration. */
-export const LAYOUT_CONFIG_VERSION = 1;
+export const LAYOUT_CONFIG_VERSION = 2;
 
 /** Responsive breakpoint min-widths (px) and column counts, shared by the grid. */
 export const PANEL_BREAKPOINTS: Record<Breakpoint, number> = { lg: 1200, md: 768, sm: 0 };
@@ -93,12 +94,27 @@ const stackedLayout = (() => {
   return items;
 })();
 
+/** One singleton `PanelGroup` per layout item — its id is the item's `PanelId`. */
+function singletonGroups(items: Layout): PanelGroup[] {
+  return items.map((item) => {
+    const id = item.i as PanelId;
+    return { id, members: [id], active: id };
+  });
+}
+
+const defaultLayouts: Record<Breakpoint, Layout> = {
+  lg: wideLayout(12),
+  md: wideLayout(8),
+  sm: stackedLayout,
+};
+
 export const DEFAULT_MAP_LAYOUT: MapLayoutConfig = {
   version: LAYOUT_CONFIG_VERSION,
-  layouts: {
-    lg: wideLayout(12),
-    md: wideLayout(8),
-    sm: stackedLayout,
+  layouts: defaultLayouts,
+  groups: {
+    lg: singletonGroups(defaultLayouts.lg),
+    md: singletonGroups(defaultLayouts.md),
+    sm: singletonGroups(defaultLayouts.sm),
   },
   hidden: [],
 };
@@ -119,6 +135,7 @@ const APPENDED_PANEL_H = 4;
 export function ensurePanelsPlaced(config: MapLayoutConfig): MapLayoutConfig {
   let changed = false;
   const layouts = { ...config.layouts };
+  const groups = { ...config.groups };
   for (const bp of Object.keys(PANEL_COLS) as Breakpoint[]) {
     const existing = layouts[bp] ?? [];
     const present = new Set(existing.map((item) => item.i));
@@ -141,6 +158,24 @@ export function ensurePanelsPlaced(config: MapLayoutConfig): MapLayoutConfig {
       return item;
     });
     layouts[bp] = [...existing, ...appended];
+    groups[bp] = [...(groups[bp] ?? []), ...singletonGroups(appended)];
   }
-  return changed ? { ...config, layouts } : config;
+  return changed ? { ...config, layouts, groups } : config;
+}
+
+/**
+ * Version normaliser: upgrades a stored blob to the current
+ * `LAYOUT_CONFIG_VERSION`. A v1 blob has no `groups`; for each breakpoint we
+ * derive one singleton group per layout item (id === its `PanelId`), so the
+ * arrangement is preserved and every panel becomes its own untabbed cell. Reads
+ * `config.groups` defensively — a v1 jsonb blob cast to `MapLayoutConfig` has it
+ * absent at runtime. Returns the input unchanged when it already carries groups.
+ */
+export function migrateLayout(config: StoredMapLayout): MapLayoutConfig {
+  if (config.groups) return { ...config, groups: config.groups };
+  const groups = {} as Record<Breakpoint, PanelGroup[]>;
+  for (const bp of Object.keys(PANEL_COLS) as Breakpoint[]) {
+    groups[bp] = singletonGroups(config.layouts[bp] ?? []);
+  }
+  return { ...config, version: LAYOUT_CONFIG_VERSION, groups };
 }
