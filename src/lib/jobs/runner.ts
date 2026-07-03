@@ -52,6 +52,7 @@ export async function startWorker(extraModules: readonly JobModule[] = []): Prom
   const opts = baseOptions(extraModules);
   await runMigrations(opts);
   await rearmLocationPollLoop();
+  await reapExhaustedLocationPollZombies();
   activeRunner = await graphileRun(opts);
   return activeRunner;
 }
@@ -95,6 +96,31 @@ async function rearmLocationPollLoop(): Promise<void> {
     jobLog.info('Re-armed stalled location-poll job(s) (orphaned lock or exhausted retries)', {
       count: res.rowCount,
     });
+  }
+}
+
+/**
+ * Purge permanently-failed NULL-key `location-poll` zombies on boot. When an
+ * expected-outage tick used to re-enqueue-and-throw, `jobKeyMode:'replace'`
+ * nulled the running row's `key` and the throw walked its `attempts` to
+ * `max_attempts` — leaving an exhausted, unkeyed row graphile never runs again.
+ * `rearmLocationPollLoop` only matches keyed rows, so these accumulate forever.
+ * They are duplicates of the one live keyed job per character, so they are
+ * deleted, not revived. The source fix (`locationPoll.ts`) stops new ones being
+ * created; this clears any legacy backlog and is cheap defense-in-depth.
+ */
+export async function reapExhaustedLocationPollZombies(): Promise<void> {
+  const res = await pool.query(
+    `DELETE FROM graphile_worker._private_jobs j
+       USING graphile_worker._private_tasks t
+      WHERE j.task_id = t.id
+        AND t.identifier = 'location-poll'
+        AND j.key IS NULL
+        AND j.locked_at IS NULL
+        AND j.attempts >= j.max_attempts`,
+  );
+  if (res.rowCount && res.rowCount > 0) {
+    jobLog.info('Reaped exhausted NULL-key location-poll job(s)', { count: res.rowCount });
   }
 }
 

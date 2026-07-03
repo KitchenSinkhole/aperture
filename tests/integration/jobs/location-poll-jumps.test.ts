@@ -210,9 +210,14 @@ describe.skipIf(!run)('Stage 12.2 location-poll jump classification + fan-out (r
 
   beforeEach(() => {
     mockedEsiCall.mockReset();
+    // location-poll runs under 1-in-N success sampling (JOB_INSTRUMENTATION_SUCCESS_SAMPLE);
+    // pin the sampler so every success run deterministically writes its ap_job_run
+    // row for the `lastJobNotes()` assertions below.
+    vi.spyOn(Math, 'random').mockReturnValue(0);
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     // Wipe the per-map canvas + history so each `it` starts from a clean slate.
     // ap_map_signature is empty for these tests; nothing else to scrub.
     await db.delete(apMapConnection).where(inArray(apMapConnection.mapId, [mapA, mapB]));

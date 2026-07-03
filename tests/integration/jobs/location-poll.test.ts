@@ -31,7 +31,7 @@ import {
  *  - Handler persists last-known state from ESI mock.
  *  - Re-enqueues at the adaptive interval driven by the online flag.
  *  - Stops cleanly when tracking rows go away or the character isn't active.
- *  - Breaker-open re-enqueues at the offline interval and records success=false.
+ *  - Breaker-open re-enqueues at the offline interval and returns cleanly (no throw).
  *
  * DB-gated like the rest:
  *   docker compose up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test
@@ -121,9 +121,14 @@ describe.skipIf(!run)('Stage 12.1 location-poll (real Postgres)', () => {
 
   beforeEach(() => {
     mockedEsiCall.mockReset();
+    // location-poll runs under 1-in-N success sampling (JOB_INSTRUMENTATION_SUCCESS_SAMPLE);
+    // pin the sampler so every clean/success run deterministically writes its
+    // ap_job_run row for the `lastRun()` assertions below.
+    vi.spyOn(Math, 'random').mockReturnValue(0);
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await clearTracking();
     await db
       .update(apCharacter)
@@ -247,24 +252,26 @@ describe.skipIf(!run)('Stage 12.1 location-poll (real Postgres)', () => {
     });
   });
 
-  it('records failure but re-enqueues at the offline interval when ESI breaker is open', async () => {
+  it('re-enqueues at the offline interval and returns cleanly when ESI breaker is open', async () => {
     await seedTracking(mapId);
     mockedEsiCall.mockImplementation(async () => {
       throw new EsiBreakerOpenError('get_characters_character_id_online');
     });
     const { helpers, captured } = makeHelpers();
 
+    // A breaker-open tick must NOT throw: a throw walks graphile `attempts` on the
+    // key-nulled row to max and mints a permanently-failed zombie. It re-enqueues
+    // the offline-cadence retry and completes cleanly instead.
     await expect(
       locationPoll.run({ characterId: CHAR_ID.toString() }, helpers),
-    ).rejects.toThrow(EsiBreakerOpenError);
+    ).resolves.toBeUndefined();
 
-    // The handler enqueued the offline-cadence retry BEFORE re-throwing.
     expect(captured).toHaveLength(1);
     const delay = (captured[0]!.spec!.runAt as Date).getTime() - Date.now();
     expect(delay).toBeGreaterThan(apertureConfig.LOCATION_POLL_OFFLINE_MS - 1000);
 
     const row = await lastRun();
-    expect(row!.success).toBe(false);
-    expect(row!.errorText).toMatch(/circuit breaker open/i);
+    expect(row!.success).toBe(true);
+    expect((row!.notes as { esiOutage?: string }).esiOutage).toBe('breaker-open');
   });
 });

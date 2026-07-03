@@ -100,7 +100,9 @@ async function countVisibleSystems(): Promise<number> {
 }
 
 /**
- * Queue health: `backlog` = runnable graphile-worker jobs waiting for a worker;
+ * Queue health: `backlog` = runnable graphile-worker jobs waiting for a worker
+ * (unlocked, due, with retry budget remaining — `attempts < max_attempts`
+ * excludes permanently-failed rows so a dead job never reads as backlog);
  * `abandoned` = `ap_job_run` rows whose handler never recorded an end (a worker
  * that died mid-job). The graphile-worker private table may not exist before the
  * worker has migrated, so a missing-table error degrades backlog to 0 rather
@@ -111,12 +113,12 @@ async function sampleJobQueue(): Promise<{ backlog: number; abandoned: number }>
   return { backlog, abandoned };
 }
 
-async function countJobBacklog(): Promise<number> {
+export async function countJobBacklog(): Promise<number> {
   try {
     const res = await db.execute<{ n: number }>(
       sql`SELECT count(*)::int AS n
             FROM graphile_worker._private_jobs
-           WHERE locked_at IS NULL AND run_at <= now()`,
+           WHERE locked_at IS NULL AND run_at <= now() AND attempts < max_attempts`,
     );
     return res.rows[0]?.n ?? 0;
   } catch {

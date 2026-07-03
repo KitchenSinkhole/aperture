@@ -18,7 +18,13 @@ vi.mock('@/lib/esi/client', async (importOriginal) => {
   return { ...actual, esiCall: vi.fn() };
 });
 
-import { esiCall, EsiBreakerOpenError, EsiTokenError } from '@/lib/esi/client';
+import {
+  esiCall,
+  EsiBreakerOpenError,
+  EsiDowntimeError,
+  EsiHttpError,
+  EsiTokenError,
+} from '@/lib/esi/client';
 import { locationPoll } from '@/lib/jobs/tasks/locationPoll';
 import { bus } from '@/lib/realtime/bus';
 import type { ServerToClientMessage } from '@/lib/realtime/protocol';
@@ -119,9 +125,14 @@ describe.skipIf(!run)('Stage 12.3 location-poll lifecycle (real Postgres)', () =
 
   beforeEach(() => {
     mockedEsiCall.mockReset();
+    // location-poll runs under 1-in-N success sampling (JOB_INSTRUMENTATION_SUCCESS_SAMPLE);
+    // pin the sampler so every clean/success run deterministically writes its
+    // ap_job_run row for the `lastRun()` assertions below.
+    vi.spyOn(Math, 'random').mockReturnValue(0);
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await db.delete(apMapCharacterTracking).where(eq(apMapCharacterTracking.characterId, CHAR_ID));
     await db
       .update(apCharacter)
@@ -179,32 +190,59 @@ describe.skipIf(!run)('Stage 12.3 location-poll lifecycle (real Postgres)', () =
     expect(tracking).toHaveLength(0);
   });
 
-  it('on EsiBreakerOpenError, re-enqueues at the offline cadence and records failure', async () => {
-    await db.insert(apMapCharacterTracking).values({ mapId, characterId: CHAR_ID });
+  // Each expected-outage class re-enqueues at the offline cadence and returns
+  // *cleanly* (success=true) so graphile deletes the completed job — it must not
+  // throw, because a throw walks `attempts` on the key-nulled row to
+  // `max_attempts` and mints a permanently-failed NULL-key zombie.
+  const outageCases = [
+    {
+      label: 'EsiBreakerOpenError',
+      error: () => new EsiBreakerOpenError('get_characters_character_id_online'),
+      esiOutage: 'breaker-open',
+    },
+    {
+      label: 'EsiDowntimeError',
+      error: () => new EsiDowntimeError('get_characters_character_id_online'),
+      esiOutage: 'downtime',
+    },
+    {
+      label: 'a post-refresh 401 EsiHttpError',
+      error: () => new EsiHttpError('get_characters_character_id_online', 401, 'Unauthorized'),
+      esiOutage: 'http-401',
+    },
+  ] as const;
 
-    mockedEsiCall.mockImplementation(async () => {
-      throw new EsiBreakerOpenError('get_characters_character_id_online');
-    });
+  it.each(outageCases)(
+    'on $label, re-enqueues at the offline cadence and returns cleanly (no zombie)',
+    async ({ error, esiOutage }) => {
+      await db.insert(apMapCharacterTracking).values({ mapId, characterId: CHAR_ID });
 
-    const { helpers, captured } = makeHelpers();
-    await expect(
-      locationPoll.run({ characterId: CHAR_ID.toString() }, helpers),
-    ).rejects.toThrow(EsiBreakerOpenError);
+      mockedEsiCall.mockImplementation(async () => {
+        throw error();
+      });
 
-    expect(captured).toHaveLength(1);
-    const delayMs = (captured[0]!.spec!.runAt as Date).getTime() - Date.now();
-    expect(delayMs).toBeGreaterThan(apertureConfig.LOCATION_POLL_OFFLINE_MS - 1000);
+      const { helpers, captured } = makeHelpers();
+      // No throw — a clean return is what keeps graphile from zombifying the row.
+      await expect(
+        locationPoll.run({ characterId: CHAR_ID.toString() }, helpers),
+      ).resolves.toBeUndefined();
 
-    const row = await lastRun();
-    expect(row!.success).toBe(false);
+      expect(captured).toHaveLength(1);
+      const delayMs = (captured[0]!.spec!.runAt as Date).getTime() - Date.now();
+      expect(delayMs).toBeGreaterThan(apertureConfig.LOCATION_POLL_OFFLINE_MS - 1000);
 
-    // Tracking rows survive — the breaker is transient.
-    const tracking = await db
-      .select({ characterId: apMapCharacterTracking.characterId })
-      .from(apMapCharacterTracking)
-      .where(eq(apMapCharacterTracking.characterId, CHAR_ID));
-    expect(tracking).toHaveLength(1);
-  });
+      const row = await lastRun();
+      expect(row!.success).toBe(true);
+      expect((row!.notes as { esiOutage?: string }).esiOutage).toBe(esiOutage);
+
+      // Tracking rows survive — the outage is transient.
+      const tracking = await db
+        .select({ characterId: apMapCharacterTracking.characterId })
+        .from(apMapCharacterTracking)
+        .where(eq(apMapCharacterTracking.characterId, CHAR_ID));
+      expect(tracking).toHaveLength(1);
+    },
+  );
 
   it('emits a characterUpdate envelope on the bus when location is observed', async () => {
     await db.insert(apMapCharacterTracking).values({ mapId, characterId: CHAR_ID });
