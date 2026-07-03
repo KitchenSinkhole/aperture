@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { systemClassColor } from '@/components/map/styling';
+import { systemSecurityColor } from '@/components/map/styling';
 import { searchSystemsOnServer } from '@/lib/map/client';
 import { requestJson } from '@/lib/http/fetchJson';
 import { useMapActiveChar } from '@/components/map/MapActiveCharContext';
@@ -344,7 +344,7 @@ export function RoutePlannerModule({
                 <div key={dest.id} className="flex flex-col gap-1 rounded-md border border-border/60 p-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5 font-medium">
-                      <span style={{ color: systemClassColor(dest.security) }}>{dest.name}</span>
+                      <span style={{ color: systemSecurityColor(dest.security, dest.securityStatus) }}>{dest.name}</span>
                       {plan?.reachable ? (
                         <span className="font-mono text-muted-foreground">{plan.jumps}j</span>
                       ) : null}
@@ -439,14 +439,14 @@ function HopSquare({ hop }: { hop: RouteHop }) {
       <Tooltip.Trigger
         render={<span />}
         className={`size-3 shrink-0 border ${isWormhole ? 'rounded-full' : 'rounded-[2px]'}`}
-        style={{ backgroundColor: systemClassColor(hop.security), borderColor: viaRingColor(hop.via) }}
+        style={{ backgroundColor: systemSecurityColor(hop.security, hop.securityStatus), borderColor: viaRingColor(hop.via) }}
         aria-label={hop.name}
       />
       <Tooltip.Portal>
         <Tooltip.Positioner sideOffset={4} side="top" align="center">
           <Tooltip.Popup className="z-50 rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md">
             {hop.tag && <span className="mr-1 font-mono text-muted-foreground">[{hop.tag}]</span>}
-            <span style={{ color: systemClassColor(hop.security) }}>{hop.name}</span>
+            <span style={{ color: systemSecurityColor(hop.security, hop.securityStatus) }}>{hop.name}</span>
             <span className="ml-1 text-muted-foreground">{VIA_LABELS[hop.via]}</span>
           </Tooltip.Popup>
         </Tooltip.Positioner>
@@ -591,7 +591,7 @@ function SearchResults({
             className="flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/60"
           >
             <span className="truncate">{s.name}</span>
-            <span className="shrink-0 font-mono" style={{ color: systemClassColor(s.security) }}>
+            <span className="shrink-0 font-mono" style={{ color: systemSecurityColor(s.security, s.securityStatus) }}>
               {s.security ?? '—'}
             </span>
           </button>

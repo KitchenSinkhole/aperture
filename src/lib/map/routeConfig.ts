@@ -43,6 +43,7 @@ export async function loadRouteConfig(
         label: apRouteDestination.label,
         name: universeSystem.name,
         security: universeSystem.security,
+        securityStatus: universeSystem.securityStatus,
       })
       .from(apRouteDestination)
       .innerJoin(universeSystem, eq(apRouteDestination.systemId, universeSystem.id))
@@ -56,6 +57,7 @@ export async function loadRouteConfig(
     systemId: r.systemId,
     name: r.name,
     security: r.security,
+    securityStatus: r.securityStatus,
     label: r.label,
   }));
   return { prefs, destinations };

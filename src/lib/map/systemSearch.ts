@@ -16,7 +16,7 @@ export type SystemSearchResult = {
   name: string;
   /** Class / sec-band label, e.g. `C3`, `HS`, `0.5`. */
   security: string | null;
-  trueSec: number | null;
+  securityStatus: number | null;
   regionName: string;
   constellationName: string;
 };
@@ -49,7 +49,7 @@ export async function searchSystems(query: string): Promise<SystemSearchResult[]
       id: universeSystem.id,
       name: universeSystem.name,
       security: universeSystem.security,
-      trueSec: universeSystem.trueSec,
+      securityStatus: universeSystem.securityStatus,
       regionName: universeRegion.name,
       constellationName: universeConstellation.name,
     })

@@ -14,7 +14,7 @@
 | connections | MapConnectionEdge[] | yes | The map's live connections; drives recompute when the chain changes. |
 
 ### Renders
-A `Card` ("Routes") with: a **controls row** with a **From** label and two toggle chips ("Active character" / "Selected system"), **Safety** select, and **Min ship** select — in a `@container` grid that stacks (1 col) when the card is narrow and spreads to one row (3 cols) at `@md`; optional **fallback prompts** when the chosen source has no system (character mode, no located chars → system search field; system mode, no selected system → "Select a system on the map"); an Avoid-reduced / Avoid-critical / Avoid-EOL / EVE-Scout toggle-chip box; and the destination list — each row a name + `Nj` jump count, a remove (✕), and a breadcrumb of per-hop **markers** — **circles** for wormhole (J-space) systems (class `C#` or `J######` name), **squares** for K-space (fill = system security/class colour, border encodes how the hop was entered: gate/origin = grey, wormhole/eve-scout = purple, jumpbridge = cyan). Each marker shows the system's `[tag]` (when set) + name + via label in a hover/focus `Tooltip` (base-ui). An inline "Add destination…" typeahead at the bottom.
+A `Card` ("Routes") with: a **controls row** with a **From** label and two toggle chips ("Active character" / "Selected system"), **Safety** select, and **Min ship** select — in a `@container` grid that stacks (1 col) when the card is narrow and spreads to one row (3 cols) at `@md`; optional **fallback prompts** when the chosen source has no system (character mode, no located chars → system search field; system mode, no selected system → "Select a system on the map"); an Avoid-reduced / Avoid-critical / Avoid-EOL / EVE-Scout toggle-chip box; and the destination list — each row a name + `Nj` jump count, a remove (✕), and a breadcrumb of per-hop **markers** — **circles** for wormhole (J-space) systems (class `C#` or `J######` name), **squares** for K-space (fill = system colour — K-space by its fine-grained security-status gradient, wormhole/Pochven/Abyssal by class colour; border encodes how the hop was entered: gate/origin = grey, wormhole/eve-scout = purple, jumpbridge = cyan). Each marker shows the system's `[tag]` (when set) + name + via label in a hover/focus `Tooltip` (base-ui). An inline "Add destination…" typeahead at the bottom.
 
 ### Behaviour & Interactions
 - **Route source persistence** — choice between "Active character" and "Selected system" is persisted to `localStorage` under key `aperture:routes:source`; survives tab refresh.
@@ -31,7 +31,7 @@ A `Card` ("Routes") with: a **controls row** with a **From** label and two toggl
 - `requestJson('POST', /api/map/<id>/route-plan)` → `RoutePlan[]`
 - `useMapActiveChar()` — reads `activeCharSystemId` (the active character's current location from presence data)
 - `searchSystemsOnServer` — system typeahead search for the manual-source fallback and add-destination fields
-- `systemClassColor` — chip tint by security band
+- `systemSecurityColor` — marker/name tint (K-space security-status gradient, else class colour)
 
 ### Local State
 - `routeSource: 'character' | 'system'` — toggled between active character and selected system; persisted to localStorage

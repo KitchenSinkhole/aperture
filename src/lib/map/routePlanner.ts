@@ -177,7 +177,7 @@ function safetyPenalty(systemId: number, trueSec: Map<number, number>, prefs: Ro
   return band === 'high' ? 50 : 0; // less_safe
 }
 
-type RawHop = Omit<RouteHop, 'name' | 'security' | 'tag'>;
+type RawHop = Omit<RouteHop, 'name' | 'security' | 'securityStatus' | 'tag'>;
 type RawRoutePlan = {
   destinationSystemId: number;
   reachable: boolean;
@@ -309,13 +309,22 @@ async function enrichPlans(raw: RawRoutePlan[], tags: Map<number, string>): Prom
     ids.add(plan.destinationSystemId);
     for (const hop of plan.hops) ids.add(hop.systemId);
   }
-  const info = new Map<number, { name: string; security: string | null }>();
+  const info = new Map<
+    number,
+    { name: string; security: string | null; securityStatus: number | null }
+  >();
   if (ids.size > 0) {
     const rows = await db
-      .select({ id: universeSystem.id, name: universeSystem.name, security: universeSystem.security })
+      .select({
+        id: universeSystem.id,
+        name: universeSystem.name,
+        security: universeSystem.security,
+        securityStatus: universeSystem.securityStatus,
+      })
       .from(universeSystem)
       .where(inArray(universeSystem.id, [...ids]));
-    for (const r of rows) info.set(r.id, { name: r.name, security: r.security });
+    for (const r of rows)
+      info.set(r.id, { name: r.name, security: r.security, securityStatus: r.securityStatus });
   }
   const nameOf = (id: number) => info.get(id)?.name ?? `System ${id}`;
 
@@ -328,6 +337,7 @@ async function enrichPlans(raw: RawRoutePlan[], tags: Map<number, string>): Prom
       ...hop,
       name: nameOf(hop.systemId),
       security: info.get(hop.systemId)?.security ?? null,
+      securityStatus: info.get(hop.systemId)?.securityStatus ?? null,
       tag: tags.get(hop.systemId) ?? null,
     })),
   }));

@@ -12,7 +12,10 @@ Maps a `universe_system.security` or `universe_wormhole.target_class` label to a
 - Unknown/null → grey `#6b7280`.
 
 ### trueSecColor(sec: number): string
-Maps a k-space true-security value (`universe_system.true_sec`) to a hex colour on EVE's standard gradient, keyed by one-decimal band: 1.0 cyan → 0.5 yellow → 0.1 red. Anything ≤ 0.0 (null-sec) is solid red `#f00000`. Used by the intel sidebar's security row (`IntelModule`).
+Maps a k-space true-security value (`universe_system.true_sec`) to a hex colour on CCP's canonical security-status gradient, keyed by the displayed value (`sec` passed through `roundSecurity`): 1.0 blue → 0.5 yellow → 0.1 red. Anything that rounds to ≤ 0.0 (null-sec) is the deep magenta terminal colour `#8D3163`. Used by the intel sidebar's security row (`IntelModule`) and, via `systemSecurityColor`, the routes panel.
+
+### systemSecurityColor(label: string | null | undefined, securityStatus: number | null | undefined): string
+Picks a system's colour by space type: k-space labels (`H`/`L`/`0.0`) with a raw `securityStatus` use `trueSecColor`'s fine-grained gradient; every other label (wormhole classes, Pochven, Abyssal, unknown) falls back to `systemClassColor`. Used by `RoutePlannerModule` for destination rows, hop markers/tooltips, and the search dropdown.
 
 ### systemEffectColor(key: SystemEffectKey): string
 Swatch colour for a W-space anomaly effect: magnetar→pink `#e06fdf`, redGiant→red `#d9534f`, pulsar→blue `#428bca`, wolfRayet→orange `#e28a0d`, cataclysmic→light-yellow `#ffffbb`, blackHole→black `#000000`. Used by `SystemNode`'s effect indicator square.

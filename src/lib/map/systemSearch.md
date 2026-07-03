@@ -11,7 +11,7 @@ Case-insensitive substring search over `universe_system.name`, joined to constel
 **Parameters:**
 - `query` — raw user input; trimmed internally.
 
-**Returns:** `SystemSearchResult[]` — `{ id, name, security, trueSec, regionName, constellationName }`. `id` is the EVE solar-system id POSTed to `/api/map/[mapId]/systems`.
+**Returns:** `SystemSearchResult[]` — `{ id, name, security, securityStatus, regionName, constellationName }`. `id` is the EVE solar-system id POSTed to `/api/map/[mapId]/systems`.
 
 ---
 

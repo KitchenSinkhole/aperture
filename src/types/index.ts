@@ -274,6 +274,7 @@ export type RouteHop = {
   systemId: number;
   name: string;
   security: string | null;
+  securityStatus: number | null;
   via: 'origin' | 'gate' | 'wh' | 'jumpbridge' | 'eve_scout';
   connectionId: number | null;
   onMap: boolean;
@@ -295,6 +296,7 @@ export type RouteDestinationView = {
   systemId: number;
   name: string;
   security: string | null;
+  securityStatus: number | null;
   label: string | null;
 };
 

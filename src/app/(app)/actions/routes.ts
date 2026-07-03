@@ -61,7 +61,12 @@ export async function addRouteDestinationAction(
   const label = parsed.data.label ?? null;
 
   const [system] = await db
-    .select({ id: universeSystem.id, name: universeSystem.name, security: universeSystem.security })
+    .select({
+      id: universeSystem.id,
+      name: universeSystem.name,
+      security: universeSystem.security,
+      securityStatus: universeSystem.securityStatus,
+    })
     .from(universeSystem)
     .where(eq(universeSystem.id, systemId));
   if (!system) return { ok: false, error: 'No such system.' };
@@ -83,6 +88,7 @@ export async function addRouteDestinationAction(
       systemId: system.id,
       name: system.name,
       security: system.security,
+      securityStatus: system.securityStatus,
       label: row!.label,
     },
   };

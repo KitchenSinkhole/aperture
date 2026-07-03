@@ -34,7 +34,7 @@ The public EVE-Scout Thera/Turnur connections (via `loadTheraConnections`) as `e
 ---
 
 ### planRoutes(args): Promise<RoutePlan[]>
-End-to-end orchestrator: cached gate graph + this map's overlay (+ EVE-Scout when `prefs.includeEveScout`) → `planRoutesOnGraph` → `enrichPlans` (batch-resolves system name/security from `universe_system`, plus each hop's `tag` from the map's visible `ap_map_system` rows loaded by `loadMapSystems`). Wall-clock duration (including failures, via `try/finally`) is observed into `route_plan_duration_ms` (`recordRoutePlan`).
+End-to-end orchestrator: cached gate graph + this map's overlay (+ EVE-Scout when `prefs.includeEveScout`) → `planRoutesOnGraph` → `enrichPlans` (batch-resolves system name/security label/raw security status from `universe_system`, plus each hop's `tag` from the map's visible `ap_map_system` rows loaded by `loadMapSystems`). Wall-clock duration (including failures, via `try/finally`) is observed into `route_plan_duration_ms` (`recordRoutePlan`).
 
 **Parameters:** `{ mapId: bigint; sourceSystemId: number; destinationSystemIds: number[]; prefs: RoutePrefs }`.
 **Returns:** `RoutePlan[]` (`{ destinationSystemId, destinationName, reachable, jumps, hops: RouteHop[] }`), one per requested destination, in input order.

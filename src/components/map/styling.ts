@@ -1,6 +1,7 @@
 import type { MapConnectionEdge, MapSystemNode } from '@/lib/map/loadMap';
 import type { SystemEffectKey } from '@/lib/eve/systemEffects';
 import type { NoteSeverity } from '@/lib/map/enumLabels';
+import { roundSecurity } from '@/lib/sde/security';
 
 // The map encodes status and connection state purely as colour/stroke, with
 // explicit values so the canvas is readable without Tailwind tokens leaking
@@ -28,25 +29,44 @@ export function systemClassColor(cls: string | null | undefined): string {
   return SYSTEM_CLASS_COLORS[cls] ?? '#6b7280';
 }
 
-// EVE's standard true-security gradient, keyed by one-decimal band: 1.0 cyan →
-// 0.5 yellow → 0.1 red. Anything ≤ 0.0 (null-sec) reads as solid red.
+// CCP's canonical security-status gradient, keyed by the displayed value (true
+// sec passed through `roundSecurity`): 1.0 blue → 0.5 yellow → 0.1 red. Anything
+// that rounds to ≤ 0.0 (null-sec) reads as the deep magenta terminal colour.
+// https://developers.eveonline.com/docs/guides/system-security/
 const TRUE_SEC_COLORS: Record<string, string> = {
-  '1.0': '#2fefef',
-  '0.9': '#48f0c0',
-  '0.8': '#00ef47',
-  '0.7': '#00f000',
-  '0.6': '#8fef2f',
-  '0.5': '#efef00',
-  '0.4': '#d77700',
-  '0.3': '#f06000',
-  '0.2': '#f04800',
-  '0.1': '#d73000',
+  '1.0': '#2C75E1',
+  '0.9': '#399AEB',
+  '0.8': '#4ECEF8',
+  '0.7': '#60DBA3',
+  '0.6': '#71E754',
+  '0.5': '#F5FF83',
+  '0.4': '#DC6C06',
+  '0.3': '#CE440F',
+  '0.2': '#BB1116',
+  '0.1': '#731F1F',
 };
+const NULL_SEC_COLOR = '#8D3163';
 
 /** Colour for a k-space true-security value (`universe_system.true_sec`). */
 export function trueSecColor(sec: number): string {
-  if (sec <= 0) return '#f00000';
-  return TRUE_SEC_COLORS[(Math.round(sec * 10) / 10).toFixed(1)] ?? '#f00000';
+  const rounded = roundSecurity(sec);
+  if (rounded <= 0) return NULL_SEC_COLOR;
+  return TRUE_SEC_COLORS[rounded.toFixed(1)] ?? NULL_SEC_COLOR;
+}
+
+/**
+ * Colour for a system given its class label and raw security status. K-space
+ * (hi/lo/null) uses the fine-grained security gradient; wormhole classes,
+ * Pochven and Abyssal keep their class colour.
+ */
+export function systemSecurityColor(
+  label: string | null | undefined,
+  securityStatus: number | null | undefined,
+): string {
+  if (securityStatus != null && (label === 'H' || label === 'L' || label === '0.0')) {
+    return trueSecColor(securityStatus);
+  }
+  return systemClassColor(label);
 }
 
 const STATUS_COLORS: Record<MapSystemNode['status'], string> = {
