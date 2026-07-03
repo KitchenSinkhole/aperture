@@ -1,9 +1,9 @@
-# Public Deployment Hardening
+# Remove Scaling Ceilings
 
-**Goal:** Remove the three non-hardware blockers to an official public free-for-all Aperture deployment, surfaced by the 2026-07-02 prod metrics + read-only SSH investigation: unbounded `ap_job_run` growth, accumulating zombie `location-poll` jobs, and the shared-bucket killmail rate-limit ceiling.
+**Goal:** Remove three non-hardware resource ceilings that degrade every Aperture deployment as it accrues tracked characters and viewers, surfaced by the 2026-07-02 prod metrics + read-only SSH investigation: unbounded `ap_job_run` growth, accumulating zombie `location-poll` jobs, and the shared-bucket killmail rate-limit ceiling. These worsen on any deployment over time; a larger public deployment just reaches them sooner.
 **References:** `src/lib/jobs/withInstrumentation.ts`, `src/lib/jobs/tasks/locationPoll.md`, `src/lib/jobs/runner.md`, `src/lib/metrics/gauges.md`, `src/lib/metrics/history.md`, `src/lib/map/killboard.ts`, `src/db/schema.md` (`universe_entity_name` cache precedent), `aperture.config.ts`. CLAUDE.md rules: `universe_` prefix for CCP-data tables, hand-written migrations since 0011 (apply before tests), `jsonb`/`timestamptz`/`bigint` column rules, single canonical mutation pathways, no generic `active` boolean, history lives in `ap_map_event`.
 
-Context, measured on prod (335 tracked chars, 43 concurrent viewers, alliance active-use peak): app 659 MB RAM / 3.7% CPU, DB 219 MB, load 1.74/8 cores. Compute is ~4x over-provisioned; none of the fixes below are hardware. `ap_job_run` = 14.5M rows / 4.1 GB (91% of the DB), unpartitioned, +~825 rows/min. Job "backlog" = 19,552 dead `location-poll` rows with NULL key. Killmail fetches = ~28k/day, all from the on-demand killboard sidebar re-fetching immutable bodies.
+Context, measured on prod (335 tracked chars, 43 concurrent viewers, alliance active-use peak): app 659 MB RAM / 3.7% CPU, DB 219 MB, load 1.74/8 cores. Compute is ~4x over-provisioned; none of the fixes below are hardware — they bound growth and rate-limit ceilings that no amount of provisioning solves. `ap_job_run` = 14.5M rows / 4.1 GB (91% of the DB), unpartitioned, +~825 rows/min. Job "backlog" = 19,552 dead `location-poll` rows with NULL key. Killmail fetches = ~28k/day, all from the on-demand killboard sidebar re-fetching immutable bodies.
 
 ---
 
@@ -56,4 +56,4 @@ Context, measured on prod (335 tracked chars, 43 concurrent viewers, alliance ac
 
 ---
 
-**Sequencing:** Stages are independent; recommended order 1 → 2 → 3 (biggest disk/DB relief first). Stage 4 is low-risk and independent — it can ship anytime, and pairs naturally with Stage 1 since it makes the `ap_job_run` growth it addresses continuously observable. Stages 1 and 2 are worth shipping to the current alliance deployment immediately, ahead of any public launch, since disk and zombie count grow every day. Claim migration numbers at implementation time (0048/0049) to avoid collisions with other branches.
+**Sequencing:** Stages are independent; recommended order 1 → 2 → 3 (biggest disk/DB relief first). Stage 4 is low-risk and independent — it can ship anytime, and pairs naturally with Stage 1 since it makes the `ap_job_run` growth it addresses continuously observable. Stages 1 and 2 are worth shipping to every deployment immediately, since disk and zombie count grow every day on any of them. Claim migration numbers at implementation time (0048/0049) to avoid collisions with other branches.
