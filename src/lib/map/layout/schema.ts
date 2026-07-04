@@ -37,7 +37,22 @@ const panelGroup = z
     message: 'active tab must be a group member',
   });
 
-const breakpointGroups = z.array(panelGroup).max(50);
+const breakpointGroups = z
+  .array(panelGroup)
+  .max(50)
+  .refine(
+    (groups) => {
+      const seen = new Set<PanelId>();
+      for (const g of groups) {
+        for (const m of g.members) {
+          if (seen.has(m)) return false;
+          seen.add(m);
+        }
+      }
+      return true;
+    },
+    { message: 'a panel may belong to at most one group per breakpoint' },
+  );
 
 export const mapLayoutConfigSchema = z.object({
   version: z.number().int().min(0).max(1_000_000),

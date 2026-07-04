@@ -583,7 +583,8 @@ export function MapCanvas({
       setLayout((prev) => {
         const bp = breakpoint;
         const source = prev.groups[bp].find((g) => g.members.includes(sourcePanel));
-        if (!source || source.id === targetGroupId) return prev;
+        const target = prev.groups[bp].find((g) => g.id === targetGroupId);
+        if (!source || !target || source.id === targetGroupId) return prev;
         const droppedIds = new Set<string>();
         // Old group id → new anchor id, when removing the source's anchor member
         // forces a re-key; its `layouts[bp]` item is renamed to match.
