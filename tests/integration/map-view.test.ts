@@ -143,7 +143,9 @@ describe('read-only map view (real Postgres)', () => {
     expect(data!.systems).toHaveLength(2); // invisible K1 excluded
     const wh = data!.systems.find((s) => s.systemId === WH)!;
     expect(wh.name).toBe('J199999');
-    expect(wh.statics).toEqual(['XYZ']);
+    // `statics` pairs each far-side label (targetClass ?? name; XYZ's target
+    // class is null, so it falls back to the code) with its WH type-id.
+    expect(wh.statics).toEqual([{ label: 'XYZ', typeId: WH_TYPE }]);
     const k2 = data!.systems.find((s) => s.systemId === K2)!;
     expect(k2.alias).toBe('Hub2');
     expect(k2.tag).toBe('X');
