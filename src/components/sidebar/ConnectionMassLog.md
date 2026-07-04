@@ -37,3 +37,4 @@ so this shows the cumulative absolute + the `jumpMassClass` ceiling only.
 ### Depends On
 - `connectionMassLogLoadSchema`, `Envelope` (`src/lib/realtime/protocol.ts`) — validates the realtime load.
 - `formatAgoFromMs` (`src/lib/map/relativeTime.ts`).
+- `formatWormholeMass` (`src/lib/eve/wormholeFormat.ts`) — shared kg→kt formatter.

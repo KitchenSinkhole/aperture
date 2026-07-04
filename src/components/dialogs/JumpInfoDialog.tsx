@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { fetchWormholeJumpInfo } from '@/lib/reference/client';
+import { formatWormholeLifetime, formatWormholeMass } from '@/lib/eve/wormholeFormat';
 import type { WormholeJumpInfoRow } from '@/types';
 
 /**
@@ -93,9 +94,9 @@ function MassTable({ rows }: { rows: WormholeJumpInfoRow[] }) {
               <tr key={r.code} className="border-t border-foreground/10">
                 <td className="px-2 py-1 font-mono">{r.code}</td>
                 <td className="px-2 py-1">{r.targetClass ?? '—'}</td>
-                <td className="px-2 py-1 text-right font-mono tabular-nums">{fmtMass(r.totalMass)}</td>
-                <td className="px-2 py-1 text-right font-mono tabular-nums">{fmtMass(r.jumpMass)}</td>
-                <td className="px-2 py-1 text-right font-mono tabular-nums">{fmtLifetime(r.lifetimeMinutes)}</td>
+                <td className="px-2 py-1 text-right font-mono tabular-nums">{formatWormholeMass(r.totalMass)}</td>
+                <td className="px-2 py-1 text-right font-mono tabular-nums">{formatWormholeMass(r.jumpMass)}</td>
+                <td className="px-2 py-1 text-right font-mono tabular-nums">{formatWormholeLifetime(r.lifetimeMinutes)}</td>
                 <td className="px-2 py-1 text-right font-mono tabular-nums">{fmtSig(r.sigStrength)}</td>
               </tr>
             ))}
@@ -136,17 +137,6 @@ function StaticsOverview({
 }
 
 // --- formatting + grouping helpers -----------------------------------------
-
-/** Wormhole masses are kilograms; the community unit is kilotonnes (1 kt = 1e6 kg). */
-function fmtMass(kg: number | null): string {
-  if (kg == null) return '—';
-  return `${new Intl.NumberFormat('en-US').format(Math.round(kg / 1e6))} kt`;
-}
-
-function fmtLifetime(minutes: number | null): string {
-  if (minutes == null) return '—';
-  return `${Math.round(minutes / 60)}h`;
-}
 
 function fmtSig(value: number | null): string {
   if (value == null) return '—';

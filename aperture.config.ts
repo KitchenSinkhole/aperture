@@ -237,18 +237,32 @@ export const apertureConfig = {
   AUTHZ_ADMIN_ROLE: 'Director',
 
   /**
-   * How long a wormhole connection has left from the moment it goes EOL to the
-   * point a reap job would purge it: 4h nominal + 15% (36 minutes) safety buffer. Read by the
-   * EOL-expiry job and surfaced as a countdown on EOL-flagged edges.
+   * In-game nominal lifetime of an `eol`-stage wormhole from the moment it goes
+   * EOL: 4h. Drives the displayed countdown on EOL-flagged edges; the reap job
+   * adds a grace buffer on top (`WORMHOLE_EOL_LIFETIME_MS`).
+   */
+  WORMHOLE_EOL_NOMINAL_MS: 14_400_000,
+
+  /**
+   * In-game nominal lifetime of a `critical`-stage wormhole from the moment it
+   * enters the ~1h stage: 1h. Drives the displayed countdown; the reap job adds
+   * a grace buffer on top (`WORMHOLE_EOL_CRITICAL_LIFETIME_MS`).
+   */
+  WORMHOLE_EOL_CRITICAL_NOMINAL_MS: 3_600_000,
+
+  /**
+   * Reap threshold for an `eol`-stage wormhole: the 4h nominal
+   * (`WORMHOLE_EOL_NOMINAL_MS`) plus a 15% (36 minute) grace buffer = 4h36m.
+   * Read by the EOL-expiry job to decide when to purge the row. The grace buffer
+   * is internal: the displayed countdown runs to the nominal, not to this.
    */
   WORMHOLE_EOL_LIFETIME_MS: 16_560_000,
 
   /**
-   * How long a wormhole connection has left from the moment it enters the
-   * *critical* (1h) EOL stage to the point the reap job purges it. Mirrors
-   * `WORMHOLE_EOL_LIFETIME_MS`'s 15-minute safety buffer beyond the in-game
-   * nominal: 1h + 15m = 4_500_000 ms. The newer of EVE's two EOL warnings
-   * ("~1h left") selects this constant over the 4h `WORMHOLE_EOL_LIFETIME_MS`.
+   * Reap threshold for a `critical`-stage wormhole: the 1h nominal
+   * (`WORMHOLE_EOL_CRITICAL_NOMINAL_MS`) plus a 15-minute grace buffer = 1h15m.
+   * The newer of EVE's two EOL warnings ("~1h left") selects this over the 4h36m
+   * `WORMHOLE_EOL_LIFETIME_MS`.
    */
   WORMHOLE_EOL_CRITICAL_LIFETIME_MS: 4_500_000,
 

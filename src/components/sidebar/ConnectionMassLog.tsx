@@ -6,6 +6,7 @@ import { fetchConnectionMassLog } from '@/lib/map/client';
 import { useRealtimeEvents } from '@/lib/realtime/useRealtime';
 import { connectionMassLogLoadSchema, type Envelope } from '@/lib/realtime/protocol';
 import { formatAgoFromMs } from '@/lib/map/relativeTime';
+import { formatWormholeMass } from '@/lib/eve/wormholeFormat';
 
 /**
  * Read-only per-jump mass-log for the selected connection. The
@@ -100,24 +101,19 @@ export function ConnectionMassLog({
                 </span>
                 <span className="flex shrink-0 items-baseline gap-2">
                   <span className="text-[10px] text-muted-foreground">{fmtAgo(e.jumpedAt)}</span>
-                  <span className="font-medium text-foreground">{fmtMass(e.mass)}</span>
+                  <span className="font-medium text-foreground">{formatWormholeMass(e.mass)}</span>
                 </span>
               </li>
             ))}
           </ul>
           <div className="flex items-center justify-between border-t border-border/60 pt-1">
             <span className="text-[10px] text-muted-foreground">Cumulative</span>
-            <span className="font-semibold tabular-nums text-foreground">{fmtMass(cumulative)}</span>
+            <span className="font-semibold tabular-nums text-foreground">{formatWormholeMass(cumulative)}</span>
           </div>
         </>
       )}
     </div>
   );
-}
-
-/** Wormhole masses are kilograms; the community unit is kilotonnes (1 kt = 1e6 kg). */
-function fmtMass(kg: number): string {
-  return `${new Intl.NumberFormat('en-US').format(Math.round(kg / 1e6))} kt`;
 }
 
 function fmtAgo(iso: string): string {

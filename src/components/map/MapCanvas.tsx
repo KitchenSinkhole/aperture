@@ -1706,21 +1706,42 @@ export function MapCanvas({
     }
     for (const ids of groups.values()) ids.sort();
 
+    // Resolve each connection's source wormhole from its attached signatures,
+    // preferring the named side over the K162 reverse-exit (the named hole is the
+    // one carrying routing / mass / lifetime static data). Feeds the edge's
+    // detail popover.
+    const whByConn = new Map<string, { typeId: number; code: string | null }>();
+    for (const sig of viewData.signatures) {
+      if (sig.mapConnectionId == null || sig.typeId == null) continue;
+      const existing = whByConn.get(sig.mapConnectionId);
+      if (!existing || (existing.code === 'K162' && sig.wormholeCode !== 'K162')) {
+        whByConn.set(sig.mapConnectionId, { typeId: sig.typeId, code: sig.wormholeCode });
+      }
+    }
+
     return viewData.connections.map((c) => {
       const key = [c.source, c.target].sort().join('\0');
       const group = groups.get(key)!;
       const parallelIndex = group.indexOf(c.id);
       const parallelCount = group.length;
+      const wh = whByConn.get(c.id) ?? null;
       return {
         id: c.id,
         type: 'connection',
         source: c.source,
         target: c.target,
-        data: { ...c, parallelIndex, parallelCount },
+        data: {
+          ...c,
+          parallelIndex,
+          parallelCount,
+          mapId: viewData.map.id,
+          wormholeTypeId: wh?.typeId ?? null,
+          wormholeCode: wh?.code ?? null,
+        },
         selected: selected?.kind === 'connection' && selected.id === c.id,
       };
     });
-  }, [viewData.connections, selected]);
+  }, [viewData.connections, viewData.signatures, viewData.map.id, selected]);
 
   const selectedSystem: MapSystemNode | null = useMemo(() => {
     if (selected?.kind !== 'system') return null;

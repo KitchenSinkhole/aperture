@@ -26,6 +26,8 @@ const ATTR_NAMES = {
 } as const;
 
 export type WormholeJumpInfoRow = {
+  /** `universe_wormhole.type_id`. */
+  typeId: number;
   /** WH code, e.g. `A239`, `K162`. */
   code: string;
   /** Classes it spawns in; null = source unspecified (K162 + Drifter/shattered-access holes). */
@@ -106,6 +108,7 @@ export async function wormholeJumpInfo(): Promise<WormholeJumpInfoRow[]> {
     attrId === null ? null : (byType.get(typeId)?.get(attrId) ?? null);
 
   return whRows.map((r) => ({
+    typeId: r.typeId,
     code: r.code,
     sourceClasses: r.sourceClasses,
     targetClass: r.targetClass,

@@ -6,7 +6,7 @@ import {
   type ConnectionLifecycleInput,
 } from '@/lib/map/connectionState';
 
-const { WORMHOLE_EOL_LIFETIME_MS, WORMHOLE_EOL_CRITICAL_LIFETIME_MS, WORMHOLE_DEFAULT_LIFETIME_MS } =
+const { WORMHOLE_EOL_NOMINAL_MS, WORMHOLE_EOL_CRITICAL_NOMINAL_MS, WORMHOLE_DEFAULT_LIFETIME_MS } =
   apertureConfig;
 
 const CREATED = '2026-05-23T12:00:00.000Z';
@@ -29,16 +29,16 @@ describe('connectionExpiresAt', () => {
     expect(result!.getTime()).toBe(CREATED_MS + WORMHOLE_DEFAULT_LIFETIME_MS);
   });
 
-  it('returns eolAt + WORMHOLE_EOL_LIFETIME_MS for the eol (4h) stage', () => {
+  it('returns eolAt + WORMHOLE_EOL_NOMINAL_MS for the eol (4h) stage', () => {
     const result = connectionExpiresAt(wh({ eolStage: 'eol', eolAt: EOL }));
     expect(result).not.toBeNull();
-    expect(result!.getTime()).toBe(EOL_MS + WORMHOLE_EOL_LIFETIME_MS);
+    expect(result!.getTime()).toBe(EOL_MS + WORMHOLE_EOL_NOMINAL_MS);
   });
 
-  it('returns eolAt + WORMHOLE_EOL_CRITICAL_LIFETIME_MS for the critical (1h) stage', () => {
+  it('returns eolAt + WORMHOLE_EOL_CRITICAL_NOMINAL_MS for the critical (1h) stage', () => {
     const result = connectionExpiresAt(wh({ eolStage: 'critical', eolAt: EOL }));
     expect(result).not.toBeNull();
-    expect(result!.getTime()).toBe(EOL_MS + WORMHOLE_EOL_CRITICAL_LIFETIME_MS);
+    expect(result!.getTime()).toBe(EOL_MS + WORMHOLE_EOL_CRITICAL_NOMINAL_MS);
   });
 
   it('returns null for non-wormhole scopes (stargate / jumpbridge / abyssal never expire)', () => {
@@ -69,13 +69,13 @@ describe('connectionTimeLeftMs', () => {
     expect(connectionTimeLeftMs(wh({ scope: 'stargate' }), CREATED_MS)).toBeNull();
   });
 
-  it('uses the EOL stamp + 4h lifetime once the eol stage is flagged', () => {
+  it('uses the EOL stamp + 4h nominal once the eol stage is flagged', () => {
     const remaining = connectionTimeLeftMs(wh({ eolStage: 'eol', eolAt: EOL }), EOL_MS + 1_000);
-    expect(remaining).toBe(WORMHOLE_EOL_LIFETIME_MS - 1_000);
+    expect(remaining).toBe(WORMHOLE_EOL_NOMINAL_MS - 1_000);
   });
 
-  it('uses the 1h lifetime once the critical stage is flagged', () => {
+  it('uses the 1h nominal once the critical stage is flagged', () => {
     const remaining = connectionTimeLeftMs(wh({ eolStage: 'critical', eolAt: EOL }), EOL_MS + 1_000);
-    expect(remaining).toBe(WORMHOLE_EOL_CRITICAL_LIFETIME_MS - 1_000);
+    expect(remaining).toBe(WORMHOLE_EOL_CRITICAL_NOMINAL_MS - 1_000);
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -11,19 +11,17 @@ import {
   type EdgeProps,
 } from '@xyflow/react';
 import type { MapConnectionEdge } from '@/lib/map/loadMap';
-import { connectionTimeLeftMs } from '@/lib/map/connectionState';
-import { formatRelativeFromMs } from '@/lib/map/relativeTime';
 import { Tooltip } from '@base-ui/react/tooltip';
 import { RefreshCw, Shield, type LucideIcon } from 'lucide-react';
 import { connectionBadges, connectionStyle } from './styling';
 import { useTravelForConnection } from './MapTravelContext';
-
-const EOL_COUNTDOWN_TICK_MS = 30_000;
+import { ConnectionDetailPopover } from './ConnectionDetailPopover';
 
 // Selectable connection edge. Scope + mass status drive the stroke colour; EOL
 // dashes the line; flags (jump-mass / EOL / frigate / rolling / preserve) render
-// as small badges at the midpoint. Edits live in the sidebar inspector — clicking
-// the edge merely selects it.
+// as small badges at the midpoint. Hovering the badge cluster opens a detail
+// popover. Edits live in the sidebar inspector — clicking the edge merely
+// selects it.
 //
 // Edge endpoints snap to whichever of the four node sides face each other based
 // on the dominant axis between the two node centres, so the line exits and
@@ -35,6 +33,12 @@ export type ConnectionEdgeData = MapConnectionEdge & {
   parallelIndex: number;
   /** Total number of edges between this node pair (1 = only edge, no offset applied). */
   parallelCount: number;
+  /** Owning map id — feeds the detail popover's mass-log fetch. */
+  mapId: string;
+  /** Resolved source-wormhole `universe_wormhole.type_id`; null when no WH sig is attached. */
+  wormholeTypeId: number | null;
+  /** Resolved source-wormhole code (e.g. "B274"); null when unknown. */
+  wormholeCode: string | null;
 };
 
 const PARALLEL_STEP_PX = 12;
@@ -134,9 +138,7 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
   const style = connectionStyle(data);
   const finalStyle = selected ? { ...style, strokeWidth: (style.strokeWidth ?? 3) + 2 } : style;
   const badges = connectionBadges(data);
-  const countdown = useEolCountdown(data);
-  const hasLabel =
-    badges.length > 0 || countdown !== null || data.isRolling || data.preserveMass;
+  const hasLabel = badges.length > 0 || data.isRolling || data.preserveMass;
   const travel = useTravelForConnection(props.id);
 
   return (
@@ -172,8 +174,13 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
                 )}
               </div>
             )}
-            {(badges.length > 0 || countdown !== null) && (
-              <div className="flex items-center gap-1 rounded bg-card/90 px-1.5 py-0.5 text-[11px] font-semibold leading-none ring-1 ring-foreground/10">
+            {badges.length > 0 && (
+              <ConnectionDetailPopover
+                connection={data}
+                mapId={data.mapId}
+                wormholeTypeId={data.wormholeTypeId}
+                wormholeCode={data.wormholeCode}
+              >
                 {badges.map((b) =>
                   b.warn ? (
                     <span
@@ -189,12 +196,7 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
                     </span>
                   ),
                 )}
-                {countdown !== null && (
-                  <span className="text-muted-foreground" aria-label="EOL time remaining">
-                    {countdown}
-                  </span>
-                )}
-              </div>
+              </ConnectionDetailPopover>
             )}
           </div>
         </EdgeLabelRenderer>
@@ -270,20 +272,3 @@ function TravelDot({
   );
 }
 
-// Ticks the EOL-flagged edge label once every 30s. Returns null when the
-// connection has no expiry (non-WH) or is not EOL (`eolStage === 'none'`) — the
-// pre-EOL "expires in" hint only surfaces in the inspector to avoid cluttering
-// every WH edge.
-function useEolCountdown(c: MapConnectionEdge): string | null {
-  const isEol = c.eolStage !== 'none';
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!isEol) return;
-    const id = setInterval(() => setNow(Date.now()), EOL_COUNTDOWN_TICK_MS);
-    return () => clearInterval(id);
-  }, [isEol]);
-  if (!isEol) return null;
-  const ms = connectionTimeLeftMs(c, now);
-  if (ms === null) return null;
-  return formatRelativeFromMs(ms);
-}

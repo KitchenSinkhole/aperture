@@ -21,5 +21,6 @@ Two sections inside a scrollable body:
 
 ### Depends On
 - `fetchWormholeJumpInfo` — `@/lib/reference/client`
+- `formatWormholeMass`, `formatWormholeLifetime` — `@/lib/eve/wormholeFormat`
 - `WormholeJumpInfoRow` — `@/types`
 - `Dialog`/`DialogContent`/`DialogHeader`/`DialogTitle`/`DialogDescription` — `@/components/ui/dialog`
