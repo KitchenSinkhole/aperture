@@ -18,12 +18,12 @@ A base-ui `Tooltip` whose trigger is the styled badge-cluster box (wrapping `chi
 - **Header** (bordered): the wormhole code (`wormholeCode` or `unknown`), the size class (`connection.jumpMassClass`), and the leads-to class (`targetClass`) coloured by `systemClassColor` — e.g. `B274  L  H` with `H` in the shared class colour.
 - Body (only when the type is known): Total mass / Max jump / Max lifetime.
 - **Mass logged**: the mass-log cumulative plus its share of the WH type's total stable mass, e.g. `350 kt (32%)`; the percentage is omitted when the total mass is unknown.
-- **EOL row** (when `eolStage !== 'none'`): the stage label (`EOL 4h` for `eol`, `EOL 1h` for `critical`) and an `H:MM` countdown, e.g. `EOL 4h   1:24`.
+- **EOL row** (when `eolStage !== 'none'`): the stage label (`EOL 4h` for `eol`, `EOL 1h` for `critical`) and an `H:MM` countdown, e.g. `EOL 4h   1:24`; the colon carries the `ap-blink` utility (1s CSS on/off) to read as a live clock.
 
 ### Behaviour & Interactions
 - Opens on hover (base-ui default delay; the popup is itself hoverable). Static wormhole data (`fetchWormholeJumpInfo`, session-cached) and the mass-log cumulative (`fetchConnectionMassLog`) are fetched lazily on first open; results persist in local state so re-opens are instant. Mass logged reads `…` until the fetch resolves, then the cumulative (0 when no jumps logged).
 - When `wormholeTypeId` is null the reference fetch is skipped and the static rows are omitted — the header code reads `unknown` (no leads-to), leaving Size / Mass logged / countdown.
-- The EOL countdown ticks every 30s while the popup is open (the row unmounts on close), derived from `connectionTimeLeftMs` (nominal 4h/1h) rendered as `H:MM` floored to zero.
+- The EOL countdown ticks every 30s while the popup is open (the row unmounts on close), derived from `connectionTimeLeftMs` (nominal 4h/1h) rendered as `H:MM` floored to zero. The colon blinks continuously via the `ap-blink` CSS keyframe (independent of the 30s data tick).
 
 ### Depends On
 - `@base-ui/react/tooltip` (`Tooltip`).

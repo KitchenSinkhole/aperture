@@ -230,4 +230,14 @@
   .ap-sig-flash {
     animation: ap-sig-flash 3s ease-in-out forwards;
   }
+
+  /* Blinking separator for the live EOL countdown colon — a 1s on/off pulse
+     signals the clock is ticking. Opacity-only, so the glyph keeps its box and
+     the digits don't shift. See ConnectionDetailPopover.tsx. */
+  @keyframes ap-blink {
+    50% { opacity: 0; }
+  }
+  .ap-blink {
+    animation: ap-blink 1s step-end infinite;
+  }
 }

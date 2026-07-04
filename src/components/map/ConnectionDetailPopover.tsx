@@ -128,20 +128,19 @@ function EolCountdownRow({ connection }: { connection: MapConnectionEdge }) {
   const ms = connectionTimeLeftMs(connection, now);
   if (ms === null) return null;
   const label = connection.eolStage === 'critical' ? 'EOL 1h' : 'EOL 4h';
+  const totalMinutes = Math.max(0, Math.floor(ms / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = String(totalMinutes % 60).padStart(2, '0');
   return (
     <div className="mt-0.5 flex items-center justify-between gap-3 border-t border-border/60 pt-1">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium tabular-nums text-foreground">{formatCountdownHM(ms)}</span>
+      <span className="font-medium tabular-nums text-foreground">
+        {hours}
+        <span className="ap-blink">:</span>
+        {minutes}
+      </span>
     </div>
   );
-}
-
-/** Milliseconds remaining → `H:MM` countdown (e.g. `1:24`, `0:39`), floored to zero. */
-function formatCountdownHM(ms: number): string {
-  const totalMinutes = Math.max(0, Math.floor(ms / 60_000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return `${hours}:${String(minutes).padStart(2, '0')}`;
 }
 
 function Row({ label, value }: { label: string; value: string }) {
