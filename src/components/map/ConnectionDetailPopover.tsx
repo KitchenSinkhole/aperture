@@ -15,11 +15,12 @@ const EOL_COUNTDOWN_TICK_MS = 30_000;
 // Hover popover anchored to a connection's on-edge badge cluster. Surfaces the
 // source wormhole's static routing data (type / leads-to / masses / lifetime),
 // the cumulative mass logged across tracked jumps, and — for an EOL-flagged
-// hole — a live countdown to nominal expiry. Static and mass-log data are
-// fetched lazily on first open; the reference catalog is session-cached, so a
-// second hover is instant. When the source wormhole type is unknown (no
-// resolved WH signature attached) the static rows are omitted and only the
-// size, logged mass, and countdown remain.
+// hole — a live countdown to nominal expiry. The mass-log is refetched on every
+// open so it can't go stale after new jumps; the static reference is fetched
+// once per known wormhole type (the catalog is session-cached), so it also
+// populates if a WH signature is attached after the first hover. When the
+// source wormhole type is unknown (no resolved WH signature attached) the
+// static rows are omitted and only the size, logged mass, and countdown remain.
 export function ConnectionDetailPopover({
   connection,
   mapId,
@@ -35,16 +36,17 @@ export function ConnectionDetailPopover({
 }) {
   const [reference, setReference] = useState<WormholeJumpInfoRow | null>(null);
   const [massLogged, setMassLogged] = useState<number | null>(null);
-  const [loaded, setLoaded] = useState(false);
 
   const load = () => {
-    if (loaded) return;
-    setLoaded(true);
-    if (wormholeTypeId !== null) {
+    // Reference is keyed on the wormhole type: fetch when we don't yet hold the
+    // row for the current type, which also covers a WH sig attached after the
+    // first hover (wormholeTypeId flips null → known).
+    if (wormholeTypeId !== null && reference?.typeId !== wormholeTypeId) {
       void fetchWormholeJumpInfo().then((result) => {
         if (result.ok) setReference(result.data.find((r) => r.typeId === wormholeTypeId) ?? null);
       });
     }
+    // Refetch every open so the cumulative can't lag behind newly logged jumps.
     void fetchConnectionMassLog({ mapId, connectionId: connection.id }).then((result) => {
       setMassLogged(result.ok && result.data.length > 0 ? result.data[0]!.cumulativeMass : 0);
     });
