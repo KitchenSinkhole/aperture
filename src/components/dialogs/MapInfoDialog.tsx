@@ -149,7 +149,9 @@ function SystemsPanel({ systems }: { systems: MapSystemNode[] }) {
               </Td>
               <Td className="text-right font-mono tabular-nums">{s.security ?? '—'}</Td>
               <Td className="capitalize">{s.status}</Td>
-              <Td className="font-mono">{s.statics.length ? s.statics.join(', ') : '—'}</Td>
+              <Td className="font-mono">
+                {s.statics.length ? s.statics.map((x) => x.label).join(', ') : '—'}
+              </Td>
             </tr>
           ))}
         </tbody>

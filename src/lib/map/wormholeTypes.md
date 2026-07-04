@@ -7,10 +7,7 @@
 
 > **Class join key:** `universe_system.security` (the `C1`–`C6` / `H` / `L` / `0.0` labels), **not** `universe_system.security_class`. The catalog's `source_classes`/`target_class` use the same labels as `universe_system.security`, and the seeded catalog + the read-path tests use exactly those. `security_class` is the unrelated SDE ore-spawn field and would never match the catalog — `security` is correct.
 
----
-
-### jumpMassBand(kg: number | null): WhJumpMass | null
-Buckets a wormhole's `wormholeMaxJumpMass` (kg) into the `s`/`m`/`l`/`xl` connection size bands. Thresholds: `≤5M → s`, `≤100M → m`, `<1B → l`, `≥1B → xl` (chosen to sit in the gaps between EVE's discrete jump-mass values — 5M / 62M / 300M·375M / 1B+). `null` in → `null` out. Used by `wormholeCatalog` (to tag each entry) and the signature module's auto-set of a linked connection's size.
+> `jumpMassBand` is re-exported here for server callers but defined in the client-safe `wormholeCatalog.ts`.
 
 ---
 

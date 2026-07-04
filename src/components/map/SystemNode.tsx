@@ -26,6 +26,7 @@ import { systemDisplayName, isDrifterSystem } from '@/lib/eve/drifterSystems';
 import { isShatteredSystem } from '@/lib/eve/shatteredSystems';
 import { homeAccentColor, systemClassColor, systemEffectColor, systemStatusColor } from './styling';
 import { InlineTextEdit } from './InlineTextEdit';
+import { StaticDetailPopover } from './StaticDetailPopover';
 import { SystemPresenceTable } from './SystemPresenceTable';
 import { usePresenceForSystem } from './MapPresenceContext';
 import { useSignatureIndicator } from './MapSignatureIndicatorContext';
@@ -145,7 +146,7 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
   };
 
   const orderedStatics = React.useMemo(() => {
-    return data.statics.sort(staticCompare);
+    return [...data.statics].sort((a, b) => staticCompare(a.label, b.label));
   }, [data.statics]);
 
   return (
@@ -292,10 +293,15 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
               <>
                 {orderedStatics.length > 0 && (
                   <span className="flex items-center gap-1">
-                    {orderedStatics.map((cls, i) => (
-                      <span key={i} className="font-bold" style={{ color: systemClassColor(cls) }}>
-                        {cls}
-                      </span>
+                    {orderedStatics.map((s, i) => (
+                      <StaticDetailPopover key={i} typeId={s.typeId}>
+                        <span
+                          className="font-bold"
+                          style={{ color: systemClassColor(s.label) }}
+                        >
+                          {s.label}
+                        </span>
+                      </StaticDetailPopover>
                     ))}
                   </span>
                 )}

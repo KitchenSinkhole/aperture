@@ -7,8 +7,8 @@ import type { WormholeJumpInfoRow } from '@/types';
 import { fetchWormholeJumpInfo } from '@/lib/reference/client';
 import { fetchConnectionMassLog } from '@/lib/map/client';
 import { connectionTimeLeftMs } from '@/lib/map/connectionState';
-import { formatWormholeLifetime, formatWormholeMass } from '@/lib/eve/wormholeFormat';
-import { systemClassColor } from './styling';
+import { formatWormholeMass } from '@/lib/eve/wormholeFormat';
+import { Row, WormholeReferenceRows } from './WormholeDetailRows';
 
 const EOL_COUNTDOWN_TICK_MS = 30_000;
 
@@ -87,7 +87,6 @@ function DetailRows({
   reference: WormholeJumpInfoRow | null;
   massLogged: number | null;
 }) {
-  const size = connection.jumpMassClass ? connection.jumpMassClass.toUpperCase() : null;
   const totalMass = reference?.totalMass ?? null;
   const pct = massLogged !== null && totalMass ? Math.round((massLogged / totalMass) * 100) : null;
   const massLoggedText =
@@ -99,22 +98,11 @@ function DetailRows({
 
   return (
     <>
-      <div className="flex items-center gap-2 border-b border-border/60 pb-1.5 font-semibold">
-        <span className="font-mono">{wormholeCode ?? 'unknown'}</span>
-        {size && <span className="text-muted-foreground">{size}</span>}
-        {reference?.targetClass && (
-          <span style={{ color: systemClassColor(reference.targetClass) }}>
-            {reference.targetClass}
-          </span>
-        )}
-      </div>
-      {reference && (
-        <>
-          <Row label="Total mass" value={formatWormholeMass(reference.totalMass)} />
-          <Row label="Max jump" value={formatWormholeMass(reference.jumpMass)} />
-          <Row label="Max lifetime" value={formatWormholeLifetime(reference.lifetimeMinutes)} />
-        </>
-      )}
+      <WormholeReferenceRows
+        code={wormholeCode}
+        sizeClass={connection.jumpMassClass}
+        reference={reference}
+      />
       <Row label="Mass logged" value={massLoggedText} />
       {connection.eolStage !== 'none' && <EolCountdownRow connection={connection} />}
     </>
@@ -141,15 +129,6 @@ function EolCountdownRow({ connection }: { connection: MapConnectionEdge }) {
         <span className="ap-blink">:</span>
         {minutes}
       </span>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium tabular-nums text-foreground">{value}</span>
     </div>
   );
 }

@@ -26,6 +26,25 @@ export type WormholeCatalogEntry = {
 };
 
 /**
+ * Bucket a wormhole's `wormholeMaxJumpMass` (kg) into the four community size
+ * bands the connection editor uses. The thresholds sit in the wide gaps between
+ * EVE's discrete jump-mass values (5M / 62M / 300M·375M / 1B+), so they're
+ * robust to which exact value a given WH carries:
+ *   - `s`  frigate holes (5,000,000)
+ *   - `m`  no battleships (≤ 62,000,000)
+ *   - `l`  battleships (300,000,000 / 375,000,000) — e.g. O477
+ *   - `xl` capitals (≥ 1,000,000,000)
+ * Returns `null` when the type has no jump-mass dogma value (can't infer).
+ */
+export function jumpMassBand(kg: number | null): WhJumpMass | null {
+  if (kg == null) return null;
+  if (kg <= 5_000_000) return 's';
+  if (kg <= 100_000_000) return 'm';
+  if (kg < 1_000_000_000) return 'l';
+  return 'xl';
+}
+
+/**
  * A catalog entry annotated for one host system's WH-type dropdown: tagged with
  * whether it is one of the system's statics and whether it plausibly spawns here.
  */

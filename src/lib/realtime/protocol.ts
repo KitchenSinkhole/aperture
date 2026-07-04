@@ -137,7 +137,7 @@ const systemNodeBody = {
   effect: z.string().nullable(),
   regionName: z.string(),
   constellationName: z.string(),
-  statics: z.array(z.string()),
+  statics: z.array(z.object({ label: z.string(), typeId: z.number().int() })),
   staticTypeIds: z.array(z.number().int()),
   tradeHub: z.object({ name: z.string(), jumps: z.number().int() }).nullable(),
   locked: z.boolean(),

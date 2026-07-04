@@ -29,5 +29,5 @@ A base-ui `Tooltip` whose trigger is the styled badge-cluster box (wrapping `chi
 - `@base-ui/react/tooltip` (`Tooltip`).
 - `@/lib/reference/client` (`fetchWormholeJumpInfo`) + `@/lib/map/client` (`fetchConnectionMassLog`).
 - `@/lib/map/connectionState` (`connectionTimeLeftMs`) for the countdown.
-- `@/lib/eve/wormholeFormat` (`formatWormholeMass`, `formatWormholeLifetime`).
-- `./styling` (`systemClassColor`) for the leads-to class colour.
+- `@/lib/eve/wormholeFormat` (`formatWormholeMass`) for the mass-logged row.
+- `./WormholeDetailRows` (`WormholeReferenceRows` for the header + static rows, `Row` for the mass-logged line).

@@ -96,8 +96,11 @@ export async function buildSystemNode(
     regionName: row.regionName,
     constellationName: row.constellationName,
     // Resolve to the far-side system class (matches loadMap's loadStatics);
-    // fall back to the raw WH code only when the class is unknown (K162-style).
-    statics: staticRows.map((s) => s.targetClass ?? s.name).filter((c): c is string => !!c),
+    // fall back to the raw WH code only when the class is unknown (K162-style),
+    // pairing each label with its type-id for the hover popover.
+    statics: staticRows
+      .map((s) => ({ label: s.targetClass ?? s.name, typeId: s.typeId }))
+      .filter((s): s is { label: string; typeId: number } => !!s.label),
     staticTypeIds: staticRows.map((s) => s.typeId),
     tradeHub:
       row.nearestTradeHubId != null && row.nearestTradeHubJumps != null

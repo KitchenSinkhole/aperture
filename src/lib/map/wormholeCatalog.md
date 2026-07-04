@@ -15,6 +15,11 @@ One immutable catalog row, identical for every system: `typeId`, `name`, `source
 
 ---
 
+### jumpMassBand(kg: number | null): WhJumpMass | null
+Buckets a wormhole's `wormholeMaxJumpMass` (kg) into the `s`/`m`/`l`/`xl` connection size bands. Thresholds: `≤5M → s`, `≤100M → m`, `<1B → l`, `≥1B → xl` (chosen to sit in the gaps between EVE's discrete jump-mass values — 5M / 62M / 300M·375M / 1B+). `null` in → `null` out. Client-safe, so both the server catalog read (`wormholeTypes.ts`) and client popovers (resolving a static/connection size from a reference `jumpMass`) share one derivation.
+
+---
+
 ### annotateWormholeTypes(catalog: WormholeCatalogEntry[], system: { security: string | null; staticTypeIds: number[] }): WormholeTypeOption[]
 Pure function. Tags each catalog entry with `isStatic` (entry's `typeId` is in the system's static set) and `matchesClass` (`sourceClasses == null`, or contains `system.security`, or `isStatic`). The static clause keeps a shattered system's odd-class statics visible by default.
 

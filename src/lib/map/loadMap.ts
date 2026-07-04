@@ -64,8 +64,8 @@ export type MapSystemNode = {
   effect: string | null;
   regionName: string;
   constellationName: string;
-  /** Target-class labels for each wormhole static (e.g. `["C3", "C5"]`); empty for k-space. */
-  statics: string[];
+  /** Display statics: each target-class label (e.g. `C3`) paired with its source `universe_wormhole.type_id` for the hover popover; empty for k-space. Excludes statics with no resolvable label (K162-style). */
+  statics: { label: string; typeId: number }[];
   /** `universe_wormhole.type_id` of each static — feeds client-side WH-type class filtering. */
   staticTypeIds: number[];
   /** Nearest trade hub within high-sec range (precomputed at SDE ingest); null when none. */
@@ -412,7 +412,7 @@ export async function loadMapForView(
       effect: s.effect,
       regionName: s.regionName,
       constellationName: s.constellationName,
-      statics: staticsBySystem.get(s.systemId)?.labels ?? [],
+      statics: staticsBySystem.get(s.systemId)?.display ?? [],
       staticTypeIds: staticsBySystem.get(s.systemId)?.typeIds ?? [],
       tradeHub:
         s.nearestTradeHubId != null && s.nearestTradeHubJumps != null
@@ -641,7 +641,7 @@ export async function listAdminMaps(): Promise<AdminMapListItem[]> {
   }));
 }
 
-type SystemStatics = { labels: string[]; typeIds: number[] };
+type SystemStatics = { display: { label: string; typeId: number }[]; typeIds: number[] };
 
 async function loadStatics(systemIds: number[]): Promise<Map<number, SystemStatics>> {
   const grouped = new Map<number, SystemStatics>();
@@ -657,12 +657,12 @@ async function loadStatics(systemIds: number[]): Promise<Map<number, SystemStati
     .innerJoin(universeWormhole, eq(universeSystemStatic.typeId, universeWormhole.typeId))
     .where(inArray(universeSystemStatic.systemId, systemIds));
   for (const r of rows) {
-    const entry = grouped.get(r.systemId) ?? { labels: [], typeIds: [] };
+    const entry = grouped.get(r.systemId) ?? { display: [], typeIds: [] };
     entry.typeIds.push(r.typeId);
     const code = r.targetClass ?? r.name;
     // K162-style rows can have no resolvable far-side class: still a static
     // type-id for filtering, just no label to show on the node.
-    if (code) entry.labels.push(code);
+    if (code) entry.display.push({ label: code, typeId: r.typeId });
     grouped.set(r.systemId, entry);
   }
   return grouped;
