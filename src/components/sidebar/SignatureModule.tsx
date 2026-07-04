@@ -533,7 +533,7 @@ function SignaturePanelBody({
   const sigStats = useMemo(
     () => ({
       total: rows.length,
-      unscanned: rows.filter((s) => s.classKind === 'signature' && !isFullyScanned(s)).length,
+      unscanned: rows.filter((s) => s.classKind !== 'anomaly' && !isFullyScanned(s)).length,
       wormholes: rows.filter((s) => s.groupKey === 'wormhole').length,
     }),
     [rows],
