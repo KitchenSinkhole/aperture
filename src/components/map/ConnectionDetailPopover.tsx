@@ -7,8 +7,8 @@ import type { WormholeJumpInfoRow } from '@/types';
 import { fetchWormholeJumpInfo } from '@/lib/reference/client';
 import { fetchConnectionMassLog } from '@/lib/map/client';
 import { connectionTimeLeftMs } from '@/lib/map/connectionState';
-import { formatRelativeFromMs } from '@/lib/map/relativeTime';
 import { formatWormholeLifetime, formatWormholeMass } from '@/lib/eve/wormholeFormat';
+import { systemClassColor } from './styling';
 
 const EOL_COUNTDOWN_TICK_MS = 30_000;
 
@@ -85,20 +85,35 @@ function DetailRows({
   reference: WormholeJumpInfoRow | null;
   massLogged: number | null;
 }) {
-  const size = connection.jumpMassClass ? connection.jumpMassClass.toUpperCase() : '—';
+  const size = connection.jumpMassClass ? connection.jumpMassClass.toUpperCase() : null;
+  const totalMass = reference?.totalMass ?? null;
+  const pct = massLogged !== null && totalMass ? Math.round((massLogged / totalMass) * 100) : null;
+  const massLoggedText =
+    massLogged === null
+      ? '…'
+      : pct !== null
+        ? `${formatWormholeMass(massLogged)} (${pct}%)`
+        : formatWormholeMass(massLogged);
+
   return (
     <>
-      <Row label="Type" value={wormholeCode ?? 'unknown'} />
-      <Row label="Size" value={size} />
+      <div className="flex items-center gap-2 border-b border-border/60 pb-1.5 font-semibold">
+        <span className="font-mono">{wormholeCode ?? 'unknown'}</span>
+        {size && <span className="text-muted-foreground">{size}</span>}
+        {reference?.targetClass && (
+          <span style={{ color: systemClassColor(reference.targetClass) }}>
+            {reference.targetClass}
+          </span>
+        )}
+      </div>
       {reference && (
         <>
-          <Row label="Leads to" value={reference.targetClass ?? '—'} />
           <Row label="Total mass" value={formatWormholeMass(reference.totalMass)} />
           <Row label="Max jump" value={formatWormholeMass(reference.jumpMass)} />
           <Row label="Max lifetime" value={formatWormholeLifetime(reference.lifetimeMinutes)} />
         </>
       )}
-      <Row label="Mass logged" value={massLogged === null ? '…' : formatWormholeMass(massLogged)} />
+      <Row label="Mass logged" value={massLoggedText} />
       {connection.eolStage !== 'none' && <EolCountdownRow connection={connection} />}
     </>
   );
@@ -112,12 +127,21 @@ function EolCountdownRow({ connection }: { connection: MapConnectionEdge }) {
   }, []);
   const ms = connectionTimeLeftMs(connection, now);
   if (ms === null) return null;
+  const label = connection.eolStage === 'critical' ? 'EOL 1h' : 'EOL 4h';
   return (
     <div className="mt-0.5 flex items-center justify-between gap-3 border-t border-border/60 pt-1">
-      <span className="text-muted-foreground">EOL expires in</span>
-      <span className="font-medium tabular-nums text-foreground">{formatRelativeFromMs(ms)}</span>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium tabular-nums text-foreground">{formatCountdownHM(ms)}</span>
     </div>
   );
+}
+
+/** Milliseconds remaining → `H:MM` countdown (e.g. `1:24`, `0:39`), floored to zero. */
+function formatCountdownHM(ms: number): string {
+  const totalMinutes = Math.max(0, Math.floor(ms / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}:${String(minutes).padStart(2, '0')}`;
 }
 
 function Row({ label, value }: { label: string; value: string }) {
