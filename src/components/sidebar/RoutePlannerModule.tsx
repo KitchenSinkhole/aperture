@@ -416,13 +416,6 @@ const VIA_LABELS: Record<RouteHop['via'], string> = {
   eve_scout: 'via EVE-Scout',
 };
 
-/** How the hop was entered, encoded as the square's ring colour. */
-function viaRingColor(via: RouteHop['via']): string {
-  if (via === 'wh' || via === 'eve_scout') return '#a855f7'; // wormhole / eve-scout: purple
-  if (via === 'jumpbridge') return '#06b6d4'; // jumpbridge: cyan
-  return '#6b7280'; // gate / origin: grey
-}
-
 /** A hop is wormhole (J-)space if its class is C# or its name is the `J######` form. */
 function isWormholeHop(hop: RouteHop): boolean {
   return /^C\d+$/.test(hop.security ?? '') || /^J\d{6}$/.test(hop.name);
