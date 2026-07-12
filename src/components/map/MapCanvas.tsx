@@ -21,6 +21,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import type { Layout, ResponsiveLayouts } from 'react-grid-layout';
 import type {
   Breakpoint,
+  MapCapability,
   MapContextMenuTarget,
   MapEventPayload,
   MapLayoutConfig,
@@ -285,6 +286,12 @@ export function MapCanvas({
   settings: MapSettings;
   /** Whether the viewer can manage this map (derived `canManageMap`) — reveals settings/webhooks/audit. */
   canManage: boolean;
+  /**
+   * The delegated map capabilities the viewer holds (`resolveMapCapabilities`).
+   * A manager holds every value; a delegated corp title holds the subset granted
+   * to it. Drives per-feature reveal of the director-gated surfaces.
+   */
+  capabilities: MapCapability[];
   travelAnimation: boolean;
   /** Viewer's resolved stale/unscanned indicator prefs (threshold + toggles). */
   signatureIndicators: SignatureIndicatorPrefs;

@@ -6,7 +6,7 @@
 ### GET
 Returns `{ ok: true, data: { rows: AuditEventRow[], nextCursor: string | null, actorSummary: ActorSummary | null, actors?: AuditActor[] } }` (see `src/lib/map/audit.ts`). `actorSummary` is populated only on the first page (no `cursor`) of a single-actor drill-down (`characterId` set); it ignores `kinds`/`q` so the header always shows the actor's full per-category breakdown for the window. `actors` (the full actor list backing the filter dropdown) is included only on the first page (no `cursor`), so `MapAuditBrowser` is self-contained inside its dialog.
 
-**Access:** `canManageMap` only — layers `canManageMap(characterId, mapId)` on top of `requireMapView` (`../../utils`). A plain member with view access gets 403; an out-of-scope / missing map gets 404 (no existence leak); no session → 401.
+**Access:** the `audit_view` capability via `requireMapCapability(rawMapId, session, 'audit_view')` (`../../utils`) — a manager holds it implicitly, and a corp title granted it in `ap_map_role_access` holds it too. A viewer with only view access gets 403; an out-of-scope / missing map gets 404 (no existence leak); no session → 401.
 
 **Query params:**
 - `cursor` — opaque keyset cursor from a prior `nextCursor`.

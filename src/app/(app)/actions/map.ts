@@ -10,7 +10,7 @@ import type { InferInsertModel } from 'drizzle-orm';
 import { commitMapEvent, type ActionResult } from '@/lib/map/mutations/core';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
-import { canCreateMap, requireMapManage, requireMapRight } from '@/lib/auth/rights';
+import { canCreateMap, requireMapCapability } from '@/lib/auth/rights';
 import { logger } from '@/lib/log/logger';
 
 /**
@@ -24,11 +24,13 @@ import { logger } from '@/lib/log/logger';
  *                               any active character; corp → a Director (owned to
  *                               the actor's corp); alliance → an executor-corp
  *                               Director (owned to the actor's alliance).
- *   - `updateMapSettingsAction` requires `canManageMap` (via `requireMapManage`).
- *   - `deleteMapAction`         requires `canManageMap` (via `requireMapRight`):
- *                               private owner, owning corp's Director, or the
- *                               owning alliance's executor-corp Director; admin
- *                               overrides everywhere.
+ *   - `updateMapSettingsAction` requires the `settings_manage` capability.
+ *   - `deleteMapAction`         requires the `map_delete` capability.
+ *
+ * The two feature gates resolve through `requireMapCapability`: a manager (admin,
+ * private owner, owning-corp Director, owning-alliance executor-corp Director)
+ * passes implicitly, and a corp title granted the capability via
+ * `ap_map_role_access` passes too.
  */
 
 const createMapSchema = z.object({
@@ -140,7 +142,7 @@ export async function deleteMapAction(mapId: string): Promise<ActionResult<MapEv
   if (!/^\d+$/.test(mapId)) return { ok: false, error: 'Invalid map id.' };
   const id = BigInt(mapId);
 
-  const guard = await requireMapRight(session, id, 'map_delete');
+  const guard = await requireMapCapability(session, id, 'map_delete');
   if (!guard.ok) {
     return { ok: false, error: guard.error };
   }
@@ -177,16 +179,17 @@ export async function updateMapSettingsAction(
   const { mapId, ...patch } = parsed.data;
   const id = BigInt(mapId);
 
-  // Map settings are a management surface — gated by `canManageMap`, NOT the
-  // now view-level `map_update` content-editing right.
-  const guard = await requireMapManage(session, id);
+  // Map settings are a management surface — gated by the `settings_manage`
+  // capability (manager implicitly, or a delegated corp title), NOT the
+  // view-level `map_update` content-editing right.
+  const guard = await requireMapCapability(session, id, 'settings_manage');
   if (!guard.ok) {
     return { ok: false, error: guard.error };
   }
 
-  // Auto-tagging config (scheme + Home) rides the same `canManageMap` authority
-  // as the rest of the dialog — no separate gate now that the corp-right matrix
-  // is gone. `touchesTagging` only drives the Home-static exemption reconcile.
+  // Auto-tagging config (scheme + Home) rides the same `settings_manage`
+  // authority as the rest of the dialog. `touchesTagging` only drives the
+  // Home-static exemption reconcile.
   const touchesTagging =
     'tagScheme' in patch || 'homeMapSystemId' in patch || 'exemptHomeStaticFromTag' in patch;
 

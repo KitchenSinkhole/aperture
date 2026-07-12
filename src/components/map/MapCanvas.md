@@ -14,6 +14,7 @@
 | structures | Record<number, StructureIntel[]> | yes | Manual structure intel keyed by EVE system id (load-time seed for `structures` state; live-added systems backfill via `fetchSystemData`, own CRUD updates in place; no realtime echo). |
 | settings | MapSettings | yes | Editable map metadata + behaviour toggles (from `loadMapSettings`), seeds the `MapSettingsDialog`. |
 | canManage | boolean | yes | Derived `canManageMap` — reveals the settings management tabs (Behavior/Auto-tagging/Webhooks) and the toolbar "Audit log" button + `MapAuditDialog`. UI gating only; surfaces are re-checked server-side. |
+| capabilities | MapCapability[] | yes | The delegated map capabilities the viewer holds (`resolveMapCapabilities`) — a manager holds all, a delegated corp title a subset. Drives per-feature reveal of the director-gated surfaces. UI gating only; every endpoint re-checks server-side. |
 | travelAnimation | boolean | yes | The viewer's per-account connection-travel-animation toggle. When true, mounts the `TravelBridge` that plays the moving-dot effect on pilot jumps. |
 | signatureIndicators | SignatureIndicatorPrefs | yes | The viewer's resolved stale/unscanned indicator prefs (effective threshold + the two toggles). Feeds `MapSignatureIndicatorProvider`. |
 | viewerCharacterIds | number[] | yes | The viewer's account character ids; passed to `SignaturePasteHotkey` for the CTRL+V fast-paste location check. |

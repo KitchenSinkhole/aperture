@@ -1,7 +1,6 @@
 import 'server-only';
 import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
-import { canManageMap } from '@/lib/auth/rights';
 import {
   auditActorSummary,
   listAuditActors,
@@ -9,18 +8,18 @@ import {
   type AuditQueryParams,
 } from '@/lib/map/audit';
 import { MAP_EVENT_KINDS, type MapEventKind } from '@/lib/realtime/protocol';
-import { requireMapView } from '../../utils';
+import { requireMapCapability } from '../../utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/audit
  * Keyset-paginated commit feed for the in-map audit console. Read-only.
  *
- * Access: `canManageMap` only (private-map owner, owning-corp Director,
- * owning-alliance executor-corp Director, or admin). A plain member with view
- * access must NOT read the audit feed, so this layers `canManageMap` on top of
- * `requireMapView` (which scopes the map and returns 404 to avoid leaking
- * existence).
+ * Access: the `audit_view` capability — held implicitly by a manager (private-
+ * map owner, owning-corp Director, owning-alliance executor-corp Director, or
+ * admin) and grantable to a specific corp title via `ap_map_role_access`. A
+ * plain member with only view access gets 403; a missing / unviewable map 404s
+ * (no existence leak).
  *
  * Query params: `cursor`, `limit`, `characterId` (numeric or `none`),
  * `kinds` (comma-separated `MapEventKind`s), `from`/`to` (ISO timestamps), `q`.
@@ -43,12 +42,9 @@ export const GET = withApiMetrics('/api/map/:mapId/audit', async function GET(_r
   const session = await getSession();
   const { mapId: rawMapId } = await params;
 
-  const guard = await requireMapView(rawMapId, session);
+  const guard = await requireMapCapability(rawMapId, session, 'audit_view');
   if (!guard.ok) {
     return Response.json({ ok: false, error: guard.error }, { status: guard.status });
-  }
-  if (!(await canManageMap(guard.characterId, guard.mapId))) {
-    return Response.json({ ok: false, error: 'Forbidden.' }, { status: 403 });
   }
 
   const sp = _request.nextUrl.searchParams;

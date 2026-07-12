@@ -5,13 +5,14 @@ import { z } from 'zod';
 import { db } from '@/db/client';
 import { apMapWebhook, apWebhookChannel, apWebhookEvent } from '@/db/schema';
 import { requireSession } from '@/lib/session';
-import { canManageMap } from '@/lib/auth/rights';
+import { canUseMapFeature } from '@/lib/auth/rights';
 
 /**
- * Map-scoped actions on `ap_map_webhook` rows, gated by `canManageMap`
- * (derived authority — private-map owner, owning-corp Director, owning-alliance
- * executor-corp Director, or admin). Surfaced in the in-map Settings → Webhooks
- * tab; the admin panel no longer owns webhook config.
+ * Map-scoped actions on `ap_map_webhook` rows, gated by the `webhooks_manage`
+ * capability — held implicitly by a manager (private-map owner, owning-corp
+ * Director, owning-alliance executor-corp Director, or admin) and grantable to a
+ * specific corp title via `ap_map_role_access`. Surfaced in the in-map
+ * Settings → Webhooks tab; the admin panel no longer owns webhook config.
  *
  * No `ap_map_event` row is written — webhook subscriptions are infrastructure,
  * not map state. The Webhooks tab refetches `GET /api/map/[mapId]/webhooks`
@@ -35,10 +36,10 @@ type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; data: T })
   | { ok: false; error: string };
 
-/** Resolve the session character and confirm it can manage `mapId`. */
+/** Resolve the session character and confirm it may manage this map's webhooks. */
 async function gateForMap(mapId: bigint): Promise<{ ok: true } | { ok: false; error: string }> {
   const session = await requireSession();
-  if (!(await canManageMap(BigInt(session.characterId), mapId))) {
+  if (!(await canUseMapFeature(BigInt(session.characterId), mapId, 'webhooks_manage'))) {
     return { ok: false, error: 'Forbidden.' };
   }
   return { ok: true };

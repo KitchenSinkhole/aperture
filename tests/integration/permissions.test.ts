@@ -21,8 +21,10 @@ import {
   canViewMap,
   hasMapCapability,
   isAdmin,
+  requireMapCapability,
   resolveMapCapabilities,
 } from '@/lib/auth/rights';
+import type { MapCapability } from '@/types';
 import { listViewableMaps } from '@/lib/map/loadMap';
 import { characterCleanup } from '@/lib/jobs/tasks/characterCleanup';
 
@@ -332,6 +334,71 @@ describe.skipIf(!run)('Stage 15 — permissions (real Postgres)', () => {
     expect(nonHolderCaps.size).toBe(0);
   });
 
+  // ─── requireMapCapability guard (the gate every delegated route/action uses) ──
+  //
+  // Every director-gated feature (audit / webhooks / settings / import / export /
+  // delete) resolves through `requireMapCapability`, which returns the tuple the
+  // route maps to an HTTP status: `ok` → 200, else `status` (401/403/404). This
+  // is the end-to-end authorization decision behind those endpoints.
+
+  const FEATURES: MapCapability[] = [
+    'audit_view',
+    'webhooks_manage',
+    'settings_manage',
+    'map_import',
+    'map_export',
+    'map_delete',
+  ];
+
+  it('holder with only audit_view passes audit, is forbidden on every other feature', async () => {
+    const session = sess(ROLE_HOLDER_ID);
+    // Audit is granted → ok (200).
+    expect(await requireMapCapability(session, corpMapId, 'audit_view')).toMatchObject({
+      ok: true,
+    });
+    // Every other feature → 403 (the holder can view the map via the role overlay,
+    // so it is not a 404).
+    for (const cap of FEATURES.filter((c) => c !== 'audit_view')) {
+      expect(await requireMapCapability(session, corpMapId, cap)).toMatchObject({
+        ok: false,
+        status: 403,
+      });
+    }
+  });
+
+  it('manager passes every delegated feature without an explicit grant', async () => {
+    const session = sess(CORP_A_DIRECTOR_ID);
+    for (const cap of FEATURES) {
+      expect(await requireMapCapability(session, corpMapId, cap)).toMatchObject({ ok: true });
+    }
+  });
+
+  it('a plain viewer is forbidden on every feature but can still view the map', async () => {
+    // Corp A member can VIEW the corp map (ownership) but holds no capability.
+    expect(await canViewMap(CORP_A_MEMBER_ID, corpMapId)).toBe(true);
+    const session = sess(CORP_A_MEMBER_ID);
+    for (const cap of FEATURES) {
+      expect(await requireMapCapability(session, corpMapId, cap)).toMatchObject({
+        ok: false,
+        status: 403,
+      });
+    }
+  });
+
+  it('a non-viewer gets 404 (existence is not leaked), no session gets 401', async () => {
+    // Corp B member cannot view the corp map and holds no role on it → 404.
+    const outsider = sess(CORP_B_MEMBER_ID);
+    expect(await requireMapCapability(outsider, corpMapId, 'audit_view')).toMatchObject({
+      ok: false,
+      status: 404,
+    });
+    // No session → 401.
+    expect(await requireMapCapability(null, corpMapId, 'audit_view')).toMatchObject({
+      ok: false,
+      status: 401,
+    });
+  });
+
   it('admin manages every map for every right', async () => {
     for (const id of [privateMapId, corpMapId, allianceMapId, roleScopedMapId]) {
       expect(await canMutateMap(ADMIN_ID, id, 'map_update')).toBe(true);
@@ -434,6 +501,11 @@ interface CharOverrides {
   isDirector?: boolean;
   status?: 'active' | 'kicked' | 'banned';
   statusExpiresAt?: Date;
+}
+
+/** Minimal session stand-in for the `requireMap*` tuple guards. */
+function sess(characterId: bigint) {
+  return { characterId: characterId.toString(), userId: 0 } as never;
 }
 
 function mkChar(id: bigint, name: string, overrides: CharOverrides = {}) {

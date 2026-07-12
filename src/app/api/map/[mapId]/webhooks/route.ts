@@ -4,18 +4,18 @@ import { asc, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apMapWebhook } from '@/db/schema';
 import { getSession } from '@/lib/session';
-import { canManageMap } from '@/lib/auth/rights';
-import { requireMapView } from '../../utils';
+import { requireMapCapability } from '../../utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/webhooks
  * The webhook list behind the in-map Settings → Webhooks tab. Read-only.
  *
- * Access: `canManageMap` only (private-map owner, owning-corp Director,
- * owning-alliance executor-corp Director, or admin). Layered on `requireMapView`
- * so a missing / unviewable map returns 404 (no existence leak) and a plain
- * member with view access gets 403.
+ * Access: the `webhooks_manage` capability — held implicitly by a manager
+ * (private-map owner, owning-corp Director, owning-alliance executor-corp
+ * Director, or admin) and grantable to a specific corp title via
+ * `ap_map_role_access`. A missing / unviewable map returns 404 (no existence
+ * leak); a plain member with only view access gets 403.
  *
  * Returns the full webhook URL (a map manager needs it to edit) — the client
  * masks it in the table for shoulder-surfing defense.
@@ -30,12 +30,9 @@ export const GET = withApiMetrics('/api/map/:mapId/webhooks', async function GET
   const session = await getSession();
   const { mapId: rawMapId } = await params;
 
-  const guard = await requireMapView(rawMapId, session);
+  const guard = await requireMapCapability(rawMapId, session, 'webhooks_manage');
   if (!guard.ok) {
     return Response.json({ ok: false, error: guard.error }, { status: guard.status });
-  }
-  if (!(await canManageMap(guard.characterId, guard.mapId))) {
-    return Response.json({ ok: false, error: 'Forbidden.' }, { status: 403 });
   }
 
   const rows = await db

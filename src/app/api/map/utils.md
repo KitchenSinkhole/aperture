@@ -20,3 +20,6 @@ Combined session + parse + view + right check for write endpoints — every muta
 
 ### requireMapView(rawMapId, session): Promise<MapAccessGuard>
 View-only variant for read endpoints. Same shape; never returns 403 (view either passes → 200 or fails → 404).
+
+### requireMapCapability(rawMapId, session, capability): Promise<MapAccessGuard>
+Combined session + parse + delegated-capability check for a per-map feature endpoint (audit / webhooks / import / export / delete). Wraps `rights.ts`'s `requireMapCapability` with the id parse. Same `MapAccessGuard` shape: `400` (bad id) / `401` (no session) / `404` (missing or unviewable — no existence leak) / `403` (viewable but the viewer lacks the capability). A manager passes implicitly; a corp title granted the capability in `ap_map_role_access` passes too.

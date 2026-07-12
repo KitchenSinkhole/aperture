@@ -2,7 +2,7 @@ import 'server-only';
 import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { buildMapExport } from '@/lib/map/transfer';
-import { requireMapMutate } from '../../utils';
+import { requireMapCapability } from '../../utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
@@ -10,7 +10,8 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
  * `MapExportFile` JSON document. Returns `{ ok: true, data }` (no `eventId`;
  * this is a read). The client builds the download so it can name the file.
  *
- * Access: `map_export` right on the target map.
+ * Access: the `map_export` capability (manager implicitly, or a delegated corp
+ * title).
  */
 
 export const runtime = 'nodejs';
@@ -21,7 +22,7 @@ export const GET = withApiMetrics('/api/map/:mapId/export', async function GET(
 ) {
   const session = await getSession();
   const { mapId: rawMapId } = await params;
-  const guard = await requireMapMutate(rawMapId, session, 'map_export');
+  const guard = await requireMapCapability(rawMapId, session, 'map_export');
   if (!guard.ok) {
     return Response.json({ ok: false, error: guard.error }, { status: guard.status });
   }

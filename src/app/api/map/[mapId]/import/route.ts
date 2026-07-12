@@ -2,7 +2,7 @@ import 'server-only';
 import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { importMapData, mapExportSchema } from '@/lib/map/transfer';
-import { requireMapMutate } from '../../utils';
+import { requireMapCapability } from '../../utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
@@ -12,7 +12,8 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
  * payloads }, eventId: 0 }` — the bulk shape; consumers read
  * `data.payloads[].eventId`.
  *
- * Access: `map_import` right on the target map.
+ * Access: the `map_import` capability (manager implicitly, or a delegated corp
+ * title).
  */
 
 export const runtime = 'nodejs';
@@ -23,7 +24,7 @@ export const POST = withApiMetrics('/api/map/:mapId/import', async function POST
 ) {
   const session = await getSession();
   const { mapId: rawMapId } = await params;
-  const guard = await requireMapMutate(rawMapId, session, 'map_import');
+  const guard = await requireMapCapability(rawMapId, session, 'map_import');
   if (!guard.ok) {
     return Response.json({ ok: false, error: guard.error }, { status: guard.status });
   }

@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { MapCanvas } from '@/components/map/MapCanvas';
 import { CurrentMapScopeSync } from '@/components/map/CurrentMapScopeSync';
 import { loadMapForView, loadMapSettings } from '@/lib/map/loadMap';
-import { canManageMap } from '@/lib/auth/rights';
+import { canManageMap, resolveMapCapabilities } from '@/lib/auth/rights';
 import { loadRouteConfig } from '@/lib/map/routeConfig';
 import { statsForSystems } from '@/lib/map/stats';
 import { intelForSystems } from '@/lib/map/intel';
@@ -61,6 +61,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     routeConfig,
     mainCharacterId,
     canManage,
+    capabilities,
   ] = await Promise.all([
     statsForSystems(systemIds),
     intelForSystems(systemIds),
@@ -73,6 +74,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     loadRouteConfig(session.userId),
     getMainCharacterId(session.userId),
     canManageMap(BigInt(session.characterId), mapId),
+    resolveMapCapabilities(BigInt(session.characterId), mapId),
   ]);
 
   // Active characters drive both the CTRL+V paste location check (ids) and the
@@ -98,6 +100,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
         structures={structures}
         settings={settings}
         canManage={canManage}
+        capabilities={[...capabilities]}
         travelAnimation={travelAnimation}
         signatureIndicators={signatureIndicators}
         viewerCharacterIds={viewerCharacterIds}

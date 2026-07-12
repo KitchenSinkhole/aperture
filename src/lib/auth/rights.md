@@ -22,7 +22,7 @@ Mutation splits into two authority tiers keyed on the `MapRight`:
 1. **`map_update` — content editing → view authority.** The live charting surface (add/move/remove systems, paste signatures, draw/edit/collapse connections, subchain delete, thera sync, disconnected cleanup) is open to **every viewer**. Anyone who can see the map — by ownership, corp/alliance membership, **or the role overlay** — can edit its content. Collaborative wormhole mapping is the product; read-only members would defeat it.
 2. **All other rights (`map_delete`, `map_import`, `map_export`, `map_share`) — management → `canManageMap`.** Map configuration & lifecycle stay with admin, the private map's owner, the owning corp's Director, or the owning alliance's executor-corp Director. The corp-right matrix no longer participates.
 
-Map **settings** edits (name/icon/behaviour flags/tagging) are a management surface too — gated by `requireMapManage`, **not** the now view-level `map_update` right.
+Map **settings** edits (name/icon/behaviour flags/tagging) are a management surface too — gated by the `settings_manage` capability (`requireMapCapability`), **not** the view-level `map_update` right. See the per-title feature delegation section below.
 
 **Unowned maps** (all three owner columns NULL) are admin-only. Defensive default that surfaces rows needing repair.
 
@@ -65,7 +65,7 @@ Tuple-shaped guard for API routes. Returns `{ ok: true, characterId }` or `{ ok:
 View-only variant for read endpoints (e.g. `GET /api/map/[mapId]/wormhole-types`).
 
 ### requireMapManage(session, mapId): Promise<RightGuard>
-Management guard (session → view existence → `canManageMap`). Same `401 / 404 / 403` shape as `requireMapRight`, but requires full management authority rather than the view-level `map_update` content right. Used by `updateMapSettingsAction` and any management call site that isn't keyed on a specific `MapRight`.
+Management guard (session → view existence → `canManageMap`). Same `401 / 404 / 403` shape as `requireMapRight`, but requires full management authority rather than the view-level `map_update` content right. For a management call site that isn't keyed on a specific `MapRight` or capability. (The director-gated features route through `requireMapCapability` instead — see below.)
 
 ---
 

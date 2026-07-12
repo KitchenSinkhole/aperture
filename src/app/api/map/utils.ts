@@ -4,11 +4,12 @@ import type { Session } from 'next-auth';
 import { db } from '@/db/client';
 import { apMap } from '@/db/schema';
 import {
+  requireMapCapability as requireMapCapabilityInner,
   requireMapRight,
   requireMapView as requireMapViewInner,
   type RightGuard,
 } from '@/lib/auth/rights';
-import type { MapRight } from '@/types';
+import type { MapCapability, MapRight } from '@/types';
 
 /**
  * Shared guard helpers for the `/api/map/**` route layer. The four concerns
@@ -79,6 +80,25 @@ export async function requireMapView(
   const mapId = parseBigInt(rawMapId);
   if (!mapId) return { ok: false, status: 400, error: 'Invalid map id.' };
   const guard: RightGuard = await requireMapViewInner(session, mapId);
+  if (!guard.ok) return guard;
+  return { ok: true, mapId, characterId: guard.characterId };
+}
+
+/**
+ * Combined session + parse + delegated-capability check for a per-map feature
+ * endpoint (audit / webhooks / import / export / delete). Wraps
+ * `requireMapCapability` with the id parse so the raw URL segment is handled in
+ * one place. The 404 case covers both "map does not exist" and "you cannot see
+ * this map"; 403 is view-access-OK-but-lacking-the-capability.
+ */
+export async function requireMapCapability(
+  rawMapId: string,
+  session: Session | null | undefined,
+  capability: MapCapability,
+): Promise<MapAccessGuard> {
+  const mapId = parseBigInt(rawMapId);
+  if (!mapId) return { ok: false, status: 400, error: 'Invalid map id.' };
+  const guard: RightGuard = await requireMapCapabilityInner(session, mapId, capability);
   if (!guard.ok) return guard;
   return { ok: true, mapId, characterId: guard.characterId };
 }
