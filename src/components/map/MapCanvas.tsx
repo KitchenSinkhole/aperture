@@ -270,6 +270,7 @@ export function MapCanvas({
   structures: initialStructures,
   settings,
   canManage,
+  capabilities,
   travelAnimation,
   signatureIndicators,
   viewerCharacterIds,
@@ -2213,7 +2214,7 @@ export function MapCanvas({
                 <Settings />
                 Settings
               </Button>
-              {canManage && (
+              {capabilities.includes('audit_view') && (
                 <Button variant="ghost" size="sm" onClick={() => setAuditOpen(true)}>
                   <ScrollText />
                   Audit log
@@ -2254,10 +2255,11 @@ export function MapCanvas({
           mapId={mapId}
           settings={settings}
           canManage={canManage}
+          capabilities={capabilities}
           systems={manageSystems}
           onImported={onBulkPaste}
         />
-        {canManage && (
+        {capabilities.includes('audit_view') && (
           <MapAuditDialog
             open={auditOpen}
             onOpenChange={setAuditOpen}

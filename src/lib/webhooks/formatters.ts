@@ -188,10 +188,27 @@ export function describeMapEvent(event: MapEventPayload, ctx: WebhookEventContex
       return event.name ? `renamed the map to \`${event.name}\`` : `updated map settings`;
     case 'map.delete':
       return event.deletedAt ? `soft-deleted the map (30-day grace)` : `restored the map`;
+    case 'access.granted':
+      return `granted title **${event.roleName}** ${CAPABILITY_LABEL[event.capability]}`;
+    case 'access.revoked':
+      return `revoked title **${event.roleName}**'s ${CAPABILITY_LABEL[event.capability]}`;
     default:
       return null;
   }
 }
+
+/** Human phrase for each delegatable map capability (drives the audit/Discord sentence). */
+const CAPABILITY_LABEL: Record<
+  Extract<MapEventPayload, { kind: 'access.granted' }>['capability'],
+  string
+> = {
+  audit_view: 'audit-log access',
+  settings_manage: 'settings management',
+  webhooks_manage: 'webhook management',
+  map_import: 'map import',
+  map_export: 'map export',
+  map_delete: 'map deletion',
+};
 
 /** Per-field `field → value` clauses for a `connection.update` patch (only changed keys). */
 function describeConnectionChanges(

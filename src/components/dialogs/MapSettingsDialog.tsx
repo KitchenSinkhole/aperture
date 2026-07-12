@@ -20,17 +20,19 @@ import { readWhPickerPrefs, writeWhPickerPrefs } from '@/lib/wormholePickerPrefs
 import { MapBehaviorForm } from '@/components/map/manage/MapBehaviorForm';
 import { MapTaggingForm } from '@/components/map/manage/MapTaggingForm';
 import { MapWebhooksPanel } from '@/components/map/manage/MapWebhooksPanel';
-import type { MapEventPayload, MapSettings } from '@/types';
+import { MapRolesForm } from '@/components/map/manage/MapRolesForm';
+import type { MapCapability, MapEventPayload, MapSettings } from '@/types';
 
 /**
  * Map Settings dialog — the consolidated edit / settings / management /
  * import-export surface, launched from the `MapCanvas` toolbar. General
- * persists via `updateMapSettingsAction` (`map_update`); Export reads
- * `/export` (`map_export`) and downloads the JSON client-side; Import posts to
- * `/import` (`map_import`) and folds the returned payloads onto the canvas via
- * `onImported`. When `canManage` (derived `canManageMap`), the Behavior,
- * Auto-tagging, and Webhooks tabs appear — all gated server-side regardless of
- * this flag. The audit log lives in its own wider dialog (`MapAuditDialog`).
+ * persists via `updateMapSettingsAction` (`map_update`). Each management tab is
+ * revealed by the viewer's delegated capability (`capabilities`, resolved from
+ * `resolveMapCapabilities`; a manager holds all): Behavior + Auto-tagging ←
+ * `settings_manage`, Webhooks ← `webhooks_manage`, Export ← `map_export`,
+ * Import ← `map_import` — all re-checked server-side. The Roles & Permissions
+ * tab (delegating features to titles) is manager-only (`canManage`). The audit
+ * log lives in its own wider dialog (`MapAuditDialog`).
  */
 export function MapSettingsDialog({
   open,
@@ -38,6 +40,7 @@ export function MapSettingsDialog({
   mapId,
   settings,
   canManage,
+  capabilities,
   systems,
   onImported,
 }: {
@@ -45,13 +48,16 @@ export function MapSettingsDialog({
   onOpenChange: (open: boolean) => void;
   mapId: string;
   settings: MapSettings;
-  /** Whether the viewer can manage this map — reveals the management tabs. */
+  /** Whether the viewer can manage this map — reveals the manager-only Roles & Permissions tab. */
   canManage: boolean;
+  /** Delegated capabilities the viewer holds — reveals each management tab (a manager holds all). */
+  capabilities: MapCapability[];
   /** Visible map systems for the Auto-tagging Home picker. */
   systems: { id: string; name: string; alias: string | null }[];
   /** Fold imported event payloads onto the live canvas (reuses the bulk-paste handler). */
   onImported: (payloads: MapEventPayload[]) => void;
 }) {
+  const can = (capability: MapCapability) => capabilities.includes(capability);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
@@ -66,11 +72,12 @@ export function MapSettingsDialog({
           <TabsList>
             <TabsTab value="general">General</TabsTab>
             <TabsTab value="settings">Settings</TabsTab>
-            {canManage && <TabsTab value="behavior">Behavior</TabsTab>}
-            {canManage && <TabsTab value="tagging">Auto-tagging</TabsTab>}
-            {canManage && <TabsTab value="webhooks">Webhooks</TabsTab>}
-            <TabsTab value="export">Export</TabsTab>
-            <TabsTab value="import">Import</TabsTab>
+            {can('settings_manage') && <TabsTab value="behavior">Behavior</TabsTab>}
+            {can('settings_manage') && <TabsTab value="tagging">Auto-tagging</TabsTab>}
+            {can('webhooks_manage') && <TabsTab value="webhooks">Webhooks</TabsTab>}
+            {can('map_export') && <TabsTab value="export">Export</TabsTab>}
+            {can('map_import') && <TabsTab value="import">Import</TabsTab>}
+            {canManage && <TabsTab value="roles">Roles &amp; Permissions</TabsTab>}
           </TabsList>
 
           <TabsPanel value="general">
@@ -79,7 +86,7 @@ export function MapSettingsDialog({
           <TabsPanel value="settings">
             <SettingsPanel />
           </TabsPanel>
-          {canManage && (
+          {can('settings_manage') && (
             <TabsPanel value="behavior">
               <MapBehaviorForm
                 mapId={mapId}
@@ -92,7 +99,7 @@ export function MapSettingsDialog({
               />
             </TabsPanel>
           )}
-          {canManage && (
+          {can('settings_manage') && (
             <TabsPanel value="tagging">
               <MapTaggingForm
                 mapId={mapId}
@@ -103,17 +110,26 @@ export function MapSettingsDialog({
               />
             </TabsPanel>
           )}
-          {canManage && (
+          {can('webhooks_manage') && (
             <TabsPanel value="webhooks">
               <MapWebhooksPanel mapId={mapId} />
             </TabsPanel>
           )}
-          <TabsPanel value="export">
-            <ExportPanel mapId={mapId} mapName={settings.name} />
-          </TabsPanel>
-          <TabsPanel value="import">
-            <ImportPanel mapId={mapId} onImported={onImported} />
-          </TabsPanel>
+          {can('map_export') && (
+            <TabsPanel value="export">
+              <ExportPanel mapId={mapId} mapName={settings.name} />
+            </TabsPanel>
+          )}
+          {can('map_import') && (
+            <TabsPanel value="import">
+              <ImportPanel mapId={mapId} onImported={onImported} />
+            </TabsPanel>
+          )}
+          {canManage && (
+            <TabsPanel value="roles">
+              <MapRolesForm mapId={mapId} />
+            </TabsPanel>
+          )}
         </Tabs>
       </DialogContent>
     </Dialog>

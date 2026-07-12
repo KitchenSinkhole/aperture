@@ -22,12 +22,12 @@ After fetching `limit + 1` rows it batch-resolves every referenced system name i
 ---
 
 ### auditActorSummary(mapId, characterId, from?, to?): Promise<ActorSummary>
-Cheap `COUNT(*) GROUP BY kind` aggregate for the drill-down header: per-category counts, total, and a highlighted destructive count (`system.removed`, `connection.delete`, `signature.delete`, `note.deleted`, `map.delete`, `map.purge`). `characterId` is a bigint **account-main** id (aggregates every commit by any character in that account via `rolledActorId`) or `'none'`. Applies the same position-only exclusion + date window as the feed so the numbers match.
+Cheap `COUNT(*) GROUP BY kind` aggregate for the drill-down header: per-category counts, total, and a highlighted destructive count (`system.removed`, `connection.delete`, `signature.delete`, `note.deleted`, `map.delete`, `map.purge`, `access.revoked`). `characterId` is a bigint **account-main** id (aggregates every commit by any character in that account via `rolledActorId`) or `'none'`. Applies the same position-only exclusion + date window as the feed so the numbers match.
 
 ---
 
 ### Types
-- `AuditEventCategory` — `'system' | 'connection' | 'signature' | 'note' | 'map'` (derived from the kind prefix).
+- `AuditEventCategory` — `'system' | 'connection' | 'signature' | 'note' | 'map' | 'access'` (derived from the kind prefix).
 - `AuditEventRow` — `{ id, occurredAt, kind, category, characterId, characterName, summary, destructive }` (ids as strings).
 - `AuditActor` — `{ characterId, name, eventCount }`; `characterId` is the account main's id (commits roll up to the main), `null` = automation.
 - `ActorSummary` — `{ total, destructive, byCategory }`.

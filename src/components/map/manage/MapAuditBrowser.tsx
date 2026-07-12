@@ -29,8 +29,16 @@ const CATEGORY_KINDS: Record<AuditEventCategory, MapEventKind[]> = {
   signature: ['signature.create', 'signature.update', 'signature.delete'],
   note: ['note.created', 'note.updated', 'note.deleted'],
   map: ['map.create', 'map.update', 'map.delete', 'map.restore', 'map.purge'],
+  access: ['access.granted', 'access.revoked'],
 };
-const CATEGORIES: AuditEventCategory[] = ['system', 'connection', 'signature', 'note', 'map'];
+const CATEGORIES: AuditEventCategory[] = [
+  'system',
+  'connection',
+  'signature',
+  'note',
+  'map',
+  'access',
+];
 const ALL_KINDS: MapEventKind[] = CATEGORIES.flatMap((c) => CATEGORY_KINDS[c]);
 const DESTRUCTIVE_KINDS: MapEventKind[] = [
   'system.removed',
@@ -39,6 +47,7 @@ const DESTRUCTIVE_KINDS: MapEventKind[] = [
   'note.deleted',
   'map.delete',
   'map.purge',
+  'access.revoked',
 ];
 
 const CATEGORY_LABEL: Record<AuditEventCategory, string> = {
@@ -47,6 +56,7 @@ const CATEGORY_LABEL: Record<AuditEventCategory, string> = {
   signature: 'Signature',
   note: 'Note',
   map: 'Map',
+  access: 'Access',
 };
 
 const ABS_FMT = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });

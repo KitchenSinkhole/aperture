@@ -13,7 +13,7 @@ Dispatches on `payload.kind` and returns a new `MapViewData` without mutating th
 - `state` — current canvas view data (map header, visible systems, connections).
 - `payload` — a validated `MapEventPayload` from a `mapUpdate` WS envelope.
 
-**Returns:** A new `MapViewData` with the event applied, or the original `state` reference when the event has no canvas representation (`map.create`, `map.delete`, `map.restore`, `map.purge`).
+**Returns:** A new `MapViewData` with the event applied, or the original `state` reference when the event has no canvas representation (`map.create`, `map.delete`, `map.restore`, `map.purge`, `access.granted`, `access.revoked`).
 
 **Per-kind behaviour:**
 - `system.added` — upserts the system node body into `state.systems` (handles both new placements and re-activations of previously-removed systems). Pure node delta: signatures are **not** carried on the event. A re-added system's surviving sigs are hydrated separately by `MapCanvas`, which calls `fetchSystemSignatures` on every `system.added` and upserts the result into `viewData.signatures` — keeping the `pg_notify` payload under the 8 KB ceiling.
@@ -30,6 +30,7 @@ Dispatches on `payload.kind` and returns a new `MapViewData` without mutating th
 - `note.updated` — merges the patch into the matching note by id. `title`, `lastEditedByCharacterId`, `lastEditedByName`, `updatedAt` always apply (they always ride the event); `content`, `severity`, `locked`, `positionX`, `positionY` apply only when present.
 - `note.deleted` — removes the note by id.
 - `map.create`, `map.delete`, `map.restore`, `map.purge` — return `state` unchanged. The last two are admin-only events; non-admin viewers never see a soft-deleted map open, so there is no canvas state to reconcile.
+- `access.granted`, `access.revoked` — return `state` unchanged. Per-title feature-delegation grants change server-side authority only and carry no canvas state.
 
 ### Depends On
 - `MapViewData`, `MapSystemNode`, `MapConnectionEdge`, `MapSignature`, `MapNote` — types from `@/types`

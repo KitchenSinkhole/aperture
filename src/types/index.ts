@@ -316,6 +316,19 @@ export type {
   AdminMapListItem,
 } from '@/lib/map/loadMap';
 
+// Per-title feature-delegation view-model (src/app/(app)/actions/mapRoles.ts).
+/** One corp title with the capabilities currently delegated to it on a map. `view` is implicit and never listed. */
+export interface DelegationRole {
+  roleId: string;
+  label: string;
+  capabilities: MapCapability[];
+}
+
+/** Delegation state for a map's Roles & Permissions tab. `available` is false on non-corp maps (v1). */
+export type MapDelegationState =
+  | { available: false }
+  | { available: true; roles: DelegationRole[] };
+
 // Map import/export document + result types (src/lib/map/transfer.ts).
 export type { MapExportFile, ImportSummary, ImportResult } from '@/lib/map/transfer';
 

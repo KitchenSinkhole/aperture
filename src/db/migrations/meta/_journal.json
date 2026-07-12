@@ -393,6 +393,13 @@
       "when": 1780227600000,
       "tag": "0056_map_role_capability",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1780231200000,
+      "tag": "0057_access_event_kinds",
+      "breakpoints": true
     }
   ]
 }

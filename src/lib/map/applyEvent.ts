@@ -200,6 +200,10 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
     case 'map.delete':
     case 'map.restore':
     case 'map.purge':
+    // Feature-delegation grants/revocations change server-side authority only;
+    // they carry no canvas state.
+    case 'access.granted':
+    case 'access.revoked':
       return state;
 
     default:

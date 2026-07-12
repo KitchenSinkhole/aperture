@@ -29,7 +29,13 @@ import { describeMapEvent, type WebhookEventContext } from '@/lib/webhooks/forma
  * rather than the dispatcher's one-event-at-a-time joins.
  */
 
-export type AuditEventCategory = 'system' | 'connection' | 'signature' | 'note' | 'map';
+export type AuditEventCategory =
+  | 'system'
+  | 'connection'
+  | 'signature'
+  | 'note'
+  | 'map'
+  | 'access';
 
 /** One rendered commit for the audit table. Ids cross the wire as strings (bigint). */
 export interface AuditEventRow {
@@ -89,6 +95,7 @@ const DESTRUCTIVE_KINDS: ReadonlySet<MapEventKind> = new Set([
   'note.deleted',
   'map.delete',
   'map.purge',
+  'access.revoked',
 ]);
 
 /**
@@ -452,6 +459,7 @@ export async function auditActorSummary(
     signature: 0,
     note: 0,
     map: 0,
+    access: 0,
   };
   let total = 0;
   let destructive = 0;
