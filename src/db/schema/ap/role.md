@@ -36,10 +36,13 @@
 `pgTable('ap_map_role_access', …)`:
 - `map_id` — `bigint`, FK → `ap_map.id` `ON DELETE CASCADE`.
 - `role_id` — `bigint`, FK → `ap_role.id` `ON DELETE CASCADE`.
+- `capability` — `map_capability` enum, required (migration 0056). Which per-map feature this grant unlocks for the role.
 - `granted_at` — `timestamptz`, default `now()`.
 
 **Constraints:**
-- `ap_map_role_access_pk` — composite PK `(map_id, role_id)`.
+- `ap_map_role_access_pk` — composite PK `(map_id, role_id, capability)`.
 - `ap_map_role_access_role_id_idx` — btree on `(role_id)`. Backs "which maps does this role unlock" queries used by `listViewableMaps`.
 
-Semantics: a character holding any role listed for a map gets **view access** to it. Mutation authority is the derived `canManageMap` (owner / corp Director / executor-corp Director / admin; see `src/lib/auth/rights.ts`) — roles do not by themselves grant mutation.
+Semantics: a character holding any role with **any** row for a map gets **view access** to it — the view read paths (`hasRoleAccess`, `viewableMapPredicate`) match on `role_id` alone with no capability filter, so a `capability='view'` row and a feature grant (e.g. `audit_view`) both imply visibility. Feature access is the capability-filtered gate `canUseMapFeature` / `hasMapCapability`: a director-gated feature is granted to a title by inserting the matching `(map_id, role_id, capability)` row. Capabilities are **additive** across the titles a character holds (union; no deny-grants). Full management authority remains the derived `canManageMap` (owner / corp Director / executor-corp Director / admin; see `src/lib/auth/rights.ts`) — a manager holds every capability implicitly, so delegation only ever adds a non-manager title.
+
+Delegation is **corp-scoped in v1**: only a corp map's owning-corp `corp_title` roles are eligible targets. The alliance seam is additive — alliance support extends only (a) which titles list for an alliance map and (b) resolving a viewer's titles across member corps; the `role_id → capability` model itself is already corp-agnostic. Private maps have no titles.

@@ -46,9 +46,9 @@ Why a **new enum** rather than reusing `map_right`: `map_right` (`map_create/map
 ## Stage 1 — Schema + capability resolver
 **Mode:** Accept edits
 **Goal:** The capability column exists and `rights.ts` can answer "does this character have capability X on this map".
-**Touches:** `src/db/migrations/0055_map_role_capability.sql` (+ `.rollback.sql`, `_journal.json` idx 55), `src/db/schema/ap/enums.ts`, `src/db/schema/ap/role.ts`, `src/types/index.ts`, `src/lib/auth/rights.ts`, and their companion `.md` files.
+**Touches:** `src/db/migrations/0056_map_role_capability.sql` (+ `.rollback.sql`, `_journal.json` idx 56), `src/db/schema/ap/enums.ts`, `src/db/schema/ap/role.ts`, `src/types/index.ts`, `src/lib/auth/rights.ts`, and their companion `.md` files.
 
-- **Migration `0055_map_role_capability`** (hand-written pair; apply before running tests, `DATABASE_URL` exported from `.env`):
+- **Migration `0056_map_role_capability`** (hand-written pair; apply before running tests, `DATABASE_URL` exported from `.env`):
   ```sql
   CREATE TYPE "public"."map_capability" AS ENUM ('view','audit_view','settings_manage','webhooks_manage','map_import','map_export','map_delete');
   ALTER TABLE "ap_map_role_access" ADD COLUMN "capability" "map_capability" NOT NULL DEFAULT 'view';
@@ -104,7 +104,7 @@ Why a **new enum** rather than reusing `map_right`: `map_right` (`map_create/map
 ---
 
 ## Verification (whole feature)
-- **Migration:** `psql "$DATABASE_URL" -f src/db/migrations/0055_map_role_capability.sql` applies; rollback file reverses cleanly on a scratch DB.
+- **Migration:** `psql "$DATABASE_URL" -f src/db/migrations/0056_map_role_capability.sql` applies; rollback file reverses cleanly on a scratch DB.
 - **Automated:** extend `tests/integration/permissions.test.ts` / `derived-authority.test.ts` with the delegation matrix (holder vs non-holder vs manager, per capability). Run with `RUN_DB_TESTS=1` and `DATABASE_URL` exported; pin `Math.random` only where a test hits sampling paths.
 - **Manual E2E:** the Stage 3 director→title-holder walkthrough above, exercised in the running app.
 - **Follow-up (out of scope):** #210 Information Blackout adds `blackout_toggle` + `intel_view` capability values to `map_capability` and the realtime pilot/position filtering — it plugs into this framework with no schema change beyond the two enum values.

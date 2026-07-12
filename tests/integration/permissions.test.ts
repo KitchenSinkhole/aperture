@@ -17,8 +17,11 @@ import {
   canCreateMap,
   canManageMap,
   canMutateMap,
+  canUseMapFeature,
   canViewMap,
+  hasMapCapability,
   isAdmin,
+  resolveMapCapabilities,
 } from '@/lib/auth/rights';
 import { listViewableMaps } from '@/lib/map/loadMap';
 import { characterCleanup } from '@/lib/jobs/tasks/characterCleanup';
@@ -169,6 +172,16 @@ describe.skipIf(!run)('Stage 15 — permissions (real Postgres)', () => {
     await db.insert(apMapRoleAccess).values({
       mapId: roleScopedMapId,
       roleId: CORP_TITLE_ROLE_ID,
+      capability: 'view',
+    });
+
+    // Per-title feature delegation (R4): the same `corp_title` role is granted
+    // the `audit_view` capability on the corp map — the holder can read that
+    // map's audit log without being a Director.
+    await db.insert(apMapRoleAccess).values({
+      mapId: corpMapId,
+      roleId: CORP_TITLE_ROLE_ID,
+      capability: 'audit_view',
     });
   });
 
@@ -275,6 +288,48 @@ describe.skipIf(!run)('Stage 15 — permissions (real Postgres)', () => {
     expect(await canManageMap(OWNER_ID, corpMapId)).toBe(false); // corp-mate, not Director
     expect(await canManageMap(ALLIANCE_X_PILOT_ID, allianceMapId)).toBe(false); // not executor corp
     expect(await canManageMap(KICKED_ID, corpMapId)).toBe(false);
+  });
+
+  // ─── per-title feature delegation (R4) ───────────────────────────────────
+  //
+  // A `corp_title` role granted a single `map_capability` on a map lets its
+  // holders use that one feature without full management authority. Directors /
+  // owners / admins hold every capability implicitly.
+
+  it('hasMapCapability is true only for the granted capability a holder holds', async () => {
+    // Role holder holds the `audit_view` grant on the corp map.
+    expect(await hasMapCapability(ROLE_HOLDER_ID, corpMapId, 'audit_view')).toBe(true);
+    // …but not any other capability.
+    expect(await hasMapCapability(ROLE_HOLDER_ID, corpMapId, 'webhooks_manage')).toBe(false);
+    // A corp member who does not hold the role has no grant.
+    expect(await hasMapCapability(CORP_A_MEMBER_ID, corpMapId, 'audit_view')).toBe(false);
+    // A manager holds no explicit grant row (authority is implicit).
+    expect(await hasMapCapability(CORP_A_DIRECTOR_ID, corpMapId, 'audit_view')).toBe(false);
+  });
+
+  it('canUseMapFeature: holder via grant, manager implicitly, non-holder denied', async () => {
+    // Holder passes the delegated feature via the grant, but only that feature.
+    expect(await canUseMapFeature(ROLE_HOLDER_ID, corpMapId, 'audit_view')).toBe(true);
+    expect(await canUseMapFeature(ROLE_HOLDER_ID, corpMapId, 'settings_manage')).toBe(false);
+    // Manager passes every capability without any grant.
+    expect(await canUseMapFeature(CORP_A_DIRECTOR_ID, corpMapId, 'audit_view')).toBe(true);
+    expect(await canUseMapFeature(CORP_A_DIRECTOR_ID, corpMapId, 'webhooks_manage')).toBe(true);
+    // Admin passes everything.
+    expect(await canUseMapFeature(ADMIN_ID, corpMapId, 'map_delete')).toBe(true);
+    // A viewer with no grant and no management authority is denied.
+    expect(await canUseMapFeature(CORP_A_MEMBER_ID, corpMapId, 'audit_view')).toBe(false);
+  });
+
+  it('resolveMapCapabilities: manager gets all, holder gets the union of grants', async () => {
+    const managerCaps = await resolveMapCapabilities(CORP_A_DIRECTOR_ID, corpMapId);
+    expect(managerCaps.size).toBe(7);
+    expect(managerCaps.has('map_delete')).toBe(true);
+
+    const holderCaps = await resolveMapCapabilities(ROLE_HOLDER_ID, corpMapId);
+    expect([...holderCaps].sort()).toEqual(['audit_view']);
+
+    const nonHolderCaps = await resolveMapCapabilities(CORP_A_MEMBER_ID, corpMapId);
+    expect(nonHolderCaps.size).toBe(0);
   });
 
   it('admin manages every map for every right', async () => {

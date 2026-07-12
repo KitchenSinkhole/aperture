@@ -13,8 +13,9 @@ import {
   apCharacterRole,
   apMap,
   apMapRoleAccess,
+  mapCapability,
 } from '@/db/schema';
-import type { MapRight, MapType } from '@/types';
+import type { MapCapability, MapRight, MapType } from '@/types';
 
 /**
  * The single rights module every controller imports. `requireSession`
@@ -365,6 +366,108 @@ export async function requireMapManage(
   }
   const canManage = await canManageMap(characterId, mapId);
   if (!canManage) {
+    return { ok: false, status: 403, error: 'Forbidden.' };
+  }
+  return { ok: true, characterId };
+}
+
+// ---------------------------------------------------------------------------
+// Per-title feature delegation (R4).
+//
+// A corp director can hand a single director-gated feature to a specific EVE
+// corporation title by writing an `ap_map_role_access` row
+// `(map_id, role_id, capability)`. A viewer's capabilities are the union across
+// every title they hold (additive; no deny-grants). Managers/owners/admins hold
+// every capability implicitly via `canManageMap`, so they never need a row.
+// ---------------------------------------------------------------------------
+
+/**
+ * Does the character hold a role granted `capability` on this map? EXISTS over
+ * `ap_map_role_access ⋈ ap_character_role` with an added capability predicate —
+ * the union across the character's titles falls out of the join (any matching
+ * row is a hit). Does not consult management authority; use `canUseMapFeature`
+ * for the full gate.
+ */
+export async function hasMapCapability(
+  characterId: bigint,
+  mapId: bigint,
+  capability: MapCapability,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ exists: sql<number>`1` })
+    .from(apMapRoleAccess)
+    .innerJoin(apCharacterRole, eq(apCharacterRole.roleId, apMapRoleAccess.roleId))
+    .where(
+      and(
+        eq(apMapRoleAccess.mapId, mapId),
+        eq(apMapRoleAccess.capability, capability),
+        eq(apCharacterRole.characterId, characterId),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * The single feature gate every delegated call site calls:
+ * `canManageMap(...) || hasMapCapability(...)`. A director/owner/admin passes
+ * implicitly; everyone else needs a title grant for the specific capability.
+ */
+export async function canUseMapFeature(
+  characterId: bigint,
+  mapId: bigint,
+  capability: MapCapability,
+): Promise<boolean> {
+  if (await canManageMap(characterId, mapId)) return true;
+  return hasMapCapability(characterId, mapId, capability);
+}
+
+/**
+ * The set of capabilities the character can exercise on this map. Managers get
+ * every value; everyone else gets the union their held titles grant (one
+ * query). Feeds the client capability reveal.
+ */
+export async function resolveMapCapabilities(
+  characterId: bigint,
+  mapId: bigint,
+): Promise<Set<MapCapability>> {
+  if (await canManageMap(characterId, mapId)) {
+    return new Set(mapCapability.enumValues);
+  }
+  const rows = await db
+    .selectDistinct({ capability: apMapRoleAccess.capability })
+    .from(apMapRoleAccess)
+    .innerJoin(apCharacterRole, eq(apCharacterRole.roleId, apMapRoleAccess.roleId))
+    .where(
+      and(
+        eq(apMapRoleAccess.mapId, mapId),
+        eq(apCharacterRole.characterId, characterId),
+      ),
+    );
+  return new Set(rows.map((r) => r.capability));
+}
+
+/**
+ * Tuple-shaped guard for a delegated feature endpoint / action. Resolves
+ * session (401) → view existence (404, does not leak) → `canUseMapFeature`
+ * (403). Mirrors `requireMapManage`'s shape but keyed on a specific capability.
+ */
+export async function requireMapCapability(
+  session: Session | null | undefined,
+  mapId: bigint,
+  capability: MapCapability,
+): Promise<RightGuard> {
+  if (!session?.characterId) {
+    return { ok: false, status: 401, error: 'Unauthorized.' };
+  }
+  const characterId = BigInt(session.characterId);
+
+  const canView = await canViewMap(characterId, mapId);
+  if (!canView) {
+    return { ok: false, status: 404, error: 'Map not found.' };
+  }
+  const allowed = await canUseMapFeature(characterId, mapId, capability);
+  if (!allowed) {
     return { ok: false, status: 403, error: 'Forbidden.' };
   }
   return { ok: true, characterId };

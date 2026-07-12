@@ -104,6 +104,27 @@ export const mapRight = pgEnum('map_right', [
 ]);
 
 /**
+ * The per-map delegatable feature surface. Each value names one director-gated
+ * feature a corp title can be granted on a single map via an
+ * `ap_map_role_access` row. `view` is the existing role→map view overlay (any
+ * feature grant implies view). The rest map one-to-one onto the director
+ * features: audit log, settings, webhooks, import, export, delete. Distinct
+ * from `map_right` (the coarse mutate-guard vocabulary), which mixes in
+ * non-delegatable, non-per-map values (`map_create`, view-gated `map_update`,
+ * `map_share`) and lacks `audit_view`/`settings_manage`/`webhooks_manage`.
+ * Directors/owners/admins hold every capability implicitly.
+ */
+export const mapCapability = pgEnum('map_capability', [
+  'view',
+  'audit_view',
+  'settings_manage',
+  'webhooks_manage',
+  'map_import',
+  'map_export',
+  'map_delete',
+]);
+
+/**
  * Scanner-level group of a cosmic signature. The seven keys EVE's in-game
  * probe scanner emits in its "Group" column: six cosmic-site classes plus
  * wormhole. Replaces the prior `ap_map_signature.group_id` FK to

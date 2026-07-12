@@ -1,7 +1,7 @@
 import { bigint, bigserial, index, pgTable, primaryKey, text, timestamp, unique } from 'drizzle-orm/pg-core';
 import { apCharacter } from './character';
 import { apCorporation } from './corporation';
-import { roleSource } from './enums';
+import { mapCapability, roleSource } from './enums';
 import { apMap } from './map';
 
 // The three tag-role tables.
@@ -82,10 +82,11 @@ export const apMapRoleAccess = pgTable(
     roleId: bigint('role_id', { mode: 'bigint' })
       .notNull()
       .references(() => apRole.id, { onDelete: 'cascade' }),
+    capability: mapCapability('capability').notNull(),
     grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    primaryKey({ columns: [t.mapId, t.roleId], name: 'ap_map_role_access_pk' }),
+    primaryKey({ columns: [t.mapId, t.roleId, t.capability], name: 'ap_map_role_access_pk' }),
     index('ap_map_role_access_role_id_idx').on(t.roleId),
   ],
 );

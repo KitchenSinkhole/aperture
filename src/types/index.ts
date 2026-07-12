@@ -52,6 +52,7 @@ import type {
   authzLevel,
   errorLevel,
   errorSource,
+  mapCapability,
   mapRight,
   mapType,
   roleSource,
@@ -198,6 +199,7 @@ export type NewApStructureEvent = InferInsertModel<typeof apStructureEvent>;
 // Enum unions. `pgEnum` exposes its values via `.enumValues`; the
 // `[number]` index extracts the union of string literals.
 export type AuthzLevel = (typeof authzLevel.enumValues)[number];
+export type MapCapability = (typeof mapCapability.enumValues)[number];
 export type MapRight = (typeof mapRight.enumValues)[number];
 export type MapType = (typeof mapType.enumValues)[number];
 export type RoleSource = (typeof roleSource.enumValues)[number];

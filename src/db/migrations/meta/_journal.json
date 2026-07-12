@@ -386,6 +386,13 @@
       "when": 1780224000000,
       "tag": "0055_signature_activity_override",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1780227600000,
+      "tag": "0056_map_role_capability",
+      "breakpoints": true
     }
   ]
 }
