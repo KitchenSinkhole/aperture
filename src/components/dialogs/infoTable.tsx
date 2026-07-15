@@ -22,8 +22,8 @@ export function ScrollTable({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Th({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <th className={cn('px-2 py-1.5 text-left font-medium', className)}>{children}</th>;
+export function Th({ className, columnSpan, children }: { className?: string; columnSpan?: number; children: React.ReactNode }) {
+  return <th colSpan={columnSpan} className={cn('px-2 py-1.5 text-left font-medium', className)}>{children}</th>;
 }
 
 export function Td({ className, children }: { className?: string; children: React.ReactNode }) {

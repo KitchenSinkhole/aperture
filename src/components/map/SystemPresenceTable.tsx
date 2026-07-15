@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { customShipName } from '@/components/map/PilotRosterTable';
+import { ShipClassIcon } from '@/components/icons/ShipClassIcon';
 import type { MapPresenceEntry } from '@/types';
 
 /**
@@ -21,6 +22,9 @@ export function SystemPresenceTable({ presence }: { presence: readonly MapPresen
         {sorted.map((p) => (
           <tr key={p.characterId}>
             <td>{p.characterName}</td>
+            <td className="!p-0 w-4">
+              <ShipClassIcon shipClass={p.shipClass} />
+            </td>
             <ClippedCell className="text-muted-foreground">{p.shipTypeName ?? '—'}</ClippedCell>
             <ClippedCell className="text-muted-foreground">{customShipName(p) || '—'}</ClippedCell>
           </tr>

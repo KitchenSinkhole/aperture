@@ -22,6 +22,7 @@ function pilot(
     systemTrueSec: 0.9,
     shipTypeId: 670,
     shipTypeName: 'Capsule',
+    shipClass: 'capsule',
     shipName: null,
     locationAt: '2026-06-17T00:00:00Z',
     ...overrides,
@@ -67,7 +68,7 @@ describe('SystemPresenceTable', () => {
     expect(container.querySelector('thead')).toBeNull();
   });
 
-  it('renders three cells per pilot: name, type, custom ship name', () => {
+  it('renders four cells per pilot: name, ship-class icon, type, custom ship name', () => {
     render(
       <SystemPresenceTable
         presence={[
@@ -80,7 +81,7 @@ describe('SystemPresenceTable', () => {
         ]}
       />,
     );
-    expect(rowCells(bodyRows()[0]!)).toEqual(['Alpha', 'Loki', 'Wormhole Daddy']);
+    expect(rowCells(bodyRows()[0]!)).toEqual(['Alpha', '', 'Loki', 'Wormhole Daddy']);
   });
 
   it('shows an em dash for an un-renamed hull (ESI default ship name)', () => {
@@ -91,7 +92,7 @@ describe('SystemPresenceTable', () => {
         ]}
       />,
     );
-    expect(rowCells(bodyRows()[0]!)).toEqual(['Alpha', 'Astero', '—']);
+    expect(rowCells(bodyRows()[0]!)).toEqual(['Alpha', '', 'Astero', '—']);
   });
 
   it('sorts pilots by character name', () => {

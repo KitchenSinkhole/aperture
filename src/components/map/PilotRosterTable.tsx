@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { ChevronDown, ChevronUp, CornerDownRight, Unplug } from 'lucide-react';
 import { EmptyRow, InfoTable, ScrollTable, Td, Th } from '@/components/dialogs/infoTable';
+import { ShipClassIcon } from '@/components/icons/ShipClassIcon';
 import { systemClassColor } from '@/components/map/styling';
 import { cn } from '@/lib/utils';
 import type { MapPresenceEntry, MapSystemNode } from '@/types';
@@ -203,6 +204,9 @@ function PilotRow({
       <Td>
         <LocationCell p={p} systemNameById={systemNameById} />
       </Td>
+      <Td>
+        <ShipClassIcon shipClass={p.shipClass} />
+      </Td>
       <ClippedTd className="text-muted-foreground">{p.shipTypeName ?? '—'}</ClippedTd>
       <ClippedTd className="text-muted-foreground">{customShipName(p) || '—'}</ClippedTd>
     </tr>
@@ -229,15 +233,17 @@ function SortableTh({
   columnKey,
   sort,
   onSort,
+  columnSpan,
 }: {
   label: string;
   columnKey: SortKey;
   sort: Sort;
   onSort: (key: SortKey) => void;
+  columnSpan?: number;
 }) {
   const active = sort.key === columnKey;
   return (
-    <Th>
+    <Th columnSpan={columnSpan}>
       <button
         type="button"
         onClick={() => onSort(columnKey)}
@@ -301,7 +307,7 @@ export function PilotRosterTable({
           <tr>
             <SortableTh label="Pilot" columnKey="name" sort={sort} onSort={onSort} />
             <SortableTh label="Location" columnKey="location" sort={sort} onSort={onSort} />
-            <SortableTh label="Type" columnKey="ship-type" sort={sort} onSort={onSort} />
+            <SortableTh label="Type" columnKey="ship-type" sort={sort} onSort={onSort} columnSpan={2} />
             <SortableTh label="Ship" columnKey="ship-name" sort={sort} onSort={onSort} />
           </tr>
         </thead>
@@ -330,6 +336,7 @@ export function PilotRosterTable({
                         </span>
                       </span>
                     </Td>
+                    <Td>{null}</Td>
                     <Td>{null}</Td>
                     <Td>{null}</Td>
                     <Td>{null}</Td>

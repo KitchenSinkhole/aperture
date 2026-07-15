@@ -105,6 +105,7 @@ export class PresenceStore {
         systemTrueSec: load.systemTrueSec,
         shipTypeId: load.shipTypeId,
         shipTypeName: load.shipTypeName,
+        shipClass: load.shipClass,
         shipName: load.shipName,
         locationAt: load.locationAt,
       };

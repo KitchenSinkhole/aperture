@@ -30,6 +30,8 @@ import {
   whMass,
 } from '@/db/schema';
 import { canViewMap, viewableMapPredicate } from '@/lib/auth/rights';
+import { resolveShipClass } from '@/lib/eve/shipClass';
+import type { ShipClass } from '@/types';
 import { loadSignaturesForSystems } from './systemNode';
 import { apertureConfig } from '../../../aperture.config';
 
@@ -190,6 +192,8 @@ export type MapPresenceEntry = {
   systemTrueSec: number | null;
   shipTypeId: number | null;
   shipTypeName: string | null;
+  /** Broad hull-class bucket resolved from the ship type's SDE group; see `resolveShipClass`. */
+  shipClass: ShipClass | null;
   /** Pilot's custom hull name (`ap_character.last_ship_name`); null before the first online tick. */
   shipName: string | null;
   /** ISO timestamp; non-null because the loader filters to characters that have completed at least one online tick. */
@@ -529,6 +533,7 @@ export async function loadMapPresence(mapId: bigint): Promise<MapPresenceEntry[]
       systemTrueSec: universeSystem.trueSec,
       shipTypeId: apCharacter.lastShipTypeId,
       shipTypeName: universeType.name,
+      shipGroupId: universeType.groupId,
       shipName: apCharacter.lastShipName,
       locationAt: apCharacter.lastLocationAt,
     })
@@ -569,6 +574,7 @@ export async function loadMapPresence(mapId: bigint): Promise<MapPresenceEntry[]
       systemTrueSec: r.systemTrueSec,
       shipTypeId: r.shipTypeId,
       shipTypeName: r.shipTypeName,
+      shipClass: resolveShipClass(r.shipTypeId, r.shipGroupId),
       shipName: r.shipName,
       locationAt: r.locationAt.toISOString(),
     }];

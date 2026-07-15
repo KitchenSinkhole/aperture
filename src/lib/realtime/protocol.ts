@@ -12,6 +12,7 @@ import {
   whJumpMass,
   whMass,
 } from '@/db/schema/ap/enums';
+import type { ShipClass } from '@/types';
 
 /**
  * Wire contracts for the Aperture realtime WebSocket transport.
@@ -122,6 +123,29 @@ const signatureGroupKeyEnum = z.enum(signatureGroupKey.enumValues);
 const signatureClassKindEnum = z.enum(signatureClassKind.enumValues);
 const signatureActivityEnum = z.enum(signatureActivity.enumValues);
 const mapNoteSeverityEnum = z.enum(mapNoteSeverity.enumValues);
+
+const SHIP_CLASSES: ShipClass[] = [
+  'capsule',
+  'shuttle',
+  'corvette',
+  'frigate',
+  'destroyer',
+  'cruiser',
+  'battlecruiser',
+  'battleship',
+  'dreadnought',
+  'carrier',
+  'supercarrier',
+  'titan',
+  'mining-frigate',
+  'mining-destroyer',
+  'mining-barge',
+  'industrial',
+  'industrial-command',
+  'industrial-capital',
+] as const;
+
+const shipClassSchema = z.enum(SHIP_CLASSES);
 
 const eventId = z.number().int().positive();
 
@@ -441,6 +465,9 @@ export const mapConnectionAccessLoadSchema = z.object({
  * under their main across live moves (both main fields null when no main is set).
  * `shipTypeName` is the resolved `universe_type.name`
  * for `shipTypeId` — null when `shipTypeId` is null or the row is missing.
+ * `shipClass` is the broad hull-class bucket resolved from that same type's
+ * SDE group (`resolveShipClass`, `src/lib/eve/shipClass.ts`) — null under the
+ * same conditions as `shipTypeName`, or when the group has no mapped class.
  * `shipName` is the pilot's custom hull name (ESI `getCharacterShip.ship_name`,
  * cached on `ap_character.last_ship_name`) — null before the first online tick.
  * `systemName`/`systemSecurity`/`systemTrueSec` are the resolved `universe_system`
@@ -466,6 +493,7 @@ export const characterUpdateLoadSchema = z.object({
   systemTrueSec: z.number().nullable(),
   shipTypeId: z.number().int().nullable(),
   shipTypeName: z.string().nullable(),
+  shipClass: shipClassSchema.nullable(),
   shipName: z.string().nullable(),
   locationAt: z.string().nullable(),
 });

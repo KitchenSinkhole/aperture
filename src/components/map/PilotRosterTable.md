@@ -14,11 +14,11 @@
 | showOwner | boolean | no | Annotate alt rows with their main's name in the flat (ungrouped) view. Defaults to `false`. |
 
 ### Renders
-An `InfoTable` with a sticky `<thead>` (Pilot / Location / Type / Ship) and a `<tbody>`, wrapped in a `ScrollTable`. Renders "No pilots match your filter." (via `EmptyRow`) when `presence` is empty.
+An `InfoTable` with a sticky `<thead>` (Pilot / Location / [icon] / Type / Ship) and a `<tbody>`, wrapped in a `ScrollTable`. Renders "No pilots match your filter." (via `EmptyRow`) when `presence` is empty.
 
 The dense, header-less per-system popup is a separate component — see `SystemPresenceTable`.
 
-Each pilot row shows the character name plus an amber `Unplug` icon (with a `title`) when the pilot is online in-game but **not** in `viewerIds`. When `viewerIds` is omitted entirely, viewing status is unknown so the icon never shows. In the flat (ungrouped) view, when `showOwner` is on, an alt row (a character that is not its own account main) is annotated with its main's name in muted `(Main Name)` text. Location shows a class-coloured class label, the placed node's tag (same class-coloured `font-mono font-bold` styling, when present), then the system name (falls back to the raw id). Type is the resolved ship hull type. Ship is the pilot's custom hull name, shown only when it differs from the type (ESI defaults `ship_name` to the type name); otherwise `—`. The Type and Ship cells clip to a responsive max width with an ellipsis and expose the full value via a native `title` tooltip.
+Each pilot row shows the character name plus an amber `Unplug` icon (with a `title`) when the pilot is online in-game but **not** in `viewerIds`. When `viewerIds` is omitted entirely, viewing status is unknown so the icon never shows. In the flat (ungrouped) view, when `showOwner` is on, an alt row (a character that is not its own account main) is annotated with its main's name in muted `(Main Name)` text. Location shows a class-coloured class label, the placed node's tag (same class-coloured `font-mono font-bold` styling, when present), then the system name (falls back to the raw id). A narrow unlabelled column between Location and Type carries a `ShipClassIcon` (`p.shipClass`). Type is the resolved ship hull type name. Ship is the pilot's custom hull name, shown only when it differs from the type (ESI defaults `ship_name` to the type name); otherwise `—`. The Type and Ship cells clip to a responsive max width with an ellipsis and expose the full value via a native `title` tooltip.
 
 ### Behaviour & Interactions
 - **Sort** (local state, default `{ key: 'name', dir: 'asc' }` — preserves the old name-asc order): clicking a header sorts by that column; clicking the active header flips direction. Keys map to `name` (characterName), `location` (`systemName ?? systemId`), `ship-type` (`shipTypeName`), `ship-name` (custom hull name). Blank values (no custom ship name / unknown type) always sink to the bottom regardless of direction; ties break on character name.
@@ -29,6 +29,7 @@ Each pilot row shows the character name plus an amber `Unplug` icon (with a `tit
 
 ### Depends On
 - `InfoTable`/`ScrollTable`/`Th`/`Td`/`EmptyRow` from `@/components/dialogs/infoTable`
+- `ShipClassIcon` from `@/components/icons/ShipClassIcon`
 - `systemClassColor` from `@/components/map/styling`
 - `cn` from `@/lib/utils`
 - `Unplug`/`ChevronUp`/`ChevronDown`/`CornerDownRight` from `lucide-react`

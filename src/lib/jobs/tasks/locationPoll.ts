@@ -27,6 +27,7 @@ import { classifyJump, type JumpClass } from '@/lib/map/locationToConnection';
 import { logConnectionJump } from '@/lib/map/connectionMassLog';
 import { getMapViewerUserIds } from '@/lib/realtime/mapViewers';
 import { shipMass } from '@/lib/eve/shipMass';
+import { resolveShipClass } from '@/lib/eve/shipClass';
 import { recordLocationPoll } from '@/lib/metrics/registry';
 import { foldWormholeJumpOntoMap } from '../locationCommit';
 import { withInstrumentation } from '../withInstrumentation';
@@ -378,12 +379,14 @@ async function broadcastCharacterUpdate(args: BroadcastArgs): Promise<void> {
   // render the hover panel without doing its own SDE lookup. Null when no ship
   // type is known yet, or when the typeId disappears between SDE rebuilds.
   let shipTypeName: string | null = null;
+  let shipClass: ReturnType<typeof resolveShipClass> = null;
   if (args.shipTypeId !== null) {
     const [row] = await db
-      .select({ name: universeType.name })
+      .select({ name: universeType.name, groupId: universeType.groupId })
       .from(universeType)
       .where(eq(universeType.id, args.shipTypeId));
     shipTypeName = row?.name ?? null;
+    shipClass = resolveShipClass(args.shipTypeId, row?.groupId ?? null);
   }
   // Resolve the location name + class so the Map Info pilot roster can label a
   // pilot in a system that isn't placed on the map. Null when offline / unlocated
@@ -420,6 +423,7 @@ async function broadcastCharacterUpdate(args: BroadcastArgs): Promise<void> {
       systemTrueSec,
       shipTypeId: args.shipTypeId,
       shipTypeName,
+      shipClass,
       shipName: args.shipName,
       locationAt: args.locationAt ? args.locationAt.toISOString() : null,
     },

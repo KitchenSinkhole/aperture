@@ -22,6 +22,7 @@ function pilot(
     systemTrueSec: 0.9,
     shipTypeId: 670,
     shipTypeName: 'Capsule',
+    shipClass: 'capsule',
     shipName: null,
     locationAt: '2026-06-17T00:00:00Z',
     ...overrides,
@@ -131,9 +132,9 @@ describe('PilotRosterTable — columns', () => {
     expect(headerLabels()).toEqual(['Pilot', 'Location', 'Type', 'Ship']);
   });
 
-  it('renders four body cells per row', () => {
+  it('renders five body cells per row (including the ship-class icon column)', () => {
     render(<PilotRosterTable presence={presence} />);
-    expect(bodyRows()[0]!.querySelectorAll('td')).toHaveLength(4);
+    expect(bodyRows()[0]!.querySelectorAll('td')).toHaveLength(5);
   });
 
   it('wraps the table in a scroll region', () => {

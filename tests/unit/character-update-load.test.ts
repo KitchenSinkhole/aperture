@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { characterUpdateLoadSchema } from '@/lib/realtime/protocol';
 
 // The presence-badge / pilot-roster feature relies on `characterName` +
-// `shipTypeName` + `shipName` + the resolved `system*` fields being part of the
-// wire contract; the client renders the hover panel / roster directly off these
-// fields without a roster or SDE join. `userId`/`mainCharacterId`/`mainCharacterName`
+// `shipTypeName` + `shipClass` + `shipName` + the resolved `system*` fields being
+// part of the wire contract; the client renders the hover panel / roster directly
+// off these fields without a roster or SDE join. `userId`/`mainCharacterId`/`mainCharacterName`
 // likewise ride the wire so the roster keeps grouping alts under their main.
 describe('characterUpdateLoadSchema', () => {
   it('parses a complete online envelope', () => {
@@ -21,6 +21,7 @@ describe('characterUpdateLoadSchema', () => {
       systemTrueSec: 0.9,
       shipTypeId: 11176,
       shipTypeName: 'Crow',
+      shipClass: 'frigate',
       shipName: 'Speedy Boi',
       locationAt: '2026-05-26T12:00:00.000Z',
     });
@@ -41,6 +42,7 @@ describe('characterUpdateLoadSchema', () => {
       systemTrueSec: null,
       shipTypeId: null,
       shipTypeName: null,
+      shipClass: null,
       shipName: null,
       locationAt: null,
     });
@@ -60,6 +62,7 @@ describe('characterUpdateLoadSchema', () => {
       systemTrueSec: 0.9,
       shipTypeId: 11176,
       shipTypeName: 'Crow',
+      shipClass: 'frigate',
       shipName: 'Speedy Boi',
       locationAt: '2026-05-26T12:00:00.000Z',
     });
@@ -76,6 +79,7 @@ describe('characterUpdateLoadSchema', () => {
       systemId: 30000142,
       shipTypeId: 11176,
       shipTypeName: 'Crow',
+      shipClass: 'frigate',
       shipName: 'Speedy Boi',
       locationAt: '2026-05-26T12:00:00.000Z',
     });
@@ -92,6 +96,24 @@ describe('characterUpdateLoadSchema', () => {
       online: true,
       systemId: 30000142,
       shipTypeId: 11176,
+      shipClass: 'frigate',
+      shipName: 'Speedy Boi',
+      locationAt: '2026-05-26T12:00:00.000Z',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a payload missing shipClass', () => {
+    const result = characterUpdateLoadSchema.safeParse({
+      characterId: 90000001,
+      characterName: 'Wojtek',
+      userId: 42,
+      mainCharacterId: null,
+      mainCharacterName: null,
+      online: true,
+      systemId: 30000142,
+      shipTypeId: 11176,
+      shipTypeName: 'Crow',
       shipName: 'Speedy Boi',
       locationAt: '2026-05-26T12:00:00.000Z',
     });
@@ -109,6 +131,25 @@ describe('characterUpdateLoadSchema', () => {
       systemId: 30000142,
       shipTypeId: 11176,
       shipTypeName: 'Crow',
+      shipClass: 'frigate',
+      locationAt: '2026-05-26T12:00:00.000Z',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a payload with an invalid shipClass value', () => {
+    const result = characterUpdateLoadSchema.safeParse({
+      characterId: 90000001,
+      characterName: 'Wojtek',
+      userId: 42,
+      mainCharacterId: null,
+      mainCharacterName: null,
+      online: true,
+      systemId: 30000142,
+      shipTypeId: 11176,
+      shipTypeName: 'Crow',
+      shipClass: 'not-a-real-class',
+      shipName: 'Speedy Boi',
       locationAt: '2026-05-26T12:00:00.000Z',
     });
     expect(result.success).toBe(false);

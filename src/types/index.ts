@@ -147,6 +147,26 @@ export type ConnectionMassLogEntry = {
   jumpedAt: string;
 };
 
+export type ShipClass =
+  | 'capsule'
+  | 'shuttle'
+  | 'corvette'
+  | 'frigate'
+  | 'destroyer'
+  | 'cruiser'
+  | 'battlecruiser'
+  | 'battleship'
+  | 'dreadnought'
+  | 'carrier'
+  | 'supercarrier'
+  | 'titan'
+  | 'mining-frigate'
+  | 'mining-destroyer'
+  | 'mining-barge'
+  | 'industrial'
+  | 'industrial-command'
+  | 'industrial-capital';
+
 export type ApMapSignature = InferSelectModel<typeof apMapSignature>;
 export type NewApMapSignature = InferInsertModel<typeof apMapSignature>;
 

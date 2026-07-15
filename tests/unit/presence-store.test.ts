@@ -16,6 +16,7 @@ function entry(characterId: number, systemId: number): MapPresenceEntry {
     systemTrueSec: null,
     shipTypeId: null,
     shipTypeName: null,
+    shipClass: null,
     shipName: null,
     locationAt: '2026-05-31T00:00:00.000Z',
   };
@@ -35,6 +36,7 @@ function update(characterId: number, online: boolean, systemId: number | null): 
     systemTrueSec: null,
     shipTypeId: null,
     shipTypeName: null,
+    shipClass: null,
     shipName: null,
     locationAt: online ? '2026-05-31T01:00:00.000Z' : null,
   };
