@@ -8,6 +8,9 @@ import { describe, expect, it } from 'vitest';
  * Every route file under `src/app/api/map/**` must enforce per-map rights:
  *   - mutation handlers (POST/PATCH/DELETE) call `requireMapMutate(...)`.
  *   - read handlers (GET) call `requireMapView(...)` or `requireMapMutate(...)`.
+ *   - a per-map feature endpoint may instead call `requireMapCapability(...)`,
+ *     which layers a delegated-capability check on top of the same view/404
+ *     guard.
  *   - no route file may contain the historical `INTERIM ACCESS` comment marker
  *     without a wrapping helper — the test fails loud if anyone reintroduces a
  *     bypass.
@@ -42,9 +45,10 @@ describe('Stage 15 — every map route enforces rights', () => {
     const src = readFileSync(file, 'utf8');
     const hasMutate = /requireMapMutate\s*\(/.test(src);
     const hasView = /requireMapView\s*\(/.test(src);
+    const hasCapability = /requireMapCapability\s*\(/.test(src);
     expect(
-      hasMutate || hasView,
-      `Route ${file} must call requireMapMutate or requireMapView`,
+      hasMutate || hasView || hasCapability,
+      `Route ${file} must call requireMapMutate, requireMapView, or requireMapCapability`,
     ).toBe(true);
   });
 
