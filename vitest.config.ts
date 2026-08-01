@@ -15,6 +15,9 @@ export default defineConfig({
       AUTH_EVE_CLIENT_ID: process.env.AUTH_EVE_CLIENT_ID ?? 'test-client-id',
       AUTH_EVE_CLIENT_SECRET: process.env.AUTH_EVE_CLIENT_SECRET ?? 'test-client-secret',
       AUTH_SECRET: process.env.AUTH_SECRET ?? 'test-auth-secret',
+      // Lets integration tests import and call `/api/integrations/*` route
+      // handlers directly instead of always getting the 404 gate.
+      INTEGRATIONS_ENABLED: process.env.INTEGRATIONS_ENABLED ?? 'true',
     },
   },
   resolve: {

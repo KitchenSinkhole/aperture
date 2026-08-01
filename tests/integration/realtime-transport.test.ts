@@ -1,13 +1,13 @@
 // @vitest-environment node
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { encode } from 'next-auth/jwt';
 import { WebSocket } from 'ws';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db, pool } from '@/db/client';
-import { apMap, apMapEvent } from '@/db/schema';
+import { apCharacter, apCharacterPresence, apMap, apMapEvent, apUser } from '@/db/schema';
 import { env } from '@/lib/env';
 import { apertureConfig } from '../../aperture.config';
 import { attachWsServer } from '@/lib/realtime/wsServer';
@@ -24,9 +24,11 @@ import type { ServerToClientMessage } from '@/lib/realtime/protocol';
 const run = process.env.RUN_DB_TESTS === '1';
 const COOKIE_NAME = 'authjs.session-token';
 
-async function sessionCookie(): Promise<string> {
+const PRESENCE_CHARACTER_ID = 99620001n;
+
+async function sessionCookie(characterId = '90000001', userId = 1): Promise<string> {
   const token = await encode({
-    token: { characterId: '90000001', userId: 1 },
+    token: { characterId, userId },
     secret: env.AUTH_SECRET,
     salt: COOKIE_NAME,
   });
@@ -64,6 +66,7 @@ describe.skipIf(!run)('realtime transport (WS + bus)', () => {
   let mapId: bigint;
   let deletedMapId: bigint;
   let cookie: string;
+  let presenceUserId: number;
   const sockets: WebSocket[] = [];
 
   beforeAll(async () => {
@@ -83,6 +86,18 @@ describe.skipIf(!run)('realtime transport (WS + bus)', () => {
 
     cookie = await sessionCookie();
 
+    await db.delete(apCharacter).where(eq(apCharacter.id, PRESENCE_CHARACTER_ID));
+    const [pu] = await db.insert(apUser).values({}).returning({ id: apUser.id });
+    presenceUserId = pu!.id;
+    await db.insert(apCharacter).values({
+      id: PRESENCE_CHARACTER_ID,
+      userId: presenceUserId,
+      name: 'Presence Test Pilot',
+      ownerHash: `hash-${PRESENCE_CHARACTER_ID}`,
+      authzLevel: 'member',
+      status: 'active',
+    });
+
     server = createServer();
     attachWsServer(server);
     await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -94,6 +109,8 @@ describe.skipIf(!run)('realtime transport (WS + bus)', () => {
     for (const ws of sockets) ws.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await db.delete(apMap).where(sql`${apMap.id} in (${mapId}, ${deletedMapId})`);
+    await db.delete(apCharacter).where(eq(apCharacter.id, PRESENCE_CHARACTER_ID));
+    await db.delete(apUser).where(eq(apUser.id, presenceUserId));
     await pool.end();
   });
 
@@ -143,5 +160,46 @@ describe.skipIf(!run)('realtime transport (WS + bus)', () => {
     });
 
     await expect(got).rejects.toThrow(/no mapUpdate/);
+  });
+
+  it('opens one presence session on connect, adopts it on reconnect, and advances ended_at on close', async () => {
+    const presenceCookie = await sessionCookie(PRESENCE_CHARACTER_ID.toString(), presenceUserId);
+
+    const a = await open(baseUrl, presenceCookie);
+    sockets.push(a);
+    await delay(200); // let the fire-and-forget openPresenceSession land
+
+    const rowsAfterConnect = await db
+      .select()
+      .from(apCharacterPresence)
+      .where(eq(apCharacterPresence.characterId, PRESENCE_CHARACTER_ID));
+    expect(rowsAfterConnect).toHaveLength(1);
+    const sessionId = rowsAfterConnect[0]!.id;
+    const endedAtAfterConnect = rowsAfterConnect[0]!.endedAt.getTime();
+
+    a.close();
+    await delay(200); // let the close handler's touchPresenceSessions land
+
+    const rowsAfterClose = await db
+      .select()
+      .from(apCharacterPresence)
+      .where(eq(apCharacterPresence.characterId, PRESENCE_CHARACTER_ID));
+    expect(rowsAfterClose).toHaveLength(1);
+    expect(rowsAfterClose[0]!.id).toBe(sessionId);
+    expect(rowsAfterClose[0]!.endedAt.getTime()).toBeGreaterThanOrEqual(endedAtAfterConnect);
+
+    // Reconnecting well within PRESENCE_SESSION_GAP_MS adopts the same row
+    // rather than opening a second one.
+    const b = await open(baseUrl, presenceCookie);
+    sockets.push(b);
+    await delay(200);
+
+    const rowsAfterReconnect = await db
+      .select()
+      .from(apCharacterPresence)
+      .where(eq(apCharacterPresence.characterId, PRESENCE_CHARACTER_ID));
+    expect(rowsAfterReconnect).toHaveLength(1);
+    expect(rowsAfterReconnect[0]!.id).toBe(sessionId);
+    expect(rowsAfterReconnect[0]!.endedAt.getTime()).toBeGreaterThan(rowsAfterClose[0]!.endedAt.getTime());
   });
 });

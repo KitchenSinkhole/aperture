@@ -41,11 +41,21 @@ type PresenceRow = {
   ended_at: Date;
 };
 
+type RawPresenceRow = {
+  character_id: string;
+  started_at_epoch: string;
+  ended_at_epoch: string;
+};
+
 type CoverageRow = {
   earliest: string | null;
   latest: string | null;
 };
 
+// `db.execute`'s raw-sql path returns timestamptz columns as driver-native
+// strings, not `Date` (drizzle's node-postgres session installs an identity
+// type parser for them) — extract as epoch seconds instead, matching the
+// `to_char`-then-parse convention used elsewhere for raw sql (`activity.ts`).
 async function fetchPresenceRows(input: {
   corporationId: bigint;
   characterIds: bigint[];
@@ -58,11 +68,11 @@ async function fetchPresenceRows(input: {
     sql`, `,
   );
 
-  const result = await db.execute<PresenceRow>(sql`
+  const result = await db.execute<RawPresenceRow>(sql`
     SELECT
       character_id::text AS character_id,
-      started_at,
-      ended_at
+      extract(epoch from started_at) AS started_at_epoch,
+      extract(epoch from ended_at) AS ended_at_epoch
     FROM ap_character_presence
     WHERE corporation_id = ${input.corporationId}
       AND character_id IN (${charIdList})
@@ -70,7 +80,11 @@ async function fetchPresenceRows(input: {
       ${input.from ? sql`AND ended_at >= ${input.from}::date` : sql``}
     ORDER BY character_id, started_at
   `);
-  return result.rows;
+  return result.rows.map((row) => ({
+    character_id: row.character_id,
+    started_at: new Date(Number(row.started_at_epoch) * 1000),
+    ended_at: new Date(Number(row.ended_at_epoch) * 1000),
+  }));
 }
 
 /**
@@ -166,21 +180,33 @@ export async function loadPresenceBuckets(input: {
   const bucketMs = period === 'week' ? 7 * 86_400_000 : 86_400_000;
   const rows = await fetchPresenceRows(input);
 
+  // A session can run long before/after [from, to] (a stitched session isn't
+  // bounded by the caller's window) — clip to the window before bucketing so
+  // a query never surfaces a day/week outside what was asked for.
+  const windowStart = input.from ? new Date(`${input.from}T00:00:00.000Z`) : null;
+  const windowEnd = new Date(`${input.to ?? toISODate(new Date())}T00:00:00.000Z`);
+  windowEnd.setUTCDate(windowEnd.getUTCDate() + 1);
+
   type WorkingSummary = { seconds: number; sessions: number; lastSeenAt: Date };
   const byCharacter = new Map<string, Map<string, WorkingSummary>>();
 
   for (const row of rows) {
+    const effectiveStart =
+      windowStart && windowStart.getTime() > row.started_at.getTime() ? windowStart : row.started_at;
+    const effectiveEnd = row.ended_at.getTime() > windowEnd.getTime() ? windowEnd : row.ended_at;
+    if (effectiveEnd.getTime() <= effectiveStart.getTime()) continue;
+
     let buckets = byCharacter.get(row.character_id);
     if (!buckets) {
       buckets = new Map();
       byCharacter.set(row.character_id, buckets);
     }
 
-    let cursor = bucketStart(row.started_at, period);
-    while (cursor.getTime() < row.ended_at.getTime()) {
+    let cursor = bucketStart(effectiveStart, period);
+    while (cursor.getTime() < effectiveEnd.getTime()) {
       const bucketEnd = new Date(cursor.getTime() + bucketMs);
-      const clipStart = cursor.getTime() > row.started_at.getTime() ? cursor : row.started_at;
-      const clipEnd = bucketEnd.getTime() < row.ended_at.getTime() ? bucketEnd : row.ended_at;
+      const clipStart = cursor.getTime() > effectiveStart.getTime() ? cursor : effectiveStart;
+      const clipEnd = bucketEnd.getTime() < effectiveEnd.getTime() ? bucketEnd : effectiveEnd;
       const seconds = (clipEnd.getTime() - clipStart.getTime()) / 1000;
 
       const key = toISODate(cursor);
