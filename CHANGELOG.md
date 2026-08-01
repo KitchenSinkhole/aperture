@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### New features
+
+- **Presence for the integrations API** - `POST /api/integrations/activity-stats` buckets now carry an `online` block (seconds/sessions/last-seen) and no longer drop a bucket where a member was present but made no edits. A new `POST /api/integrations/presence-sessions` exposes the raw intervals for consumers building `character_session`-style history. Presence tracks WebSocket connectivity (Aperture open in a browser), not EVE-onlineness, backed by a new `ap_character_presence` table written from the WS socket lifecycle and pruned by the existing character-cleanup job. *(MonoliYoda)*
+
+### Contributors
+
+- **MonoliYoda** - presence for the integrations API
+
 ## v1.0.0-rc.15
 
 This release lets directors delegate individual director-gated map features to specific EVE corporation titles, adds a derived combat/exploration classifier for signature sites, and opens a machine-to-machine activity-stats endpoint for external tooling.

@@ -1,8 +1,8 @@
 # Integration API — Activity Stats Endpoint
 
-**Status:** Implemented (`POST /api/integrations/activity-stats`). §7 `last-activity` remains unbuilt.
-**Purpose:** Expose Aperture's per-character map-activity counts to authorized external services over a stable, consumer-neutral HTTP contract, so another app can compute its own rollups (e.g. rank/promotion thresholds) from Aperture's activity data.
-**First consumer:** Roster (EVE corp roster & activity-review app) — needs per-character "systems added" / "signatures scanned" counts over a rolling window to evaluate rank criteria. The contract is deliberately **not** Roster-specific; other services may consume it.
+**Status:** Implemented (`POST /api/integrations/activity-stats`, `POST /api/integrations/presence-sessions`). §7 `last-activity` remains unbuilt.
+**Purpose:** Expose Aperture's per-character map-activity counts and presence (whether a member had Aperture open) to authorized external services over a stable, consumer-neutral HTTP contract, so another app can compute its own rollups (e.g. rank/promotion thresholds) from Aperture's activity data.
+**First consumer:** Roster (EVE corp roster & activity-review app) — needs per-character "systems added" / "signatures scanned" counts over a rolling window to evaluate rank criteria, and presence intervals to populate `character_session` alongside its other sources. The contract is deliberately **not** Roster-specific; other services may consume it.
 
 ---
 
@@ -11,6 +11,7 @@
 All machine-to-machine, token-authenticated data feeds live under **`/api/integrations/`**, distinct from the session-authenticated UI routes (`/api/statistics`, `/api/map/...`). The name is intentionally consumer-neutral — do not name it `/api/roster/`.
 
 - `POST /api/integrations/activity-stats` — this document.
+- `POST /api/integrations/presence-sessions` — raw presence intervals (§8); backs the `online` block folded into `activity-stats`.
 - `POST /api/integrations/last-activity` — companion recency feed (see §7); replaces the never-built `/api/roster/last-activity` path an early Roster adapter referenced.
 
 No URL version segment for now (matches the rest of Aperture). The response carries a `generatedAt` and an explicit `coverage` window so consumers degrade gracefully rather than depending on an implied version.
@@ -87,7 +88,8 @@ Notes:
           "bucketStart": "2026-06-15",           // Monday of ISO week (weekly) or the day (daily), UTC
           "system":     { "create": 42, "update": 6, "delete": 9 },
           "connection": { "create": 30, "update": 0, "delete": 11 },
-          "signature":  { "create": 88, "update": 12, "delete": 40 }
+          "signature":  { "create": 88, "update": 12, "delete": 40 },
+          "online":     { "seconds": 14340, "sessions": 2, "lastSeenAt": "2026-06-15T21:03:00Z" }
         }
         // ...one bucket per period with any activity in [from, to]
       ]
@@ -101,10 +103,11 @@ Notes:
 ```
 
 Rules:
-- **Every requested `characterId` appears** in `characters`, in request order. A character with no activity gets `buckets: []` (not omitted, not a 404).
-- **Only non-empty periods are emitted** as buckets — sparse, not zero-filled. The consumer fills gaps with zero when it rolls up. (This keeps a 52-week request small for low-activity characters.)
+- **Every requested `characterId` appears** in `characters`, in request order. A character with no activity or presence gets `buckets: []` (not omitted, not a 404).
+- **A bucket is emitted when it has any activity *or* any presence.** A member who had Aperture open but made no edits in a period is no longer dropped — the counter groups are zeroed and `online` carries the non-zero presence. Buckets with neither are still sparse (not zero-filled); the consumer fills those gaps.
 - The three groups (`system`, `connection`, `signature`) each carry the `{ create, update, delete }` triplet — the same `ActivityTriplet` shape `loadActivityStats` already produces from `KIND_MAP`. Emitting all nine counters (not a single pre-picked "scans" number) is deliberate: which counter means "scanned" is a **consumer-side** decision (§6), and other consumers may want different counters, without a wire-format change.
-- `coverage` reflects the token's corp scope, not global Aperture data. It exists so a consumer computing a "rolling 12 months" window can tell that the underlying history only spans a few weeks and label its output as partial rather than reporting a misleadingly low total.
+- `online` is `{ seconds, sessions, lastSeenAt }`: `seconds` is presence time clipped to the bucket, `sessions` is the number of presence sessions touching the bucket, `lastSeenAt` is the latest clipped `ended_at` in that bucket (a real instant) or `null` when there was no presence. See §8 for the underlying semantics.
+- `coverage` reflects the token's corp scope, not global Aperture data, and spans both rollup-day coverage and presence coverage (whichever is wider). It exists so a consumer computing a "rolling 12 months" window can tell that the underlying history only spans a few weeks and label its output as partial rather than reporting a misleadingly low total.
 
 ---
 
@@ -156,18 +159,64 @@ Kept as a distinct endpoint (not folded into `activity-stats`) because recency a
 
 ---
 
-## 8. Implementation checklist
+## 8. Presence
 
-- [ ] `INTEGRATIONS_ENABLED` env flag; `/api/integrations/*` returns 404 when unset.
-- [ ] Token store resolving `token → { corporationId, label }` (hashed, revocable), constant-time compare.
-- [ ] `POST /api/integrations/activity-stats` route: zod-validate body, resolve corp from token, query `ap_activity_rollup` scoped to that corp's `type='corp'` maps, bucket per `granularity`, return per raw `character_id`.
-- [ ] Reuse `KIND_MAP` grouping and the `system.moved` / `map.%` exclusions from `src/lib/stats/activity.ts`; factor the shared shaping so the two readers can't drift.
-- [ ] `coverage` computed from min/max `day` in scope.
-- [ ] Cap `characterIds` (≈500); 400 on overflow.
-- [ ] Instrument with `withApiMetrics('/api/integrations/activity-stats', ...)` like the other routes.
-- [ ] Add companion `route.md` per the repo's companion-doc convention.
+Aperture also tracks whether a member had the app open at all, independent of what they edited, and exposes it two ways: folded into `activity-stats` as the `online` block (§4), and as raw intervals via `POST /api/integrations/presence-sessions`.
 
-## 9. Open decisions for the implementer
+**Source.** "Online in Aperture" means an authenticated WebSocket is connected — the app is open in a browser tab. It is not EVE-onlineness; the ESI online probe used by location tracking is a separate signal and is not consulted here. A backgrounded/minimised tab still counts, since the socket stays open.
+
+**Storage.** Sessions live in `ap_character_presence` (`character_id`, a `corporation_id` snapshot, `started_at`, `ended_at`), one row per unbroken presence interval. `ended_at` is advanced by the WS heartbeat (~30s) and on close; there is no separate "last seen" column and no dangling-session sweeper — a crashed process simply leaves `ended_at` at its last heartbeat.
+
+**Stitching.** A reconnect within `PRESENCE_SESSION_GAP_MS` (5 minutes) of the previous `ended_at` adopts the existing open row instead of opening a new one, so intervals for one character never overlap and a short network blip or SharedWorker restart doesn't shred an evening into many sessions. This means presence can over-count a genuine short absence by up to the gap window — a deliberate trade.
+
+**`live`.** A session is `live: true` when its `ended_at` is newer than `PRESENCE_LIVE_GRACE_MS` (1 minute, twice the heartbeat interval) ago.
+
+**Bounded window on `presence-sessions`.** Unlike `activity-stats`, this endpoint always bounds `[from, to]`: an omitted `from` defaults to `to − INTEGRATION_PRESENCE_DEFAULT_WINDOW_DAYS` (90 days), and a span wider than `INTEGRATION_PRESENCE_MAX_WINDOW_DAYS` (366 days) is a `400` telling the caller to page. Session rows are far more numerous than daily rollup rows, so "everything" is not a safe default here.
+
+**Tenant boundary.** `ap_character_presence.corporation_id` is a **snapshot** of the character's corporation taken when the session opened, not a live join — the same corp-scoping principle as §2, applied so a corp's token can never see a pilot's presence from before they joined that corp. A null-corp row (the character had no corp at session-open) is invisible to every token.
+
+**Retention.** Presence rows older than `PRESENCE_RETENTION_DAYS` (400 days) are pruned by the existing `character-cleanup` job.
+
+**No backfill.** Presence accrues forward only from deploy. A consumer should treat pre-deploy buckets/coverage as unknown, not as zero.
+
+### `POST /api/integrations/presence-sessions`
+
+Same auth/scoping model as §2 (`INTEGRATIONS_ENABLED` → 404, bad/missing token → 401, bad body → 400).
+
+```jsonc
+// request
+{ "characterIds": [90000001], "from": "2026-05-01", "to": "2026-07-31" }
+
+// response
+{ "generatedAt": "2026-08-01T12:00:00.000Z",
+  "coverage": { "earliest": "2026-06-15", "latest": "2026-07-31" },
+  "characters": [ { "characterId": 90000001, "sessions": [
+      { "startedAt": "2026-07-27T18:02:00.000Z",
+        "endedAt":   "2026-07-27T21:44:11.000Z",
+        "live": false } ] } ] }
+```
+
+Every session **overlapping** `[from, to]` is returned (not merely one starting inside it), per character in request order; a quiet character gets `sessions: []`. `coverage` is the min/max presence instant across the token's corp scope. A likely consumer mapping onto a `character_session`-shaped table: `logonAt = startedAt`, `lastConfirmedAt = endedAt`, `logoffAt = live ? null : endedAt`.
+
+---
+
+## 9. Implementation checklist
+
+- [x] `INTEGRATIONS_ENABLED` env flag; `/api/integrations/*` returns 404 when unset.
+- [x] Token store resolving `token → { corporationId, label }` (hashed, revocable), constant-time compare.
+- [x] `POST /api/integrations/activity-stats` route: zod-validate body, resolve corp from token, query `ap_activity_rollup` scoped to that corp's `type='corp'` maps, bucket per `granularity`, return per raw `character_id`.
+- [x] Reuse `KIND_MAP` grouping and the `system.moved` / `map.%` exclusions from `src/lib/stats/activity.ts`; factor the shared shaping so the two readers can't drift.
+- [x] `coverage` computed from min/max `day` in scope (and, since presence, widened to presence coverage too).
+- [x] Cap `characterIds` (≈500); 400 on overflow.
+- [x] Instrument with `withApiMetrics('/api/integrations/activity-stats', ...)` like the other routes.
+- [x] Add companion `route.md` per the repo's companion-doc convention.
+- [x] `ap_character_presence` write path from the WS socket lifecycle (open/heartbeat/close), stitched, corp-snapshotted.
+- [x] `POST /api/integrations/presence-sessions` route with a bounded, pageable window.
+- [x] `online` block merged into `activity-stats`; a bucket is emitted on activity or presence.
+- [x] Presence retention pruning in `character-cleanup`.
+- [ ] `POST /api/integrations/last-activity` (§7) — not built.
+
+## 10. Open decisions for the implementer
 
 1. **Token storage** — DB table (recommended) vs env JSON map. Affects rotation/audit only; the wire contract is unchanged either way.
 2. **Cross-scope activity** — this spec scopes strictly to `type='corp'` maps of the token's corp (matching the Statistics dialog). If a corp also wants scanning done on members' *private* maps to count, that is a scope-model change; leave it out of v1.
