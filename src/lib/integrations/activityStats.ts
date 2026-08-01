@@ -10,6 +10,7 @@ import {
   toISODate,
   type ActivityTriplet,
 } from '@/lib/stats/activityShaping';
+import { loadPresenceBuckets, loadPresenceCoverage, type IntegrationOnlineSummary } from './presence';
 
 /**
  * Per-character activity projection over `ap_activity_rollup`, scoped to one
@@ -22,13 +23,21 @@ import {
  *     counts; consumers own their own alt-identity graph.
  *   - **Caller-defined window + granularity** — buckets `[from, to]` by
  *     `weekly` (Monday, UTC) or `daily` period, not 12 fixed trailing buckets.
+ *
+ * Merges in `ap_character_presence` (`presence.ts`) so a bucket with presence
+ * but no edits still surfaces: a bucket is emitted on activity **or**
+ * presence, and every emitted bucket carries an `online` summary (zeroed when
+ * there was no presence).
  */
+
+const ZERO_ONLINE_SUMMARY: IntegrationOnlineSummary = { seconds: 0, sessions: 0, lastSeenAt: null };
 
 export interface IntegrationActivityBucket {
   bucketStart: string;
   system: ActivityTriplet;
   connection: ActivityTriplet;
   signature: ActivityTriplet;
+  online: IntegrationOnlineSummary;
 }
 
 export interface IntegrationCharacterActivity {
@@ -68,17 +77,11 @@ export async function loadIntegrationActivityStats(input: {
   to?: string;
   granularity: 'weekly' | 'daily';
 }): Promise<IntegrationActivityStatsResponse> {
-  const { corporationId, characterIds, granularity } = input;
+  const { corporationId, characterIds, granularity, from, to } = input;
   const generatedAt = new Date().toISOString();
-  const toDate = input.to ?? toISODate(new Date());
+  const toDate = to ?? toISODate(new Date());
   const period = granularity === 'weekly' ? 'week' : 'day';
-
-  const emptyResult = (): IntegrationActivityStatsResponse => ({
-    generatedAt,
-    granularity,
-    coverage: { earliest: null, latest: null },
-    characters: characterIds.map((id) => ({ characterId: Number(id), buckets: [] })),
-  });
+  const emptyCoverage: CoverageRow = { earliest: null, latest: null };
 
   const maps = await db
     .select({ id: apMap.id })
@@ -91,44 +94,48 @@ export async function loadIntegrationActivityStats(input: {
       ),
     );
   const mapIds = maps.map((m) => m.id);
-  if (mapIds.length === 0) return emptyResult();
-
-  const mapIdList = sql.join(
-    mapIds.map((id) => sql`${id}`),
-    sql`, `,
-  );
+  const kindExclusion = activityKindExclusion(sql.raw('r.kind'));
   const charIdList = sql.join(
     characterIds.map((id) => sql`${id}`),
     sql`, `,
   );
-  const kindExclusion = activityKindExclusion(sql.raw('r.kind'));
 
-  const [coverageResult, aggResult] = await Promise.all([
-    db.execute<CoverageRow>(sql`
-      SELECT
-        to_char(min(r.day), 'YYYY-MM-DD') AS earliest,
-        to_char(max(r.day), 'YYYY-MM-DD') AS latest
-      FROM ap_activity_rollup r
-      WHERE r.map_id IN (${mapIdList})
-        AND ${kindExclusion}
-    `),
-    db.execute<AggRow>(sql`
-      SELECT
-        r.character_id::text         AS character_id,
-        to_char(r.day, 'YYYY-MM-DD') AS day,
-        r.kind                       AS kind,
-        SUM(r.event_count)::int      AS total
-      FROM ap_activity_rollup r
-      WHERE r.map_id IN (${mapIdList})
-        AND r.character_id IN (${charIdList})
-        AND ${kindExclusion}
-        ${input.from ? sql`AND r.day >= ${input.from}::date` : sql``}
-        AND r.day <= ${toDate}::date
-      GROUP BY 1, 2, 3
-    `),
+  const [activityCoverage, aggRows, presenceBuckets, presenceCoverage] = await Promise.all([
+    mapIds.length === 0
+      ? Promise.resolve(emptyCoverage)
+      : db
+          .execute<CoverageRow>(sql`
+            SELECT
+              to_char(min(r.day), 'YYYY-MM-DD') AS earliest,
+              to_char(max(r.day), 'YYYY-MM-DD') AS latest
+            FROM ap_activity_rollup r
+            WHERE r.map_id IN (${sql.join(mapIds.map((id) => sql`${id}`), sql`, `)})
+              AND ${kindExclusion}
+          `)
+          .then((r) => r.rows[0] ?? emptyCoverage),
+    mapIds.length === 0
+      ? Promise.resolve([] as AggRow[])
+      : db
+          .execute<AggRow>(sql`
+            SELECT
+              r.character_id::text         AS character_id,
+              to_char(r.day, 'YYYY-MM-DD') AS day,
+              r.kind                       AS kind,
+              SUM(r.event_count)::int      AS total
+            FROM ap_activity_rollup r
+            WHERE r.map_id IN (${sql.join(mapIds.map((id) => sql`${id}`), sql`, `)})
+              AND r.character_id IN (${charIdList})
+              AND ${kindExclusion}
+              ${from ? sql`AND r.day >= ${from}::date` : sql``}
+              AND r.day <= ${toDate}::date
+            GROUP BY 1, 2, 3
+          `)
+          .then((r) => r.rows),
+    loadPresenceBuckets({ corporationId, characterIds, from, to, granularity }),
+    loadPresenceCoverage(corporationId),
   ]);
 
-  const coverage = coverageResult.rows[0] ?? { earliest: null, latest: null };
+  const coverage = mergeCoverage(activityCoverage, presenceCoverage);
 
   interface Bucket {
     system: ActivityTriplet;
@@ -137,7 +144,7 @@ export async function loadIntegrationActivityStats(input: {
   }
   const byCharacter = new Map<string, Map<string, Bucket>>();
 
-  for (const row of aggResult.rows) {
+  for (const row of aggRows) {
     const mapped = KIND_MAP[row.kind];
     if (!mapped) continue;
     const [group, action] = mapped;
@@ -157,14 +164,30 @@ export async function loadIntegrationActivityStats(input: {
   }
 
   const characters: IntegrationCharacterActivity[] = characterIds.map((id) => {
-    const charBuckets = byCharacter.get(id.toString());
-    const buckets: IntegrationActivityBucket[] = charBuckets
-      ? [...charBuckets.entries()]
-          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-          .map(([start, b]) => ({ bucketStart: start, ...b }))
-      : [];
+    const idKey = id.toString();
+    const charBuckets = byCharacter.get(idKey);
+    const charPresence = presenceBuckets.get(idKey);
+    const keys = new Set<string>([...(charBuckets?.keys() ?? []), ...(charPresence?.keys() ?? [])]);
+    const buckets: IntegrationActivityBucket[] = [...keys].sort().map((key) => ({
+      bucketStart: key,
+      ...(charBuckets?.get(key) ?? {
+        system: emptyTriplet(),
+        connection: emptyTriplet(),
+        signature: emptyTriplet(),
+      }),
+      online: charPresence?.get(key) ?? ZERO_ONLINE_SUMMARY,
+    }));
     return { characterId: Number(id), buckets };
   });
 
   return { generatedAt, granularity, coverage, characters };
+}
+
+function mergeCoverage(a: CoverageRow, b: CoverageRow): CoverageRow {
+  const earliestCandidates = [a.earliest, b.earliest].filter((v): v is string => v !== null).sort();
+  const latestCandidates = [a.latest, b.latest].filter((v): v is string => v !== null).sort();
+  return {
+    earliest: earliestCandidates[0] ?? null,
+    latest: latestCandidates.at(-1) ?? null,
+  };
 }

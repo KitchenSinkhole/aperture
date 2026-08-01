@@ -73,6 +73,16 @@ async function fetchPresenceRows(input: {
   return result.rows;
 }
 
+/**
+ * Min/max presence instant across `corporationId`'s data, independent of any
+ * requested characters — shared by `loadPresenceSessions` and by
+ * `loadIntegrationActivityStats`, which widens its own rollup-day coverage
+ * with this.
+ */
+export async function loadPresenceCoverage(corporationId: bigint): Promise<CoverageRow> {
+  return fetchCoverage(corporationId);
+}
+
 async function fetchCoverage(corporationId: bigint): Promise<CoverageRow> {
   const result = await db.execute<CoverageRow>(sql`
     SELECT

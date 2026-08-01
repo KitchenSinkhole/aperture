@@ -77,6 +77,7 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 
 **Integrations API**
 - `INTEGRATION_MAX_CHARACTER_IDS` — max `characterIds` a single `/api/integrations/activity-stats` request may bound its result to (400 on overflow).
+- `INTEGRATION_PRESENCE_DEFAULT_WINDOW_DAYS` (90) — `/api/integrations/presence-sessions` window when `from` is omitted, counted back from `to`. `INTEGRATION_PRESENCE_MAX_WINDOW_DAYS` (366) — widest `[from, to]` span accepted (400 on overflow).
 
 Per-task cron expressions live as `cron` strings on each task module in `src/lib/jobs/tasks/`, not here.
 

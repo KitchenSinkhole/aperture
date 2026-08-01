@@ -15,6 +15,9 @@ These are re-exported from `src/types/index.ts`.
 
 ---
 
+### loadPresenceCoverage(corporationId): Promise<{ earliest: string | null; latest: string | null }>
+Min/max presence instant across the corp's data, independent of any requested characters. Used by `loadPresenceSessions` and by `loadIntegrationActivityStats` (`activityStats.ts`) to widen its rollup-day coverage with presence days.
+
 ### loadPresenceSessions({ corporationId, characterIds, from?, to? }): Promise<IntegrationPresenceResponse>
 Loads every presence session **overlapping** `[from, to]` (not merely one starting inside it), scoped to `corporationId` — the same tenant boundary as `loadIntegrationActivityStats`.
 

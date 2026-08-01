@@ -16,4 +16,6 @@ Gating, in order:
 
 Every requested `characterId` appears in `characters` in request order (`buckets: []` for a quiet character, never omitted). Activity is raw per-character — not collapsed to an account main — and scoped strictly to the token's corp's `type='corp'` maps.
 
+Each bucket carries an `online: { seconds, sessions, lastSeenAt }` block merged in from `ap_character_presence` — a bucket is emitted on activity **or** presence, so a member with the app open but no edits still surfaces (zeroed edit triplets, populated `online`). `coverage` spans both the rollup-day range and the presence range.
+
 `runtime = 'nodejs'`, `dynamic = 'force-dynamic'`. No `?token=` fallback (unlike `/api/metrics`) — the header is the only accepted transport, since responses carry member PII-adjacent activity.
