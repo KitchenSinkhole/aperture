@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMapActiveChar } from '@/components/map/MapActiveCharContext';
 import { usePresenceForSystem } from '@/components/map/MapPresenceContext';
 import { connectionBadges, connectionStyle, systemClassColor } from '@/components/map/styling';
+import { ShipClassIcon } from '@/components/icons/ShipClassIcon';
 import { ChevronDown, ChevronUp, Flag } from 'lucide-react';
 import { connectionExpiredSinceMs, connectionTimeLeftMs } from '@/lib/map/connectionState';
 import { formatAgoFromMs, formatRelativeFromMs } from '@/lib/map/relativeTime';
@@ -172,25 +173,26 @@ function Pilots({ others }: { others: readonly MapPresenceEntry[] }) {
     return <div className="text-[11px] italic text-muted-foreground">Alone in system</div>;
   }
 
-  const COLS: { key: PilotSortKey; label: string }[] = [
+  const COLS: { key: PilotSortKey; label: string; columnSpan?: number }[] = [
     { key: 'name', label: 'Pilot' },
     { key: 'ship-name', label: 'Name' },
-    { key: 'ship-type', label: 'Type' },
+    { key: 'ship-type', label: 'Type', columnSpan: 2 },
   ];
 
   return (
     <table className="w-full table-fixed text-xs">
       <colgroup>
-        <col className="w-1/3" />
-        <col className="w-1/3" />
-        <col className="w-1/3" />
+        <col className="w-[38%]" />
+        <col className="w-[38%]" />
+        <col className="w-5" />
+        <col />
       </colgroup>
       <thead className="text-[10px] uppercase text-muted-foreground">
         <tr>
-          {COLS.map(({ key, label }) => {
+          {COLS.map(({ key, label, columnSpan }) => {
             const active = sort.key === key;
             return (
-              <th key={key} className="pb-1 text-left font-medium">
+              <th key={key} colSpan={columnSpan} className="pb-1 text-left font-medium">
                 <button
                   type="button"
                   onClick={() => onSort(key)}
@@ -214,6 +216,9 @@ function Pilots({ others }: { others: readonly MapPresenceEntry[] }) {
           <tr key={p.characterId} className="border-t border-foreground/10">
             <td className="truncate py-0.5 pr-1 text-muted-foreground">{p.characterName}</td>
             <td className="truncate py-0.5 pr-1">{customShipName(p) || '—'}</td>
+            <td className="py-0.5 pr-1">
+              <ShipClassIcon shipClass={p.shipClass} />
+            </td>
             <td className="truncate py-0.5 text-emerald-400">{p.shipTypeName ?? '—'}</td>
           </tr>
         ))}

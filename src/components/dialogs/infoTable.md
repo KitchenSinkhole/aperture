@@ -11,8 +11,8 @@ A full-width `text-xs` `<table>`. Pass `<thead>`/`<tbody>` as children. Render b
 ### ScrollTable({ children })
 A `max-h-[60vh]` bordered (`rounded-md ring-1`) scroll container. Wrap an `InfoTable` in it. (No longer provides the `<table>` itself — that's `InfoTable`.)
 
-### Th({ className, children })
-Left-aligned `<th>` cell with the standard padding/weight. `className` is merged via `cn` (so it can override the base padding).
+### Th({ className, columnSpan, children })
+Left-aligned `<th>` cell with the standard padding/weight. `className` is merged via `cn` (so it can override the base padding). `columnSpan` sets `colSpan` when a header needs to span multiple body columns.
 
 ### Td({ className, children })
 `<td>` cell with the standard padding. `className` is merged via `cn` (so it can override the base padding).
