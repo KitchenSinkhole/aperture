@@ -499,6 +499,15 @@ export type {
   IntegrationActivityStatsResponse,
 } from '@/lib/integrations/activityStats';
 
+// Presence projections over ap_character_presence (src/lib/integrations/presence.ts) —
+// /api/integrations/presence-sessions response shape and the activity-stats `online` block.
+export type {
+  IntegrationPresenceSession,
+  IntegrationCharacterPresence,
+  IntegrationPresenceResponse,
+  IntegrationOnlineSummary,
+} from '@/lib/integrations/presence';
+
 // Manager audit-console view-models + query contract (src/lib/map/audit.ts).
 export type {
   AuditEventCategory,
