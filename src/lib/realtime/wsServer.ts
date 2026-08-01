@@ -9,6 +9,7 @@ import { seedTrackingForMap } from '@/lib/jobs/tracking';
 import { getLogger } from '@/lib/log/logger';
 import { bus } from './bus';
 import { addMapViewer, removeMapViewer } from './mapViewers';
+import { openPresenceSession, touchPresenceSessions } from './presenceSessions';
 import { decWsConnection, incWsConnection } from './wsConnections';
 import { clientToServerMessageSchema, type ServerToClientMessage } from './protocol';
 
@@ -32,6 +33,7 @@ type ClientState = {
   isAlive: boolean;
   /** mapId → bus unsubscribe fn. */
   subscriptions: Map<bigint, () => void>;
+  presenceSessionId: bigint | null;
 };
 
 // Auth.js v5 session-cookie names. The salt passed to `decode` is the cookie
@@ -115,9 +117,17 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
   });
 
   wss.on('connection', (ws: WebSocket, _req: IncomingMessage, session: SessionClaims) => {
-    const state: ClientState = { session, isAlive: true, subscriptions: new Map() };
+    const state: ClientState = {
+      session,
+      isAlive: true,
+      subscriptions: new Map(),
+      presenceSessionId: null,
+    };
     clients.set(ws, state);
     incWsConnection();
+    void openPresenceSession(BigInt(session.characterId)).then((id) => {
+      state.presenceSessionId = id;
+    });
 
     ws.on('pong', () => {
       state.isAlive = true;
@@ -149,6 +159,9 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       state.subscriptions.clear();
       clients.delete(ws);
       decWsConnection();
+      if (state.presenceSessionId !== null) {
+        void touchPresenceSessions([state.presenceSessionId]);
+      }
     });
   });
 
@@ -189,6 +202,7 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
   // Heartbeat: ws ping for transport liveness + an app-level healthCheck so the
   // client clears its degraded banner even on a quiet map.
   const heartbeat = setInterval(() => {
+    const livePresenceIds: bigint[] = [];
     for (const [ws, state] of clients) {
       if (!state.isAlive) {
         ws.terminate();
@@ -197,7 +211,9 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       state.isAlive = false;
       ws.ping();
       send(ws, { task: 'healthCheck', load: { ts: Date.now(), ok: true } });
+      if (state.presenceSessionId !== null) livePresenceIds.push(state.presenceSessionId);
     }
+    void touchPresenceSessions(livePresenceIds);
   }, apertureConfig.WS_HEARTBEAT_MS);
   heartbeat.unref?.();
 

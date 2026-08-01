@@ -407,6 +407,13 @@
       "when": 1780232400000,
       "tag": "0058_integration_token",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1785601182578,
+      "tag": "0059_character_presence",
+      "breakpoints": true
     }
   ]
 }

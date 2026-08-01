@@ -125,6 +125,24 @@ export const apertureConfig = {
   WS_HEALTH_STALE_MS: 45_000,
 
   /**
+   * A presence-session reconnect within this window of the prior session's
+   * `ended_at` adopts the still-open row instead of opening a second one, so
+   * per-character presence intervals never overlap and need no interval
+   * merging on read.
+   */
+  PRESENCE_SESSION_GAP_MS: 300_000,
+
+  /**
+   * A presence session is "live" while `ended_at` is newer than this — 2x
+   * `WS_HEARTBEAT_MS`, tolerating one missed heartbeat tick before a session
+   * reads as ended.
+   */
+  PRESENCE_LIVE_GRACE_MS: 60_000,
+
+  /** `ap_character_presence` prune horizon, in days. */
+  PRESENCE_RETENTION_DAYS: 400,
+
+  /**
    * Major trade hubs the read-only route module reports gate-jump distance to.
    * EVE solar-system IDs. Ordered for display.
    *
