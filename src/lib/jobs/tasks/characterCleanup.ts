@@ -1,7 +1,7 @@
-import { and, asc, eq, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { apertureConfig } from '../../../../aperture.config';
 import { db } from '@/db/client';
-import { apCharacter } from '@/db/schema';
+import { apCharacter, apCharacterPresence } from '@/db/schema';
 import { syncCharacterAuthz } from '@/lib/auth/syncCharacterAuthz';
 import { fetchAffiliations } from '@/lib/esi/affiliation';
 import {
@@ -14,7 +14,7 @@ import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
 
 /**
- * Cron-driven character maintenance. Single cron task with two
+ * Cron-driven character maintenance. Single cron task with several
  * responsibilities:
  *
  *   1. **Kick expiry.** Flip `status` from `'kicked'` back to `'active'` and
@@ -48,9 +48,14 @@ import type { JobModule } from '../registry';
  *      `auth.ts` calls `seedTrackingForGainedAccess` there, because the login's
  *      own `syncCharacterAuthz` freshens the cache so this sweep sees no diff.
  *
+ *   4. **Presence retention.** One indexed `DELETE FROM ap_character_presence
+ *      WHERE ended_at < now() - PRESENCE_RETENTION_DAYS`. A mostly-no-op
+ *      delete on a 5-minute tick, not worth a dedicated job.
+ *
  * Phases 1–2 fan out no `pg_notify` (only `ap_character` is mutated; tabs see
  * the demotion at next session refresh). Phase 3 *does* broadcast
  * `characterLogout` for revoked pilots so live maps update immediately.
+ * Phase 4 mutates `ap_character_presence` only.
  */
 
 const NAME = 'character-cleanup';
@@ -64,6 +69,7 @@ interface CleanupNotes {
   affiliationChanged: number;
   trackingPruned: number;
   trackingSeeded: number;
+  presencePruned: number;
 }
 
 async function clearKickExpiries(): Promise<number> {
@@ -189,6 +195,15 @@ async function syncAffiliationsAndRevoke(): Promise<{
   return { scanned: characters.length, changed, pruned, seeded };
 }
 
+async function prunePresence(): Promise<number> {
+  const cutoff = new Date(Date.now() - apertureConfig.PRESENCE_RETENTION_DAYS * 86_400_000);
+  const result = await db
+    .delete(apCharacterPresence)
+    .where(lt(apCharacterPresence.endedAt, cutoff))
+    .returning({ id: apCharacterPresence.id });
+  return result.length;
+}
+
 async function cleanup(): Promise<CleanupNotes> {
   const kicksCleared = await clearKickExpiries();
   // The affiliation sweep must run *before* the stale-authz resync: the resync
@@ -199,6 +214,7 @@ async function cleanup(): Promise<CleanupNotes> {
   // `authz_synced_at` so the resync skips the same character this tick.
   const affiliation = await syncAffiliationsAndRevoke();
   const resync = await resyncStaleAuthz();
+  const presencePruned = await prunePresence();
   return {
     kicksCleared,
     authzResynced: resync.applied,
@@ -208,6 +224,7 @@ async function cleanup(): Promise<CleanupNotes> {
     affiliationChanged: affiliation.changed,
     trackingPruned: affiliation.pruned,
     trackingSeeded: affiliation.seeded,
+    presencePruned,
   };
 }
 
