@@ -651,9 +651,15 @@ export async function listAdminMaps(): Promise<AdminMapListItem[]> {
   }));
 }
 
-type SystemStatics = { display: { label: string; typeId: number }[]; typeIds: number[] };
+export type SystemStatics = { display: { label: string; typeId: number }[]; typeIds: number[] };
 
-async function loadStatics(systemIds: number[]): Promise<Map<number, SystemStatics>> {
+/**
+ * Resolves each system's static wormhole connections to a display label
+ * (`universe_wormhole.target_class`, falling back to the raw code) paired
+ * with the source `universe_wormhole.type_id`. Shared by `loadMapForView` and
+ * `loadPublicMapView` (`src/lib/map/loadPublicMap.ts`) so both stay in sync.
+ */
+export async function loadStatics(systemIds: number[]): Promise<Map<number, SystemStatics>> {
   const grouped = new Map<number, SystemStatics>();
   if (systemIds.length === 0) return grouped;
   const rows = await db

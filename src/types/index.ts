@@ -354,6 +354,17 @@ export type {
   AdminMapListItem,
 } from '@/lib/map/loadMap';
 
+// Redacted public-share view-model types (shaped in src/lib/map/loadPublicMap.ts).
+export type {
+  PublicMapSystemNode,
+  PublicMapConnectionEdge,
+  PublicMapSignature,
+  PublicPresenceSystemCount,
+  PublicPresencePilot,
+  PublicMapPresence,
+  PublicMapViewData,
+} from '@/lib/map/loadPublicMap';
+
 // Per-title feature-delegation view-model (src/app/(app)/actions/mapRoles.ts).
 /** One corp title with the capabilities currently delegated to it on a map. `view` is implicit and never listed. */
 export interface DelegationRole {

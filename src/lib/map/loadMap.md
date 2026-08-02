@@ -30,6 +30,11 @@ Every `ap_map` the operator console can act on, **including soft-deleted rows** 
 
 ---
 
+### loadStatics(systemIds: number[]): Promise<Map<number, SystemStatics>>
+Resolves each system's static wormholes to a display label (`universe_wormhole.target_class`, falling back to the raw code; K162-style statics with no resolvable label are excluded from `display` but still counted in `typeIds`) paired with the source `universe_wormhole.type_id`. Shared by `loadMapForView` and `loadPublicMapView` (`src/lib/map/loadPublicMap.md`).
+
+---
+
 ### Types
 - `MapSystemNode` — a visible system flattened with its universe metadata + statics. Carries `intelNotes` (`string | null`) so the inspector can read saved notes back, not just write them. `lockedByCharacterId` (number | null) + `lockedByName` (string | null) name the current lock holder (both null when unlocked or the character was erased), so the inspector shows who locked the system. `statics` is the display list — each `{ label, typeId }` pairs a target-class label (`universe_wormhole.target_class`, falling back to the catalog name when null) with its source `universe_wormhole.type_id`, so a node can key a per-static hover popover on the type; statics with no resolvable label (K162-style) are excluded. `staticTypeIds` is the full matching `universe_wormhole.type_id` set (includes the label-less K162-style statics), used client-side to compute WH-type dropdown class grouping without a per-system fetch. `rallyAt` is an ISO string when a rally point is active, otherwise null. `tradeHub` is `{ name, jumps } | null` — the nearest trade hub within high-sec range, read from the precomputed `universe_system.nearest_trade_hub_id/jumps` columns and resolved to a hub name via `apertureConfig.ROUTE_HUBS`; null when no hub qualifies.
 - `MapConnectionEdge` — a connection with scope/mass/EOL/flag fields; endpoints are `ap_map_system.id` strings. `isStatic` is the user-designated "source system's static" flag (free manual toggle). `eolAt` (ISO or null) and `createdAt` (ISO) flow through so the canvas can compute the EOL countdown.
