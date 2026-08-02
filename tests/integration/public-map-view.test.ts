@@ -26,7 +26,7 @@ import { loadPublicMapView } from '@/lib/map/loadPublicMap';
  * allowance and never leaks an intel note, a map note, an alias, lock state,
  * a rally point, attribution, or a pilot located off the visible map — for
  * every presence mode and per-token flag combination — while confirming the
- * chain-navigation `tag` still comes through.
+ * chain-navigation `tag` and the k-space entrance list still come through.
  *
  *   docker compose up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test public-map-view
  */
@@ -73,12 +73,12 @@ describe.skipIf(!run)('Public map share — redacted projection (real Postgres)'
       .insert(universeConstellation)
       .values({ id: CONSTELLATION, regionId: REGION, name: 'Public Share Test Const' });
     await db.insert(universeSystem).values([
-      { id: SYS_A, constellationId: CONSTELLATION, name: 'PST A', security: '0.5' },
+      { id: SYS_A, constellationId: CONSTELLATION, name: 'PST A', security: 'H' },
       { id: SYS_B, constellationId: CONSTELLATION, name: 'PST B', security: 'C3' },
       { id: SYS_C, constellationId: CONSTELLATION, name: 'PST C', security: 'C3' },
-      { id: SYS_D, constellationId: CONSTELLATION, name: 'PST D', security: '0.5' },
+      { id: SYS_D, constellationId: CONSTELLATION, name: 'PST D', security: 'H' },
       { id: SYS_HIDDEN, constellationId: CONSTELLATION, name: 'PST Hidden', security: 'C3' },
-      { id: SYS_OFFMAP, constellationId: CONSTELLATION, name: 'PST Offmap', security: '0.5' },
+      { id: SYS_OFFMAP, constellationId: CONSTELLATION, name: 'PST Offmap', security: 'H' },
     ]);
 
     const [u] = await db.insert(apUser).values({}).returning({ id: apUser.id });
@@ -142,6 +142,9 @@ describe.skipIf(!run)('Public map share — redacted projection (real Postgres)'
     sysCId = systemRows.find((r) => r.systemId === SYS_C)!.id;
     sysDId = systemRows.find((r) => r.systemId === SYS_D)!.id;
     sysHiddenId = systemRows.find((r) => r.systemId === SYS_HIDDEN)!.id;
+
+    // SYS_B is Home, so SYS_A's two holes split: one leads to it, one doesn't.
+    await db.update(apMap).set({ homeMapSystemId: sysBId }).where(eq(apMap.id, mapId));
 
     const connRows = await db
       .insert(apMapConnection)
@@ -363,6 +366,55 @@ describe.skipIf(!run)('Public map share — redacted projection (real Postgres)'
       characterName: 'Redaction Pilot',
       systemId: SYS_A,
     });
+  });
+
+  it('lists one entrance per wormhole off a k-space system, and nothing for a gate-only one', async () => {
+    const data = await loadPublicMapView('pub-defaults');
+    // SYS_A (k-space) carries two wormholes into the chain. SYS_D is k-space too
+    // but reaches the map only by stargate, and the hole to SYS_HIDDEN is gone
+    // with its system.
+    expect(data!.entrances).toHaveLength(2);
+    for (const e of data!.entrances) {
+      expect(e.mapSystemId).toBe(sysAId.toString());
+      expect(e.systemId).toBe(SYS_A);
+      expect(e.security).toBe('H');
+      expect(e.leadsTo).toBe('C3');
+      // The fixture systems aren't on the real stargate graph.
+      expect(e.route).toBeNull();
+    }
+    expect(data!.entrances.map((e) => e.connectionId).sort()).toEqual(
+      [connAB.toString(), connAC.toString()].sort(),
+    );
+  });
+
+  it('marks the Home system and the one entrance that leads toward it', async () => {
+    const data = await loadPublicMapView('pub-defaults');
+
+    expect(data!.systems.filter((s) => s.isHome).map((s) => s.systemId)).toEqual([SYS_B]);
+
+    // Both holes hang off the same k-space system, so the flag has to come from
+    // where each one comes out, not from the system the guest arrives in.
+    const toHome = data!.entrances.find((e) => e.connectionId === connAB.toString())!;
+    const away = data!.entrances.find((e) => e.connectionId === connAC.toString())!;
+    expect(toHome.leadsHome).toBe(true);
+    expect(away.leadsHome).toBe(false);
+  });
+
+  it('withholds the entrance sig codes on the same flag that withholds the endpoint codes', async () => {
+    const off = await loadPublicMapView('pub-defaults');
+    for (const e of off!.entrances) {
+      expect(e.sigId).toBeNull();
+      expect(e.farSigId).toBeNull();
+    }
+
+    const on = await loadPublicMapView('pub-sigids');
+    const ab = on!.entrances.find((e) => e.connectionId === connAB.toString())!;
+    expect(ab).toMatchObject({ sigId: 'AAA', farSigId: 'BBB' });
+
+    // Scanned from the k-space side only: the code to probe is known, the far
+    // side is not, and the two states stay distinct.
+    const ac = on!.entrances.find((e) => e.connectionId === connAC.toString())!;
+    expect(ac).toMatchObject({ sigId: 'CCC', farSigId: null });
   });
 
   it('returns null for a revoked, expired, unknown, empty, or malformed token', async () => {

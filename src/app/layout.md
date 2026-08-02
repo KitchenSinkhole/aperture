@@ -14,9 +14,10 @@
 
 ### Exports
 - Default: `RootLayout`
-- Named: `metadata` — `next.Metadata` for the document `<title>` and description.
+- Named: `metadata` — `next.Metadata` for the document `<title>` and description, plus `metadataBase` (from `env.AUTH_URL`) so relative OG image URLs resolve to absolute ones in unfurl cards. Omitted when the deployment has not declared its origin.
 
 ### Depends on
 - `next/font/google` — Geist font.
+- `@/lib/env` — `env.AUTH_URL` for `metadataBase`.
 - `@/lib/utils` — `cn` className helper.
 - `./globals.css` — Tailwind v4 base + shadcn theme tokens.

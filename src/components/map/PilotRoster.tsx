@@ -5,7 +5,8 @@ import { Crown, Search, UsersRound } from 'lucide-react';
 import { EmptyRow } from '@/components/dialogs/infoTable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { customShipName, PilotRosterTable } from '@/components/map/PilotRosterTable';
+import { PilotRosterTable } from '@/components/map/PilotRosterTable';
+import { customShipName } from '@/lib/map/shipName';
 import type { MapPresenceEntry, MapSystemNode } from '@/types';
 
 // Per-browser roster view preferences. The group + show-mains toggles persist so

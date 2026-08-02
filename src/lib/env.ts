@@ -18,6 +18,10 @@ const schema = z
       .min(1)
       .default('postgres://postgres:postgres@localhost:5432/aperture'),
     AUTH_SECRET: z.string().default(''),
+    // The deployment's own origin. Auth.js reads this straight from
+    // `process.env`; it is declared here so `metadataBase` can resolve the
+    // absolute URLs a share link's unfurl card needs.
+    AUTH_URL: z.string().default(''),
     AUTH_EVE_CLIENT_ID: z.string().default(''),
     AUTH_EVE_CLIENT_SECRET: z.string().default(''),
     AUTH_EVE_SSO_BASE: z.string().url().default('https://login.eveonline.com'),

@@ -21,6 +21,7 @@ import {
 import type { ShipClass } from '@/types';
 import { apertureConfig } from '../../../aperture.config';
 import { loadMapPresence, loadStatics } from './loadMap';
+import { derivePublicEntrances, type PublicMapEntrance } from './publicEntrances';
 import { resolveShareToken } from './share';
 
 type SystemStatus = (typeof systemStatus.enumValues)[number];
@@ -53,6 +54,8 @@ export type PublicMapSystemNode = {
   constellationName: string;
   statics: { label: string; typeId: number }[];
   tradeHub: { name: string; jumps: number } | null;
+  /** The map's designated Home. A guest reads the chain from it, so it is published. */
+  isHome: boolean;
   positionX: number;
   positionY: number;
 };
@@ -137,6 +140,8 @@ export type PublicMapViewData = {
   /** `null` when the token doesn't publish signatures; `[]` when it does and there are none. */
   signatures: PublicMapSignature[] | null;
   presence: PublicMapPresence;
+  /** The k-space ways into the chain, derived from `systems` and `connections`. */
+  entrances: PublicMapEntrance[];
 };
 
 /**
@@ -154,7 +159,7 @@ export async function loadPublicMapView(token: string): Promise<PublicMapViewDat
   const { mapId, label, profile } = resolved;
 
   const [map] = await db
-    .select({ name: apMap.name })
+    .select({ name: apMap.name, homeMapSystemId: apMap.homeMapSystemId })
     .from(apMap)
     .where(and(eq(apMap.id, mapId), isNull(apMap.deletedAt)));
   if (!map) return null;
@@ -227,50 +232,60 @@ export async function loadPublicMapView(token: string): Promise<PublicMapViewDat
 
   const presence = await loadPublicPresence(mapId, profile.presenceMode, visibleEveSystemIds);
 
+  const systems: PublicMapSystemNode[] = systemRows.map((s) => ({
+    id: s.id.toString(),
+    systemId: s.systemId,
+    name: s.name,
+    tag: s.tag,
+    status: s.status,
+    security: s.security,
+    trueSec: s.trueSec,
+    effect: s.effect,
+    regionName: s.regionName,
+    constellationName: s.constellationName,
+    statics: staticsBySystem.get(s.systemId)?.display ?? [],
+    tradeHub:
+      s.nearestTradeHubId != null && s.nearestTradeHubJumps != null
+        ? {
+            name: HUB_NAME_BY_ID.get(s.nearestTradeHubId) ?? 'trade hub',
+            jumps: s.nearestTradeHubJumps,
+          }
+        : null,
+    isHome: map.homeMapSystemId !== null && s.id === map.homeMapSystemId,
+    positionX: s.positionX,
+    positionY: s.positionY,
+  }));
+
+  const connections: PublicMapConnectionEdge[] = connectionRows.map((c) => ({
+    id: c.id.toString(),
+    source: c.source.toString(),
+    target: c.target.toString(),
+    scope: c.scope,
+    massStatus: c.massStatus,
+    jumpMassClass: c.jumpMassClass,
+    eolStage: c.eolStage,
+    preserveMass: c.preserveMass,
+    isRolling: c.isRolling,
+    isStatic: c.isStatic,
+    eolAt: c.eolAt ? c.eolAt.toISOString() : null,
+    createdAt: c.createdAt.toISOString(),
+    sigIds:
+      c.scope === 'wh' && profile.showConnectionSigIds
+        ? (sigIdsByConnection.get(c.id.toString()) ?? { source: null, target: null })
+        : null,
+  }));
+
   return {
     map: { name: map.name, shareLabel: label },
-    systems: systemRows.map((s) => ({
-      id: s.id.toString(),
-      systemId: s.systemId,
-      name: s.name,
-      tag: s.tag,
-      status: s.status,
-      security: s.security,
-      trueSec: s.trueSec,
-      effect: s.effect,
-      regionName: s.regionName,
-      constellationName: s.constellationName,
-      statics: staticsBySystem.get(s.systemId)?.display ?? [],
-      tradeHub:
-        s.nearestTradeHubId != null && s.nearestTradeHubJumps != null
-          ? {
-              name: HUB_NAME_BY_ID.get(s.nearestTradeHubId) ?? 'trade hub',
-              jumps: s.nearestTradeHubJumps,
-            }
-          : null,
-      positionX: s.positionX,
-      positionY: s.positionY,
-    })),
-    connections: connectionRows.map((c) => ({
-      id: c.id.toString(),
-      source: c.source.toString(),
-      target: c.target.toString(),
-      scope: c.scope,
-      massStatus: c.massStatus,
-      jumpMassClass: c.jumpMassClass,
-      eolStage: c.eolStage,
-      preserveMass: c.preserveMass,
-      isRolling: c.isRolling,
-      isStatic: c.isStatic,
-      eolAt: c.eolAt ? c.eolAt.toISOString() : null,
-      createdAt: c.createdAt.toISOString(),
-      sigIds:
-        c.scope === 'wh' && profile.showConnectionSigIds
-          ? (sigIdsByConnection.get(c.id.toString()) ?? { source: null, target: null })
-          : null,
-    })),
+    systems,
+    connections,
     signatures,
     presence,
+    entrances: await derivePublicEntrances(
+      systems,
+      connections,
+      map.homeMapSystemId === null ? null : map.homeMapSystemId.toString(),
+    ),
   };
 }
 

@@ -38,5 +38,5 @@ Each pilot row shows the character name plus an amber `Unplug` icon (with a `tit
 ### Local State
 - `sort: { key: 'name' | 'location' | 'ship-type' | 'ship-name'; dir: 'asc' | 'desc' }` — active sort column and direction (default name asc).
 
-### Exports
-- `customShipName(p: MapPresenceEntry): string` — the pilot's *custom* hull name, or `''` when un-renamed (ESI defaults `ship_name` to the type). Shared so `PilotRoster`'s filter matches the same ship-name rule the table renders.
+### Depends On
+- `customShipName` from `@/lib/map/shipName` — the pilot's custom hull name; `PilotRoster`'s filter uses the same helper so it matches the ship-name rule the table renders.

@@ -24,7 +24,8 @@ A toolbar (free-text filter `Input` with a `Search` icon + a `Group` toggle `But
 - Renders `PilotRosterTable` with `showHeaders`, `showGroupedPlayers`, `showOwner`, `viewerIds`, `systemNameById`, and the filtered presence list (location column shown by default).
 
 ### Depends On
-- `PilotRosterTable` + `customShipName` (shared hull-name helper, used by the filter) from `./PilotRosterTable`
+- `PilotRosterTable` from `./PilotRosterTable`
+- `customShipName` from `@/lib/map/shipName` — shared hull-name helper, used by the filter
 - `EmptyRow` from `@/components/dialogs/infoTable`
 - `Input` from `@/components/ui/input`, `Button` from `@/components/ui/button`
 - `Crown`/`Search`/`UsersRound` from `lucide-react`

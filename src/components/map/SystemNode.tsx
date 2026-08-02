@@ -24,6 +24,7 @@ import {
 } from '@/lib/eve/systemEffects';
 import { systemDisplayName, isDrifterSystem } from '@/lib/eve/drifterSystems';
 import { isShatteredSystem } from '@/lib/eve/shatteredSystems';
+import { staticCompare } from '@/lib/map/staticOrder';
 import { homeAccentColor, systemClassColor, systemEffectColor, systemStatusColor } from './styling';
 import { InlineTextEdit } from './InlineTextEdit';
 import { StaticDetailPopover } from './StaticDetailPopover';
@@ -63,37 +64,6 @@ function securityLabel(node: MapSystemNode): string {
 function classIdFromSecurity(security: string | null): number | null {
   const m = security ? /^C(\d+)$/.exec(security) : null;
   return m ? Number(m[1]) : null;
-}
-
-const fixedStaticOrder: Record<string, SecurityRank> = {
-  // Wormholes are index 0,
-  "H": 1,
-  "L": 2,
-  "0.0": 3,
-  "P": 4
-};
-
-type SecurityRank = number;
-type ClassRank = number;
-
-function getStaticRank(value: string): [SecurityRank, ClassRank] {
-  const fixed = fixedStaticOrder[value];
-  if (fixed !== undefined) {
-    return [fixed, 0];
-  }
-
-  const match = value.match(/^C(\d+)$/);
-  if (match) {
-    return [0, parseInt(match[1]!, 10)]
-  }
-
-  return [5, 0];
-}
-
-export function staticCompare(a: string, b: string): number {
-  const [ra1, ra2] = getStaticRank(a);
-  const [rb1, rb2] = getStaticRank(b);
-  return ra1 - rb1 || ra2 - rb2;
 }
 
 export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeData }) {

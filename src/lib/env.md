@@ -11,6 +11,7 @@ A frozen object built from `schema.parse(process.env)` at import time. Throws (l
 Fields:
 - `DATABASE_URL` — required, defaulted to the local compose connection string.
 - `AUTH_SECRET`, `AUTH_EVE_CLIENT_ID`, `AUTH_EVE_CLIENT_SECRET`, `ESI_TOKEN_ENC_KEY` — **required in production** (enforced by a `superRefine` that only fires when `NODE_ENV === 'production'`), optional elsewhere so a fresh clone can `pnpm dev`, migrate, and test without `.env.local`. No dotenv loader exists in the repo; `next dev` injects `.env.local` and `tsx` scripts inherit the shell env.
+- `AUTH_URL` — the deployment's own origin; defaults to `''`. Auth.js reads it straight from `process.env`; it is declared here so the root layout's `metadataBase` can resolve the absolute URLs a share link's unfurl card needs. With it empty, `metadataBase` is omitted.
 - `AUTH_EVE_SSO_BASE` — EVE SSO base URL; defaulted to `https://login.eveonline.com` (point at `https://sisilogin.testeveonline.com` for SISI).
 - `ESI_BASE_URL` — ESI base URL; defaulted to `https://esi.evetech.net`. Used by the ESI client to build request URLs.
 - `EVE_USER_AGENT` — required by the ESI client; defaulted.

@@ -1,7 +1,19 @@
 import { useMemo } from 'react';
-import { customShipName } from '@/components/map/PilotRosterTable';
 import { ShipClassIcon } from '@/components/icons/ShipClassIcon';
-import type { MapPresenceEntry } from '@/types';
+import { customShipName } from '@/lib/map/shipName';
+import type { ShipClass } from '@/types';
+
+/**
+ * The fields this table reads, rather than a whole `MapPresenceEntry`, so the
+ * public share's narrower `PublicPresencePilot` satisfies it too.
+ */
+export type PresenceTableRow = {
+  characterId: number;
+  characterName: string;
+  shipClass: ShipClass | null;
+  shipTypeName: string | null;
+  shipName: string | null;
+};
 
 /**
  * Dense, self-contained pilot table for the `SystemNode` presence-badge popup.
@@ -10,7 +22,7 @@ import type { MapPresenceEntry } from '@/types';
  * scopes everything to one system). Deliberately separate from
  * `PilotRosterTable`, whose needs have diverged.
  */
-export function SystemPresenceTable({ presence }: { presence: readonly MapPresenceEntry[] }) {
+export function SystemPresenceTable({ presence }: { presence: readonly PresenceTableRow[] }) {
   const sorted = useMemo(
     () => [...presence].sort((a, b) => a.characterName.localeCompare(b.characterName)),
     [presence],

@@ -29,6 +29,7 @@ function snapshot(name: string): PublicMapViewData {
     connections: [],
     signatures: null,
     presence: { mode: 'none' },
+    entrances: [],
   };
 }
 

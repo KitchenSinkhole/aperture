@@ -41,6 +41,11 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `MAX_MAPS_PER_SCOPE` — per-scope ceilings for `ap_map.scope`.
 - `MAX_SYSTEMS_PER_MAP` — applied where `ap_map_system.visible = true`.
 
+**Public map share**
+- `PUBLIC_SNAPSHOT_CACHE_TTL_MS`, `PUBLIC_SNAPSHOT_CACHE_MAX_ENTRIES` — lifetime and LRU size of the viewer-independent share-snapshot cache.
+- `PUBLIC_SNAPSHOT_RATE_WINDOW_MS`, `PUBLIC_SNAPSHOT_MAX_PER_IP`, `PUBLIC_SNAPSHOT_MAX_GLOBAL` — fixed-window rate limits on `/api/public/[token]/snapshot`.
+- `PUBLIC_LINKS.repo` — the project source link the spectator view's promo bar offers.
+
 **Authz / character cleanup**
 - `CHARACTER_CLEANUP_CRON`, `CHARACTER_AUTHZ_RESYNC_STALE_AFTER_MS`, `CHARACTER_AUTHZ_RESYNC_BATCH_SIZE` — cadence and throttle for the `character-cleanup` job's kick-expiry + authz resync passes.
 - `HEALTH_WORKER_STALE_MS` — `/api/health/ready` flags the `worker` component unhealthy if no `ap_job_run` finished within this window (15 min ≈ 3 `character-cleanup` ticks).

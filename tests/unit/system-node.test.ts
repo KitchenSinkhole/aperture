@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { staticCompare } from '@/components/map/SystemNode';
+import { staticCompare } from '@/lib/map/staticOrder';
 
 describe('staticCompare', () => {
   it('orders wormhole statics by class number ascending', () => {

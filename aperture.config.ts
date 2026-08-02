@@ -496,6 +496,15 @@ export const apertureConfig = {
   PUBLIC_SNAPSHOT_MAX_GLOBAL: 6_000,
 
   /**
+   * Outbound links the spectator view's promo bar offers a logged-out visitor.
+   * The instance itself is always the deployment root, so only the project's
+   * source needs naming here.
+   */
+  PUBLIC_LINKS: {
+    repo: 'https://github.com/KitchenSinkhole/aperture',
+  },
+
+  /**
    * Max `characterIds` a single `/api/integrations/activity-stats` request may
    * bound its result to. Bounds response size and query fan-out; callers over
    * the cap page across multiple requests (400 on overflow).

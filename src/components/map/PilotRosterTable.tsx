@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, CornerDownRight, Unplug } from 'lucide-react';
 import { EmptyRow, InfoTable, ScrollTable, Td, Th } from '@/components/dialogs/infoTable';
 import { ShipClassIcon } from '@/components/icons/ShipClassIcon';
 import { systemClassColor } from '@/components/map/styling';
+import { customShipName } from '@/lib/map/shipName';
 import { cn } from '@/lib/utils';
 import type { MapPresenceEntry, MapSystemNode } from '@/types';
 
@@ -16,11 +17,6 @@ function classLabel(security: string | null, trueSec: number | null): string {
   if (security) return security;
   if (trueSec != null) return trueSec.toFixed(1);
   return '?';
-}
-
-/** The pilot's *custom* hull name, or '' when un-renamed (ESI defaults `ship_name` to the type). */
-export function customShipName(p: MapPresenceEntry): string {
-  return p.shipName && p.shipName !== p.shipTypeName ? p.shipName : '';
 }
 
 type SortKey = 'name' | 'location' | 'ship-type' | 'ship-name';

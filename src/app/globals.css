@@ -7,6 +7,15 @@
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: var(--font-sans);
+    /* Spectator-view tokens. Resolve only inside `.spectator` (see below), so
+       these utilities are inert everywhere else in the app. */
+    --font-spec-mono: var(--font-spec-mono);
+    --color-spec-field: var(--spec-field);
+    --color-spec-rail: var(--spec-rail);
+    --color-spec-line: var(--spec-line);
+    --color-spec-text: var(--spec-text);
+    --color-spec-dim: var(--spec-dim);
+    --color-spec-live: var(--spec-live);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -154,6 +163,54 @@
 
 .dark.low-contrast .react-flow {
   --xy-background-color: oklch(0.275 0 0);
+}
+
+/* Spectator view (public share links). A quieter shell than the app so the
+   chain reads as the lit subject; the chrome is entirely achromatic and every
+   colour on the page comes from the EVE data itself. `--spec-live` is the one
+   exception, and it reuses the high-sec green rather than adding a hue. The
+   field matches the app's `--background` so a system tile sits on the same
+   darkness a logged-in operator sees, and the rail lifts to the app's card
+   surface to hold the split.
+   See src/app/(public)/live/[token]/layout.tsx. */
+.spectator {
+  --spec-field: oklch(0.145 0 0);
+  --spec-rail: oklch(0.205 0 0);
+  --spec-line: oklch(1 0 0 / 8%);
+  --spec-text: oklch(0.88 0 0);
+  --spec-dim: oklch(0.58 0 0);
+  --spec-live: #22c55e;
+}
+
+/* The canvas is the stage: drop xyflow's pane to the field colour so the map
+   sits in the same darkness as the chrome around it. */
+.spectator .react-flow {
+  --xy-background-color: var(--spec-field);
+}
+
+@layer utilities {
+  /* Spectator load sequence: board rows rise into place, and the live dot
+     breathes. Both are suppressed under reduced-motion. */
+  @keyframes spec-row-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  .animate-spec-row-in {
+    animation: spec-row-in 320ms ease-out both;
+  }
+  @keyframes spec-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  .animate-spec-pulse {
+    animation: spec-pulse 2400ms ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-spec-row-in,
+    .animate-spec-pulse {
+      animation: none;
+    }
+  }
 }
 
 @layer base {
