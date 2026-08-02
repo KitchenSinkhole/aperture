@@ -246,6 +246,14 @@ export const accessCapability = pgEnum('access_capability', [
 ]);
 
 /**
+ * Roster disclosure level for a public map share (`ap_map_share.presence_mode`).
+ * `none` omits the roster entirely; `anonymous` emits per-system pilot counts
+ * with no names or character ids; `full` emits the roster minus account
+ * linkage (`userId`, `mainCharacterId`).
+ */
+export const sharePresenceMode = pgEnum('share_presence_mode', ['none', 'anonymous', 'full']);
+
+/**
  * Severity of a persisted `ap_error_log` row, mirroring the pino levels the
  * structured logger emits. Only `error`/`fatal` are written today (the persist
  * threshold in `src/lib/log/logger.ts`); `warn` is declared so the threshold

@@ -18,6 +18,7 @@ import type {
   apMapEvent,
   apMapNote,
   apMapRoleAccess,
+  apMapShare,
   apMapSignature,
   apMapSystem,
   apMapTrackingSeed,
@@ -57,6 +58,7 @@ import type {
   mapType,
   roleSource,
   routeSafety,
+  sharePresenceMode,
   signatureGroupKey,
   structureEventKind,
   tagScheme,
@@ -201,6 +203,9 @@ export type NewApCharacterRole = InferInsertModel<typeof apCharacterRole>;
 export type ApMapRoleAccess = InferSelectModel<typeof apMapRoleAccess>;
 export type NewApMapRoleAccess = InferInsertModel<typeof apMapRoleAccess>;
 
+export type ApMapShare = InferSelectModel<typeof apMapShare>;
+export type NewApMapShare = InferInsertModel<typeof apMapShare>;
+
 export type ApInstance = InferSelectModel<typeof apInstance>;
 export type NewApInstance = InferInsertModel<typeof apInstance>;
 
@@ -224,6 +229,7 @@ export type MapRight = (typeof mapRight.enumValues)[number];
 export type MapType = (typeof mapType.enumValues)[number];
 export type RoleSource = (typeof roleSource.enumValues)[number];
 export type RouteSafety = (typeof routeSafety.enumValues)[number];
+export type SharePresenceMode = (typeof sharePresenceMode.enumValues)[number];
 export type SignatureGroupKey = (typeof signatureGroupKey.enumValues)[number];
 export type StructureEventKind = (typeof structureEventKind.enumValues)[number];
 export type TagScheme = (typeof tagScheme.enumValues)[number];
@@ -236,6 +242,18 @@ export type AccessScope = (typeof accessScope.enumValues)[number];
 export type AccessCapability = (typeof accessCapability.enumValues)[number];
 export type ErrorLevel = (typeof errorLevel.enumValues)[number];
 export type ErrorSource = (typeof errorSource.enumValues)[number];
+/**
+ * The redaction flags a resolved share token carries, keyed off `ap_map_share`'s
+ * per-token columns. `loadPublicMapView` (Stage 2) branches on exactly this and
+ * nothing else to decide what a public viewer may see.
+ */
+export type ShareRedactionProfile = {
+  presenceMode: SharePresenceMode;
+  showSignatures: boolean;
+  showKillStats: boolean;
+  showConnectionSigIds: boolean;
+};
+
 /** The six cosmic-signature groups (every group except `wormhole`). Their site
  * names are baked into the EVE client and have no SDE rows, so they're carried
  * as free-text `name` strings rather than a `typeId` FK. */

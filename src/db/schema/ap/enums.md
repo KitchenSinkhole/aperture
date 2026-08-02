@@ -80,6 +80,9 @@
 ### accessCapability
 `pgEnum('access_capability', ['login', 'admin', 'view', 'edit'])` — what an `ap_access_grant` row permits. `login`/`admin` are instance-scoped (allowlist entry / super-admin); `view`/`edit` are map-scoped and reserved for the temporary-sharing feature (declared to avoid a future `ALTER TYPE`). A CHECK pairs capability with scope. The `manage` capability (the old manager hand-grant) was retired in migration 0041.
 
+### sharePresenceMode
+`pgEnum('share_presence_mode', ['none', 'anonymous', 'full'])` — roster disclosure level for a public map share on `ap_map_share.presence_mode`. `none` omits the roster entirely; `anonymous` emits per-system pilot counts with no names or character ids; `full` emits the roster minus account linkage (`userId`, `mainCharacterId`).
+
 ### errorLevel
 `pgEnum('error_level', ['warn', 'error', 'fatal'])` — severity of an `ap_error_log` row, mirroring the pino levels the structured logger ([[logger]]) emits. Only `error`/`fatal` are persisted today (the persist threshold in `src/lib/log/logger.ts`); `warn` is declared so the threshold could be lowered later without an `ALTER TYPE`. Added migration 0045 (observability phase 4).
 
