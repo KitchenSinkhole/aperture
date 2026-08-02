@@ -472,6 +472,30 @@ export const apertureConfig = {
   CLIENT_ERROR_STACK_MAX_LENGTH: 8_000,
 
   /**
+   * Server-side lifetime of a cached public share snapshot, keyed by share
+   * token. The projection is viewer-independent, so one render serves every
+   * viewer of a token — that cache is what keeps a large anonymous audience
+   * off the database. Short enough that a revoked token stops resolving
+   * promptly even without an explicit invalidation.
+   */
+  PUBLIC_SNAPSHOT_CACHE_TTL_MS: 5_000,
+
+  /** Distinct share tokens held in the snapshot cache before LRU eviction. */
+  PUBLIC_SNAPSHOT_CACHE_MAX_ENTRIES: 200,
+
+  /**
+   * Fixed-window length for the `/api/public/[token]/snapshot` rate limiter.
+   * Per-IP and global counters reset once a window elapses.
+   */
+  PUBLIC_SNAPSHOT_RATE_WINDOW_MS: 60_000,
+
+  /** Max snapshot requests accepted per client IP per window before 429. */
+  PUBLIC_SNAPSHOT_MAX_PER_IP: 120,
+
+  /** Max snapshot requests accepted across all clients per window (flood ceiling). */
+  PUBLIC_SNAPSHOT_MAX_GLOBAL: 6_000,
+
+  /**
    * Max `characterIds` a single `/api/integrations/activity-stats` request may
    * bound its result to. Bounds response size and query fan-out; callers over
    * the cap page across multiple requests (400 on overflow).
