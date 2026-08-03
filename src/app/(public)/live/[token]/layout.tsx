@@ -12,12 +12,16 @@ const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-spec-mono' 
  * The `spectator` class scopes the view's own palette (see `globals.css`); its
  * tokens resolve nowhere else in the app. Mono is loaded here rather than at the
  * root because it is this page's dominant voice and no other route uses it.
+ *
+ * Height is dynamic-viewport: the shell never scrolls, so a static `100vh` on a
+ * phone would park the footer and the map's zoom controls under the browser
+ * chrome with no way to reach them.
  */
 export default function PublicMapLayout({ children }: { children: ReactNode }) {
   return (
     <div
       className={cn(
-        'spectator flex h-screen w-screen flex-col overflow-hidden bg-spec-field text-spec-text',
+        'spectator flex h-dvh w-full flex-col overflow-hidden bg-spec-field text-spec-text',
         geistMono.variable,
       )}
     >

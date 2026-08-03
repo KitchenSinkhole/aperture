@@ -50,7 +50,7 @@ export function SpectatorView({
       <div className="flex min-h-0 flex-1 flex-col-reverse lg:flex-row">
         {/* Below lg the board sits under the map, capped so the chain keeps
             the majority of a phone screen. */}
-        <div className="max-h-[45vh] shrink-0 overflow-y-auto border-t border-spec-line lg:max-h-none lg:w-[19rem] lg:border-r lg:border-t-0">
+        <div className="max-h-[45dvh] shrink-0 overflow-y-auto border-t border-spec-line lg:max-h-none lg:w-[19rem] lg:border-r lg:border-t-0">
           <EntrancesBoard
             entrances={data.entrances}
             pinnedEntranceId={pinnedEntranceId}

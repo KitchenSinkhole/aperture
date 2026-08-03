@@ -188,6 +188,28 @@
   --xy-background-color: var(--spec-field);
 }
 
+/* xyflow ships no touch-action rule, so on a touch device the browser claims a
+   drag as a page scroll and a pinch as a page zoom before d3-zoom sees either.
+   The spectator shell doesn't scroll, so the canvas can take every gesture
+   inside it: one finger pans the chain, two pinch it. Scoped to the spectator
+   because the app's own canvas deliberately lets a wheel/drag scroll the page
+   down to the signature panel. */
+.spectator .react-flow__renderer {
+  touch-action: none;
+}
+
+/* Fingers need a bigger target than a mouse for the zoom / fit buttons. */
+@media (pointer: coarse) {
+  .spectator .react-flow__controls-button {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  .spectator .react-flow__controls-button svg {
+    max-width: 1rem;
+    max-height: 1rem;
+  }
+}
+
 @layer utilities {
   /* Spectator load sequence: board rows rise into place, and the live dot
      breathes. Both are suppressed under reduced-motion. */

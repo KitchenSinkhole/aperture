@@ -38,6 +38,11 @@ const edgeTypes = { connection: PublicConnectionEdge };
 // arranged them in.
 const FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1.4 };
 
+// xyflow's 0.5 floor is above the zoom a long chain needs to fit a phone, and
+// `fitView` clamps to it — the reader lands mid-chain with the zoom-out and
+// fit buttons both already at their limit, and no way to see the rest.
+const MIN_ZOOM = 0.1;
+
 export function SpectatorMap({
   data,
   highlight,
@@ -128,14 +133,18 @@ export function SpectatorMap({
           connectionMode={ConnectionMode.Loose}
           fitView
           fitViewOptions={FIT_VIEW_OPTIONS}
+          minZoom={MIN_ZOOM}
           onPaneClick={onPaneClick}
           colorMode="dark"
-          preventScrolling={false}
           proOptions={{ hideAttribution: true }}
           aria-label={`${data.map.name} chain, ${data.systems.length} systems`}
         >
           <Background />
-          <Controls showInteractive={false} position="bottom-right" />
+          <Controls
+            showInteractive={false}
+            position="bottom-right"
+            fitViewOptions={FIT_VIEW_OPTIONS}
+          />
         </ReactFlow>
       </Tooltip.Provider>
     </ReactFlowProvider>
