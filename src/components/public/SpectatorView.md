@@ -17,7 +17,7 @@ An empty map renders `Nothing is mapped here yet.` in place of the canvas; once 
 
 ### Behaviour & Interactions
 - Owns `highlightedSystemId`: hovering or focusing an entrances-board row rings the matching node on the canvas.
-- `IntroCard` floats over the canvas's bottom-right corner in a `pointer-events-none` wrapper so it never blocks a pan.
+- `IntroCard` floats over the canvas's bottom-left corner in a `pointer-events-none` wrapper so it never blocks a pan or the bottom-right canvas controls.
 - Renders off `usePublicSnapshot`'s `data`, not the `initialData` prop directly, so a live nudge/refetch updates the whole page. Nothing here mutates anything.
 
 ### Depends On

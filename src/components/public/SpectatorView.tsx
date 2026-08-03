@@ -51,14 +51,14 @@ export function SpectatorView({
             <SpectatorMap data={data} highlightedSystemId={highlightedSystemId} />
           )}
           {status !== 'ended' && (
-            <div className="pointer-events-none absolute bottom-4 right-4 z-10 flex justify-end">
+            <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex justify-start">
               <IntroCard />
             </div>
           )}
         </div>
       </div>
 
-      <footer className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-spec-line px-5 py-2 font-spec-mono text-[11px] text-spec-dim">
+      <footer className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-spec-line px-5 py-2 font-spec-mono text-[13px] text-spec-dim">
         <FeedIndicator status={status} updatedAt={updatedAt} />
         <span aria-hidden>·</span>
         <span className="tabular-nums">

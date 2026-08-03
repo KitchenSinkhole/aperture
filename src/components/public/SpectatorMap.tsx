@@ -108,7 +108,7 @@ export function SpectatorMap({
           aria-label={`${data.map.name} chain, ${data.systems.length} systems`}
         >
           <Background />
-          <Controls showInteractive={false} />
+          <Controls showInteractive={false} position="bottom-right" />
         </ReactFlow>
       </Tooltip.Provider>
     </ReactFlowProvider>

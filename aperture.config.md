@@ -44,7 +44,7 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 **Public map share**
 - `PUBLIC_SNAPSHOT_CACHE_TTL_MS`, `PUBLIC_SNAPSHOT_CACHE_MAX_ENTRIES` — lifetime and LRU size of the viewer-independent share-snapshot cache.
 - `PUBLIC_SNAPSHOT_RATE_WINDOW_MS`, `PUBLIC_SNAPSHOT_MAX_PER_IP`, `PUBLIC_SNAPSHOT_MAX_GLOBAL` — fixed-window rate limits on `/api/public/[token]/snapshot`.
-- `PUBLIC_LINKS.repo` — the project source link the spectator view's promo bar offers.
+- `PUBLIC_LINKS.repo`, `PUBLIC_LINKS.discord` — the source and Discord invite links the spectator view's promo bar offers.
 - `WS_PUBLIC_PATH` — WebSocket upgrade path for token-authed public spectator sockets, separate from `WS_PATH`.
 - `PUBLIC_WS_MAX_PER_TOKEN` — live public sockets one share token may hold before further upgrades 503.
 - `PUBLIC_WS_UPGRADE_WINDOW_MS`, `PUBLIC_WS_MAX_UPGRADES_PER_IP`, `PUBLIC_WS_MAX_UPGRADES_GLOBAL` — fixed-window rate limits on the public WS upgrade handler.

@@ -53,7 +53,7 @@ export function IntroCard() {
     <aside className="pointer-events-auto max-w-sm rounded-md border border-spec-line bg-spec-rail/95 p-4 shadow-xl backdrop-blur">
       <div className="flex items-start gap-3">
         <div className="min-w-0">
-          <h2 className="font-spec-mono text-[10px] uppercase tracking-[0.18em] text-spec-dim">
+          <h2 className="font-spec-mono text-xs uppercase tracking-[0.18em] text-spec-dim">
             What am I looking at?
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-spec-text">

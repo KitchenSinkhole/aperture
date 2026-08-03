@@ -11,7 +11,7 @@
 | highlightedSystemId | string \| null | yes | `ap_map_system.id` of the entrance row under the cursor; that node renders a halo. |
 
 ### Renders
-`<ReactFlowProvider>` wrapping a `<ReactFlow>` with `<Background/>` and `<Controls showInteractive={false}/>`, plus a Base UI `Tooltip.Provider` for the node and edge hovers. Node type `system` → `PublicSystemNode`; edge type `connection` → `PublicConnectionEdge`. Both maps are module-scope constants, as xyflow requires.
+`<ReactFlowProvider>` wrapping a `<ReactFlow>` with `<Background/>` and `<Controls showInteractive={false} position="bottom-right"/>`, plus a Base UI `Tooltip.Provider` for the node and edge hovers. Node type `system` → `PublicSystemNode`; edge type `connection` → `PublicConnectionEdge`. Both maps are module-scope constants, as xyflow requires.
 
 ### Behaviour & Interactions
 - Nodes and edges are plain `useMemo` derivations of `data` — no controlled node state, no change handlers. Dragging, connecting, selection and the delete key are all off.
