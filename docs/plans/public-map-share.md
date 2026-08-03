@@ -135,13 +135,9 @@ These are the load-bearing rules. A stage that breaks one is wrong even if it sh
 
 ## Stage 7 — Launch readiness
 
-**Mode:** Plan mode
-**Goal:** Confirm the public instance survives being advertised.
-**Touches:** deployment, no application code expected
+**Split out to `docs/plans/public-map-share-launch-readiness.md`**, which carries the full staged detail: prod blocker re-verification, a 500-spectator load test across all four public surfaces, and the deployment confirmations.
 
-- Re-verify the three public-deployment blockers against the actual prod box rather than assuming: `ap_job_run` growth is bounded, no zombie location-poll backlog, killmail fetches sit far under the shared ESI bucket.
-- Load-test the snapshot cache at the audience size you expect if the link reaches r/Eve.
-- Confirm the public instance is deployed, the domain resolves, and the share URL is short enough to read off a stream overlay.
+The stage's own instrumentation prerequisite is already shipped: `public_ws_connections` and `public_ws_upgrades_total{outcome}` make spectator load and upgrade rejections observable, without which the load test measures nothing.
 
 **Done when:** measured headroom at target audience, with the cut-off point known.
 

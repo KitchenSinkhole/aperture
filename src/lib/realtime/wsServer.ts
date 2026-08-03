@@ -9,6 +9,7 @@ import { clientKeyFromForwardedFor } from '@/lib/http/clientKey';
 import { seedTrackingForMap } from '@/lib/jobs/tracking';
 import { getLogger } from '@/lib/log/logger';
 import { resolveShareToken } from '@/lib/map/share';
+import { recordPublicWsUpgrade } from '@/lib/metrics/registry';
 import type { ShareRedactionProfile } from '@/types';
 import { bus } from './bus';
 import { addMapViewer, removeMapViewer } from './mapViewers';
@@ -151,6 +152,7 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
     head: Buffer,
   ): Promise<void> {
     if (!allowPublicUpgrade(publicClientKey(req))) {
+      recordPublicWsUpgrade('rate_limited');
       destroyUpgrade(socket, 429, 'Too Many Requests');
       return;
     }
@@ -158,15 +160,18 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
     if (!resolved || !token) {
       // Missing/garbage/unknown/expired/revoked all answer identically — the
       // same non-disclosure discipline as the snapshot route.
+      recordPublicWsUpgrade('unauthorized');
       destroyUpgrade(socket, 401, 'Unauthorized');
       return;
     }
     if (publicSocketCount(token) >= apertureConfig.PUBLIC_WS_MAX_PER_TOKEN) {
       // The client reads a rejected upgrade as "degrade to polling".
+      recordPublicWsUpgrade('at_cap');
       destroyUpgrade(socket, 503, 'Service Unavailable');
       return;
     }
 
+    recordPublicWsUpgrade('accepted');
     const ctx: PublicUpgradeCtx = { token, mapId: resolved.mapId, profile: resolved.profile };
     publicWss.handleUpgrade(req, socket, head, (ws) => {
       publicWss.emit('connection', ws, req, ctx);

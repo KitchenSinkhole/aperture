@@ -5,13 +5,14 @@
 
 ---
 
-Mix of DB counts, in-process counters, and process vitals. No `server-only` import — read both from the `/metrics` route (Phase 3) and the snapshot job (Phase 5, background worker). A rolling `monitorEventLoopDelay` monitor is started once at module load and reset on each sample.
+Mix of DB counts, in-process counters, and process vitals. No `server-only` import — read both from the `/metrics` route (Phase 3) and the snapshot job (Phase 5, background worker); every module it reaches for an in-process count (`publicSockets.ts`, `wsConnections.ts`, `breaker.ts`) is likewise `server-only`-free so the bare-`tsx` runner can load it. A rolling `monitorEventLoopDelay` monitor is started once at module load and reset on each sample.
 
 ### sampleGauges(): Promise<GaugeReadings>
 Sample every gauge once (DB counts run concurrently; process vitals are synchronous). Returns:
 - `trackedCharacters` — `count(ap_map_character_tracking)`.
 - `visibleSystems` — `count(ap_map_system WHERE visible)`.
-- `wsConnections` — live socket count (`wsConnectionCount()`).
+- `wsConnections` — live session socket count (`wsConnectionCount()`).
+- `publicWsConnections` — live anonymous spectator socket count across every share token (`publicSocketTotal()`). A separate registry from `wsConnections`, so neither gauge includes the other. Prometheus-only, like `tableRows`: not persisted to `ap_metric_snapshot`. Sampled per-process, so in a split web/worker deployment only the process holding the sockets reports a non-zero value.
 - `openEsiBreakers` — `openBreakerCount()`.
 - `jobBacklog` — runnable `graphile_worker._private_jobs` (unlocked, due, `attempts < max_attempts` so permanently-failed rows don't read as backlog). Degrades to `0` if the worker schema isn't migrated yet.
 - `jobsAbandoned` — `ap_job_run` rows with `ended_at IS NULL` (worker died mid-job).

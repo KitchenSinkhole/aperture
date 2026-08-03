@@ -3,6 +3,7 @@ import { eq, isNull, sql } from 'drizzle-orm';
 import { db, pool } from '@/db/client';
 import { apJobRun, apMapCharacterTracking, apMapSystem } from '@/db/schema';
 import { openBreakerCount } from '@/lib/esi/breaker';
+import { publicSocketTotal } from '@/lib/realtime/publicSockets';
 import { wsConnectionCount } from '@/lib/realtime/wsConnections';
 import type { GaugeReadings, TableRowEstimate } from '@/types';
 
@@ -38,6 +39,9 @@ export async function sampleGauges(): Promise<GaugeReadings> {
     trackedCharacters,
     visibleSystems,
     wsConnections: wsConnectionCount(),
+    // Anonymous spectator sockets are a separate registry from the session
+    // sockets `wsConnectionCount` tracks, so audience size is its own gauge.
+    publicWsConnections: publicSocketTotal(),
     openEsiBreakers: openBreakerCount(),
     jobBacklog: jobQueue.backlog,
     jobsAbandoned: jobQueue.abandoned,

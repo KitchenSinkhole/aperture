@@ -25,6 +25,7 @@ const GAUGE_METRICS: ReadonlyArray<{
   { key: 'trackedCharacters', name: 'tracked_characters', help: 'Characters with server-side location tracking.' },
   { key: 'visibleSystems', name: 'visible_systems', help: 'Systems currently visible across all maps.' },
   { key: 'wsConnections', name: 'ws_connections', help: 'Active realtime WebSocket connections.' },
+  { key: 'publicWsConnections', name: 'public_ws_connections', help: 'Active public spectator WebSocket connections.' },
   { key: 'openEsiBreakers', name: 'esi_breakers_open', help: 'ESI circuit breakers currently open.' },
   { key: 'jobBacklog', name: 'job_backlog', help: 'Runnable background jobs waiting for a worker.' },
   { key: 'jobsAbandoned', name: 'jobs_abandoned', help: 'Job runs that never recorded an end (worker died mid-job).' },

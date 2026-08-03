@@ -14,6 +14,7 @@ const GAUGES: GaugeReadings = {
   trackedCharacters: 12,
   visibleSystems: 47,
   wsConnections: 3,
+  publicWsConnections: 8,
   openEsiBreakers: 0,
   jobBacklog: 1,
   jobsAbandoned: 0,
@@ -69,6 +70,8 @@ describe('renderPrometheus', () => {
     const out = lines(renderPrometheus(metrics.snapshot(), GAUGES));
     expect(out).toContain('tracked_characters 12');
     expect(out).toContain('visible_systems 47');
+    expect(out).toContain('ws_connections 3');
+    expect(out).toContain('public_ws_connections 8');
     expect(out).toContain('process_resident_memory_bytes 123456789');
     expect(out).toContain('event_loop_lag_ms 0.5');
   });

@@ -9,6 +9,7 @@ import type {
   LocationPollOutcome,
   MetricLabels,
   MetricsSnapshot,
+  PublicWsUpgradeOutcome,
   TokenRefreshOutcome,
   WebhookOutcome,
 } from '@/types';
@@ -59,6 +60,8 @@ export const WEBHOOK_DELIVERIES_TOTAL = 'webhook_deliveries_total';
 export const ESI_TOKEN_REFRESH_TOTAL = 'esi_token_refresh_total';
 /** Counter: genuine remote JWKS fetches (cache refreshes), by outcome. */
 export const JWK_CACHE_REFRESH_TOTAL = 'jwk_cache_refresh_total';
+/** Counter: public spectator WebSocket upgrade handshakes, by outcome. */
+export const PUBLIC_WS_UPGRADES_TOTAL = 'public_ws_upgrades_total';
 
 /** Histogram: in-process realtime dispatch→deliver span. */
 export const REALTIME_FANOUT_DURATION_MS = 'realtime_fanout_duration_ms';
@@ -122,6 +125,10 @@ class MetricsRegistry {
     this.defineCounter(WEBHOOK_DELIVERIES_TOTAL, 'Webhook deliveries, by target and outcome.');
     this.defineCounter(ESI_TOKEN_REFRESH_TOTAL, 'ESI token refreshes, by outcome.');
     this.defineCounter(JWK_CACHE_REFRESH_TOTAL, 'Remote JWKS cache refreshes, by outcome.');
+    this.defineCounter(
+      PUBLIC_WS_UPGRADES_TOTAL,
+      'Public spectator WebSocket upgrade handshakes, by outcome.',
+    );
     this.defineHistogram(
       REALTIME_FANOUT_DURATION_MS,
       'In-process realtime dispatch-to-deliver span in milliseconds.',
@@ -300,4 +307,9 @@ export function recordTokenRefresh(outcome: TokenRefreshOutcome): void {
 /** Tally one genuine remote JWKS fetch (cache refresh) by outcome. */
 export function recordJwkRefresh(outcome: JwkRefreshOutcome): void {
   metrics.incrementCounter(JWK_CACHE_REFRESH_TOTAL, { outcome });
+}
+
+/** Tally one public spectator WebSocket upgrade handshake by outcome. */
+export function recordPublicWsUpgrade(outcome: PublicWsUpgradeOutcome): void {
+  metrics.incrementCounter(PUBLIC_WS_UPGRADES_TOTAL, { outcome });
 }

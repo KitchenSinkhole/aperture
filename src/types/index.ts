@@ -782,6 +782,13 @@ export type WebhookOutcome =
   | 'http_5xx'
   | 'network_error';
 
+/**
+ * Outcome label for `public_ws_upgrades_total`, one per public spectator
+ * upgrade handshake. `at_cap` is the per-token connection ceiling, which the
+ * client reads as "degrade to polling" rather than as an error.
+ */
+export type PublicWsUpgradeOutcome = 'accepted' | 'rate_limited' | 'unauthorized' | 'at_cap';
+
 /** Outcome label for `esi_token_refresh_total` in the SSO refresh exchange. */
 export type TokenRefreshOutcome =
   | 'success'
@@ -828,6 +835,8 @@ export type GaugeReadings = {
   trackedCharacters: number;
   visibleSystems: number;
   wsConnections: number;
+  /** Live anonymous spectator sockets across every share token. */
+  publicWsConnections: number;
   openEsiBreakers: number;
   jobBacklog: number;
   jobsAbandoned: number;
