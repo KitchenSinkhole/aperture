@@ -504,6 +504,41 @@ export const apertureConfig = {
     repo: 'https://github.com/KitchenSinkhole/aperture',
   },
 
+  /** WebSocket upgrade path for token-authed public spectator sockets, structurally separate from `WS_PATH`. */
+  WS_PUBLIC_PATH: '/ws/public/map',
+
+  /** Live public sockets a single share token may hold at once; upgrades past this get a 503 and the client degrades to polling. */
+  PUBLIC_WS_MAX_PER_TOKEN: 500,
+
+  /**
+   * Fixed-window length for the public WS upgrade rate limiter. Per-IP and
+   * global counters reset once a window elapses, mirroring
+   * `PUBLIC_SNAPSHOT_RATE_WINDOW_MS`.
+   */
+  PUBLIC_WS_UPGRADE_WINDOW_MS: 60_000,
+
+  /** Max public WS upgrades accepted per client IP per window before a 429. */
+  PUBLIC_WS_MAX_UPGRADES_PER_IP: 30,
+
+  /** Max public WS upgrades accepted across all clients per window (flood ceiling). */
+  PUBLIC_WS_MAX_UPGRADES_GLOBAL: 3_000,
+
+  /** Minimum spacing between `publicUpdate` nudges sent to one public socket; a burst of edits collapses to one trailing nudge per interval. */
+  PUBLIC_WS_NUDGE_MIN_INTERVAL_MS: 1_000,
+
+  /**
+   * A spectator client schedules its post-nudge snapshot refetch at
+   * `PUBLIC_SNAPSHOT_CACHE_TTL_MS` plus a random amount up to this, so a
+   * synchronized audience doesn't all refetch on the same tick.
+   */
+  PUBLIC_REFETCH_JITTER_MS: 2_000,
+
+  /** Snapshot poll cadence a spectator client falls back to when its public socket is down. */
+  PUBLIC_POLL_INTERVAL_MS: 15_000,
+
+  /** Idle-map refetch backstop for a spectator client — the only thing that notices `expires_at` elapsing on a map nobody is editing. */
+  PUBLIC_IDLE_REFRESH_MS: 120_000,
+
   /**
    * Max `characterIds` a single `/api/integrations/activity-stats` request may
    * bound its result to. Bounds response size and query fan-out; callers over

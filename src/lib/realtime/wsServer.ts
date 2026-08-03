@@ -5,11 +5,15 @@ import { decode } from 'next-auth/jwt';
 import { env } from '@/lib/env';
 import { apertureConfig } from '../../../aperture.config';
 import { canViewMap } from '@/lib/auth/rights';
+import { clientKeyFromForwardedFor } from '@/lib/http/clientKey';
 import { seedTrackingForMap } from '@/lib/jobs/tracking';
 import { getLogger } from '@/lib/log/logger';
+import { resolveShareToken } from '@/lib/map/share';
+import type { ShareRedactionProfile } from '@/types';
 import { bus } from './bus';
 import { addMapViewer, removeMapViewer } from './mapViewers';
 import { openPresenceSession, touchPresenceSessions } from './presenceSessions';
+import { allowPublicUpgrade, publicSocketCount, registerPublicSocket } from './publicSockets';
 import { decWsConnection, incWsConnection } from './wsConnections';
 import { clientToServerMessageSchema, type ServerToClientMessage } from './protocol';
 
@@ -24,6 +28,12 @@ const wsLog = getLogger('server');
  * Subscriptions are gated by `canViewMap` — a request for a map the
  * actor can't see is silently dropped (no acknowledgement; we don't leak
  * existence over realtime any more than we do over HTTP).
+ *
+ * A second upgrade path, `apertureConfig.WS_PUBLIC_PATH`, authenticates
+ * anonymous spectator sockets via a share token in the query string
+ * (`resolveShareToken`) and pins each socket to that one map. Public sockets
+ * never send a meaningful frame and receive only `publicUpdate` — see
+ * `handlePublicUpgrade` below.
  */
 
 type SessionClaims = { userId: number; characterId: string };
@@ -34,6 +44,21 @@ type ClientState = {
   /** mapId → bus unsubscribe fn. */
   subscriptions: Map<bigint, () => void>;
   presenceSessionId: bigint | null;
+};
+
+type PublicUpgradeCtx = {
+  token: string;
+  mapId: bigint;
+  profile: ShareRedactionProfile;
+};
+
+type PublicClientState = {
+  ctx: PublicUpgradeCtx;
+  isAlive: boolean;
+  unsubscribeBus: () => void;
+  deregister: () => void;
+  lastNudgeAt: number;
+  pendingNudge: NodeJS.Timeout | null;
 };
 
 // Auth.js v5 session-cookie names. The salt passed to `decode` is the cookie
@@ -79,6 +104,22 @@ function send(socket: WebSocket, message: ServerToClientMessage): void {
   if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
 }
 
+function destroyUpgrade(socket: Duplex, status: number, reason: string): void {
+  socket.write(`HTTP/1.1 ${status} ${reason}\r\n\r\n`);
+  socket.destroy();
+}
+
+function nodeHeaderValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function publicClientKey(req: IncomingMessage): string {
+  return clientKeyFromForwardedFor(
+    nodeHeaderValue(req.headers['x-forwarded-for']),
+    nodeHeaderValue(req.headers['x-real-ip']),
+  );
+}
+
 /** Map ids the actor can view (existence + soft-delete + view rights). */
 async function viewableMapIds(
   characterId: bigint,
@@ -100,8 +141,45 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
   const clients = new Map<WebSocket, ClientState>();
 
+  const publicWss = new WebSocketServer({ noServer: true });
+  const publicClients = new Map<WebSocket, PublicClientState>();
+
+  async function handlePublicUpgrade(
+    token: string | null,
+    req: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+  ): Promise<void> {
+    if (!allowPublicUpgrade(publicClientKey(req))) {
+      destroyUpgrade(socket, 429, 'Too Many Requests');
+      return;
+    }
+    const resolved = token ? await resolveShareToken(token) : null;
+    if (!resolved || !token) {
+      // Missing/garbage/unknown/expired/revoked all answer identically — the
+      // same non-disclosure discipline as the snapshot route.
+      destroyUpgrade(socket, 401, 'Unauthorized');
+      return;
+    }
+    if (publicSocketCount(token) >= apertureConfig.PUBLIC_WS_MAX_PER_TOKEN) {
+      // The client reads a rejected upgrade as "degrade to polling".
+      destroyUpgrade(socket, 503, 'Service Unavailable');
+      return;
+    }
+
+    const ctx: PublicUpgradeCtx = { token, mapId: resolved.mapId, profile: resolved.profile };
+    publicWss.handleUpgrade(req, socket, head, (ws) => {
+      publicWss.emit('connection', ws, req, ctx);
+    });
+  }
+
   httpServer.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-    const { pathname } = new URL(req.url ?? '', 'http://localhost');
+    const { pathname, searchParams } = new URL(req.url ?? '', 'http://localhost');
+
+    if (pathname === apertureConfig.WS_PUBLIC_PATH) {
+      void handlePublicUpgrade(searchParams.get('token'), req, socket, head);
+      return;
+    }
     if (pathname !== apertureConfig.WS_PATH) return; // not ours — leave for Next/HMR.
 
     void resolveSession(req).then((session) => {
@@ -113,6 +191,72 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit('connection', ws, req, session);
       });
+    });
+  });
+
+  publicWss.on('connection', (ws: WebSocket, _req: IncomingMessage, ctx: PublicUpgradeCtx) => {
+    const state: PublicClientState = {
+      ctx,
+      isAlive: true,
+      unsubscribeBus: () => {},
+      deregister: () => {},
+      lastNudgeAt: 0,
+      pendingNudge: null,
+    };
+
+    function nudge(): void {
+      const now = Date.now();
+      const elapsed = now - state.lastNudgeAt;
+      if (elapsed >= apertureConfig.PUBLIC_WS_NUDGE_MIN_INTERVAL_MS) {
+        state.lastNudgeAt = now;
+        send(ws, { task: 'publicUpdate', load: { ts: now } });
+        return;
+      }
+      // A nudge is already due within the interval; let it cover this one too.
+      if (state.pendingNudge) return;
+      state.pendingNudge = setTimeout(() => {
+        state.pendingNudge = null;
+        state.lastNudgeAt = Date.now();
+        send(ws, { task: 'publicUpdate', load: { ts: state.lastNudgeAt } });
+      }, apertureConfig.PUBLIC_WS_NUDGE_MIN_INTERVAL_MS - elapsed);
+    }
+
+    // Translate bus messages to a nudge via an allowlist — the bus message
+    // itself is never forwarded, so this is the one place a public socket
+    // could leak map data, and it structurally can't: `nudge()` only ever
+    // sends `publicUpdate`.
+    state.unsubscribeBus = bus.subscribe(ctx.mapId, (message) => {
+      if (message.task === 'mapUpdate') {
+        nudge();
+      } else if (
+        (message.task === 'characterUpdate' || message.task === 'characterLogout') &&
+        ctx.profile.presenceMode !== 'none'
+      ) {
+        nudge();
+      } else if (message.task === 'mapDeleted') {
+        ws.close(4001, 'map deleted');
+      }
+      // healthCheck / systemNotification / connectionMassLog / mapAccess /
+      // mapConnectionAccess / logData carry nothing a redacted public view
+      // renders — dropped.
+    });
+    state.deregister = registerPublicSocket(ctx.token, (code) => ws.close(code));
+    publicClients.set(ws, state);
+
+    ws.on('pong', () => {
+      state.isAlive = true;
+    });
+
+    // Public sockets are broadcast-only in both directions: unlike the
+    // session path there is no `subscribe`/`unsubscribe` to honor, so any
+    // inbound frame is simply dropped.
+    ws.on('message', () => {});
+
+    ws.on('close', () => {
+      if (state.pendingNudge) clearTimeout(state.pendingNudge);
+      state.unsubscribeBus();
+      state.deregister();
+      publicClients.delete(ws);
     });
   });
 
@@ -200,7 +344,9 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
   }
 
   // Heartbeat: ws ping for transport liveness + an app-level healthCheck so the
-  // client clears its degraded banner even on a quiet map.
+  // client clears its degraded banner even on a quiet map. Public sockets get
+  // the transport ping only — they have no degraded banner and no app-level
+  // vocabulary beyond `publicUpdate`.
   const heartbeat = setInterval(() => {
     const livePresenceIds: bigint[] = [];
     for (const [ws, state] of clients) {
@@ -212,6 +358,14 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       ws.ping();
       send(ws, { task: 'healthCheck', load: { ts: Date.now(), ok: true } });
       if (state.presenceSessionId !== null) livePresenceIds.push(state.presenceSessionId);
+    }
+    for (const [ws, state] of publicClients) {
+      if (!state.isAlive) {
+        ws.terminate();
+        continue;
+      }
+      state.isAlive = false;
+      ws.ping();
     }
     void touchPresenceSessions(livePresenceIds);
   }, apertureConfig.WS_HEARTBEAT_MS);

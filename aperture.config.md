@@ -45,6 +45,11 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `PUBLIC_SNAPSHOT_CACHE_TTL_MS`, `PUBLIC_SNAPSHOT_CACHE_MAX_ENTRIES` — lifetime and LRU size of the viewer-independent share-snapshot cache.
 - `PUBLIC_SNAPSHOT_RATE_WINDOW_MS`, `PUBLIC_SNAPSHOT_MAX_PER_IP`, `PUBLIC_SNAPSHOT_MAX_GLOBAL` — fixed-window rate limits on `/api/public/[token]/snapshot`.
 - `PUBLIC_LINKS.repo` — the project source link the spectator view's promo bar offers.
+- `WS_PUBLIC_PATH` — WebSocket upgrade path for token-authed public spectator sockets, separate from `WS_PATH`.
+- `PUBLIC_WS_MAX_PER_TOKEN` — live public sockets one share token may hold before further upgrades 503.
+- `PUBLIC_WS_UPGRADE_WINDOW_MS`, `PUBLIC_WS_MAX_UPGRADES_PER_IP`, `PUBLIC_WS_MAX_UPGRADES_GLOBAL` — fixed-window rate limits on the public WS upgrade handler.
+- `PUBLIC_WS_NUDGE_MIN_INTERVAL_MS` — minimum spacing between `publicUpdate` nudges sent to one public socket.
+- `PUBLIC_REFETCH_JITTER_MS`, `PUBLIC_POLL_INTERVAL_MS`, `PUBLIC_IDLE_REFRESH_MS` — spectator client refetch jitter, socket-down poll cadence, and the idle-map refetch backstop.
 
 **Authz / character cleanup**
 - `CHARACTER_CLEANUP_CRON`, `CHARACTER_AUTHZ_RESYNC_STALE_AFTER_MS`, `CHARACTER_AUTHZ_RESYNC_BATCH_SIZE` — cadence and throttle for the `character-cleanup` job's kick-expiry + authz resync passes.

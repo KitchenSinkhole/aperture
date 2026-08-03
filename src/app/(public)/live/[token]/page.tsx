@@ -44,5 +44,5 @@ export default async function PublicMapPage({ params }: { params: Promise<{ toke
   const data = await getPublicSnapshot(token);
   if (!data) notFound();
 
-  return <SpectatorView data={data} />;
+  return <SpectatorView token={token} initialData={data} />;
 }

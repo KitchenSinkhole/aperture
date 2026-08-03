@@ -8,6 +8,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apMap, apMapShare } from '@/db/schema';
+import { closePublicSocketsForToken } from '@/lib/realtime/publicSockets';
 import type { ShareRedactionProfile } from '@/types';
 
 /** A fresh, URL-safe share token — 128 bits of entropy, 22 base64url chars. */
@@ -74,4 +75,23 @@ export async function resolveShareToken(token: string): Promise<ResolvedShareTok
       showConnectionSigIds: row.showConnectionSigIds,
     },
   };
+}
+
+/**
+ * Revokes a share by id: sets `revoked_at` (idempotent — a share already
+ * revoked is left alone and returns `null`) and closes every live public
+ * socket pinned to its token. Does not invalidate the snapshot cache
+ * (`publicSnapshot.ts` is `server-only` and unreachable from here); the
+ * cache's short TTL means the page 404s within one window regardless.
+ */
+export async function revokeShareToken(shareId: bigint): Promise<string | null> {
+  const [row] = await db
+    .update(apMapShare)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(apMapShare.id, shareId), isNull(apMapShare.revokedAt)))
+    .returning({ token: apMapShare.token });
+  if (!row) return null;
+
+  closePublicSocketsForToken(row.token);
+  return row.token;
 }

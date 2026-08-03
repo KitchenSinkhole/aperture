@@ -3,13 +3,13 @@
 **Purpose:** Zod wire contracts for the realtime WebSocket transport — the `{task, load}` envelope and the fixed task vocabulary as direction-split discriminated unions.
 **File:** `src/lib/realtime/protocol.ts`
 
-The WS is broadcast-only: server fans `pg_notify('map:'||map_id,…)` events to subscribed sockets; clients only send `subscribe`/`unsubscribe`. Authorization is session-based (Auth.js) — no on-wire token handshake. Control-plane shapes are firm. The `mapUpdate` body is the tightened map-event payload; the remaining data-bearing bodies stay forward-declared (`data: z.unknown()`).
+The WS is broadcast-only: server fans `pg_notify('map:'||map_id,…)` events to subscribed sockets; clients only send `subscribe`/`unsubscribe`. Authorization is session-based (Auth.js) for that path. A second, structurally separate upgrade path (`WS_PUBLIC_PATH`) authenticates anonymous spectator sockets via a share token in the query string, pinning each socket to exactly one map; those sockets send nothing and receive only `publicUpdate`. Control-plane shapes are firm. The `mapUpdate` body is the tightened map-event payload; the remaining data-bearing bodies stay forward-declared (`data: z.unknown()`).
 
 ---
 
 ### Constants
 
-- `SERVER_TO_CLIENT_TASKS` — `['mapUpdate','mapAccess','mapConnectionAccess','mapDeleted','characterUpdate','characterLogout','healthCheck','logData','systemNotification','connectionMassLog']`.
+- `SERVER_TO_CLIENT_TASKS` — `['mapUpdate','mapAccess','mapConnectionAccess','mapDeleted','characterUpdate','characterLogout','healthCheck','logData','systemNotification','connectionMassLog','publicUpdate']`.
 - `CLIENT_TO_SERVER_TASKS` — `['subscribe','unsubscribe']`.
 
 ### Types
@@ -37,7 +37,8 @@ The WS is broadcast-only: server fans `pg_notify('map:'||map_id,…)` events to 
   - `ping` — user-initiated attention pulse; no extra body. The client POSTs `/api/map/[mapId]/ping` → `src/lib/map/ping.ts` fans it out; the initiator gets its own echo so every viewer pulses identically.
   Exposed publicly so the bus and the client bridge both parse it.
 - `connectionMassLogLoadSchema` — `{ mapId, connectionId, logId, characterId, shipTypeId, mass, cumulativeMass, jumpedAt }`. A transient server-observed event (the location-poll logged a ship's wormhole jump). Like `characterUpdate`/`systemNotification`, broadcast by direct `pg_notify` bypassing `ap_map_event` (`src/lib/map/connectionMassLog.ts`). `connectionId`/`logId` are stringified bigints; `mass`/`cumulativeMass` are kg as numbers. The open connection inspector refetches its log on receipt. Exposed publicly so the bus and the client module both parse it.
-- `serverToClientMessageSchema` — `z.discriminatedUnion('task', …)` over the ten server tasks (envelope + typed load).
+- `publicUpdateLoadSchema` — `{ ts }`. Sent only to token-pinned public sockets (`src/lib/realtime/wsServer.ts`'s public upgrade branch) as a data-free "something changed" nudge; `ts` is the server clock at nudge time, informational only. No field on this load can carry map data.
+- `serverToClientMessageSchema` — `z.discriminatedUnion('task', …)` over the eleven server tasks (envelope + typed load).
 - `clientToServerMessageSchema` — discriminated union over `subscribe` / `unsubscribe`.
 
 ### Notes

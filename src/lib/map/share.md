@@ -18,4 +18,16 @@ Resolves a raw share token to its map id and redaction profile via one indexed j
 
 **Returns:** `ResolvedShareToken` (`{ shareId, mapId, label, profile: ShareRedactionProfile }`), or `null`.
 
-A share token resolves to exactly one map id; callers (the Stage 3 public route, the Stage 5 WS upgrade handler) pin to that id rather than trusting any client-supplied map selector.
+A share token resolves to exactly one map id; callers (the public route, the WS upgrade handler) pin to that id rather than trusting any client-supplied map selector.
+
+---
+
+### revokeShareToken(shareId: bigint): Promise<string | null>
+Sets `revoked_at` on the share and closes every live public WebSocket pinned to its token (`closePublicSocketsForToken`). Idempotent: a share that is already revoked or does not exist is left alone and the function returns `null`.
+
+**Parameters:**
+- `shareId` — `ap_map_share.id`.
+
+**Returns:** The revoked share's token (for the caller's audit entry), or `null` if there was nothing live to revoke.
+
+Does not invalidate the snapshot cache — `publicSnapshot.ts` is `server-only` and unreachable from this module — but the cache's short TTL means the page 404s within one window regardless.

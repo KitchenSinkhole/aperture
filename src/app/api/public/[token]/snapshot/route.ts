@@ -1,5 +1,6 @@
 import 'server-only';
 import { type NextRequest } from 'next/server';
+import { clientKeyFromForwardedFor } from '@/lib/http/clientKey';
 import { allowPublicSnapshotRequest, getPublicSnapshot } from '@/lib/map/publicSnapshot';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
@@ -26,9 +27,10 @@ const PUBLIC_HEADERS = {
 };
 
 function clientKey(request: NextRequest): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0]!.trim();
-  return request.headers.get('x-real-ip') ?? 'unknown';
+  return clientKeyFromForwardedFor(
+    request.headers.get('x-forwarded-for'),
+    request.headers.get('x-real-ip'),
+  );
 }
 
 export const GET = withApiMetrics(

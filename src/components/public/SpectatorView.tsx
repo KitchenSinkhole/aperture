@@ -1,18 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { EntrancesBoard } from './EntrancesBoard';
 import { IntroCard } from './IntroCard';
 import { PromoBar } from './PromoBar';
 import { SpectatorMap } from './SpectatorMap';
+import { usePublicSnapshot, type PublicFeedStatus } from './usePublicSnapshot';
 import type { PublicMapViewData } from '@/types';
 
 // The spectator shell: promo bar, entrances board, chain, status strip. Built
 // for an audience rather than an operator — nothing here edits anything, and
-// the only interaction is the board-to-canvas highlight.
+// the only interaction is the board-to-canvas highlight. Liveness comes from
+// `usePublicSnapshot`; this component owns nothing about the transport.
 
-export function SpectatorView({ data }: { data: PublicMapViewData }) {
+export function SpectatorView({
+  token,
+  initialData,
+}: {
+  token: string;
+  initialData: PublicMapViewData;
+}) {
   const [highlightedSystemId, setHighlightedSystemId] = useState<string | null>(null);
+  const { data, status, updatedAt } = usePublicSnapshot(token, initialData);
   const pilotCount = countPilots(data.presence);
 
   return (
@@ -27,20 +36,31 @@ export function SpectatorView({ data }: { data: PublicMapViewData }) {
         </div>
 
         <div className="relative min-h-0 flex-1">
-          {data.systems.length === 0 ? (
+          {status === 'ended' ? (
+            <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
+              <p className="font-spec-mono text-sm uppercase tracking-[0.18em] text-spec-text">
+                This share link has ended
+              </p>
+              <p className="text-sm text-spec-dim">Ask whoever shared it for a fresh one.</p>
+            </div>
+          ) : data.systems.length === 0 ? (
             <p className="flex h-full items-center justify-center text-sm text-spec-dim">
               Nothing is mapped here yet.
             </p>
           ) : (
             <SpectatorMap data={data} highlightedSystemId={highlightedSystemId} />
           )}
-          <div className="pointer-events-none absolute bottom-4 right-4 z-10 flex justify-end">
-            <IntroCard />
-          </div>
+          {status !== 'ended' && (
+            <div className="pointer-events-none absolute bottom-4 right-4 z-10 flex justify-end">
+              <IntroCard />
+            </div>
+          )}
         </div>
       </div>
 
       <footer className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-spec-line px-5 py-2 font-spec-mono text-[11px] text-spec-dim">
+        <FeedIndicator status={status} updatedAt={updatedAt} />
+        <span aria-hidden>·</span>
         <span className="tabular-nums">
           {data.systems.length} {data.systems.length === 1 ? 'system' : 'systems'}
         </span>
@@ -61,6 +81,49 @@ export function SpectatorView({ data }: { data: PublicMapViewData }) {
       </footer>
     </div>
   );
+}
+
+function FeedIndicator({
+  status,
+  updatedAt,
+}: {
+  status: PublicFeedStatus;
+  updatedAt: number;
+}) {
+  const seconds = useElapsedSeconds(updatedAt);
+
+  if (status === 'ended') {
+    return (
+      <span className="flex items-center gap-1.5">
+        <span className="size-2 rounded-full bg-spec-dim" aria-hidden />
+        ENDED
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1.5" title={`Updated ${seconds}s ago`}>
+      <span
+        className={
+          status === 'live'
+            ? 'animate-spec-pulse size-2 rounded-full bg-spec-live'
+            : 'size-2 rounded-full bg-spec-dim'
+        }
+        aria-hidden
+      />
+      {status === 'live' ? 'LIVE' : 'DELAYED'} · {seconds}s ago
+    </span>
+  );
+}
+
+/** Seconds elapsed since `since`, ticking every second. */
+function useElapsedSeconds(since: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return Math.max(0, Math.round((now - since) / 1000));
 }
 
 /** Total tracked pilots on the chain, or null when the token publishes no roster. */
