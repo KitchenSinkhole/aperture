@@ -155,7 +155,7 @@ export function PublicConnectionEdge(props: EdgeProps & { data: PublicConnection
       {hasLabel && (
         <EdgeLabelRenderer>
           <div
-            className="nodrag nopan pointer-events-none absolute flex flex-col items-center gap-1"
+            className="nodrag nopan pointer-events-none absolute z-[1000] flex flex-col items-center gap-1"
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           >
             {(data.isRolling || data.preserveMass) && (
@@ -228,7 +228,7 @@ function SigTag({
 }) {
   return (
     <div
-      className="nodrag nopan pointer-events-none absolute rounded-sm border-2 bg-spec-rail px-1.5 py-0.5 font-spec-mono text-[11px] font-semibold leading-none shadow-md"
+      className="nodrag nopan pointer-events-none absolute z-[1000] rounded-sm border-2 bg-spec-rail px-1.5 py-0.5 font-spec-mono text-[11px] font-semibold leading-none shadow-md"
       style={{
         transform: `${tagTransformOrigin(face)} translate(${position.x}px, ${position.y}px)`,
         borderColor: farClassColor,
