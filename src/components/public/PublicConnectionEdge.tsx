@@ -7,12 +7,12 @@ import {
   Position,
   getBezierPath,
   getSmoothStepPath,
-  useInternalNode,
   type EdgeProps,
 } from '@xyflow/react';
 import { Tooltip } from '@base-ui/react/tooltip';
 import { RefreshCw, Shield, type LucideIcon } from 'lucide-react';
 import { connectionBadges, connectionStyle } from '@/components/map/styling';
+import { useEdgeAnchors, type EdgeAnchor } from '@/components/map/useEdgeAnchors';
 import type { PublicMapConnectionEdge } from '@/types';
 
 // Spectator connection edge. Scope + mass status drive the stroke colour, EOL
@@ -24,14 +24,8 @@ import type { PublicMapConnectionEdge } from '@/types';
 // endpoint node: the two mouths of one hole carry different codes, and knowing
 // which to look for in which system is the whole point.
 
-export type PublicConnectionEdgeData = PublicMapConnectionEdge & {
-  /** 0-based index of this edge among all parallel edges between the same node pair. */
-  parallelIndex: number;
-  /** Total number of edges between this node pair (1 = only edge, no offset applied). */
-  parallelCount: number;
-};
+export type PublicConnectionEdgeData = PublicMapConnectionEdge;
 
-const PARALLEL_STEP_PX = 12;
 /** How far a sig tag sits from its endpoint, along the edge. */
 const SIG_TAG_ALONG_PX = 26;
 /** How far a sig tag sits off the line. The two ends go opposite ways. */
@@ -39,53 +33,13 @@ const SIG_TAG_PERP_PX = 15;
 /** Ceiling on the along-edge offset, as a share of the gap between endpoints. */
 const SIG_TAG_ALONG_MAX_SHARE = 0.35;
 
-type Anchor = { x: number; y: number; position: Position };
-
-// `offset` shifts the anchor along the node face perpendicular to the
-// dominant axis, so parallel edges between the same pair fan out visibly.
-function pickAnchors(
-  src: { x: number; y: number; w: number; h: number },
-  tgt: { x: number; y: number; w: number; h: number },
-  offset = 0,
-): { source: Anchor; target: Anchor } {
-  const sCx = src.x + src.w / 2;
-  const sCy = src.y + src.h / 2;
-  const tCx = tgt.x + tgt.w / 2;
-  const tCy = tgt.y + tgt.h / 2;
-  const dx = tCx - sCx;
-  const dy = tCy - sCy;
-
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    if (dx >= 0) {
-      return {
-        source: { x: src.x + src.w, y: sCy + offset, position: Position.Right },
-        target: { x: tgt.x, y: tCy + offset, position: Position.Left },
-      };
-    }
-    return {
-      source: { x: src.x, y: sCy + offset, position: Position.Left },
-      target: { x: tgt.x + tgt.w, y: tCy + offset, position: Position.Right },
-    };
-  }
-  if (dy >= 0) {
-    return {
-      source: { x: sCx + offset, y: src.y + src.h, position: Position.Bottom },
-      target: { x: tCx + offset, y: tgt.y, position: Position.Top },
-    };
-  }
-  return {
-    source: { x: sCx + offset, y: src.y, position: Position.Top },
-    target: { x: tCx + offset, y: tgt.y + tgt.h, position: Position.Bottom },
-  };
-}
-
 /**
  * Places a tag beside its own endpoint. The along-edge nudge is capped at a
  * share of the gap so neither tag ever drifts past the midpoint, and the two
  * ends sit on opposite sides of the line (`perpSign`) so they stay legible even
  * when the two systems are placed almost touching.
  */
-function tagPosition(anchor: Anchor, other: Anchor, perpSign: 1 | -1): { x: number; y: number } {
+function tagPosition(anchor: EdgeAnchor, other: EdgeAnchor, perpSign: 1 | -1): { x: number; y: number } {
   const gap = Math.hypot(other.x - anchor.x, other.y - anchor.y);
   const along = Math.min(SIG_TAG_ALONG_PX, gap * SIG_TAG_ALONG_MAX_SHARE);
   const perp = SIG_TAG_PERP_PX * perpSign;
@@ -116,28 +70,7 @@ export function PublicConnectionEdge(props: EdgeProps & { data: PublicConnection
 
   const [hovered, setHovered] = useState(false);
 
-  const { parallelIndex, parallelCount } = data;
-  const offset =
-    parallelCount > 1 ? (parallelIndex - (parallelCount - 1) / 2) * PARALLEL_STEP_PX : 0;
-
-  const sourceNode = useInternalNode(source);
-  const targetNode = useInternalNode(target);
-
-  const sPos = sourceNode?.internals.positionAbsolute;
-  const tPos = targetNode?.internals.positionAbsolute;
-  const sW = sourceNode?.measured.width;
-  const sH = sourceNode?.measured.height;
-  const tW = targetNode?.measured.width;
-  const tH = targetNode?.measured.height;
-
-  const anchors =
-    sPos && tPos && sW && sH && tW && tH
-      ? pickAnchors(
-          { x: sPos.x, y: sPos.y, w: sW, h: sH },
-          { x: tPos.x, y: tPos.y, w: tW, h: tH },
-          offset,
-        )
-      : null;
+  const anchors = useEdgeAnchors(props.id, source, target);
 
   const pathArgs = {
     sourceX: anchors?.source.x ?? sourceX,

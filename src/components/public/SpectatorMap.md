@@ -16,7 +16,6 @@
 ### Behaviour & Interactions
 - Nodes and edges are plain `useMemo` derivations of `data` — no controlled node state, no change handlers. Dragging, connecting, selection and the delete key are all off.
 - Auto-fits on mount with a padded `fitView` capped at a modest max zoom. Legibility at stream resolution comes from that zoom rather than from enlarging node type, which would widen tiles and break the positions the map's authors arranged them in.
-- Parallel connections between the same node pair are counted and indexed so `PublicConnectionEdge` can fan them out; the pair key is order-independent.
 - Presence is indexed by EVE solar-system id at whatever fidelity the token published (`anonymous` counts plus hull-class buckets, or the `full` pilot list) and handed to each node.
 
 ### Depends On

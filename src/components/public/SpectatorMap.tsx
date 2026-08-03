@@ -55,27 +55,17 @@ export function SpectatorMap({
     [data.systems, presenceBySystem, highlightedSystemId],
   );
 
-  const edges = useMemo<Edge<PublicConnectionEdgeData>[]>(() => {
-    // Multiple holes between the same pair fan out rather than stacking.
-    const counts = new Map<string, number>();
-    for (const c of data.connections) {
-      const key = pairKey(c.source, c.target);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    const seen = new Map<string, number>();
-    return data.connections.map((c) => {
-      const key = pairKey(c.source, c.target);
-      const parallelIndex = seen.get(key) ?? 0;
-      seen.set(key, parallelIndex + 1);
-      return {
+  const edges = useMemo<Edge<PublicConnectionEdgeData>[]>(
+    () =>
+      data.connections.map((c) => ({
         id: c.id,
         type: 'connection',
         source: c.source,
         target: c.target,
-        data: { ...c, parallelIndex, parallelCount: counts.get(key) ?? 1 },
-      };
-    });
-  }, [data.connections]);
+        data: c,
+      })),
+    [data.connections],
+  );
 
   return (
     <ReactFlowProvider>
@@ -105,11 +95,6 @@ export function SpectatorMap({
       </Tooltip.Provider>
     </ReactFlowProvider>
   );
-}
-
-/** Canonical key for a node pair, so A→B and B→A group together. */
-function pairKey(a: string, b: string): string {
-  return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
 /** Per-system presence at whatever fidelity the token published, keyed by EVE system id. */
