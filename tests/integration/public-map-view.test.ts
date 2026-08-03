@@ -392,12 +392,22 @@ describe.skipIf(!run)('Public map share — redacted projection (real Postgres)'
 
     expect(data!.systems.filter((s) => s.isHome).map((s) => s.systemId)).toEqual([SYS_B]);
 
-    // Both holes hang off the same k-space system, so the flag has to come from
+    // Both holes hang off the same k-space system, so the path has to come from
     // where each one comes out, not from the system the guest arrives in.
     const toHome = data!.entrances.find((e) => e.connectionId === connAB.toString())!;
     const away = data!.entrances.find((e) => e.connectionId === connAC.toString())!;
-    expect(toHome.leadsHome).toBe(true);
-    expect(away.leadsHome).toBe(false);
+    expect(toHome.pathHome).toEqual([
+      {
+        connectionId: connAB.toString(),
+        sigId: null,
+        mapSystemId: sysBId.toString(),
+        systemId: SYS_B,
+        name: 'PST B',
+        security: 'C3',
+        tag: 'B',
+      },
+    ]);
+    expect(away.pathHome).toBeNull();
   });
 
   it('withholds the entrance sig codes on the same flag that withholds the endpoint codes', async () => {

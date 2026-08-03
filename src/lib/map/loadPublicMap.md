@@ -14,7 +14,7 @@ Systems reuse `loadStatics` (`src/lib/map/loadMap.ts`) for the static-wormhole d
 
 **Signatures:** only queried when `profile.showSignatures` is set (`null` otherwise, `[]` when set with none present) — a dedicated query, not `loadSignaturesForSystems`, because that helper's row shape carries `description` and `activityOverride`, both excluded here.
 
-**Entrances:** `derivePublicEntrances` (`src/lib/map/publicEntrances.ts`) runs over the projected systems and connections, yielding the k-space ways into the chain with the code to scan and the gate distance to the nearest hub. It also takes the map's Home so each entrance can say whether it leads toward it.
+**Entrances:** `derivePublicEntrances` (`src/lib/map/publicEntrances.ts`) runs over the projected systems and connections, yielding the k-space ways into the chain with the code to scan and the gate distance to the nearest hub. It also takes the map's Home so each entrance can carry the hop-by-hop way there, when one exists.
 
 **Presence:** branches on `profile.presenceMode`. `none` skips the query. Otherwise loads `loadMapPresence(mapId)` and filters to pilots whose system is actually visible on this map — a tracked pilot located elsewhere must not leak through a public share, since `loadMapPresence` deliberately returns pilots wherever they are. `anonymous` projects to per-system counts plus optional `byClass` buckets, no ids or names. `full` carries the roster minus account linkage (`userId`, `mainCharacterId`, `mainCharacterName`).
 

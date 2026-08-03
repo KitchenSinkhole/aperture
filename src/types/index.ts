@@ -391,7 +391,7 @@ export type {
   PublicMapPresence,
   PublicMapViewData,
 } from '@/lib/map/loadPublicMap';
-export type { PublicMapEntrance } from '@/lib/map/publicEntrances';
+export type { PublicMapEntrance, PublicMapEntranceHop } from '@/lib/map/publicEntrances';
 
 // Per-title feature-delegation view-model (src/app/(app)/actions/mapRoles.ts).
 /** One corp title with the capabilities currently delegated to it on a map. `view` is implicit and never listed. */
