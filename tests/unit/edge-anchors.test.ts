@@ -97,7 +97,7 @@ describe('pickFace', () => {
 });
 
 describe('faceRank', () => {
-  it('orders Right-face edges by ascending far-endpoint y', () => {
+  it('orders Right-face edges by ascending departure angle', () => {
     const center = { x: 0, y: 0 };
     const incident: IncidentEdge[] = [
       { id: 'mid', otherCenter: { x: 100, y: 0 } },
@@ -105,6 +105,36 @@ describe('faceRank', () => {
       { id: 'bottom', otherCenter: { x: 100, y: 50 } },
     ];
     expect(faceRank(incident, center, Position.Right)).toEqual(['top', 'mid', 'bottom']);
+  });
+
+  it('ranks a distant shallow neighbour below a nearer steeper one on a Right face', () => {
+    const center = { x: 0, y: 0 };
+    // `far` sits higher in absolute y but heads away at a shallower angle, so
+    // it must take the lower anchor or the two lines cross at the face.
+    const incident: IncidentEdge[] = [
+      { id: 'near', otherCenter: { x: 320, y: -100 } },
+      { id: 'far', otherCenter: { x: 772, y: -110 } },
+    ];
+    expect(faceRank(incident, center, Position.Right)).toEqual(['near', 'far']);
+  });
+
+  it('ranks a distant shallow neighbour after a nearer steeper one on a Bottom face', () => {
+    const center = { x: 0, y: 0 };
+    const incident: IncidentEdge[] = [
+      { id: 'near', otherCenter: { x: -100, y: 320 } },
+      { id: 'far', otherCenter: { x: -110, y: 772 } },
+    ];
+    expect(faceRank(incident, center, Position.Bottom)).toEqual(['near', 'far']);
+  });
+
+  it('treats a neighbour coincident with the node centre as zero angle', () => {
+    const center = { x: 0, y: 0 };
+    const incident: IncidentEdge[] = [
+      { id: 'coincident', otherCenter: { x: 0, y: 0 } },
+      { id: 'up', otherCenter: { x: 100, y: -50 } },
+      { id: 'down', otherCenter: { x: 100, y: 50 } },
+    ];
+    expect(faceRank(incident, center, Position.Right)).toEqual(['up', 'coincident', 'down']);
   });
 
   it('excludes edges attached to other faces', () => {
@@ -120,7 +150,7 @@ describe('faceRank', () => {
     expect(faceRank(incident, center, Position.Bottom)).toEqual([]);
   });
 
-  it('orders Top/Bottom-face edges by ascending far-endpoint x, not y', () => {
+  it('orders Top/Bottom-face edges by their x angle, not their y', () => {
     const center = { x: 0, y: 0 };
     const incident: IncidentEdge[] = [
       { id: 'right', otherCenter: { x: 50, y: 100 } },

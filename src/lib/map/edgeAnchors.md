@@ -28,7 +28,9 @@ Dominant axis of the centre-to-centre delta, oriented so the source side faces t
 ---
 
 ### faceRank(incident: IncidentEdge[], nodeCenter: Point, face: Position): string[]
-Filters `incident` to the edges whose far endpoint puts them on `face`, then returns their ids ordered by the perpendicular coordinate of the far endpoint: ascending `y` for `Left`/`Right`, ascending `x` for `Top`/`Bottom`. Ties (two holes to the same neighbour) break by lexicographic `id` comparison, not `localeCompare`, so ordering is identical across locales and across the interactive and spectator canvases. The topmost/leftmost id in the result is the edge heading furthest up/left, which is what lets a reader map a label to a line by rank alone.
+Filters `incident` to the edges whose far endpoint puts them on `face`, then returns their ids ordered by ascending departure angle — the far endpoint's perpendicular offset from `nodeCenter` divided by its along-axis distance (`dy / |dx|` for `Left`/`Right`, `dx / |dy|` for `Top`/`Bottom`). Because face selection guarantees the along-axis distance dominates, the ratio stays in `[-1, 1]` and is monotonic in angle across the face. Ordering by angle rather than by the far endpoint's raw coordinate is what keeps the fan non-crossing when neighbours sit at different distances: a distant neighbour can be higher up while heading away at a shallower angle, and giving it the higher anchor would cross it with a nearer, steeper line right at the face. A neighbour coincident with `nodeCenter` ranks as zero angle rather than `NaN`.
+
+Ties (two holes to the same neighbour) break by lexicographic `id` comparison, not `localeCompare`, so ordering is identical across locales and across the interactive and spectator canvases. The topmost/leftmost id in the result is the edge heading furthest up/left, which is what lets a reader map a label to a line by rank alone.
 
 **Returns:** Ordered edge ids on that one face of that one node — not the whole graph.
 

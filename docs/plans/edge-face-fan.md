@@ -31,16 +31,20 @@ Settle these in Stage 1 before writing the module.
 Unchanged. Dominant axis of the centre-to-centre delta, oriented so the source side faces the target. Nothing about the existing rule is wrong.
 
 ### Ordering within a face
-Sort the edges attached to one face by the perpendicular coordinate of their far endpoint's centre:
+Sort the edges attached to one face by their departure angle, measured from the near node's centre to the far endpoint's centre:
 
 | Face | Sort key |
 |---|---|
-| Left, Right | far node centre `y`, ascending |
-| Top, Bottom | far node centre `x`, ascending |
+| Left, Right | `dy / abs(dx)`, ascending |
+| Top, Bottom | `dx / abs(dy)`, ascending |
+
+Face selection guarantees the along-axis distance dominates, so the ratio stays in `[-1, 1]` and is monotonic in angle across the face. A neighbour coincident with the node centre ranks as zero angle.
 
 Ties (two holes to the same neighbour) break by connection id, so ordering is stable across renders and across the two canvases.
 
 This makes the fan non-crossing in the immediate neighbourhood of the node: the topmost attachment point belongs to the edge heading furthest up. That correspondence is what lets a reader map a label to a line by rank without tracing it.
+
+The far endpoint's raw perpendicular coordinate is *not* a sufficient key. It agrees with the angle only when every neighbour sits at roughly the same distance; once one is dragged well out, it can sit higher than a nearer neighbour while heading away at a shallower angle, and the higher anchor then crosses the two lines right at the face.
 
 ### Distribution
 For index `i` of `n` on a face, `offset = (i - (n - 1) / 2) * pitch`, applied along the face's perpendicular axis. This is the existing formula; only the grouping key changes, from "node pair" to "node face".

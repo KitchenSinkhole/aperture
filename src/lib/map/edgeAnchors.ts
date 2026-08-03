@@ -52,15 +52,25 @@ export function pickFace(src: Rect, tgt: Rect): { source: Position; target: Posi
  */
 export function faceRank(incident: IncidentEdge[], nodeCenter: Point, face: Position): string[] {
   const onFace = incident.filter((e) => faceOf(nodeCenter, e.otherCenter) === face);
-  const perpKey =
-    face === Position.Left || face === Position.Right
-      ? (e: IncidentEdge) => e.otherCenter.y
-      : (e: IncidentEdge) => e.otherCenter.x;
+  // Departure angle, not the far endpoint's raw perpendicular coordinate: a
+  // distant neighbour can sit further up while heading at a shallower angle
+  // than a near one, and ordering it by position alone crosses the two lines
+  // right at the face. Face selection guarantees |along| >= |perp|, so the
+  // ratio stays in [-1, 1] and is monotonic in angle across the whole face.
+  const slopeKey = (e: IncidentEdge) => {
+    const dx = e.otherCenter.x - nodeCenter.x;
+    const dy = e.otherCenter.y - nodeCenter.y;
+    const [perp, along] =
+      face === Position.Left || face === Position.Right
+        ? [dy, Math.abs(dx)]
+        : [dx, Math.abs(dy)];
+    return along === 0 ? 0 : perp / along;
+  };
   return onFace
     .slice()
     .sort((a, b) => {
-      const ka = perpKey(a);
-      const kb = perpKey(b);
+      const ka = slopeKey(a);
+      const kb = slopeKey(b);
       if (ka !== kb) return ka - kb;
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     })
