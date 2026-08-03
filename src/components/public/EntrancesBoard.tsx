@@ -15,6 +15,10 @@ import type { PublicMapEntrance, PublicMapEntranceHop } from '@/types';
 // the first hole. Entrances that do not are one line each — genuinely
 // different content, so they render under a separate heading rather than
 // blending into one undifferentiated list.
+//
+// Every row is a button, not a hover target with a tabindex: this link is built
+// to be pasted into Discord, and a phone has no hover to give. Tapping pins the
+// route on the canvas.
 
 /** How long each successive row waits before rising into place, in ms. */
 const ROW_STAGGER_MS = 50;
@@ -25,11 +29,17 @@ const MAX_VISIBLE_HOPS = 4;
 
 export function EntrancesBoard({
   entrances,
+  pinnedEntranceId,
   onHover,
+  onPin,
 }: {
   entrances: PublicMapEntrance[];
-  /** Fires with the hovered row's `ap_map_system.id`, or null on leave. */
-  onHover: (mapSystemId: string | null) => void;
+  /** `connectionId` of the row whose route is pinned, if any. */
+  pinnedEntranceId: string | null;
+  /** Fires with the hovered or focused row's `connectionId`, or null on leave. */
+  onHover: (connectionId: string | null) => void;
+  /** Fires with the tapped row's `connectionId`; the owner toggles the pin. */
+  onPin: (connectionId: string) => void;
 }) {
   const homeEntrances = entrances.filter((e) => e.pathHome !== null);
   const otherEntrances = entrances.filter((e) => e.pathHome === null);
@@ -64,7 +74,9 @@ export function EntrancesBoard({
                     key={e.connectionId}
                     entrance={e}
                     index={Math.min(i, MAX_STAGGERED_ROWS)}
+                    pinned={e.connectionId === pinnedEntranceId}
                     onHover={onHover}
+                    onPin={onPin}
                   />
                 ))}
               </ul>
@@ -77,7 +89,9 @@ export function EntrancesBoard({
                         key={e.connectionId}
                         entrance={e}
                         index={Math.min(homeEntrances.length + i, MAX_STAGGERED_ROWS)}
+                        pinned={e.connectionId === pinnedEntranceId}
                         onHover={onHover}
+                        onPin={onPin}
                       />
                     ))}
                   </ul>
@@ -91,7 +105,9 @@ export function EntrancesBoard({
                   key={e.connectionId}
                   entrance={e}
                   index={Math.min(i, MAX_STAGGERED_ROWS)}
+                  pinned={e.connectionId === pinnedEntranceId}
                   onHover={onHover}
+                  onPin={onPin}
                 />
               ))}
             </ul>
@@ -113,11 +129,15 @@ function GroupHeading({ label }: { label: string }) {
 function EntranceRow({
   entrance,
   index,
+  pinned,
   onHover,
+  onPin,
 }: {
   entrance: PublicMapEntrance;
   index: number;
-  onHover: (mapSystemId: string | null) => void;
+  pinned: boolean;
+  onHover: (connectionId: string | null) => void;
+  onPin: (connectionId: string) => void;
 }) {
   // The same class palette the canvas tiles use, so an `H` reads the one colour
   // across the whole page.
@@ -126,68 +146,74 @@ function EntranceRow({
 
   return (
     <li
-      className="animate-spec-row-in border-b border-l-2 border-b-spec-line px-4 py-3 transition-colors hover:bg-white/[0.03] focus-within:bg-white/[0.03]"
+      className="animate-spec-row-in border-b border-l-2 border-b-spec-line"
       style={{
         animationDelay: `${index * ROW_STAGGER_MS}ms`,
         borderLeftColor: entrance.pathHome ? home : 'transparent',
       }}
-      onMouseEnter={() => onHover(entrance.mapSystemId)}
-      onMouseLeave={() => onHover(null)}
-      onFocus={() => onHover(entrance.mapSystemId)}
-      onBlur={() => onHover(null)}
-      tabIndex={0}
     >
-      <div className="flex items-baseline gap-2">
-        <span className="min-w-0 flex-1 truncate font-spec-mono text-[18px] font-semibold tracking-tight text-spec-text">
-          {systemDisplayName(entrance.systemId, entrance.name)}
-        </span>
-        <span
-          className="shrink-0 font-spec-mono text-xs font-bold"
-          style={{ color: accent }}
-          title={entrance.regionName}
-        >
-          {entrance.security ?? entrance.trueSec?.toFixed(1) ?? '?'}
-        </span>
-      </div>
-
-      <p className="mt-1 font-spec-mono text-xs text-spec-dim">
-        {entrance.route
-          ? `${entrance.route.jumps} ${entrance.route.jumps === 1 ? 'jump' : 'jumps'} from ${entrance.route.hubName}`
-          : 'No gate route from a trade hub'}
-      </p>
-
-      {entrance.pathHome ? (
-        <HopList hops={entrance.pathHome} home={home} />
-      ) : (
-        <div className="mt-1.5 flex items-baseline gap-2">
-          <span className="font-spec-mono text-[10px] uppercase tracking-[0.18em] text-spec-dim">
-            Scan
+      <button
+        type="button"
+        aria-pressed={pinned}
+        className={`block w-full cursor-pointer px-4 py-3 text-left transition-colors hover:bg-white/[0.03] focus-visible:bg-white/[0.03] ${pinned ? 'bg-white/[0.06]' : ''}`}
+        onMouseEnter={() => onHover(entrance.connectionId)}
+        onMouseLeave={() => onHover(null)}
+        onFocus={() => onHover(entrance.connectionId)}
+        onBlur={() => onHover(null)}
+        onClick={() => onPin(entrance.connectionId)}
+      >
+        <span className="flex items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate font-spec-mono text-[18px] font-semibold tracking-tight text-spec-text">
+            {systemDisplayName(entrance.systemId, entrance.name)}
           </span>
-          {entrance.sigId ? (
-            <span className="font-spec-mono text-[15px] font-semibold tracking-wide text-spec-text">
-              {entrance.sigId.slice(0, 3)}
+          <span
+            className="shrink-0 font-spec-mono text-xs font-bold"
+            style={{ color: accent }}
+            title={entrance.regionName}
+          >
+            {entrance.security ?? entrance.trueSec?.toFixed(1) ?? '?'}
+          </span>
+        </span>
+
+        <span className="mt-1 block font-spec-mono text-xs text-spec-dim">
+          {entrance.route
+            ? `${entrance.route.jumps} ${entrance.route.jumps === 1 ? 'jump' : 'jumps'} from ${entrance.route.hubName}`
+            : 'No gate route from a trade hub'}
+        </span>
+
+        {entrance.pathHome ? (
+          <HopList hops={entrance.pathHome} home={home} />
+        ) : (
+          <span className="mt-1.5 flex items-baseline gap-2">
+            <span className="font-spec-mono text-[10px] uppercase tracking-[0.18em] text-spec-dim">
+              Scan
             </span>
-          ) : (
-            <span
-              className="font-spec-mono text-[15px] text-spec-dim"
-              title="Nobody has scanned this side yet"
-            >
-              —
-            </span>
-          )}
-          {entrance.leadsTo && (
-            <span
-              className="ml-auto flex shrink-0 items-baseline font-spec-mono text-xs font-bold"
-              title="Leads to"
-            >
-              <span aria-hidden className="text-spec-dim">
-                →{' '}
+            {entrance.sigId ? (
+              <span className="font-spec-mono text-[15px] font-semibold tracking-wide text-spec-text">
+                {entrance.sigId.slice(0, 3)}
               </span>
-              <span style={{ color: systemClassColor(entrance.leadsTo) }}>{entrance.leadsTo}</span>
-            </span>
-          )}
-        </div>
-      )}
+            ) : (
+              <span
+                className="font-spec-mono text-[15px] text-spec-dim"
+                title="Nobody has scanned this side yet"
+              >
+                —
+              </span>
+            )}
+            {entrance.leadsTo && (
+              <span
+                className="ml-auto flex shrink-0 items-baseline font-spec-mono text-xs font-bold"
+                title="Leads to"
+              >
+                <span aria-hidden className="text-spec-dim">
+                  →{' '}
+                </span>
+                <span style={{ color: systemClassColor(entrance.leadsTo) }}>{entrance.leadsTo}</span>
+              </span>
+            )}
+          </span>
+        )}
+      </button>
     </li>
   );
 }
@@ -219,14 +245,14 @@ function HopList({ hops, home }: { hops: PublicMapEntranceHop[]; home: string })
   const scannable = hops.some((h) => h.sigId !== null);
 
   return (
-    <ol className="mt-1.5 space-y-1">
+    <span className="mt-1.5 flex flex-col gap-1">
       {hopRows(hops).map((row, i) =>
         row.kind === 'collapsed' ? (
-          <li key={`collapsed-${i}`} className="pl-1 font-spec-mono text-xs text-spec-dim">
+          <span key={`collapsed-${i}`} className="pl-1 font-spec-mono text-xs text-spec-dim">
             ⋯ {row.count} more {row.count === 1 ? 'jump' : 'jumps'}
-          </li>
+          </span>
         ) : (
-          <li
+          <span
             key={row.hop.connectionId}
             className="flex items-baseline gap-2 font-spec-mono text-[13px]"
           >
@@ -266,9 +292,9 @@ function HopList({ hops, home }: { hops: PublicMapEntranceHop[]; home: string })
             {row.isLast && (
               <Home className="size-3 shrink-0" style={{ color: home }} aria-label="Home" />
             )}
-          </li>
+          </span>
         ),
       )}
-    </ol>
+    </span>
   );
 }

@@ -16,7 +16,9 @@ A full-height column: `PromoBar`, then a split body, then a status-strip footer.
 An empty map renders `Nothing is mapped here yet.` in place of the canvas; once the feed ends, the canvas region instead renders a short "this share link has ended" panel and the `IntroCard` is hidden. The board, bar and footer stay in both cases.
 
 ### Behaviour & Interactions
-- Owns `highlightedSystemId`: hovering or focusing an entrances-board row rings the matching node on the canvas.
+- Owns the route highlight. Hovering, focusing or tapping an entrances-board row lights that entrance's whole way into the chain: the k-space system it starts in, every hop connection along the way to Home, and each system those hops pass through, with the sig code at both mouths of every lit hole. An entrance with no way home lights only its own hole. Hover takes precedence over a pin, so pointing at a second row previews it without discarding the pinned one.
+- A tap pins a route (touch has no hover, and this link is built to be pasted into Discord); tapping the same row again, or clicking the canvas off the chain, clears it.
+- Rows are tracked by connection id rather than held as objects, so a refetch that drops or rewrites an entrance clears the highlight instead of lighting a stale route.
 - `IntroCard` floats over the canvas's bottom-left corner in a `pointer-events-none` wrapper so it never blocks a pan or the bottom-right canvas controls.
 - Renders off `usePublicSnapshot`'s `data`, not the `initialData` prop directly, so a live nudge/refetch updates the whole page. Nothing here mutates anything.
 
@@ -26,5 +28,6 @@ An empty map renders `Nothing is mapped here yet.` in place of the canvas; once 
 - Type `PublicMapViewData` from `@/types`
 
 ### Local State
-- `highlightedSystemId: string | null` — `ap_map_system.id` of the entrance row under the cursor.
+- `hoveredEntranceId: string | null` — `connectionId` of the entrance row under the cursor or keyboard focus.
+- `pinnedEntranceId: string | null` — `connectionId` of the entrance row whose route is pinned.
 - `now` (in the internal `useElapsedSeconds` helper) — ticks once a second to keep the footer's "updated Ns ago" current.

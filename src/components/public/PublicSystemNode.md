@@ -11,7 +11,7 @@ Receives xyflow `NodeProps` with `data: PublicSystemNodeData`.
 | Field | Type | Description |
 |---|---|---|
 | presence | PublicNodePresence \| null | Per-system presence at the fidelity the token's `presenceMode` allows; null when it publishes none. |
-| highlighted | boolean | Set while the matching entrances-board row, or an incident connection, is hovered. |
+| highlighted | boolean | Set while this system is on the lit route, or an incident connection is hovered. |
 
 `PublicNodePresence` is a discriminated union: `{ mode: 'anonymous'; count; byClass }` or `{ mode: 'full'; pilots }`.
 
@@ -22,7 +22,7 @@ Because `PublicMapSystemNode` has no `alias`, `locked`, `rallyAt` or lock-holder
 
 ### Behaviour & Interactions
 - No connect handles, no inline editing, no selection styling, no signature-freshness or intel indicators, no underglow.
-- `highlighted` stacks a wider halo in the class colour outside the resting status ring and the Home accent, so a board row and its tile read as the same thing and all three rings can show at once.
+- `highlighted` stacks a wider halo in the class colour outside the resting status ring and the Home accent, so a board row and the tiles on its route read as the same thing and all three rings can show at once.
 - Statics are ordered by `staticCompare` and each carries a tooltip naming its target class. Unlike the app's node there is no wormhole reference card — that data comes from a session-gated endpoint.
 - The anomaly-effect swatch opens a hover panel listing the effect's bonuses resolved to this system's class; the class number is parsed from the security label.
 - Presence badge floats off the top-left corner and renders only when the count is non-zero. Its hover panel shows hull-class buckets under `anonymous` (with a count of hulls the buckets don't identify) and a `SystemPresenceTable` under `full`.

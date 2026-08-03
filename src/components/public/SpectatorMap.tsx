@@ -21,6 +21,14 @@ import type { PublicMapPresence, PublicMapViewData } from '@/types';
 // subscription, no per-account viewport memory. What is left is the same
 // picture, driven straight off the redacted snapshot.
 
+/** A whole way into the chain lit at once: the hops, and the systems they pass through. */
+export type SpectatorHighlight = {
+  /** `ap_map_system.id`s to ring. Endpoints of the highlighted connections ring too. */
+  systemIds: string[];
+  /** `ap_map_connection.id`s to lift, with their sig codes forced visible. */
+  connectionIds: string[];
+};
+
 // xyflow requires stable type maps; module scope guarantees it.
 const nodeTypes = { system: PublicSystemNode };
 const edgeTypes = { connection: PublicConnectionEdge };
@@ -32,11 +40,14 @@ const FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1.4 };
 
 export function SpectatorMap({
   data,
-  highlightedSystemId,
+  highlight,
+  onPaneClick,
 }: {
   data: PublicMapViewData;
-  /** `ap_map_system.id` of the entrance row under the cursor, if any. */
-  highlightedSystemId: string | null;
+  /** The route currently lit, from a hovered or pinned entrances-board row. */
+  highlight: SpectatorHighlight;
+  /** Fires on a click anywhere off the chain, so a pinned route can be dismissed. */
+  onPaneClick: () => void;
 }) {
   const presenceBySystem = useMemo(() => presenceIndex(data.presence), [data.presence]);
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null);
@@ -46,10 +57,24 @@ export function SpectatorMap({
     [data.systems],
   );
 
-  const hoveredEndpoints = useMemo(() => {
-    const conn = data.connections.find((c) => c.id === hoveredConnectionId);
-    return conn ? [conn.source, conn.target] : [];
-  }, [data.connections, hoveredConnectionId]);
+  // Edge hover and board highlight merge into one set rather than running as
+  // parallel channels, so a hovered hole and a lit route read identically.
+  const litConnections = useMemo(() => {
+    const ids = new Set(highlight.connectionIds);
+    if (hoveredConnectionId) ids.add(hoveredConnectionId);
+    return ids;
+  }, [highlight.connectionIds, hoveredConnectionId]);
+
+  const litSystems = useMemo(() => {
+    const ids = new Set(highlight.systemIds);
+    for (const c of data.connections) {
+      if (litConnections.has(c.id)) {
+        ids.add(c.source);
+        ids.add(c.target);
+      }
+    }
+    return ids;
+  }, [data.connections, highlight.systemIds, litConnections]);
 
   const nodes = useMemo<Node<PublicSystemNodeData>[]>(
     () =>
@@ -60,10 +85,10 @@ export function SpectatorMap({
         data: {
           ...s,
           presence: presenceBySystem.get(s.systemId) ?? null,
-          highlighted: s.id === highlightedSystemId || hoveredEndpoints.includes(s.id),
+          highlighted: litSystems.has(s.id),
         },
       })),
-    [data.systems, presenceBySystem, highlightedSystemId, hoveredEndpoints],
+    [data.systems, presenceBySystem, litSystems],
   );
 
   const edges = useMemo<Edge<PublicConnectionEdgeData>[]>(
@@ -79,10 +104,11 @@ export function SpectatorMap({
             source: securityBySystem.get(c.source) ?? null,
             target: securityBySystem.get(c.target) ?? null,
           },
+          highlighted: litConnections.has(c.id),
           onHoverChange: setHoveredConnectionId,
         },
       })),
-    [data.connections, securityBySystem],
+    [data.connections, securityBySystem, litConnections],
   );
 
   return (
@@ -102,6 +128,7 @@ export function SpectatorMap({
           connectionMode={ConnectionMode.Loose}
           fitView
           fitViewOptions={FIT_VIEW_OPTIONS}
+          onPaneClick={onPaneClick}
           colorMode="dark"
           preventScrolling={false}
           proOptions={{ hideAttribution: true }}

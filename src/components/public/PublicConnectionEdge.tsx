@@ -27,9 +27,14 @@ import type { PublicMapConnectionEdge } from '@/types';
 export type PublicConnectionEdgeData = PublicMapConnectionEdge & {
   /** `universe_system.security` at each end, for tinting that end's sig tag with the far system's class. */
   endpointSecurity: { source: string | null; target: string | null };
+  /** This hole is on the lit route: the stroke thickens and both sig tags show without a pointer. */
+  highlighted: boolean;
   /** Publishes this edge's hover so both endpoint tiles can ring alongside the tags. */
   onHoverChange: (connectionId: string | null) => void;
 };
+
+/** Extra stroke width a lit connection gains, so a route reads as one thread. */
+const HIGHLIGHT_STROKE_BOOST_PX = 2;
 
 /** Nominal sig-tag box. Not measured — a fixed-size mono code at this font size. */
 const SIG_TAG_W_PX = 34;
@@ -121,10 +126,22 @@ export function PublicConnectionEdge(props: EdgeProps & { data: PublicConnection
   // Absent entirely when the token withholds endpoint codes — no empty affordance.
   const sigIds = data.sigIds;
   const showSigTags = sigIds !== null && anchors !== null;
+  const revealSigTags = showSigTags && (hovered || data.highlighted);
 
   return (
     <>
-      <BaseEdge path={path} style={style} />
+      <BaseEdge
+        path={path}
+        style={
+          data.highlighted
+            ? {
+                ...style,
+                strokeWidth: style.strokeWidth + HIGHLIGHT_STROKE_BOOST_PX,
+                filter: `drop-shadow(0 0 6px ${style.stroke})`,
+              }
+            : style
+        }
+      />
       {showSigTags && (
         <path
           d={path}
@@ -136,7 +153,7 @@ export function PublicConnectionEdge(props: EdgeProps & { data: PublicConnection
           onMouseLeave={() => setHoverState(false)}
         />
       )}
-      {showSigTags && hovered && (
+      {revealSigTags && (
         <EdgeLabelRenderer>
           <SigTag
             position={tagPosition(anchors.source, anchors.target, -1)}

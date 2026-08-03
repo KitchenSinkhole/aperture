@@ -8,7 +8,9 @@
 | Prop | Type | Required | Description |
 |---|---|---|---|
 | entrances | PublicMapEntrance[] | yes | Server-derived k-space entrances, already ordered nearest-hub-first. |
-| onHover | (mapSystemId: string \| null) => void | yes | Fires with the hovered or focused row's `ap_map_system.id`, and null on leave. |
+| pinnedEntranceId | string \| null | yes | `connectionId` of the row whose route is pinned; that row renders pressed. |
+| onHover | (connectionId: string \| null) => void | yes | Fires with the hovered or focused row's `connectionId`, and null on leave. |
+| onPin | (connectionId: string) => void | yes | Fires with the tapped row's `connectionId`; the owner toggles the pin. |
 
 ### Renders
 A titled panel over the rail surface. Entrances that lead to the map's Home are grouped under a "Ways to home" heading; every other entrance sits under "Other entrances" below it. Either heading is omitted when its group is empty, and the list renders flat (ungrouped) when nothing leads home at all.
@@ -20,7 +22,8 @@ A home row carries a gold left rule, reinforcing the grouping. The colour and ic
 For a guest with no map access this is the only part of the page that says what to do, so it leads rather than sitting behind a toggle.
 
 ### Behaviour & Interactions
-- Rows are focusable, and hover or focus calls `onHover` so the matching canvas node highlights.
+- Each row is a full-width button carrying the whole row's content, so it is reachable by keyboard and tappable on a phone, which has no hover to give.
+- Hover or focus calls `onHover`, lighting that entrance's route on the canvas; a click calls `onPin`, and the pinned row renders pressed (`aria-pressed`, with a held background) so a route can be read without holding the pointer still.
 - An unscanned hop shows an explicit dash rather than an empty slot; a system with no gate route to any hub says so instead of showing a blank distance.
 - A home route past four hops collapses its middle jumps into one `⋯ N more jumps` line, always keeping the first two hops and the final hop into Home visible.
 - When every hop on a home route is unscanned (the token withholds codes, or nobody has scanned any of it), the sig column drops entirely and the row reads as a plain system-name path rather than a set of things to scan.
