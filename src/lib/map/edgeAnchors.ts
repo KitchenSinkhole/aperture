@@ -8,7 +8,7 @@ export type IncidentEdge = { id: string; otherCenter: Point };
 export const BASE_PITCH_PX = 12;
 export const FACE_MARGIN_PX = 8;
 
-function center(rect: Rect): Point {
+export function center(rect: Rect): Point {
   return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
 }
 

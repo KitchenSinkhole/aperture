@@ -1781,16 +1781,6 @@ export function MapCanvas({
   }
 
   const edges = useMemo<Edge<ConnectionEdgeData>[]>(() => {
-    // Group connections by canonical node pair (sorted) so parallel edges
-    // (multiple wormholes between the same two systems) can be fanned out.
-    const groups = new Map<string, string[]>();
-    for (const c of viewData.connections) {
-      const key = [c.source, c.target].sort().join('\0');
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(c.id);
-    }
-    for (const ids of groups.values()) ids.sort();
-
     // Resolve each connection's source wormhole from its attached signatures,
     // preferring the named side over the K162 reverse-exit (the named hole is the
     // one carrying routing / mass / lifetime static data). Feeds the edge's
@@ -1805,10 +1795,6 @@ export function MapCanvas({
     }
 
     return viewData.connections.map((c) => {
-      const key = [c.source, c.target].sort().join('\0');
-      const group = groups.get(key)!;
-      const parallelIndex = group.indexOf(c.id);
-      const parallelCount = group.length;
       const wh = whByConn.get(c.id) ?? null;
       return {
         id: c.id,
@@ -1817,8 +1803,6 @@ export function MapCanvas({
         target: c.target,
         data: {
           ...c,
-          parallelIndex,
-          parallelCount,
           mapId: viewData.map.id,
           wormholeTypeId: wh?.typeId ?? null,
           wormholeCode: wh?.code ?? null,

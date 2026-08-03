@@ -17,6 +17,11 @@ No `server-only`, React, or DB imports — client-reachable (imported from edge 
 
 ---
 
+### center(rect: Rect): Point
+The rect's midpoint. Shared by `pickFace`/`faceRank`/`anchorPoint` internally and by `useEdgeAnchors`, which needs it to build incident-edge far-centres from raw node rects.
+
+---
+
 ### pickFace(src: Rect, tgt: Rect): { source: Position; target: Position }
 Dominant axis of the centre-to-centre delta, oriented so the source side faces the target. `|dx| == |dy|` resolves to the horizontal faces. `target` is always the opposite face of `source`; calling with the endpoints swapped yields the opposite pair, so a rank computed from either endpoint's perspective agrees with this pick.
 
