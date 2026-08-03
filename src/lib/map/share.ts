@@ -5,11 +5,11 @@
 // server-side (API routes, the public loader, the WS upgrade handler); we
 // rely on that rather than the marker package.
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { and, eq, gt, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { apMap, apMapShare } from '@/db/schema';
+import { apCharacter, apMap, apMapShare } from '@/db/schema';
 import { closePublicSocketsForToken } from '@/lib/realtime/publicSockets';
-import type { ShareRedactionProfile } from '@/types';
+import type { LiveShareBadge, MapShareListItem, ShareRedactionProfile } from '@/types';
 
 /** A fresh, URL-safe share token — 128 bits of entropy, 22 base64url chars. */
 export function generateShareToken(): string {
@@ -75,6 +75,78 @@ export async function resolveShareToken(token: string): Promise<ResolvedShareTok
       showConnectionSigIds: row.showConnectionSigIds,
     },
   };
+}
+
+/**
+ * Every share on a map that has not been revoked, newest first — the rows the
+ * management panel renders. Expired shares are kept (flagged `expired`) so a
+ * manager can see why a link stopped working; a revoked share is gone from the
+ * panel and survives only in the audit log. Returns the raw token, so callers
+ * must gate on `share_manage` first.
+ */
+export async function listMapShares(mapId: bigint): Promise<MapShareListItem[]> {
+  const now = Date.now();
+  const rows = await db
+    .select({
+      id: apMapShare.id,
+      token: apMapShare.token,
+      label: apMapShare.label,
+      presenceMode: apMapShare.presenceMode,
+      showSignatures: apMapShare.showSignatures,
+      showKillStats: apMapShare.showKillStats,
+      showConnectionSigIds: apMapShare.showConnectionSigIds,
+      expiresAt: apMapShare.expiresAt,
+      createdAt: apMapShare.createdAt,
+      createdByName: apCharacter.name,
+    })
+    .from(apMapShare)
+    .leftJoin(apCharacter, eq(apCharacter.id, apMapShare.createdByCharacterId))
+    .where(and(eq(apMapShare.mapId, mapId), isNull(apMapShare.revokedAt)))
+    .orderBy(desc(apMapShare.createdAt));
+
+  return rows.map((r) => ({
+    id: r.id.toString(),
+    token: r.token,
+    label: r.label,
+    presenceMode: r.presenceMode,
+    showSignatures: r.showSignatures,
+    showKillStats: r.showKillStats,
+    showConnectionSigIds: r.showConnectionSigIds,
+    expiresAt: r.expiresAt?.toISOString() ?? null,
+    expired: r.expiresAt !== null && r.expiresAt.getTime() <= now,
+    createdAt: r.createdAt.toISOString(),
+    createdByName: r.createdByName,
+  }));
+}
+
+/**
+ * The live shares on a map, without their tokens — the feed for the in-map
+ * "this map is published" indicator every viewer sees. Same liveness rule as
+ * `resolveShareToken` minus the soft-deleted-parent clause, which the map page
+ * has already established by rendering at all.
+ */
+export async function loadLiveShareBadges(mapId: bigint): Promise<LiveShareBadge[]> {
+  const rows = await db
+    .select({
+      id: apMapShare.id,
+      label: apMapShare.label,
+      expiresAt: apMapShare.expiresAt,
+    })
+    .from(apMapShare)
+    .where(
+      and(
+        eq(apMapShare.mapId, mapId),
+        isNull(apMapShare.revokedAt),
+        or(isNull(apMapShare.expiresAt), gt(apMapShare.expiresAt, new Date())),
+      ),
+    )
+    .orderBy(desc(apMapShare.createdAt));
+
+  return rows.map((r) => ({
+    id: r.id.toString(),
+    label: r.label,
+    expiresAt: r.expiresAt?.toISOString() ?? null,
+  }));
 }
 
 /**

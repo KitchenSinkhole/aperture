@@ -21,6 +21,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import type { Layout, ResponsiveLayouts } from 'react-grid-layout';
 import type {
   Breakpoint,
+  LiveShareBadge,
   MapCapability,
   MapContextMenuTarget,
   MapEventPayload,
@@ -117,6 +118,7 @@ import {
 import { MapInfoDialog } from '@/components/dialogs/MapInfoDialog';
 import { PilotRosterButton } from './PilotRosterButton';
 import { SystemOverlayButton } from './SystemOverlayButton';
+import { MapShareIndicator } from './MapShareIndicator';
 import { MapSettingsDialog } from '@/components/dialogs/MapSettingsDialog';
 import { MapAuditDialog } from '@/components/map/manage/MapAuditDialog';
 import { SignatureSearchModule } from '@/components/sidebar/SignatureSearchModule';
@@ -271,6 +273,7 @@ export function MapCanvas({
   settings,
   canManage,
   capabilities,
+  liveShares: initialLiveShares,
   travelAnimation,
   signatureIndicators,
   viewerCharacterIds,
@@ -293,6 +296,8 @@ export function MapCanvas({
    * to it. Drives per-feature reveal of the director-gated surfaces.
    */
   capabilities: MapCapability[];
+  /** Share links currently publishing this map, for the header indicator every viewer sees. */
+  liveShares: LiveShareBadge[];
   travelAnimation: boolean;
   /** Viewer's resolved stale/unscanned indicator prefs (threshold + toggles). */
   signatureIndicators: SignatureIndicatorPrefs;
@@ -361,6 +366,7 @@ export function MapCanvas({
   // direct scanner paste also removes missing sigs, then disarms itself.
   const [lazyDeleteSigs, setLazyDeleteSigs] = useState(false);
   const [viewData, setViewData] = useState<MapViewData>(data);
+  const [liveShares, setLiveShares] = useState<LiveShareBadge[]>(initialLiveShares);
   // Captured via ReactFlow's onInit so the manual-add flow can place new nodes
   // at the current viewport centre rather than (0,0).
   const flowInstance = useRef<ReactFlowInstance<
@@ -875,6 +881,20 @@ export function MapCanvas({
       appliedEventIds.current.add(payload.eventId);
       setViewData((prev) => applyEvent(prev, payload));
       hydrateAddedSystems([payload]);
+      // Share mint/revoke carries no canvas state, so it never reaches
+      // `applyEvent` — the header indicator tracks it directly.
+      if (payload.kind === 'share.created') {
+        const badge: LiveShareBadge = {
+          id: payload.shareId,
+          label: payload.label,
+          expiresAt: payload.expiresAt,
+        };
+        setLiveShares((prev) =>
+          prev.some((s) => s.id === badge.id) ? prev : [badge, ...prev],
+        );
+      } else if (payload.kind === 'share.revoked') {
+        setLiveShares((prev) => prev.filter((s) => s.id !== payload.shareId));
+      }
     }, [hydrateAddedSystems]),
   );
 
@@ -2148,13 +2168,16 @@ export function MapCanvas({
         />
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-1">
-            <div className="min-w-0">
-              <div className="font-heading truncate text-base font-semibold tracking-tight">
-                {viewData.map.name}
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="min-w-0">
+                <div className="font-heading truncate text-base font-semibold tracking-tight">
+                  {viewData.map.name}
+                </div>
+                <div className="text-muted-foreground truncate text-xs capitalize">
+                  {viewData.map.type} · {viewData.map.scope} · {viewData.systems.length} systems
+                </div>
               </div>
-              <div className="text-muted-foreground truncate text-xs capitalize">
-                {viewData.map.type} · {viewData.map.scope} · {viewData.systems.length} systems
-              </div>
+              <MapShareIndicator shares={liveShares} />
             </div>
             <div className="flex shrink-0 items-center gap-1">
               <ActiveCharSelector />

@@ -6,6 +6,7 @@ import {
   mapNoteSeverity,
   mapScope,
   mapType,
+  sharePresenceMode,
   signatureActivity,
   signatureClassKind,
   signatureGroupKey,
@@ -436,14 +437,37 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     roleName: z.string(),
     capability: delegatableCapabilityEnum,
   }),
+  // A public share link (`/live/<token>`) is minted or killed. The token
+  // itself never rides the payload — this envelope reaches every viewer and
+  // the Discord history webhook, and the token is a capability URL. The label
+  // and redaction profile do ride it, so the audit line names what was
+  // published without a share lookup, and the in-map indicator can flip from
+  // the event alone.
+  z.object({
+    kind: z.literal('share.created'),
+    eventId,
+    shareId: z.string(),
+    label: z.string(),
+    presenceMode: z.enum(sharePresenceMode.enumValues),
+    showSignatures: z.boolean(),
+    showConnectionSigIds: z.boolean(),
+    expiresAt: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal('share.revoked'),
+    eventId,
+    shareId: z.string(),
+    label: z.string(),
+  }),
 ]);
 
 export type MapEventPayload = z.infer<typeof mapEventPayloadSchema>;
 
 /**
- * Seeded `ap_event_kind` values (migrations 0004 + 0014 + 0057). The discriminator
- * set. Includes `map.restore`/`map.purge` for the admin maps panel and
- * `access.granted`/`access.revoked` for per-title feature delegation.
+ * Seeded `ap_event_kind` values (migrations 0004 + 0014 + 0057 + 0061). The
+ * discriminator set. Includes `map.restore`/`map.purge` for the admin maps
+ * panel, `access.granted`/`access.revoked` for per-title feature delegation,
+ * and `share.created`/`share.revoked` for public share links.
  */
 export const MAP_EVENT_KINDS = [
   'system.added',
@@ -465,6 +489,8 @@ export const MAP_EVENT_KINDS = [
   'map.purge',
   'access.granted',
   'access.revoked',
+  'share.created',
+  'share.revoked',
 ] as const;
 
 export type MapEventKind = (typeof MAP_EVENT_KINDS)[number];

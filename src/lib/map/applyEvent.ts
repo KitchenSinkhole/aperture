@@ -201,9 +201,12 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
     case 'map.restore':
     case 'map.purge':
     // Feature-delegation grants/revocations change server-side authority only;
-    // they carry no canvas state.
+    // they carry no canvas state. Share mint/revoke likewise — `MapCanvas`
+    // reads them off the envelope for the live-share indicator instead.
     case 'access.granted':
     case 'access.revoked':
+    case 'share.created':
+    case 'share.revoked':
       return state;
 
     default:

@@ -8,11 +8,12 @@ import type { MapCapability, MapDelegationState } from '@/types';
 // The `view` capability is the implicit visibility overlay — never a toggle.
 type DelegatableCapability = Exclude<MapCapability, 'view'>;
 
-// The six delegatable director features (the `view` capability is implicit).
+// The delegatable director features (the `view` capability is implicit).
 const CAPABILITY_COLUMNS: { capability: DelegatableCapability; label: string }[] = [
   { capability: 'audit_view', label: 'Audit log' },
   { capability: 'settings_manage', label: 'Settings' },
   { capability: 'webhooks_manage', label: 'Webhooks' },
+  { capability: 'share_manage', label: 'Share links' },
   { capability: 'map_import', label: 'Import' },
   { capability: 'map_export', label: 'Export' },
   { capability: 'map_delete', label: 'Delete' },

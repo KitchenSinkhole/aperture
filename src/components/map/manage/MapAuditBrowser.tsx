@@ -29,7 +29,7 @@ const CATEGORY_KINDS: Record<AuditEventCategory, MapEventKind[]> = {
   signature: ['signature.create', 'signature.update', 'signature.delete'],
   note: ['note.created', 'note.updated', 'note.deleted'],
   map: ['map.create', 'map.update', 'map.delete', 'map.restore', 'map.purge'],
-  access: ['access.granted', 'access.revoked'],
+  access: ['access.granted', 'access.revoked', 'share.created', 'share.revoked'],
 };
 const CATEGORIES: AuditEventCategory[] = [
   'system',
@@ -48,6 +48,7 @@ const DESTRUCTIVE_KINDS: MapEventKind[] = [
   'map.delete',
   'map.purge',
   'access.revoked',
+  'share.revoked',
 ];
 
 const CATEGORY_LABEL: Record<AuditEventCategory, string> = {

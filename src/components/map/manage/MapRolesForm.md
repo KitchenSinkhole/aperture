@@ -10,7 +10,7 @@
 | mapId | string | yes | The map whose delegations are edited |
 
 ### Renders
-A `<table>` with one row per corporation title and one checkbox column per delegatable feature (Audit log, Settings, Webhooks, Import, Export, Delete). Falls back to a message when delegation is unavailable (non-corp map), the corp has no titles yet, on load error, or while loading.
+A `<table>` with one row per corporation title and one checkbox column per delegatable feature (Audit log, Settings, Webhooks, Share links, Import, Export, Delete). Falls back to a message when delegation is unavailable (non-corp map), the corp has no titles yet, on load error, or while loading.
 
 ### Behaviour & Interactions
 - Fetches `getMapDelegationState(mapId)` on mount (the tab only mounts when selected); refetches after a failed toggle to revert to server truth.

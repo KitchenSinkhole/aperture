@@ -21,6 +21,7 @@ import { MapBehaviorForm } from '@/components/map/manage/MapBehaviorForm';
 import { MapTaggingForm } from '@/components/map/manage/MapTaggingForm';
 import { MapWebhooksPanel } from '@/components/map/manage/MapWebhooksPanel';
 import { MapRolesForm } from '@/components/map/manage/MapRolesForm';
+import { MapSharePanel } from '@/components/map/manage/MapSharePanel';
 import type { MapCapability, MapEventPayload, MapSettings } from '@/types';
 
 /**
@@ -29,8 +30,9 @@ import type { MapCapability, MapEventPayload, MapSettings } from '@/types';
  * persists via `updateMapSettingsAction` (`map_update`). Each management tab is
  * revealed by the viewer's delegated capability (`capabilities`, resolved from
  * `resolveMapCapabilities`; a manager holds all): Behavior + Auto-tagging ←
- * `settings_manage`, Webhooks ← `webhooks_manage`, Export ← `map_export`,
- * Import ← `map_import` — all re-checked server-side. The Roles & Permissions
+ * `settings_manage`, Webhooks ← `webhooks_manage`, Share links ←
+ * `share_manage`, Export ← `map_export`, Import ← `map_import` — all
+ * re-checked server-side. The Roles & Permissions
  * tab (delegating features to titles) is manager-only (`canManage`). The audit
  * log lives in its own wider dialog (`MapAuditDialog`).
  */
@@ -75,6 +77,7 @@ export function MapSettingsDialog({
             {can('settings_manage') && <TabsTab value="behavior">Behavior</TabsTab>}
             {can('settings_manage') && <TabsTab value="tagging">Auto-tagging</TabsTab>}
             {can('webhooks_manage') && <TabsTab value="webhooks">Webhooks</TabsTab>}
+            {can('share_manage') && <TabsTab value="shares">Share links</TabsTab>}
             {can('map_export') && <TabsTab value="export">Export</TabsTab>}
             {can('map_import') && <TabsTab value="import">Import</TabsTab>}
             {canManage && <TabsTab value="roles">Roles &amp; Permissions</TabsTab>}
@@ -113,6 +116,11 @@ export function MapSettingsDialog({
           {can('webhooks_manage') && (
             <TabsPanel value="webhooks">
               <MapWebhooksPanel mapId={mapId} />
+            </TabsPanel>
+          )}
+          {can('share_manage') && (
+            <TabsPanel value="shares">
+              <MapSharePanel mapId={mapId} />
             </TabsPanel>
           )}
           {can('map_export') && (

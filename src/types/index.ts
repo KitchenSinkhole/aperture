@@ -254,6 +254,34 @@ export type ShareRedactionProfile = {
   showConnectionSigIds: boolean;
 };
 
+/**
+ * One share link as the management panel renders it. Carries the raw `token`
+ * so the panel can rebuild the `/live/<token>` URL for the copy button — this
+ * shape is only ever returned to a viewer holding `share_manage`. `expired` is
+ * resolved server-side against `now()` so the row's status does not depend on
+ * the client's clock.
+ */
+export type MapShareListItem = ShareRedactionProfile & {
+  id: string;
+  token: string;
+  label: string;
+  expiresAt: string | null;
+  expired: boolean;
+  createdAt: string;
+  createdByName: string | null;
+};
+
+/**
+ * The minimum a viewer needs to be told the map is being published: one entry
+ * per live share, no token. Everyone who can see the map gets these, not just
+ * managers — a live share is deliberately visible to the people it exposes.
+ */
+export type LiveShareBadge = {
+  id: string;
+  label: string;
+  expiresAt: string | null;
+};
+
 /** The six cosmic-signature groups (every group except `wormhole`). Their site
  * names are baked into the EVE client and have no SDE rows, so they're carried
  * as free-text `name` strings rather than a `typeId` FK. */

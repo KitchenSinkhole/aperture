@@ -17,7 +17,7 @@
 | onImported | (payloads: MapEventPayload[]) => void | yes | Folds imported event payloads onto the live canvas (wired to the canvas's `onBulkPaste`). |
 
 ### Renders
-A tabbed dialog (`Tabs`): **General** (name + icon inputs, read-only scope/visibility) and **Settings** (per-device display preferences — low-contrast theme toggle plus wormhole-type-picker grouping toggles) always show. Each management tab is revealed by the viewer's capability: **Behavior** + **Auto-tagging** (`settings_manage`, `MapBehaviorForm` / `MapTaggingForm`), **Webhooks** (`webhooks_manage`, `MapWebhooksPanel`), **Export** (`map_export`), **Import** (`map_import`). **Roles & Permissions** (`MapRolesForm`) shows only for a manager (`canManage`).
+A tabbed dialog (`Tabs`): **General** (name + icon inputs, read-only scope/visibility) and **Settings** (per-device display preferences — low-contrast theme toggle plus wormhole-type-picker grouping toggles) always show. Each management tab is revealed by the viewer's capability: **Behavior** + **Auto-tagging** (`settings_manage`, `MapBehaviorForm` / `MapTaggingForm`), **Webhooks** (`webhooks_manage`, `MapWebhooksPanel`), **Share links** (`share_manage`, `MapSharePanel`), **Export** (`map_export`), **Import** (`map_import`). **Roles & Permissions** (`MapRolesForm`) shows only for a manager (`canManage`).
 
 ### Behaviour & Interactions
 - General Save → `updateMapSettingsAction({ mapId, name, icon })` (`map_update`); empty icon trims to `null`. A name change reflects live on the canvas via the realtime `map.update` echo.
@@ -36,4 +36,4 @@ A tabbed dialog (`Tabs`): **General** (name + icon inputs, read-only scope/visib
 - `Dialog`, `Tabs`, `Button`, `Input` primitives; `sonner` toasts; lucide `Download`/`Save`/`Upload`.
 - `@/lib/lowContrast` — `readLowContrast` / `writeLowContrast` for the Settings-tab low-contrast toggle.
 - `@/lib/wormholePickerPrefs` — `readWhPickerPrefs` / `writeWhPickerPrefs` for the Settings-tab wormhole-picker grouping toggle.
-- `MapBehaviorForm`, `MapTaggingForm`, `MapWebhooksPanel`, `MapRolesForm` (`@/components/map/manage/*`) — the management tabs.
+- `MapBehaviorForm`, `MapTaggingForm`, `MapWebhooksPanel`, `MapSharePanel`, `MapRolesForm` (`@/components/map/manage/*`) — the management tabs.

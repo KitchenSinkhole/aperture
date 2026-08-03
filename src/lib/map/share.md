@@ -22,6 +22,18 @@ A share token resolves to exactly one map id; callers (the public route, the WS 
 
 ---
 
+### listMapShares(mapId: bigint): Promise<MapShareListItem[]>
+Every non-revoked share on a map, newest first — the rows the Share links panel renders. Expired shares are kept and flagged `expired` (resolved server-side against `now()`, so the row's status doesn't depend on the client's clock) so a manager can see why a link stopped working; a revoked share leaves the panel and survives only in the audit log. LEFT JOINs `ap_character` for the creator's name.
+
+**Returns:** Rows including the **raw token**, so a caller must gate on `share_manage` before calling.
+
+---
+
+### loadLiveShareBadges(mapId: bigint): Promise<LiveShareBadge[]>
+The map's live shares without their tokens — the feed for the in-map "this map is published" indicator, which every viewer sees, not just managers. Same liveness rule as `resolveShareToken` minus the soft-deleted-parent clause, which the map page has already established by rendering at all.
+
+---
+
 ### revokeShareToken(shareId: bigint): Promise<string | null>
 Sets `revoked_at` on the share and closes every live public WebSocket pinned to its token (`closePublicSocketsForToken`). Idempotent: a share that is already revoked or does not exist is left alone and the function returns `null`.
 

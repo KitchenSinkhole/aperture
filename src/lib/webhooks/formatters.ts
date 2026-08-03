@@ -192,9 +192,39 @@ export function describeMapEvent(event: MapEventPayload, ctx: WebhookEventContex
       return `granted title **${event.roleName}** ${CAPABILITY_LABEL[event.capability]}`;
     case 'access.revoked':
       return `revoked title **${event.roleName}**'s ${CAPABILITY_LABEL[event.capability]}`;
+    case 'share.created':
+      return `published public share link **${event.label}** (${describeShareProfile(event)})`;
+    case 'share.revoked':
+      return `revoked public share link **${event.label}**`;
     default:
       return null;
   }
+}
+
+/** Human phrase for each share presence mode (what a spectator sees of the roster). */
+const PRESENCE_LABEL: Record<
+  Extract<MapEventPayload, { kind: 'share.created' }>['presenceMode'],
+  string
+> = {
+  none: 'pilots hidden',
+  anonymous: 'pilot counts only',
+  full: 'pilots named',
+};
+
+/**
+ * The redaction profile of a minted share, spelled out so the audit line says
+ * what was actually exposed rather than that a link exists.
+ */
+function describeShareProfile(
+  event: Extract<MapEventPayload, { kind: 'share.created' }>,
+): string {
+  const clauses = [PRESENCE_LABEL[event.presenceMode]];
+  if (event.showSignatures) clauses.push('signatures shown');
+  if (event.showConnectionSigIds) clauses.push('hole sig IDs shown');
+  clauses.push(
+    event.expiresAt ? `expires ${event.expiresAt.slice(0, 10)}` : 'no expiry',
+  );
+  return clauses.join(', ');
 }
 
 /** Human phrase for each delegatable map capability (drives the audit/Discord sentence). */
@@ -208,6 +238,7 @@ const CAPABILITY_LABEL: Record<
   map_import: 'map import',
   map_export: 'map export',
   map_delete: 'map deletion',
+  share_manage: 'share-link management',
 };
 
 /** Per-field `field → value` clauses for a `connection.update` patch (only changed keys). */

@@ -108,11 +108,11 @@ export const mapRight = pgEnum('map_right', [
  * feature a corp title can be granted on a single map via an
  * `ap_map_role_access` row. `view` is the existing role→map view overlay (any
  * feature grant implies view). The rest map one-to-one onto the director
- * features: audit log, settings, webhooks, import, export, delete. Distinct
- * from `map_right` (the coarse mutate-guard vocabulary), which mixes in
- * non-delegatable, non-per-map values (`map_create`, view-gated `map_update`,
- * `map_share`) and lacks `audit_view`/`settings_manage`/`webhooks_manage`.
- * Directors/owners/admins hold every capability implicitly.
+ * features: audit log, settings, webhooks, import, export, delete, and public
+ * share links. Distinct from `map_right` (the coarse mutate-guard vocabulary),
+ * which mixes in non-delegatable, non-per-map values (`map_create`, view-gated
+ * `map_update`) and lacks `audit_view`/`settings_manage`/`webhooks_manage`/
+ * `share_manage`. Directors/owners/admins hold every capability implicitly.
  */
 export const mapCapability = pgEnum('map_capability', [
   'view',
@@ -122,6 +122,7 @@ export const mapCapability = pgEnum('map_capability', [
   'map_import',
   'map_export',
   'map_delete',
+  'share_manage',
 ]);
 
 /**

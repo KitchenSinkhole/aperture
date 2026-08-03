@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { MapCanvas } from '@/components/map/MapCanvas';
 import { CurrentMapScopeSync } from '@/components/map/CurrentMapScopeSync';
 import { loadMapForView, loadMapSettings } from '@/lib/map/loadMap';
+import { loadLiveShareBadges } from '@/lib/map/share';
 import { canManageMap, resolveMapCapabilities } from '@/lib/auth/rights';
 import { loadRouteConfig } from '@/lib/map/routeConfig';
 import { statsForSystems } from '@/lib/map/stats';
@@ -62,6 +63,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     mainCharacterId,
     canManage,
     capabilities,
+    liveShares,
   ] = await Promise.all([
     statsForSystems(systemIds),
     intelForSystems(systemIds),
@@ -75,6 +77,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     getMainCharacterId(session.userId),
     canManageMap(BigInt(session.characterId), mapId),
     resolveMapCapabilities(BigInt(session.characterId), mapId),
+    loadLiveShareBadges(mapId),
   ]);
 
   // Active characters drive both the CTRL+V paste location check (ids) and the
@@ -101,6 +104,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
         settings={settings}
         canManage={canManage}
         capabilities={[...capabilities]}
+        liveShares={liveShares}
         travelAnimation={travelAnimation}
         signatureIndicators={signatureIndicators}
         viewerCharacterIds={viewerCharacterIds}

@@ -22,7 +22,7 @@ After fetching `limit + 1` rows it batch-resolves every referenced system name i
 ---
 
 ### auditActorSummary(mapId, characterId, from?, to?): Promise<ActorSummary>
-Cheap `COUNT(*) GROUP BY kind` aggregate for the drill-down header: per-category counts, total, and a highlighted destructive count (`system.removed`, `connection.delete`, `signature.delete`, `note.deleted`, `map.delete`, `map.purge`, `access.revoked`). `characterId` is a bigint **account-main** id (aggregates every commit by any character in that account via `rolledActorId`) or `'none'`. Applies the same position-only exclusion + date window as the feed so the numbers match.
+Cheap `COUNT(*) GROUP BY kind` aggregate for the drill-down header: per-category counts, total, and a highlighted destructive count (`system.removed`, `connection.delete`, `signature.delete`, `note.deleted`, `map.delete`, `map.purge`, `access.revoked`, `share.revoked`). `characterId` is a bigint **account-main** id (aggregates every commit by any character in that account via `rolledActorId`) or `'none'`. Applies the same position-only exclusion + date window as the feed so the numbers match.
 
 ---
 

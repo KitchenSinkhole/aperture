@@ -96,6 +96,7 @@ const DESTRUCTIVE_KINDS: ReadonlySet<MapEventKind> = new Set([
   'map.delete',
   'map.purge',
   'access.revoked',
+  'share.revoked',
 ]);
 
 /**
