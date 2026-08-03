@@ -11,7 +11,7 @@ import {
 } from '@xyflow/react';
 import { Tooltip } from '@base-ui/react/tooltip';
 import { RefreshCw, Shield, type LucideIcon } from 'lucide-react';
-import { connectionBadges, connectionStyle } from '@/components/map/styling';
+import { connectionBadges, connectionStyle, systemClassColor } from '@/components/map/styling';
 import { useEdgeAnchors, type EdgeAnchor } from '@/components/map/useEdgeAnchors';
 import type { PublicMapConnectionEdge } from '@/types';
 
@@ -24,34 +24,59 @@ import type { PublicMapConnectionEdge } from '@/types';
 // endpoint node: the two mouths of one hole carry different codes, and knowing
 // which to look for in which system is the whole point.
 
-export type PublicConnectionEdgeData = PublicMapConnectionEdge;
+export type PublicConnectionEdgeData = PublicMapConnectionEdge & {
+  /** `universe_system.security` at each end, for tinting that end's sig tag with the far system's class. */
+  endpointSecurity: { source: string | null; target: string | null };
+  /** Publishes this edge's hover so both endpoint tiles can ring alongside the tags. */
+  onHoverChange: (connectionId: string | null) => void;
+};
 
-/** How far a sig tag sits from its endpoint, along the edge. */
-const SIG_TAG_ALONG_PX = 26;
-/** How far a sig tag sits off the line. The two ends go opposite ways. */
-const SIG_TAG_PERP_PX = 15;
-/** Ceiling on the along-edge offset, as a share of the gap between endpoints. */
-const SIG_TAG_ALONG_MAX_SHARE = 0.35;
+/** Nominal sig-tag box. Not measured — a fixed-size mono code at this font size. */
+const SIG_TAG_W_PX = 34;
+const SIG_TAG_H_PX = 18;
+/** How far a tag laps onto its tile, so it reads as a tab clipped to the face. */
+const SIG_TAG_OVERLAP_PX = 3;
+/** Breathing room between the two tags when a short gap forces perpendicular relief. */
+const SIG_TAG_RELIEF_GAP_PX = 4;
 
 /**
- * Places a tag beside its own endpoint. The along-edge nudge is capped at a
- * share of the gap so neither tag ever drifts past the midpoint, and the two
- * ends sit on opposite sides of the line (`perpSign`) so they stay legible even
- * when the two systems are placed almost touching.
+ * Places a tag flush against its own endpoint's fanned attachment point,
+ * lapping onto the tile. Adjacency carries attribution, not distance, so this
+ * holds at any hole length. When the gap is too short for both tags to clear
+ * each other head-on, they shift apart perpendicular to the face — safe here
+ * because each tag still touches its own node, so adjacency outranks the split.
  */
-function tagPosition(anchor: EdgeAnchor, other: EdgeAnchor, perpSign: 1 | -1): { x: number; y: number } {
+function tagPosition(anchor: EdgeAnchor, other: EdgeAnchor, sign: 1 | -1): { x: number; y: number } {
+  const horizontal = anchor.position === Position.Left || anchor.position === Position.Right;
+  const approach = horizontal ? SIG_TAG_W_PX : SIG_TAG_H_PX;
+  const separate = horizontal ? SIG_TAG_H_PX : SIG_TAG_W_PX;
   const gap = Math.hypot(other.x - anchor.x, other.y - anchor.y);
-  const along = Math.min(SIG_TAG_ALONG_PX, gap * SIG_TAG_ALONG_MAX_SHARE);
-  const perp = SIG_TAG_PERP_PX * perpSign;
+  const tight = gap < 2 * approach - 2 * SIG_TAG_OVERLAP_PX;
+  const shift = tight ? (sign * (separate + SIG_TAG_RELIEF_GAP_PX)) / 2 : 0;
+
   switch (anchor.position) {
     case Position.Right:
-      return { x: anchor.x + along, y: anchor.y + perp };
+      return { x: anchor.x - SIG_TAG_OVERLAP_PX, y: anchor.y + shift };
     case Position.Left:
-      return { x: anchor.x - along, y: anchor.y + perp };
+      return { x: anchor.x + SIG_TAG_OVERLAP_PX, y: anchor.y + shift };
     case Position.Bottom:
-      return { x: anchor.x + perp, y: anchor.y + along };
+      return { x: anchor.x + shift, y: anchor.y - SIG_TAG_OVERLAP_PX };
     case Position.Top:
-      return { x: anchor.x + perp, y: anchor.y - along };
+      return { x: anchor.x + shift, y: anchor.y + SIG_TAG_OVERLAP_PX };
+  }
+}
+
+/** Anchors a tag's own edge, rather than its center, to the face it laps onto. */
+function tagTransformOrigin(position: Position): string {
+  switch (position) {
+    case Position.Right:
+      return 'translate(0, -50%)';
+    case Position.Left:
+      return 'translate(-100%, -50%)';
+    case Position.Bottom:
+      return 'translate(-50%, 0)';
+    case Position.Top:
+      return 'translate(-50%, -100%)';
   }
 }
 
@@ -69,6 +94,10 @@ export function PublicConnectionEdge(props: EdgeProps & { data: PublicConnection
   } = props;
 
   const [hovered, setHovered] = useState(false);
+  const setHoverState = (next: boolean) => {
+    setHovered(next);
+    data.onHoverChange(next ? props.id : null);
+  };
 
   const anchors = useEdgeAnchors(props.id, source, target);
 
@@ -103,19 +132,23 @@ export function PublicConnectionEdge(props: EdgeProps & { data: PublicConnection
           stroke="transparent"
           strokeWidth={20}
           style={{ pointerEvents: 'stroke' }}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
+          onMouseEnter={() => setHoverState(true)}
+          onMouseLeave={() => setHoverState(false)}
         />
       )}
       {showSigTags && hovered && (
         <EdgeLabelRenderer>
           <SigTag
             position={tagPosition(anchors.source, anchors.target, -1)}
+            face={anchors.source.position}
             sigId={sigIds.source}
+            farClassColor={systemClassColor(data.endpointSecurity.target)}
           />
           <SigTag
             position={tagPosition(anchors.target, anchors.source, 1)}
+            face={anchors.target.position}
             sigId={sigIds.target}
+            farClassColor={systemClassColor(data.endpointSecurity.source)}
           />
         </EdgeLabelRenderer>
       )}
@@ -176,22 +209,31 @@ export function PublicConnectionEdge(props: EdgeProps & { data: PublicConnection
 }
 
 /**
- * The code to look for in the system this tag sits beside. An unscanned end
- * reads as an explicit dash, so "nobody has been through here" is never
- * mistaken for a tag that failed to render.
+ * The code to look for in the system this tag sits beside, flush against that
+ * system's own tile face. An unscanned end reads as an explicit dash, so
+ * "nobody has been through here" is never mistaken for a tag that failed to
+ * render. The border carries the *far* system's class colour — the class of
+ * the system this hole leads to — as a second cue independent of position.
  */
 function SigTag({
   position,
+  face,
   sigId,
+  farClassColor,
 }: {
   position: { x: number; y: number };
+  face: Position;
   sigId: string | null;
+  farClassColor: string;
 }) {
   return (
     <div
-      className="nodrag nopan pointer-events-none absolute rounded-sm border border-spec-line bg-spec-rail px-1.5 py-0.5 font-spec-mono text-[11px] font-semibold leading-none shadow-md"
-      style={{ transform: `translate(-50%, -50%) translate(${position.x}px, ${position.y}px)` }}
-      title={sigId ? `Signature ${sigId}` : 'This side has not been scanned'}
+      className="nodrag nopan pointer-events-none absolute rounded-sm border-2 bg-spec-rail px-1.5 py-0.5 font-spec-mono text-[11px] font-semibold leading-none shadow-md"
+      style={{
+        transform: `${tagTransformOrigin(face)} translate(${position.x}px, ${position.y}px)`,
+        borderColor: farClassColor,
+      }}
+      aria-label={sigId ? `Signature ${sigId}` : 'This side has not been scanned'}
     >
       {sigId ? (
         <span className="text-spec-text">{sigId.slice(0, 3)}</span>

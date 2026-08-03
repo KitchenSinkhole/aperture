@@ -17,9 +17,14 @@
 - Nodes and edges are plain `useMemo` derivations of `data` — no controlled node state, no change handlers. Dragging, connecting, selection and the delete key are all off.
 - Auto-fits on mount with a padded `fitView` capped at a modest max zoom. Legibility at stream resolution comes from that zoom rather than from enlarging node type, which would widen tiles and break the positions the map's authors arranged them in.
 - Presence is indexed by EVE solar-system id at whatever fidelity the token published (`anonymous` counts plus hull-class buckets, or the `full` pilot list) and handed to each node.
+- A node's `highlighted` flag is set by either the `highlightedSystemId` prop (board-row hover) or by being an endpoint of `hoveredConnectionId` (edge hover, reported up via each connection's `onHoverChange`) — the two sources merge into one highlight set so a hovered hole rings both of its tiles the same way a hovered board row rings its one.
+- Each connection's edge data carries `endpointSecurity`, each end's `universe_system.security` label looked up from `data.systems`, for `PublicConnectionEdge` to tint its sig tags with the far system's class.
 
 ### Depends On
 - `@xyflow/react` (`ReactFlow`, `ReactFlowProvider`, `Background`, `Controls`)
 - `@base-ui/react/tooltip` (`Tooltip.Provider`)
 - `PublicSystemNode`, `PublicConnectionEdge`
 - Types `PublicMapViewData`, `PublicMapPresence` from `@/types`
+
+### Local State
+- `hoveredConnectionId: string | null` — the connection under the pointer, feeding the merged node highlight set.

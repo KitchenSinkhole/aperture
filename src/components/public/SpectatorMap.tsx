@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Background,
   ConnectionMode,
@@ -39,6 +39,17 @@ export function SpectatorMap({
   highlightedSystemId: string | null;
 }) {
   const presenceBySystem = useMemo(() => presenceIndex(data.presence), [data.presence]);
+  const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null);
+
+  const securityBySystem = useMemo(
+    () => new Map(data.systems.map((s) => [s.id, s.security])),
+    [data.systems],
+  );
+
+  const hoveredEndpoints = useMemo(() => {
+    const conn = data.connections.find((c) => c.id === hoveredConnectionId);
+    return conn ? [conn.source, conn.target] : [];
+  }, [data.connections, hoveredConnectionId]);
 
   const nodes = useMemo<Node<PublicSystemNodeData>[]>(
     () =>
@@ -49,10 +60,10 @@ export function SpectatorMap({
         data: {
           ...s,
           presence: presenceBySystem.get(s.systemId) ?? null,
-          highlighted: s.id === highlightedSystemId,
+          highlighted: s.id === highlightedSystemId || hoveredEndpoints.includes(s.id),
         },
       })),
-    [data.systems, presenceBySystem, highlightedSystemId],
+    [data.systems, presenceBySystem, highlightedSystemId, hoveredEndpoints],
   );
 
   const edges = useMemo<Edge<PublicConnectionEdgeData>[]>(
@@ -62,9 +73,16 @@ export function SpectatorMap({
         type: 'connection',
         source: c.source,
         target: c.target,
-        data: c,
+        data: {
+          ...c,
+          endpointSecurity: {
+            source: securityBySystem.get(c.source) ?? null,
+            target: securityBySystem.get(c.target) ?? null,
+          },
+          onHoverChange: setHoveredConnectionId,
+        },
       })),
-    [data.connections],
+    [data.connections, securityBySystem],
   );
 
   return (

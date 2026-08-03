@@ -37,7 +37,7 @@ export type PublicNodePresence =
 
 export type PublicSystemNodeData = PublicMapSystemNode & {
   presence: PublicNodePresence | null;
-  /** Set while the matching entrances-board row is hovered. */
+  /** Set while the matching entrances-board row or an incident connection is hovered. */
   highlighted: boolean;
 };
 

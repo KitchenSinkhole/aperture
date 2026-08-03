@@ -11,7 +11,7 @@ Receives xyflow `NodeProps` with `data: PublicSystemNodeData`.
 | Field | Type | Description |
 |---|---|---|
 | presence | PublicNodePresence \| null | Per-system presence at the fidelity the token's `presenceMode` allows; null when it publishes none. |
-| highlighted | boolean | Set while the matching entrances-board row is hovered. |
+| highlighted | boolean | Set while the matching entrances-board row, or an incident connection, is hovered. |
 
 `PublicNodePresence` is a discriminated union: `{ mode: 'anonymous'; count; byClass }` or `{ mode: 'full'; pilots }`.
 
