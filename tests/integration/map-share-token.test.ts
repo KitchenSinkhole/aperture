@@ -104,7 +104,6 @@ describe.skipIf(!run)('Public map share — token model (real Postgres)', () => 
     expect(resolved!.profile).toEqual({
       presenceMode: 'anonymous',
       showSignatures: false,
-      showKillStats: true,
       showConnectionSigIds: false,
     });
   });

@@ -13,7 +13,6 @@
 - `label` — `text`, required. Operator-facing name, named in audit entries.
 - `presence_mode` — `share_presence_mode` enum, default `anonymous`.
 - `show_signatures` — `boolean`, default `false`.
-- `show_kill_stats` — `boolean`, default `true`.
 - `show_connection_sig_ids` — `boolean`, default `false`. Independent of `show_signatures`.
 - `expires_at` — `timestamptz`, nullable. NULL = no expiry.
 - `revoked_at` — `timestamptz`, nullable. Non-null = revoked; not a row delete.

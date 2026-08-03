@@ -19,7 +19,6 @@ An explainer paragraph, a table of non-revoked links (Label / Exposes / Expires 
 - Expiry is chosen as a preset duration and sent as hours; the action resolves the absolute timestamp server-side.
 - Revoke is behind a confirm dialog that states the link cannot be brought back.
 - A link's redaction profile is fixed at mint, so rows are not editable.
-- `show_kill_stats` is not offered: no stage has wired kill data into the public view.
 
 ### Emits / Calls
 - `listShares` / `createMapShare` / `revokeMapShare` — Server Actions in `src/app/(app)/actions/mapShares.ts` (all `share_manage`-gated).

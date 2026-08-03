@@ -43,7 +43,6 @@ export async function resolveShareToken(token: string): Promise<ResolvedShareTok
       label: apMapShare.label,
       presenceMode: apMapShare.presenceMode,
       showSignatures: apMapShare.showSignatures,
-      showKillStats: apMapShare.showKillStats,
       showConnectionSigIds: apMapShare.showConnectionSigIds,
     })
     .from(apMapShare)
@@ -71,7 +70,6 @@ export async function resolveShareToken(token: string): Promise<ResolvedShareTok
     profile: {
       presenceMode: row.presenceMode,
       showSignatures: row.showSignatures,
-      showKillStats: row.showKillStats,
       showConnectionSigIds: row.showConnectionSigIds,
     },
   };
@@ -93,7 +91,6 @@ export async function listMapShares(mapId: bigint): Promise<MapShareListItem[]> 
       label: apMapShare.label,
       presenceMode: apMapShare.presenceMode,
       showSignatures: apMapShare.showSignatures,
-      showKillStats: apMapShare.showKillStats,
       showConnectionSigIds: apMapShare.showConnectionSigIds,
       expiresAt: apMapShare.expiresAt,
       createdAt: apMapShare.createdAt,
@@ -110,7 +107,6 @@ export async function listMapShares(mapId: bigint): Promise<MapShareListItem[]> 
     label: r.label,
     presenceMode: r.presenceMode,
     showSignatures: r.showSignatures,
-    showKillStats: r.showKillStats,
     showConnectionSigIds: r.showConnectionSigIds,
     expiresAt: r.expiresAt?.toISOString() ?? null,
     expired: r.expiresAt !== null && r.expiresAt.getTime() <= now,

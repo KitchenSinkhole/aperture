@@ -38,7 +38,7 @@ These are the load-bearing rules. A stage that breaks one is wrong even if it sh
 |---|---|---|
 | Systems, positions, class, region, status | always | the invite |
 | Connections, scope, mass state, EOL | always | |
-| Kill stats / zKB | per-token flag, default on | already public data |
+| Kill stats / zKB | never | dropped: the public view does not carry kill data and will not |
 | Signatures (full per-system list) | per-token flag, default **off** | unscanned IDs advertise where you have not looked |
 | Connection endpoint sig IDs | separate per-token flag, default **off**, **on for the event token** | the 3-char code at each end of an already-visible wormhole. Saves guests re-scanning their way in. Discloses nothing about unscanned sigs or cosmic sites, so it is deliberately independent of the full-signature flag. |
 | Pilot presence | per-token enum `none`/`anonymous`/`full`, default `anonymous` | `anonymous` = per-system counts, optionally hull-class buckets, no names |
@@ -54,7 +54,7 @@ These are the load-bearing rules. A stage that breaks one is wrong even if it sh
 **Goal:** Persist share tokens and resolve them, with no UI and no public route yet.
 **Touches:** `src/db/schema/ap/enums.ts`, `src/db/schema/ap/mapShare.ts` (new), `src/db/migrations/`, `src/types/index.ts`, `src/lib/map/share.ts` (new)
 
-- New `ap_map_share`: identity id, `map_id` FK → `ap_map` `ON DELETE CASCADE`, `token` (unique, unguessable, generated server-side), `label`, `presence_mode`, `show_signatures`, `show_kill_stats`, `expires_at timestamptz`, `revoked_at timestamptz`, `show_connection_sig_ids`, `created_by_character_id` FK → `ap_character` `ON DELETE SET NULL`, `created_at timestamptz`.
+- New `ap_map_share`: identity id, `map_id` FK → `ap_map` `ON DELETE CASCADE`, `token` (unique, unguessable, generated server-side), `label`, `presence_mode`, `show_signatures`, `expires_at timestamptz`, `revoked_at timestamptz`, `show_connection_sig_ids`, `created_by_character_id` FK → `ap_character` `ON DELETE SET NULL`, `created_at timestamptz`.
 - New `pgEnum('share_presence_mode', ['none','anonymous','full'])`.
 - Lifecycle follows CLAUDE.md: no generic `active` boolean. Live = `revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())` and the parent map is not soft-deleted.
 - `resolveShareToken(token)` returns the map id plus the redaction profile, or `null`. Constant-ish work on miss; do not leak existence through timing or status codes.
@@ -71,7 +71,7 @@ These are the load-bearing rules. A stage that breaks one is wrong even if it sh
 - `loadPublicMapView(token)` → `PublicMapViewData | null`.
 - `PublicMapViewData` is a distinct type, not a `Partial<MapViewData>` or an `Omit<...>`. It has no field capable of carrying a redacted value.
 - Presence projection branches on `presence_mode`: `none` omits the roster entirely, `anonymous` emits per-system counts (and optional hull-class buckets) with no names or character ids, `full` emits the roster minus account linkage (`userId`, `mainCharacterId`). Every mode filters to pilots whose system is actually visible on the map — `loadMapPresence` deliberately returns tracked pilots wherever they currently are (their system need not be on the map), and publishing a location off the visible chain would leak fleet activity a public link was never meant to expose.
-- Signature inclusion branches on the per-token flag. **Kill stats are out of scope for this stage** — `show_kill_stats` stays persisted and unread; no `stats` field exists on `PublicMapViewData` and `statsForSystems` is not called from the public path. Revisit when a stage actually wires kill data into the public view.
+- Signature inclusion branches on the per-token flag. **Kill stats are out of scope, permanently** — no `stats` field exists on `PublicMapViewData` and `statsForSystems` is never called from the public path. The `show_kill_stats` column that Stage 1 created was dropped in Stage 6 (migration 0062): a redaction toggle a manager can set but that changes nothing published is worse than no toggle at all.
 - **Connection endpoint sig IDs.** When `show_connection_sig_ids` is set, the public connection edge carries `sourceSigId` and `targetSigId` (each `string | null`), derived server-side from `ap_map_signature` rows where `map_connection_id` matches, mapped to whichever endpoint each row's `map_system_id` belongs to. These ride on the **edge**, not in a signature list, so the field is available with the full-signature flag off. Only `wh`-scope connections can carry them; k-space gates always emit null.
 - Either end may legitimately be null when the far side has not been pasted yet. Null means "not known to the map", and the projection must not conflate that with "no sig".
 - **System tag vs. alias.** The ABC chain `tag` is published (it's a scheme-generated navigation label, not operator free text); the `alias` is redacted (it's operator-typed and routinely carries intent, e.g. "Staging").

@@ -250,7 +250,6 @@ export type ErrorSource = (typeof errorSource.enumValues)[number];
 export type ShareRedactionProfile = {
   presenceMode: SharePresenceMode;
   showSignatures: boolean;
-  showKillStats: boolean;
   showConnectionSigIds: boolean;
 };
 

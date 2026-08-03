@@ -68,11 +68,7 @@ const createSchema = z.object({
   expiresInHours: z.number().int().positive().max(MAX_EXPIRY_HOURS).nullable(),
 });
 
-/**
- * Mint a share link. `show_kill_stats` is left at its column default — no stage
- * has wired kill data into the public view, so there is nothing for the flag to
- * gate and nothing to offer a manager.
- */
+/** Mint a share link. */
 export async function createMapShare(
   input: z.input<typeof createSchema>,
 ): Promise<ActionResult<{ token: string }>> {

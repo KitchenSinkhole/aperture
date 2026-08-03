@@ -19,7 +19,5 @@ Insert an `ap_map_share` row with a fresh `generateShareToken()` and commit `sha
 
 **Parameters:** `input` — `{ mapId, label, presenceMode, showSignatures, showConnectionSigIds, expiresInHours }` (Zod-validated; `label` 1–60 chars, `presenceMode` is the `share_presence_mode` enum). `expiresInHours` is a positive integer capped at one year, or `null` for no expiry; the absolute `expires_at` is computed server-side so a skewed client clock cannot extend a link.
 
-`show_kill_stats` is left at its column default — no stage has wired kill data into the public view, so there is nothing for the flag to gate and nothing to offer a manager.
-
 ### revokeMapShare(shareId: string): Promise<ActionResult>
 Sets `revoked_at` and closes every live public socket pinned to the token (`revokeShareToken`), then commits `share.revoked`. Access is cut **before** the audit insert, so a failure there still leaves the link dead. Idempotent: an already-revoked share succeeds without a second audit entry. An unknown share id and a share on a map the actor can't manage return the identical `'Share link not found.'` — share ids are sequential, so a distinct "forbidden" would let any signed-in character enumerate which maps have live links.

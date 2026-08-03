@@ -428,6 +428,13 @@
       "when": 1785753912396,
       "tag": "0061_map_share_management",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1785756093980,
+      "tag": "0062_drop_share_kill_stats",
+      "breakpoints": true
     }
   ]
 }

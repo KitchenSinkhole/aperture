@@ -21,7 +21,6 @@ export const apMapShare = pgTable(
     label: text('label').notNull(),
     presenceMode: sharePresenceMode('presence_mode').notNull().default('anonymous'),
     showSignatures: boolean('show_signatures').notNull().default(false),
-    showKillStats: boolean('show_kill_stats').notNull().default(true),
     // Independent of `showSignatures` — the two endpoint sig IDs on an
     // already-visible wormhole disclose nothing about unscanned sigs.
     showConnectionSigIds: boolean('show_connection_sig_ids').notNull().default(false),
