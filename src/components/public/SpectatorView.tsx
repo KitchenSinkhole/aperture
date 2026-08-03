@@ -48,9 +48,11 @@ export function SpectatorView({
       <PromoBar mapName={data.map.name} shareLabel={data.map.shareLabel} />
 
       <div className="flex min-h-0 flex-1 flex-col-reverse lg:flex-row">
-        {/* Below lg the board sits under the map, capped so the chain keeps
-            the majority of a phone screen. */}
-        <div className="max-h-[45dvh] shrink-0 overflow-y-auto border-t border-spec-line lg:max-h-none lg:w-[19rem] lg:border-r lg:border-t-0">
+        {/* Below lg the board sits under the map, capped at two fifths of the
+            split so the chain keeps the other three. The cap is a share of this
+            row, not of the viewport, so the promo bar and a footer that wraps
+            on a narrow screen come out of both sides evenly. */}
+        <div className="max-h-[40%] shrink-0 overflow-y-auto border-t border-spec-line lg:max-h-none lg:w-[19rem] lg:border-r lg:border-t-0">
           <EntrancesBoard
             entrances={data.entrances}
             pinnedEntranceId={pinnedEntranceId}
