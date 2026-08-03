@@ -10,6 +10,7 @@
 - `typedRoutes: true` — typed `Route` link checking.
 - `serverExternalPackages: ['pg', 'graphile-worker', 'pino']` — keep these native/Node-only packages out of the server bundle. `pino` is external so its runtime `require` of `sonic-boom`/thread-stream isn't mangled by the bundler (the structured logger, `src/lib/log/logger.ts`).
 - `turbopack.root` — pins the workspace root to this directory.
+- `allowedDevOrigins` — private LAN ranges (`192.168.*.*`, `10.*.*.*`, `172.16.*.*`). Dev-only: Next blocks cross-origin requests to `/_next` and `/__nextjs` resources, and a browser sends `Origin` on the HMR websocket handshake though not on `<script src>` loads, so a device reaching the dev server by LAN address otherwise downloads every chunk but has its HMR socket dropped and reload-loops without hydrating. `localhost` is always allowed. The dev server reads this at boot, so a change needs a restart (`tsx watch` restarts on `server.ts`, not on this file).
 - `headers()` — emits one `Content-Security-Policy` header on every route (`source: '/:path*'`).
 
 ### Content-Security-Policy

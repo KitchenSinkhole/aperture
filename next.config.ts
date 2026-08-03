@@ -10,6 +10,12 @@ const imgSrc = "img-src 'self' data: blob: https://images.evetech.net";
 
 const nextConfig: NextConfig = {
   typedRoutes: true,
+  // Dev only. Next blocks cross-origin dev requests, and a browser sends an
+  // `Origin` header on the HMR websocket handshake but not on `<script src>`
+  // loads — so a device hitting the dev server by LAN address downloads every
+  // chunk, has its HMR socket dropped, and reload-loops without ever
+  // hydrating. Private ranges cover testing from a phone or tablet.
+  allowedDevOrigins: ['192.168.*.*', '10.*.*.*', '172.16.*.*'],
   serverExternalPackages: ['pg', 'graphile-worker', 'pino'],
   turbopack: {
     root: __dirname,
