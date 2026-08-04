@@ -513,7 +513,7 @@ export const apertureConfig = {
    */
   PUBLIC_LINKS: {
     repo: 'https://github.com/KitchenSinkhole/aperture',
-    discord: 'https://discord.gg/D38uFUXSy',
+    discord: 'https://discord.gg/zHCR856J5f',
   },
 
   /** WebSocket upgrade path for token-authed public spectator sockets, structurally separate from `WS_PATH`. */
