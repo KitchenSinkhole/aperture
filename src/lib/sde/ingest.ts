@@ -1111,6 +1111,7 @@ async function recordSdeIngestSuccess(
     currentBuild: build,
     currentReleaseDate: releaseDate,
     refreshedAt: new Date(),
+    behindSince: null,
     failedAt: null,
     failureReason: null,
     consecutiveFailures: 0,

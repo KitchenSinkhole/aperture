@@ -10,9 +10,10 @@ Registered task `'sde-refresh'`, cron `'15 12 * * *'` (12:15 UTC — shortly aft
 
 Each run:
 1. Reads `ap_sde_state.current_build`; if the row is absent, seeds it with the pinned `SDE_BUILD`/`SDE_RELEASE_DATE` (a deployment upgrading in place without a prior ingest through this codebase).
-2. Fetches `fetchLatestSdeManifest()` ([[ingest]]) and upserts `latest_build`/`latest_release_date`/`checked_at` unconditionally — staleness is visible even when no refresh is attempted.
-3. If `latest_build <= current_build`, returns `{ refreshed: false }` — nothing to do.
-4. Otherwise runs `runSdeIngestChild({ build, releaseDate })` ([[sdeIngestChild]]), the same isolated-child path `sde-ingest` uses. On success `runIngest`'s own `ap_sde_state` write (Stage 1) records the new `current_build` and clears the failure fields. On failure, writes `failed_at`/`failure_reason`/`consecutive_failures` (incremented) onto `ap_sde_state` directly, then re-throws so `withInstrumentation` also records the `ap_job_run` failure — a failed gate inside the child (`SdeFormatError`/`SdeGateError`) never partially writes, since `runIngest` writes nothing until every gate passes.
+2. Fetches `fetchLatestSdeManifest()` ([[ingest]]). A fetch that throws records `failed_at`/`failure_reason`/`consecutive_failures` before re-throwing, so a check that never reached its comparison is still named in `/setup`.
+3. Upserts `latest_build`/`latest_release_date`/`checked_at` unconditionally, and sets `behind_since` from the comparison: `coalesce(behind_since, now())` when `latest_build > current_build` (holding the timestamp of the check that first saw the gap), `null` when the two agree. `getSdeStatus` ([[status]]) measures the staleness grace window against it.
+4. If `latest_build <= current_build`, returns `{ refreshed: false }` — nothing to do.
+5. Otherwise runs `runSdeIngestChild({ build, releaseDate })` ([[sdeIngestChild]]), the same isolated-child path `sde-ingest` uses. On success `runIngest`'s own `ap_sde_state` write records the new `current_build` and clears `behind_since` plus the failure fields. On failure, writes `failed_at`/`failure_reason`/`consecutive_failures` (incremented) onto `ap_sde_state` directly, then re-throws so `withInstrumentation` also records the `ap_job_run` failure — a failed gate inside the child (`SdeFormatError`/`SdeGateError`) never partially writes, since `runIngest` writes nothing until every gate passes.
 
 **Returns** (as `ap_job_run.notes`): `{ latestBuild, currentBuild, refreshed, counts? }`.
 

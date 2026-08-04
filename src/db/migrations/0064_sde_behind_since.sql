@@ -1,0 +1,1 @@
+ALTER TABLE "ap_sde_state" ADD COLUMN "behind_since" timestamp with time zone;

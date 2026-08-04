@@ -52,14 +52,32 @@ interface RefreshResult {
 
 async function refresh(): Promise<RefreshResult> {
   const { currentBuild } = await ensureStateRow();
-  const manifest = await fetchLatestSdeManifest();
 
+  let manifest: { build: number; releaseDate: string };
+  try {
+    manifest = await fetchLatestSdeManifest();
+  } catch (err) {
+    // A check that never reached its comparison is a failure worth naming in
+    // `/setup`; `checked_at` stops advancing, which is what the banner reads.
+    await recordFailure(err instanceof Error ? err.message : String(err));
+    throw err;
+  }
+
+  const behind = manifest.build > currentBuild;
   await db
     .update(apSdeState)
-    .set({ latestBuild: manifest.build, latestReleaseDate: manifest.releaseDate, checkedAt: new Date() })
+    .set({
+      latestBuild: manifest.build,
+      latestReleaseDate: manifest.releaseDate,
+      checkedAt: new Date(),
+      // `coalesce` holds the timestamp of the check that first saw the gap
+      // across every later check, so the grace window measures the age of the
+      // gap rather than the age of the most recent check.
+      behindSince: behind ? sql`coalesce(${apSdeState.behindSince}, now())` : null,
+    })
     .where(eq(apSdeState.id, 1));
 
-  if (manifest.build <= currentBuild) {
+  if (!behind) {
     return { latestBuild: manifest.build, currentBuild, refreshed: false };
   }
 

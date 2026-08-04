@@ -92,6 +92,8 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 
 **SDE self-refresh**
 - `SDE_REFRESH_MAX_SHRINK_PCT` (5) — acceptance gate on an SDE ingest (`src/lib/sde/ingest.ts`): a gated `universe_*` table whose new-build row count drops more than this percent below the live count fails the run before any write. Tables seeded from the hand-maintained catalog CSVs are exempt (their re-binding check is a hard failure on any miss, stricter than a shrink threshold).
+- `SDE_STALE_GRACE_HOURS` (2) — how long `ap_sde_state.behind_since` may stand before `getSdeStatus` (`src/lib/sde/status.ts`) reports `stale`.
+- `SDE_CHECK_STALE_HOURS` (36) — how long `ap_sde_state.checked_at` may go without advancing before `getSdeStatus` reports `stale`. Sized above the `sde-refresh` cron period so one ordinary day between checks is not an incident; it is the only signal covering a refresh that never reached its build comparison.
 
 Per-task cron expressions live as `cron` strings on each task module in `src/lib/jobs/tasks/`, not here.
 

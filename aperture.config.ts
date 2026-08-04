@@ -582,6 +582,26 @@ export const apertureConfig = {
    * check is stricter.
    */
   SDE_REFRESH_MAX_SHRINK_PCT: 5,
+
+  /**
+   * How long the instance may sit on a build older than the newest one CCP has
+   * published before the staleness banner calls it an incident, counted from
+   * `ap_sde_state.behind_since`. Since the daily refresh discovers a new build
+   * and ingests it in the same run, a gap outliving this window means the
+   * ingest did not complete, not that CCP published moments ago.
+   */
+  SDE_STALE_GRACE_HOURS: 2,
+
+  /**
+   * How long `ap_sde_state.checked_at` may go without advancing before the
+   * banner treats the static data as stale. Must stay comfortably above the
+   * `sde-refresh` cron period (24h) so one ordinary day between checks is not
+   * an incident. This is the only signal that catches a refresh which never
+   * reached its comparison — a job runner that stopped, or a manifest fetch
+   * failing every time — where `latest_build` never advances and the
+   * build-gap check therefore sees nothing wrong.
+   */
+  SDE_CHECK_STALE_HOURS: 36,
 } as const;
 
 export type ApertureConfig = typeof apertureConfig;

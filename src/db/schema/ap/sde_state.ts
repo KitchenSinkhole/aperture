@@ -16,6 +16,12 @@ export const apSdeState = pgTable(
     latestBuild: integer('latest_build'),
     latestReleaseDate: date('latest_release_date', { mode: 'string' }),
     checkedAt: timestamp('checked_at', { withTimezone: true }),
+    // When a check first observed `latest_build > current_build`, held across
+    // subsequent checks until the two converge. Staleness is measured from
+    // here rather than `latest_release_date` (a date, so it carries no publish
+    // time) or `checked_at` (which resets on the very check that discovers the
+    // gap).
+    behindSince: timestamp('behind_since', { withTimezone: true }),
     refreshedAt: timestamp('refreshed_at', { withTimezone: true }),
     failedAt: timestamp('failed_at', { withTimezone: true }),
     failureReason: text('failure_reason'),
