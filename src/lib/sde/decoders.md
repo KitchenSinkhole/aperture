@@ -10,6 +10,9 @@ One schema per SDE YAML file (`categories.yaml`, `groups.yaml`, `dogmaAttributes
 
 `localizedSchema` accepts either a bare value or a `{ [locale]: value }` map — the SDE's two shapes for localized text — where a value is a string or a number (a purely-digit name is parsed as a YAML number, not a string); `en()` (`ingest.ts`) coerces to string.
 
+### `sdeLatestManifestSchema`
+One line of `<SDE_BASE>/latest.jsonl`, the newline-delimited build-freshness manifest `fetchLatestSdeManifest` (`ingest.ts`) polls: `_key`, `buildNumber`, `releaseDate`. `.loose()` — the manifest carries entries for other keys the ingest doesn't read.
+
 ### `SdeFormatError`
 Thrown by `decodeEntries` when one entry fails its schema, or when the file's top level isn't an object keyed by id. Carries `file`, `entryKey`, and `cause` (a `ZodError` or a plain message); the error message names the file, the entry, and the failing field path.
 

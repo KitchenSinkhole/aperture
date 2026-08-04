@@ -31,8 +31,9 @@ Builds graphile-worker cron items for modules whose `cron` is set. The identifie
 - Registers `incursion-refresh`, the 5-minute active-incursion ESI refresh task.
 - Registers `webhook-dispatch`, a non-cron task enqueued by `commitMapEvent` per `ap_map_event` insert on maps with at least one configured Discord webhook.
 - Registers `character-cleanup`, the 5-minute cron that clears expired kicks and resyncs stale `authz_level` rows against ESI.
-- Registers `sde-ingest`, a non-cron task wrapping `runIngest` so the setup wizard can trigger a static-data refresh on-demand.
+- Registers `sde-ingest`, a non-cron task wrapping `runIngest` so the setup wizard can trigger a pinned-build static-data refresh on-demand.
 - Registers `csv-ingest`, a non-cron task wrapping `runCsvIngest` so the setup wizard can re-ingest the vendored wormhole CSVs (statics/overrides/classes) without re-running the full SDE ingest.
+- Registers `sde-refresh`, the daily 12:15 UTC cron that checks CCP's published SDE build against `ap_sde_state` and ingests a newer one through the same isolated child-process path as `sde-ingest`.
 - Registers `metrics-snapshot`, the 1-minute cron that samples the metric registry + gauges into `ap_metric_snapshot` for the admin metrics page's history graphs.
 - Registers `killmail-cleanup`, the daily cron that deletes `universe_killmail` cache rows older than `KILLMAIL_CACHE_RETENTION_DAYS` by kill time.
 - ESI cannot return other corps' structures, so structure intel is manual entry (`ap_structure`) with no recurring resolve job.

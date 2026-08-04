@@ -102,6 +102,15 @@ export const sdeStargateSchema = z
   })
   .loose();
 
+/** One line of `<SDE_BASE>/latest.jsonl` — the build-freshness manifest `sde-refresh` polls. */
+export const sdeLatestManifestSchema = z
+  .object({
+    _key: z.string(),
+    buildNumber: z.number().int(),
+    releaseDate: z.string(),
+  })
+  .loose();
+
 /** Thrown when an SDE YAML entry fails its Zod schema — format drift, not content. */
 export class SdeFormatError extends Error {
   constructor(

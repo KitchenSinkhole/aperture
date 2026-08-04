@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs';
-import { mkdir, readFile, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -41,6 +41,7 @@ import {
   sdeConstellationSchema,
   sdeDogmaAttributeSchema,
   sdeGroupSchema,
+  sdeLatestManifestSchema,
   sdeRegionSchema,
   sdeSolarSystemSchema,
   sdeStargateSchema,
@@ -53,22 +54,29 @@ import { SYSTEM_EFFECT_BY_ID } from '@/lib/eve/systemEffectAssignments';
 import { drifterClassLabel } from '@/lib/eve/drifterSystems';
 
 /**
- * Pinned Tranquility SDE build. CCP reorganizes the SDE periodically, so
- * pinning the build keeps ingest reproducible and the Phase-0 gate counts
- * stable. Bump deliberately, re-running the smoke test against the new counts.
+ * Bootstrap-floor Tranquility SDE build: what a fresh database is seeded with
+ * (reproducible bootstrap, cached zip, known-good CSV binding), not a ceiling
+ * — the `sde-refresh` job (`src/lib/jobs/tasks/sdeRefresh.ts`) advances a
+ * running deployment past it as CCP publishes new builds. Bump deliberately,
+ * re-running the smoke test against the new counts.
  *
  * Source of truth + automation: https://developers.eveonline.com/docs/services/static-data
- * Latest build manifest: <SDE_BASE>/tranquility/latest.jsonl (key `sde`).
+ * Latest build manifest: `SDE_LATEST_MANIFEST_URL` (key `sde`).
  */
 export const SDE_BUILD = 3453885;
 export const SDE_RELEASE_DATE = '2026-07-31';
 const SDE_BASE = 'https://developers.eveonline.com/static-data/tranquility';
-export const SDE_ZIP_URL = `${SDE_BASE}/eve-online-static-data-${SDE_BUILD}-yaml.zip`;
+function sdeZipUrl(build: number): string {
+  return `${SDE_BASE}/eve-online-static-data-${build}-yaml.zip`;
+}
+export const SDE_ZIP_URL = sdeZipUrl(SDE_BUILD);
+export const SDE_LATEST_MANIFEST_URL = `${SDE_BASE}/latest.jsonl`;
 
 const DOGMA_ATTR_SCAN_WORMHOLE_STRENGTH = 3974;
 const WORMHOLE_GROUP_ID = 988;
 const OVERRIDE_REASON = 'esi-missing-3974';
 const CHUNK = 1000;
+const MANIFEST_FETCH_TIMEOUT_MS = 30_000;
 
 const CACHE_DIR = join(process.cwd(), '.sde-cache');
 const DATA_DIR = join(process.cwd(), 'scripts', 'data');
@@ -109,16 +117,73 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
-/** Download the pinned SDE zip into the cache dir if not already present. */
-export async function ensureSdeZip(): Promise<string> {
-  const dest = join(CACHE_DIR, `sde-${SDE_BUILD}-yaml.zip`);
+/** Download `build`'s SDE zip into the cache dir if not already present. Defaults to the pinned bootstrap build. */
+export async function ensureSdeZip(build: number = SDE_BUILD): Promise<string> {
+  const dest = join(CACHE_DIR, `sde-${build}-yaml.zip`);
   if (await fileExists(dest)) return dest;
   await mkdir(CACHE_DIR, { recursive: true });
-  console.log(`Downloading SDE build ${SDE_BUILD} from ${SDE_ZIP_URL} ...`);
-  const res = await fetch(SDE_ZIP_URL);
+  const url = sdeZipUrl(build);
+  console.log(`Downloading SDE build ${build} from ${url} ...`);
+  const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`SDE download failed: HTTP ${res.status}`);
   await pipeline(Readable.fromWeb(res.body as never), createWriteStream(dest));
   return dest;
+}
+
+const CACHE_ZIP_NAME = /^sde-(\d+)-yaml\.zip$/;
+
+/**
+ * Deletes every cached SDE zip except `keepBuild`'s, so a self-refreshing
+ * deployment doesn't accumulate one ~100MB zip per historical build. Called
+ * after a successful `runIngest` so `keepBuild` (the build just written) is
+ * never at risk. Best-effort: a stray unremovable file logs a warning rather
+ * than failing an otherwise-successful ingest.
+ */
+async function evictSupersededSdeZips(keepBuild: number): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await readdir(CACHE_DIR);
+  } catch {
+    return; // cache dir doesn't exist — nothing to evict
+  }
+  for (const entry of entries) {
+    const match = CACHE_ZIP_NAME.exec(entry);
+    if (!match || Number(match[1]) === keepBuild) continue;
+    try {
+      await unlink(join(CACHE_DIR, entry));
+    } catch (err) {
+      console.warn(`Failed to evict superseded SDE cache entry ${entry}: ${(err as Error).message}`);
+    }
+  }
+}
+
+/**
+ * Fetches and parses `SDE_LATEST_MANIFEST_URL` (`{ "_key": "sde", "buildNumber": …,
+ * "releaseDate": … }` newline-delimited JSON), returning the `sde` line. Throws
+ * on an HTTP failure or a manifest with no `sde` entry — both are format drift
+ * `sde-refresh` must fail loudly on rather than silently skip a check.
+ */
+export async function fetchLatestSdeManifest(): Promise<{ build: number; releaseDate: string }> {
+  const res = await fetch(SDE_LATEST_MANIFEST_URL, {
+    signal: AbortSignal.timeout(MANIFEST_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`SDE latest-manifest fetch failed: HTTP ${res.status}`);
+  const text = await res.text();
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let json: unknown;
+    try {
+      json = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    const parsed = sdeLatestManifestSchema.safeParse(json);
+    if (parsed.success && parsed.data._key === 'sde') {
+      return { build: parsed.data.buildNumber, releaseDate: parsed.data.releaseDate.slice(0, 10) };
+    }
+  }
+  throw new SdeFormatError('latest.jsonl', 'sde', 'no "sde" entry found');
 }
 
 function readYamlEntry(zip: AdmZip, entry: string): unknown {
@@ -567,7 +632,7 @@ export function findShrunkenTables(
 }
 
 /** Fails the ingest before any write if a gated table would shrink past `SDE_REFRESH_MAX_SHRINK_PCT`. */
-async function assertNoExcessiveShrink(newCounts: Record<string, number>) {
+async function assertNoExcessiveShrink(build: number, newCounts: Record<string, number>) {
   const liveCounts: Record<string, number> = {};
   for (const [key, table] of Object.entries(SHRINK_GATE_KEY_TO_TABLE)) {
     const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(table);
@@ -580,7 +645,7 @@ async function assertNoExcessiveShrink(newCounts: Record<string, number>) {
       .join('; ');
     throw new SdeGateError(
       'shrink',
-      `SDE build ${SDE_BUILD} shrinks beyond ${apertureConfig.SDE_REFRESH_MAX_SHRINK_PCT}% on: ${detail}`,
+      `SDE build ${build} shrinks beyond ${apertureConfig.SDE_REFRESH_MAX_SHRINK_PCT}% on: ${detail}`,
     );
   }
 }
@@ -1040,31 +1105,22 @@ async function recordSdeIngestSuccess(
   build: number,
   releaseDate: string,
   retainedOrphans: Record<string, { retained: number; ids: number[] }>,
+  uncatalogedWormholeCodes: string[],
 ) {
+  const values = {
+    currentBuild: build,
+    currentReleaseDate: releaseDate,
+    refreshedAt: new Date(),
+    failedAt: null,
+    failureReason: null,
+    consecutiveFailures: 0,
+    retainedOrphans,
+    uncatalogedWormholeCodes,
+  };
   await db
     .insert(apSdeState)
-    .values({
-      id: 1,
-      currentBuild: build,
-      currentReleaseDate: releaseDate,
-      refreshedAt: new Date(),
-      failedAt: null,
-      failureReason: null,
-      consecutiveFailures: 0,
-      retainedOrphans,
-    })
-    .onConflictDoUpdate({
-      target: apSdeState.id,
-      set: {
-        currentBuild: build,
-        currentReleaseDate: releaseDate,
-        refreshedAt: new Date(),
-        failedAt: null,
-        failureReason: null,
-        consecutiveFailures: 0,
-        retainedOrphans,
-      },
-    });
+    .values({ id: 1, ...values })
+    .onConflictDoUpdate({ target: apSdeState.id, set: values });
 }
 
 /**
@@ -1109,14 +1165,19 @@ export async function runCsvIngest(): Promise<IngestResult> {
 }
 
 /**
- * One-shot, re-runnable ingest of the pinned SDE build into every `universe_*`
- * table. Downloads the zip if absent, parses it and the vendored CSVs fully
- * (Zod decoders + CSV re-binding — format drift and an unresolvable catalog
- * row both fail here), checks for excessive per-table shrink against the live
- * tables, and only then writes — in FK-safe order, upserts (re-runnable).
+ * One-shot, re-runnable ingest of an SDE build into every `universe_*` table —
+ * the pinned bootstrap build by default, or `override.build` when called from
+ * `sde-refresh`. Downloads the zip if absent, parses it and the vendored CSVs
+ * fully (Zod decoders + CSV re-binding — format drift and an unresolvable
+ * catalog row both fail here), checks for excessive per-table shrink against
+ * the live tables, and only then writes — in FK-safe order, upserts
+ * (re-runnable).
  */
-export async function runIngest(): Promise<IngestResult> {
-  const zipPath = await ensureSdeZip();
+export async function runIngest(override?: { build: number; releaseDate: string }): Promise<IngestResult> {
+  const build = override?.build ?? SDE_BUILD;
+  const releaseDate = override?.releaseDate ?? SDE_RELEASE_DATE;
+
+  const zipPath = await ensureSdeZip(build);
   const zip = new AdmZip(zipPath);
 
   console.log('Parsing SDE archive ...');
@@ -1141,7 +1202,7 @@ export async function runIngest(): Promise<IngestResult> {
   };
 
   console.log('Checking for excessive shrink against the live tables ...');
-  await assertNoExcessiveShrink(counts);
+  await assertNoExcessiveShrink(build, counts);
 
   console.log('Writing categories, groups, dogma attributes ...');
   await writeCategories(parsed.categories);
@@ -1179,7 +1240,16 @@ export async function runIngest(): Promise<IngestResult> {
   console.log('Computing trade-hub proximity ...');
   counts.hubProximity = await computeHubProximity();
 
-  await recordSdeIngestSuccess(SDE_BUILD, SDE_RELEASE_DATE, deletion.retained);
+  const catalogedCodes = new Set(csv.wormholeCatalog.map((r) => r.name));
+  const uncatalogedWormholeCodes = Array.from(
+    new Set(parsed.wormholeCodeEntries.map((e) => e.code.toUpperCase())),
+  )
+    .filter((code) => !catalogedCodes.has(code))
+    .sort();
+  counts.uncatalogedWormholes = uncatalogedWormholeCodes.length;
 
-  return { build: SDE_BUILD, counts };
+  await recordSdeIngestSuccess(build, releaseDate, deletion.retained, uncatalogedWormholeCodes);
+  await evictSupersededSdeZips(build);
+
+  return { build, counts };
 }

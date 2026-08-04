@@ -11,6 +11,7 @@ import { mapPurge } from './tasks/mapPurge';
 import { metricsSnapshot } from './tasks/metricsSnapshot';
 import { partitionMaintenance } from './tasks/partitionMaintenance';
 import { sdeIngest } from './tasks/sdeIngest';
+import { sdeRefresh } from './tasks/sdeRefresh';
 import { signatureReap } from './tasks/signatureReap';
 import { sovFwRefresh } from './tasks/sovFwRefresh';
 import { systemStatsRefresh } from './tasks/systemStatsRefresh';
@@ -72,6 +73,9 @@ const modules: readonly JobModule[] = [
   sdeIngest,
   // On-demand vendored-CSV refresh, enqueued by the setup wizard's dedicated card.
   csvIngest,
+  // Daily check for a newer published SDE build; ingests it through the
+  // sde-ingest child-process path when found.
+  sdeRefresh,
 ];
 
 export function jobModules(): readonly JobModule[] {

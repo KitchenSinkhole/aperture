@@ -23,4 +23,4 @@
 **Constraints:**
 - `ap_sde_state_singleton_chk` — CHECK `(id = 1)`. Forbids a second state row.
 
-**Written by:** `runIngest` (`src/lib/sde/ingest.ts`) upserts `current_build`/`current_release_date`/`refreshed_at`/`retained_orphans` and clears `failed_at`/`failure_reason`/`consecutive_failures` on every successful full ingest. Read by the `(app)` layout staleness banner and the `/setup` detail view.
+**Written by:** `runIngest` (`src/lib/sde/ingest.ts`) upserts `current_build`/`current_release_date`/`refreshed_at`/`retained_orphans`/`uncataloged_wormhole_codes` and clears `failed_at`/`failure_reason`/`consecutive_failures` on every successful full ingest. The `sde-refresh` job task (`src/lib/jobs/tasks/sdeRefresh.ts`) upserts `latest_build`/`latest_release_date`/`checked_at` on every daily check, and on a failed refresh attempt writes `failed_at`/`failure_reason`/`consecutive_failures` (incremented) directly. Read by the `(app)` layout staleness banner and the `/setup` detail view.

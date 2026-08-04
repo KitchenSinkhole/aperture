@@ -1,9 +1,9 @@
 ## ingest.ts
 
-**Purpose:** One-shot, re-runnable ingest of the pinned CCP SDE build into every `universe_*` table.
+**Purpose:** One-shot, re-runnable ingest of a CCP SDE build into every `universe_*` table.
 **File:** `src/lib/sde/ingest.ts`
 
-Pinned build: **`SDE_BUILD = 3453885`** (released 2026-07-31), YAML variant. Source: https://developers.eveonline.com/docs/services/static-data. Zip cached at `.sde-cache/sde-<build>-yaml.zip`.
+Bootstrap-floor build: **`SDE_BUILD = 3453885`** (released 2026-07-31), YAML variant — what a fresh database is seeded with, not a ceiling; `runIngest`'s optional `override` advances a running deployment past it. Source: https://developers.eveonline.com/docs/services/static-data. Zip cached at `.sde-cache/sde-<build>-yaml.zip`, one file per build currently on disk (`evictSupersededSdeZips` deletes the rest after each successful ingest).
 
 ### Parse-then-write, gated
 
@@ -44,6 +44,8 @@ A missing CSV file is a hard failure (`SdeGateError('binding')`), not a skip —
 ### Wormhole code → typeId disambiguation
 The SDE ships duplicate `Wormhole <CODE>` types under group `988` (e.g. two "Wormhole J244", ids `30667` & `73748` — dogma-identical, both unpublished; ESI returns both and won't pick one). Because the catalog/override CSVs key on the WH code, a naive last-write-wins map can bind routing/overrides to a type id that **no `universe_system_static` row uses** — the static then silently drops from the UI (its `universe_wormhole` join finds nothing). `buildWormholeCodeToTypeId(entries, staticTypeIds)` resolves each collision toward the id present in the parsed `system-static.csv` rows, and warns only if both colliding ids are referenced by statics.
 
+Since the WH catalog CSVs are hand-maintained (frozen anoik.is dataset) and self-refresh cannot invent new rows for them, `runIngest` records the gap instead: every group-988 code the ingested build carries with no matching `wormhole-classes.csv` row is collected into `ap_sde_state.uncataloged_wormhole_codes`, so `/setup` can surface "CCP added a hole type nobody has catalogued yet" after a refresh.
+
 ---
 
 ### Vendored community data (anoik.is)
@@ -61,11 +63,14 @@ Editing: hand-edit rows directly (add types, refine sources/targets, set fixed d
 
 ---
 
-### SDE_BUILD / SDE_RELEASE_DATE / SDE_ZIP_URL
-Pinned-build constants. Bump deliberately and re-validate the Phase-0 gate counts.
+### SDE_BUILD / SDE_RELEASE_DATE / SDE_ZIP_URL / SDE_LATEST_MANIFEST_URL
+`SDE_BUILD`/`SDE_RELEASE_DATE`/`SDE_ZIP_URL` are the bootstrap-floor build constants (bump deliberately and re-validate the Phase-0 gate counts). `SDE_LATEST_MANIFEST_URL` is the newline-delimited build-freshness manifest `fetchLatestSdeManifest` polls.
 
-### ensureSdeZip(): Promise<string>
-Downloads the pinned zip into `.sde-cache/` if not already present; returns its path.
+### ensureSdeZip(build?: number): Promise<string>
+Downloads `build`'s zip into `.sde-cache/` if not already present; returns its path. Defaults to `SDE_BUILD`.
+
+### fetchLatestSdeManifest(): Promise<{ build: number; releaseDate: string }>
+Fetches `SDE_LATEST_MANIFEST_URL`, parses each line through `sdeLatestManifestSchema` (`./decoders.ts`), and returns the `_key: "sde"` line's `buildNumber`/`releaseDate` (truncated to `YYYY-MM-DD`). Throws on an HTTP failure or a manifest with no `sde` entry. Called by the `sde-refresh` job task (`src/lib/jobs/tasks/sdeRefresh.ts`).
 
 ### parseSdeArchive(zip): ParsedSde
 Parses every SDE YAML file into rows through the `./decoders` Zod schemas, entirely offline (no DB access). Returns the row arrays plus the derived `typeIds`/`attrIds`/`systemIds` sets, `systemNameToId`, and `wormholeCodeEntries`. Throws `SdeFormatError` on the first entry that fails its schema.
@@ -82,8 +87,8 @@ Pure. Projects a parsed build down to the row-id sets `syncSdeDeletions` needs, 
 ### syncSdeDeletions(keep: SdeKeepSets): Promise<SdeDeletionReport>
 Deletes rows absent from `keep` across the nine SDE-derived `universe_*` tables, guarded per-table against every inbound FK. Returns `{ deleted, retained }`, both keyed by db table name; `retained` entries carry a true count plus a sample of up to 50 ids. Throws `SdeGateError('shrink')` if any keep-set is empty. See "Deletion sync" above for the guard and ordering rules.
 
-### runIngest(): Promise<IngestResult>
-Parses the whole build (`parseSdeArchive` + `parseVendoredCsvs`) and checks it for excessive shrink (`findShrunkenTables` against the live tables) before writing anything. Only then writes in FK-safe order via `onConflictDoUpdate` (re-runnable), then runs `syncSdeDeletions` against the freshly written build. Returns `{ build, counts }` (row counts per logical table, plus `counts.deleted` and `counts.retainedOrphans` — both totals across every table). Bulk inserts chunked at 1000. Invoked by `scripts/sde-bootstrap.ts` (`pnpm sde:bootstrap`). Near the end it calls `computeHubProximity()` (`src/lib/sde/hubProximity.ts`) to recompute each HS system's nearest trade hub onto `universe_system` (`counts.hubProximity`); this runs only in the full ingest (it needs freshly-loaded, deletion-synced stargate edges + security), not in `runCsvIngest`. On success it upserts the `ap_sde_state` singleton row (`current_build`, `current_release_date`, `refreshed_at`, `retained_orphans`; clears `failed_at`/`failure_reason`/`consecutive_failures`) so every deployment records which build it actually holds.
+### runIngest(override?: { build: number; releaseDate: string }): Promise<IngestResult>
+Parses the whole build (`parseSdeArchive` + `parseVendoredCsvs`) and checks it for excessive shrink (`findShrunkenTables` against the live tables) before writing anything. Only then writes in FK-safe order via `onConflictDoUpdate` (re-runnable), then runs `syncSdeDeletions` against the freshly written build. Returns `{ build, counts }` (row counts per logical table, plus `counts.deleted`, `counts.retainedOrphans`, and `counts.uncatalogedWormholes` — all totals across every table). Bulk inserts chunked at 1000. `override` ingests a build other than the pinned `SDE_BUILD` (the `sde-refresh` job's path); omitted, it ingests `SDE_BUILD`/`SDE_RELEASE_DATE`. Invoked in-process by `scripts/sde-bootstrap.ts` (`pnpm sde:bootstrap`) and `scripts/sde-ingest-child.ts` (the isolated child both the `sde-ingest` and `sde-refresh` job tasks spawn). Near the end it calls `computeHubProximity()` (`src/lib/sde/hubProximity.ts`) to recompute each HS system's nearest trade hub onto `universe_system` (`counts.hubProximity`); this runs only in the full ingest (it needs freshly-loaded, deletion-synced stargate edges + security), not in `runCsvIngest`. On success it upserts the `ap_sde_state` singleton row (`current_build`, `current_release_date`, `refreshed_at`, `retained_orphans`, `uncataloged_wormhole_codes`; clears `failed_at`/`failure_reason`/`consecutive_failures`) so every deployment records which build it actually holds, then evicts every other cached zip in `.sde-cache/` for the ingested build's superseded siblings.
 
 ### runCsvIngest(): Promise<IngestResult>
 Re-ingests only the three vendored CSVs without touching the SDE zip, through the same `parseVendoredCsvs` gates as `runIngest`. Derives `systemIds`, `typeIds`, `systemNameToId`, and `wormholeCodeEntries` by querying `universe_system` and `universe_type` — requires those tables to be populated first. Invoked by `scripts/csv-ingest.ts` (`pnpm sde:csv`).
