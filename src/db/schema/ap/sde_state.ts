@@ -21,7 +21,7 @@ export const apSdeState = pgTable(
     failureReason: text('failure_reason'),
     consecutiveFailures: integer('consecutive_failures').notNull().default(0),
     // Rows a deletion-sync pass would have removed but kept because something
-    // still references them, keyed by table name (Stage 4).
+    // still references them, keyed by table name.
     retainedOrphans: jsonb('retained_orphans'),
     // Group-988 wormhole types present in the current build with no
     // `universe_wormhole` catalog row (Stage 5).

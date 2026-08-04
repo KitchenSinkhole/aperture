@@ -17,10 +17,10 @@
 - `failed_at` (`failedAt`, timestamptz, nullable) — when the most recent refresh attempt failed.
 - `failure_reason` (`failureReason`, text, nullable) — human-readable cause of the most recent failure.
 - `consecutive_failures` (`consecutiveFailures`, integer, `NOT NULL DEFAULT 0`) — resets to 0 on a successful ingest.
-- `retained_orphans` (`retainedOrphans`, jsonb, nullable) — deletion-sync rows kept because something still references them, keyed by table name.
+- `retained_orphans` (`retainedOrphans`, jsonb, nullable) — `Record<table name, { retained: number; ids: number[] }>`; rows deletion sync would have removed but kept because something still references them, `ids` capped at 50 samples. `null` means no ingest has run since this column was added; `{}` means the last ingest ran deletion sync and retained nothing.
 - `uncataloged_wormhole_codes` (`uncatalogedWormholeCodes`, jsonb, nullable) — group-988 wormhole types in the current build with no `universe_wormhole` catalog row.
 
 **Constraints:**
 - `ap_sde_state_singleton_chk` — CHECK `(id = 1)`. Forbids a second state row.
 
-**Written by:** `runIngest` (`src/lib/sde/ingest.ts`) upserts `current_build`/`current_release_date`/`refreshed_at` and clears `failed_at`/`failure_reason`/`consecutive_failures` on every successful full ingest. Read by the `(app)` layout staleness banner and the `/setup` detail view.
+**Written by:** `runIngest` (`src/lib/sde/ingest.ts`) upserts `current_build`/`current_release_date`/`refreshed_at`/`retained_orphans` and clears `failed_at`/`failure_reason`/`consecutive_failures` on every successful full ingest. Read by the `(app)` layout staleness banner and the `/setup` detail view.

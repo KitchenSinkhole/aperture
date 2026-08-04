@@ -1,6 +1,6 @@
 ## sde-decoders.test.ts
 
-**Purpose:** Proves the SDE parse boundary (`parseSdeArchive`, `./decoders.ts`) fails loudly before any DB write on format drift, and that the shrink-gate comparison (`findShrunkenTables`) is correct in isolation.
+**Purpose:** Proves the SDE parse boundary (`parseSdeArchive`, `./decoders.ts`) fails loudly before any DB write on format drift, that the shrink-gate comparison (`findShrunkenTables`) is correct in isolation, and that `DELETION_SPECS` stays leaf-first as the schema grows.
 **File:** `tests/unit/sde-decoders.test.ts`
 
 ### Setup
@@ -14,6 +14,7 @@
 - A missing zip entry throws `SdeFormatError`.
 - A top-level list instead of an id-keyed map throws `SdeFormatError`.
 - `findShrunkenTables`: within threshold, over threshold, a live count of 0 skipped, several offending tables reported together, and a table entirely missing from `newCounts` treated as a 100% shrink.
+- `DELETION_SPECS`: for every spec, every guard table that is itself under deletion sync appears at an earlier index — the regression guard for the leaf-first ordering `syncSdeDeletions` relies on for transitive retention. Pure, no DB: reads the exported spec list and resolves guard table names via `getTableName` from `drizzle-orm`.
 
 ### Depends On
-- `@/lib/sde/ingest` (`parseSdeArchive`, `findShrunkenTables`), `@/lib/sde/decoders` (`SdeFormatError`).
+- `@/lib/sde/ingest` (`parseSdeArchive`, `findShrunkenTables`, `DELETION_SPECS`), `@/lib/sde/decoders` (`SdeFormatError`).

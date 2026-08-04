@@ -1,7 +1,8 @@
 import AdmZip from 'adm-zip';
+import { getTableName } from 'drizzle-orm';
 import { stringify } from 'yaml';
 import { describe, expect, it } from 'vitest';
-import { findShrunkenTables, parseSdeArchive } from '@/lib/sde/ingest';
+import { DELETION_SPECS, findShrunkenTables, parseSdeArchive } from '@/lib/sde/ingest';
 import { SdeFormatError } from '@/lib/sde/decoders';
 
 const CATEGORY = { 1: { name: 'Test Category', published: true } };
@@ -143,5 +144,22 @@ describe('findShrunkenTables', () => {
     const next: Record<string, number> = {};
     const offenders = findShrunkenTables(next, live, maxPct);
     expect(offenders).toEqual([{ table: 'universe_type', live: 1000, next: 0, pctShrink: 100 }]);
+  });
+});
+
+describe('DELETION_SPECS ordering', () => {
+  it('processes every guarded table leaf-first: a spec never guards on a table synced later than itself', () => {
+    const indexByTableName = new Map(DELETION_SPECS.map((spec, i) => [spec.name, i]));
+
+    for (const [i, spec] of DELETION_SPECS.entries()) {
+      for (const guard of spec.guards) {
+        const guardedIndex = indexByTableName.get(getTableName(guard.table));
+        if (guardedIndex === undefined) continue; // not itself under deletion sync (e.g. an ap_* table) — no ordering constraint
+        expect(
+          guardedIndex,
+          `${spec.name} guards on ${getTableName(guard.table)}, which is synced later (index ${guardedIndex} >= ${i})`,
+        ).toBeLessThan(i);
+      }
+    }
   });
 });

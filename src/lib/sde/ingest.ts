@@ -5,18 +5,27 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import AdmZip from 'adm-zip';
 import { parse as parseCsv } from 'csv-parse/sync';
-import { eq, sql, type SQL } from 'drizzle-orm';
-import type { PgTable } from 'drizzle-orm/pg-core';
+import { and, eq, inArray, notExists, sql, type SQL } from 'drizzle-orm';
+import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { parse as parseYaml } from 'yaml';
 import { apertureConfig } from '../../../aperture.config';
 import { db } from '@/db/client';
 import {
+  apMapConnectionLog,
+  apMapSignature,
+  apMapSystem,
+  apRouteDestination,
   apSdeState,
+  apStructure,
+  apSystemStats,
   universeCategory,
   universeConstellation,
   universeDogmaAttribute,
+  universeFactionWarSystem,
   universeGroup,
+  universeIncursion,
   universeRegion,
+  universeSovereigntyMap,
   universeStargateEdge,
   universeSystem,
   universeSystemStatic,
@@ -122,7 +131,7 @@ function readYamlEntry(zip: AdmZip, entry: string): unknown {
   }
 }
 
-/** Thrown by a gate that must block a write: an unresolvable CSV binding, or a per-table shrink past `SDE_REFRESH_MAX_SHRINK_PCT`. Raised before `writeParsedSde` runs, so nothing has been written. */
+/** Thrown by a gate that must block a write: an unresolvable CSV binding, or a per-table shrink past `SDE_REFRESH_MAX_SHRINK_PCT`. Raised before the write phase runs, so nothing has been written. */
 export class SdeGateError extends Error {
   constructor(
     public readonly code: 'binding' | 'shrink',
@@ -359,7 +368,7 @@ export interface ParsedSde {
 /**
  * Parses every SDE YAML file into rows, entirely offline — no DB access. A
  * format-drift failure (`SdeFormatError`) or a truncated zip therefore always
- * happens before `writeParsedSde` issues its first statement.
+ * happens before the write phase issues its first statement.
  */
 export function parseSdeArchive(zip: AdmZip): ParsedSde {
   const categories = parseCategories(zip);
@@ -714,10 +723,14 @@ async function writeStargateEdges(rows: ParsedSde['stargateEdges']) {
   }
 }
 
+/** Reseeds authoritatively (full delete then insert) inside one transaction — the table is fully derived from the CSV, and an untransacted delete-then-fail would leave it empty. */
 async function writeSystemStatics(rows: CsvRows['systemStatics']) {
-  for (const c of chunk(rows)) {
-    await db.insert(universeSystemStatic).values(c).onConflictDoNothing();
-  }
+  await db.transaction(async (tx) => {
+    await tx.delete(universeSystemStatic);
+    for (const c of chunk(rows)) {
+      await tx.insert(universeSystemStatic).values(c).onConflictDoNothing();
+    }
+  });
 }
 
 /** Reseeds authoritatively (delete-by-reason then insert) inside one transaction so a mid-insert failure can't leave the overrides deleted but not replaced. */
@@ -752,13 +765,282 @@ async function writeWormholeCatalog(rows: CsvRows['wormholeCatalog']) {
   });
 }
 
+// --- Deletion sync ------------------------------------------------------------
+
+/**
+ * Row-id sets for every table the deletion pass covers, keyed the same as
+ * `IngestResult.counts`. Split out of `ParsedSde` so `syncSdeDeletions` can be
+ * driven from either a freshly parsed build (`runIngest`) or a hand-built
+ * keep-set in tests, without needing a full archive.
+ */
+export interface SdeKeepSets {
+  categories: Set<number>;
+  groups: Set<number>;
+  dogmaAttributes: Set<number>;
+  types: Set<number>;
+  typeAttributes: Set<string>; // `${typeId}:${attributeId}`
+  regions: Set<number>;
+  constellations: Set<number>;
+  systems: Set<number>;
+  stargateEdges: Set<string>; // `${fromSystemId}-${toSystemId}`
+}
+
+export function buildKeepSets(parsed: ParsedSde): SdeKeepSets {
+  return {
+    categories: new Set(parsed.categories.map((c) => c.id)),
+    groups: new Set(parsed.groups.map((g) => g.id)),
+    dogmaAttributes: parsed.attrIds,
+    types: parsed.typeIds,
+    typeAttributes: new Set(parsed.typeAttributes.map((a) => `${a.typeId}:${a.attributeId}`)),
+    regions: new Set(parsed.regions.map((r) => r.id)),
+    constellations: new Set(parsed.constellations.map((c) => c.id)),
+    systems: parsed.systemIds,
+    stargateEdges: new Set(parsed.stargateEdges.map((e) => `${e.fromSystemId}-${e.toSystemId}`)),
+  };
+}
+
+export interface SdeDeletionReport {
+  /** db table name -> rows removed. */
+  deleted: Record<string, number>;
+  /** db table name -> rows kept despite being absent from the new build, because something still references them. `ids` is capped at `RETAINED_ORPHAN_SAMPLE`; `retained` is the true count. */
+  retained: Record<string, { retained: number; ids: number[] }>;
+}
+
+const RETAINED_ORPHAN_SAMPLE = 50;
+
+export interface DeletionGuard {
+  table: PgTable;
+  column: AnyPgColumn;
+}
+
+export interface DeletionSpec {
+  name: string;
+  table: PgTable;
+  idColumn: AnyPgColumn;
+  keep: (keep: SdeKeepSets) => Set<number>;
+  guards: DeletionGuard[];
+}
+
+/**
+ * One entry per single-PK SDE-derived table, in leaf-first processing order:
+ * every table named in a `guards` entry is itself synced earlier in this list
+ * (or, for `universe_stargate_edge` / `universe_type_attribute`, by the
+ * bespoke composite-key helpers that run before this list). That ordering is
+ * what makes retention transitive for free — a system kept alive by
+ * `ap_map_system` still has a live row when its constellation's guard checks
+ * `universe_system.constellation_id`, so the constellation (and in turn its
+ * region) is retained too, without any extra bookkeeping.
+ *
+ * `universe_system.nearest_trade_hub_id` is deliberately not a guard: it's a
+ * derived column `computeHubProximity` clears and recomputes after this runs,
+ * and guarding on it would let a stale hub pointer pin a removed system
+ * forever. FK-less soft references (`ap_structure_event.system_id`,
+ * `ap_character.last_system_id`/`.last_ship_type_id`,
+ * `universe_incursion.staging_solar_system_id`/`infested_solar_systems`,
+ * `universe_killmail.body`) are excluded for the same reason — they already
+ * tolerate ids the SDE snapshot lacks.
+ */
+export const DELETION_SPECS: DeletionSpec[] = [
+  {
+    name: 'universe_system',
+    table: universeSystem,
+    idColumn: universeSystem.id,
+    keep: (k) => k.systems,
+    guards: [
+      { table: universeStargateEdge, column: universeStargateEdge.fromSystemId },
+      { table: universeStargateEdge, column: universeStargateEdge.toSystemId },
+      { table: universeSystemStatic, column: universeSystemStatic.systemId },
+      { table: universeWormhole, column: universeWormhole.targetSystemId },
+      { table: universeSovereigntyMap, column: universeSovereigntyMap.systemId },
+      { table: universeFactionWarSystem, column: universeFactionWarSystem.systemId },
+      { table: apMapSystem, column: apMapSystem.systemId },
+      { table: apRouteDestination, column: apRouteDestination.systemId },
+      { table: apStructure, column: apStructure.systemId },
+      { table: apSystemStats, column: apSystemStats.systemId },
+    ],
+  },
+  {
+    name: 'universe_constellation',
+    table: universeConstellation,
+    idColumn: universeConstellation.id,
+    keep: (k) => k.constellations,
+    guards: [
+      { table: universeSystem, column: universeSystem.constellationId },
+      { table: universeIncursion, column: universeIncursion.constellationId },
+    ],
+  },
+  {
+    name: 'universe_region',
+    table: universeRegion,
+    idColumn: universeRegion.id,
+    keep: (k) => k.regions,
+    guards: [{ table: universeConstellation, column: universeConstellation.regionId }],
+  },
+  {
+    name: 'universe_type',
+    table: universeType,
+    idColumn: universeType.id,
+    keep: (k) => k.types,
+    guards: [
+      { table: universeTypeAttribute, column: universeTypeAttribute.typeId },
+      { table: universeTypeOverride, column: universeTypeOverride.typeId },
+      { table: universeSystemStatic, column: universeSystemStatic.typeId },
+      { table: universeWormhole, column: universeWormhole.typeId },
+      { table: apMapConnectionLog, column: apMapConnectionLog.shipTypeId },
+      { table: apMapSignature, column: apMapSignature.typeId },
+      { table: apStructure, column: apStructure.structureTypeId },
+    ],
+  },
+  {
+    name: 'universe_group',
+    table: universeGroup,
+    idColumn: universeGroup.id,
+    keep: (k) => k.groups,
+    guards: [{ table: universeType, column: universeType.groupId }],
+  },
+  {
+    name: 'universe_category',
+    table: universeCategory,
+    idColumn: universeCategory.id,
+    keep: (k) => k.categories,
+    guards: [{ table: universeGroup, column: universeGroup.categoryId }],
+  },
+  {
+    name: 'universe_dogma_attribute',
+    table: universeDogmaAttribute,
+    idColumn: universeDogmaAttribute.id,
+    keep: (k) => k.dogmaAttributes,
+    guards: [{ table: universeTypeAttribute, column: universeTypeAttribute.attributeId }],
+  },
+];
+
+async function syncDeletionSpec(
+  spec: DeletionSpec,
+  keep: Set<number>,
+): Promise<{ name: string; deleted: number; retained: { retained: number; ids: number[] } | null }> {
+  const liveRows = await db.select({ id: spec.idColumn }).from(spec.table);
+  const absentees = liveRows.map((r) => r.id as number).filter((id) => !keep.has(id));
+  if (absentees.length === 0) return { name: spec.name, deleted: 0, retained: null };
+
+  const guardConditions = spec.guards.map((g) =>
+    notExists(db.select({ one: sql<number>`1` }).from(g.table).where(eq(g.column, spec.idColumn))),
+  );
+
+  let deletedTotal = 0;
+  let retainedTotal = 0;
+  const retainedIds: number[] = [];
+
+  for (const c of chunk(absentees)) {
+    const deletedRows = await db
+      .delete(spec.table)
+      .where(and(inArray(spec.idColumn, c), ...guardConditions))
+      .returning({ id: spec.idColumn });
+    const deletedIds = new Set(deletedRows.map((r) => r.id as number));
+    deletedTotal += deletedIds.size;
+    for (const id of c) {
+      if (!deletedIds.has(id)) {
+        retainedTotal += 1;
+        if (retainedIds.length < RETAINED_ORPHAN_SAMPLE) retainedIds.push(id);
+      }
+    }
+  }
+
+  return {
+    name: spec.name,
+    deleted: deletedTotal,
+    retained: retainedTotal > 0 ? { retained: retainedTotal, ids: retainedIds } : null,
+  };
+}
+
+/** No inbound FKs: full unconditional sync against the new build's edge set. */
+async function syncStargateEdges(keep: Set<string>): Promise<{ name: string; deleted: number }> {
+  const rows = await db
+    .select({ from: universeStargateEdge.fromSystemId, to: universeStargateEdge.toSystemId })
+    .from(universeStargateEdge);
+  const absentees = rows.filter((r) => !keep.has(`${r.from}-${r.to}`));
+  let deleted = 0;
+  for (const c of chunk(absentees)) {
+    const tuples = sql.join(
+      c.map((r) => sql`(${r.from}, ${r.to})`),
+      sql`, `,
+    );
+    const result = await db.execute(
+      sql`delete from universe_stargate_edge where (from_system_id, to_system_id) in (${tuples})`,
+    );
+    deleted += result.rowCount ?? 0;
+  }
+  return { name: 'universe_stargate_edge', deleted };
+}
+
+/**
+ * No inbound FKs: full unconditional sync. Runs before `DELETION_SPECS`
+ * because `universe_type`'s guard reads this table and must see only the new
+ * build's rows.
+ */
+async function syncTypeAttributes(keep: Set<string>): Promise<{ name: string; deleted: number }> {
+  const rows = await db
+    .select({ typeId: universeTypeAttribute.typeId, attributeId: universeTypeAttribute.attributeId })
+    .from(universeTypeAttribute);
+  const absentees = rows.filter((r) => !keep.has(`${r.typeId}:${r.attributeId}`));
+  let deleted = 0;
+  for (const c of chunk(absentees)) {
+    const tuples = sql.join(
+      c.map((r) => sql`(${r.typeId}, ${r.attributeId})`),
+      sql`, `,
+    );
+    const result = await db.execute(
+      sql`delete from universe_type_attribute where (type_id, attribute_id) in (${tuples})`,
+    );
+    deleted += result.rowCount ?? 0;
+  }
+  return { name: 'universe_type_attribute', deleted };
+}
+
+/**
+ * Removes rows absent from `keep` across the nine SDE-derived `universe_*`
+ * tables, guarded per-table against every inbound FK (not only `RESTRICT`
+ * ones — see `DELETION_SPECS`). Must run after the write phase (the new
+ * build's own rows need to already be in place for the anti-join and for
+ * `universe_wormhole` to be current as a guard) and before
+ * `computeHubProximity` (which BFSes `universe_stargate_edge` and would bake
+ * a removed gate into `nearest_trade_hub_jumps` otherwise).
+ */
+export async function syncSdeDeletions(keep: SdeKeepSets): Promise<SdeDeletionReport> {
+  for (const [key, set] of Object.entries(keep)) {
+    if (set.size === 0) {
+      throw new SdeGateError('shrink', `SDE deletion sync refuses to run with an empty keep-set for ${key}`);
+    }
+  }
+
+  const deleted: Record<string, number> = {};
+  const retained: Record<string, { retained: number; ids: number[] }> = {};
+
+  const edges = await syncStargateEdges(keep.stargateEdges);
+  deleted[edges.name] = edges.deleted;
+
+  const attrs = await syncTypeAttributes(keep.typeAttributes);
+  deleted[attrs.name] = attrs.deleted;
+
+  for (const spec of DELETION_SPECS) {
+    const result = await syncDeletionSpec(spec, spec.keep(keep));
+    deleted[result.name] = result.deleted;
+    if (result.retained) retained[result.name] = result.retained;
+  }
+
+  return { deleted, retained };
+}
+
 export interface IngestResult {
   build: number;
   counts: Record<string, number>;
 }
 
 /** Records a successful full ingest onto the `ap_sde_state` singleton row. */
-async function recordSdeIngestSuccess(build: number, releaseDate: string) {
+async function recordSdeIngestSuccess(
+  build: number,
+  releaseDate: string,
+  retainedOrphans: Record<string, { retained: number; ids: number[] }>,
+) {
   await db
     .insert(apSdeState)
     .values({
@@ -769,6 +1051,7 @@ async function recordSdeIngestSuccess(build: number, releaseDate: string) {
       failedAt: null,
       failureReason: null,
       consecutiveFailures: 0,
+      retainedOrphans,
     })
     .onConflictDoUpdate({
       target: apSdeState.id,
@@ -779,6 +1062,7 @@ async function recordSdeIngestSuccess(build: number, releaseDate: string) {
         failedAt: null,
         failureReason: null,
         consecutiveFailures: 0,
+        retainedOrphans,
       },
     });
 }
@@ -881,10 +1165,21 @@ export async function runIngest(): Promise<IngestResult> {
   await writeTypeOverrides(csv.typeOverrides);
   await writeWormholeCatalog(csv.wormholeCatalog);
 
+  console.log('Syncing deletions against the new build ...');
+  const deletion = await syncSdeDeletions(buildKeepSets(parsed));
+  for (const [table, n] of Object.entries(deletion.deleted)) {
+    if (n > 0) console.log(`  deleted ${n} row(s) from ${table}`);
+  }
+  for (const [table, r] of Object.entries(deletion.retained)) {
+    console.log(`  retained ${r.retained} row(s) in ${table} (still referenced)`);
+  }
+  counts.deleted = Object.values(deletion.deleted).reduce((a, b) => a + b, 0);
+  counts.retainedOrphans = Object.values(deletion.retained).reduce((a, b) => a + b.retained, 0);
+
   console.log('Computing trade-hub proximity ...');
   counts.hubProximity = await computeHubProximity();
 
-  await recordSdeIngestSuccess(SDE_BUILD, SDE_RELEASE_DATE);
+  await recordSdeIngestSuccess(SDE_BUILD, SDE_RELEASE_DATE, deletion.retained);
 
   return { build: SDE_BUILD, counts };
 }
