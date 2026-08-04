@@ -3,7 +3,7 @@
 **Purpose:** One-shot, re-runnable ingest of the pinned CCP SDE build into every `universe_*` table.
 **File:** `src/lib/sde/ingest.ts`
 
-Pinned build: **`SDE_BUILD = 3351823`** (released 2026-05-19), YAML variant. Source: https://developers.eveonline.com/docs/services/static-data. Zip cached at `.sde-cache/sde-<build>-yaml.zip`.
+Pinned build: **`SDE_BUILD = 3453885`** (released 2026-07-31), YAML variant. Source: https://developers.eveonline.com/docs/services/static-data. Zip cached at `.sde-cache/sde-<build>-yaml.zip`.
 
 ### SDE file → table mapping (new flat SDE layout)
 | SDE entry | Target table | Notes |

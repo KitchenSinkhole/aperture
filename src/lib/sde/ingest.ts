@@ -36,8 +36,8 @@ import { drifterClassLabel } from '@/lib/eve/drifterSystems';
  * Source of truth + automation: https://developers.eveonline.com/docs/services/static-data
  * Latest build manifest: <SDE_BASE>/tranquility/latest.jsonl (key `sde`).
  */
-export const SDE_BUILD = 3351823;
-export const SDE_RELEASE_DATE = '2026-05-19';
+export const SDE_BUILD = 3453885;
+export const SDE_RELEASE_DATE = '2026-07-31';
 const SDE_BASE = 'https://developers.eveonline.com/static-data/tranquility';
 export const SDE_ZIP_URL = `${SDE_BASE}/eve-online-static-data-${SDE_BUILD}-yaml.zip`;
 
