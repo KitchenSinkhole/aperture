@@ -25,6 +25,7 @@ import type {
   apMetricSnapshot,
   apRole,
   apRouteDestination,
+  apSdeState,
   apStructure,
   apStructureEvent,
   apSystemStats,
@@ -220,6 +221,9 @@ export type NewApStructure = InferInsertModel<typeof apStructure>;
 
 export type ApStructureEvent = InferSelectModel<typeof apStructureEvent>;
 export type NewApStructureEvent = InferInsertModel<typeof apStructureEvent>;
+
+export type ApSdeState = InferSelectModel<typeof apSdeState>;
+export type NewApSdeState = InferInsertModel<typeof apSdeState>;
 
 // Enum unions. `pgEnum` exposes its values via `.enumValues`; the
 // `[number]` index extracts the union of string literals.

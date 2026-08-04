@@ -10,6 +10,7 @@ import type { PgTable } from 'drizzle-orm/pg-core';
 import { parse as parseYaml } from 'yaml';
 import { db } from '@/db/client';
 import {
+  apSdeState,
   universeCategory,
   universeConstellation,
   universeDogmaAttribute,
@@ -609,6 +610,32 @@ export interface IngestResult {
   counts: Record<string, number>;
 }
 
+/** Records a successful full ingest onto the `ap_sde_state` singleton row. */
+async function recordSdeIngestSuccess(build: number, releaseDate: string) {
+  await db
+    .insert(apSdeState)
+    .values({
+      id: 1,
+      currentBuild: build,
+      currentReleaseDate: releaseDate,
+      refreshedAt: new Date(),
+      failedAt: null,
+      failureReason: null,
+      consecutiveFailures: 0,
+    })
+    .onConflictDoUpdate({
+      target: apSdeState.id,
+      set: {
+        currentBuild: build,
+        currentReleaseDate: releaseDate,
+        refreshedAt: new Date(),
+        failedAt: null,
+        failureReason: null,
+        consecutiveFailures: 0,
+      },
+    });
+}
+
 /**
  * Re-runnable ingest of only the vendored CSV files (system statics,
  * attr-3974 overrides, WH catalog). Derives the needed ID sets from the DB
@@ -685,6 +712,8 @@ export async function runIngest(): Promise<IngestResult> {
 
   console.log('Computing trade-hub proximity ...');
   counts.hubProximity = await computeHubProximity();
+
+  await recordSdeIngestSuccess(SDE_BUILD, SDE_RELEASE_DATE);
 
   return { build: SDE_BUILD, counts };
 }

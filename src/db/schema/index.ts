@@ -37,3 +37,4 @@ export * from './ap/structure_event';
 export * from './ap/integration_token';
 export * from './ap/character_presence';
 export * from './ap/map_share';
+export * from './ap/sde_state';
