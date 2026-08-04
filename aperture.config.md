@@ -90,6 +90,9 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `INTEGRATION_MAX_CHARACTER_IDS` — max `characterIds` a single `/api/integrations/activity-stats` request may bound its result to (400 on overflow).
 - `INTEGRATION_PRESENCE_DEFAULT_WINDOW_DAYS` (90) — `/api/integrations/presence-sessions` window when `from` is omitted, counted back from `to`. `INTEGRATION_PRESENCE_MAX_WINDOW_DAYS` (366) — widest `[from, to]` span accepted (400 on overflow).
 
+**SDE self-refresh**
+- `SDE_REFRESH_MAX_SHRINK_PCT` (5) — acceptance gate on an SDE ingest (`src/lib/sde/ingest.ts`): a gated `universe_*` table whose new-build row count drops more than this percent below the live count fails the run before any write. Tables seeded from the hand-maintained catalog CSVs are exempt (their re-binding check is a hard failure on any miss, stricter than a shrink threshold).
+
 Per-task cron expressions live as `cron` strings on each task module in `src/lib/jobs/tasks/`, not here.
 
 ### ApertureConfig

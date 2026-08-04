@@ -8,6 +8,7 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import { eq, sql, type SQL } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import { parse as parseYaml } from 'yaml';
+import { apertureConfig } from '../../../aperture.config';
 import { db } from '@/db/client';
 import {
   apSdeState,
@@ -24,6 +25,19 @@ import {
   universeTypeOverride,
   universeWormhole,
 } from '@/db/schema';
+import {
+  decodeEntries,
+  SdeFormatError,
+  sdeCategorySchema,
+  sdeConstellationSchema,
+  sdeDogmaAttributeSchema,
+  sdeGroupSchema,
+  sdeRegionSchema,
+  sdeSolarSystemSchema,
+  sdeStargateSchema,
+  sdeTypeDogmaSchema,
+  sdeTypeSchema,
+} from './decoders';
 import { deriveSecurityLabel, roundSecurity } from './security';
 import { computeHubProximity } from './hubProximity';
 import { SYSTEM_EFFECT_BY_ID } from '@/lib/eve/systemEffectAssignments';
@@ -50,21 +64,13 @@ const CHUNK = 1000;
 const CACHE_DIR = join(process.cwd(), '.sde-cache');
 const DATA_DIR = join(process.cwd(), 'scripts', 'data');
 
-type Loc = string | Record<string, string> | undefined | null;
-type Yaml = Record<string, Record<string, unknown>>;
+type Loc = string | number | Record<string, string | number> | undefined | null;
 
 function en(value: Loc): string | null {
   if (value == null) return null;
-  if (typeof value === 'string') return value;
-  return value.en ?? Object.values(value)[0] ?? null;
-}
-
-function num(value: unknown): number | null {
-  return typeof value === 'number' ? value : null;
-}
-
-function bool(value: unknown): boolean | null {
-  return typeof value === 'boolean' ? value : null;
+  if (typeof value !== 'object') return String(value);
+  const v = value.en ?? Object.values(value)[0] ?? null;
+  return v == null ? null : String(v);
 }
 
 function chunk<T>(rows: T[], size = CHUNK): T[][] {
@@ -106,114 +112,76 @@ export async function ensureSdeZip(): Promise<string> {
   return dest;
 }
 
-function readYaml(zip: AdmZip, entry: string): Yaml {
+function readYamlEntry(zip: AdmZip, entry: string): unknown {
   const buf = zip.getEntry(entry)?.getData();
-  if (!buf) throw new Error(`SDE entry missing: ${entry}`);
-  return parseYaml(buf.toString('utf-8')) as Yaml;
+  if (!buf) throw new SdeFormatError(entry, '<root>', 'zip entry missing');
+  try {
+    return parseYaml(buf.toString('utf-8'));
+  } catch (err) {
+    throw new SdeFormatError(entry, '<root>', err);
+  }
 }
 
-async function ingestCategories(zip: AdmZip) {
-  const data = readYaml(zip, 'categories.yaml');
-  const rows = Object.entries(data).map(([id, c]) => ({
-    id: Number(id),
-    name: en(c.name as Loc) ?? '',
-    published: bool(c.published),
+/** Thrown by a gate that must block a write: an unresolvable CSV binding, or a per-table shrink past `SDE_REFRESH_MAX_SHRINK_PCT`. Raised before `writeParsedSde` runs, so nothing has been written. */
+export class SdeGateError extends Error {
+  constructor(
+    public readonly code: 'binding' | 'shrink',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'SdeGateError';
+  }
+}
+
+// --- Parse phase (no DB access) -------------------------------------------
+
+function parseCategories(zip: AdmZip) {
+  const data = decodeEntries('categories.yaml', readYamlEntry(zip, 'categories.yaml'), sdeCategorySchema);
+  return Array.from(data, ([id, c]) => ({
+    id,
+    name: en(c.name) ?? '',
+    published: c.published ?? null,
   }));
-  for (const c of chunk(rows)) {
-    await db
-      .insert(universeCategory)
-      .values(c)
-      .onConflictDoUpdate({
-        target: universeCategory.id,
-        set: excluded(universeCategory, ['name', 'published']),
-      });
-  }
-  return rows.length;
 }
 
-async function ingestGroups(zip: AdmZip) {
-  const data = readYaml(zip, 'groups.yaml');
-  const rows = Object.entries(data).map(([id, g]) => ({
-    id: Number(id),
-    categoryId: g.categoryID as number,
-    name: en(g.name as Loc) ?? '',
-    published: bool(g.published),
+function parseGroups(zip: AdmZip) {
+  const data = decodeEntries('groups.yaml', readYamlEntry(zip, 'groups.yaml'), sdeGroupSchema);
+  return Array.from(data, ([id, g]) => ({
+    id,
+    categoryId: g.categoryID,
+    name: en(g.name) ?? '',
+    published: g.published ?? null,
   }));
-  for (const c of chunk(rows)) {
-    await db
-      .insert(universeGroup)
-      .values(c)
-      .onConflictDoUpdate({
-        target: universeGroup.id,
-        set: excluded(universeGroup, ['categoryId', 'name', 'published']),
-      });
-  }
-  return rows.length;
 }
 
-async function ingestDogmaAttributes(zip: AdmZip): Promise<Set<number>> {
-  const data = readYaml(zip, 'dogmaAttributes.yaml');
-  const rows = Object.entries(data).map(([id, a]) => ({
-    id: Number(id),
-    name: en(a.name as Loc),
-    displayName: en(a.displayName as Loc),
-    description: en(a.description as Loc),
-    published: bool(a.published),
-    stackable: bool(a.stackable),
-    highIsGood: bool(a.highIsGood),
-    defaultValue: num(a.defaultValue),
-    iconId: num(a.iconID),
-    unitId: num(a.unitID),
+function parseDogmaAttributes(zip: AdmZip) {
+  const data = decodeEntries(
+    'dogmaAttributes.yaml',
+    readYamlEntry(zip, 'dogmaAttributes.yaml'),
+    sdeDogmaAttributeSchema,
+  );
+  return Array.from(data, ([id, a]) => ({
+    id,
+    name: en(a.name),
+    displayName: en(a.displayName),
+    description: en(a.description),
+    published: a.published ?? null,
+    stackable: a.stackable ?? null,
+    highIsGood: a.highIsGood ?? null,
+    defaultValue: a.defaultValue ?? null,
+    iconId: a.iconID ?? null,
+    unitId: a.unitID ?? null,
   }));
-  for (const c of chunk(rows)) {
-    await db
-      .insert(universeDogmaAttribute)
-      .values(c)
-      .onConflictDoUpdate({
-        target: universeDogmaAttribute.id,
-        set: excluded(universeDogmaAttribute, [
-          'name',
-          'displayName',
-          'description',
-          'published',
-          'stackable',
-          'highIsGood',
-          'defaultValue',
-          'iconId',
-          'unitId',
-        ]),
-      });
-  }
-  return new Set(rows.map((r) => r.id));
-}
-
-/** Type ids referenced by system-static.csv — the actual static spawns. */
-async function readStaticTypeIds(): Promise<Set<number>> {
-  const path = join(DATA_DIR, 'system-static.csv');
-  const ids = new Set<number>();
-  if (!(await fileExists(path))) return ids;
-  const text = await readFile(path, 'utf-8');
-  const records = parseCsv(text, {
-    columns: true,
-    delimiter: ';',
-    skip_empty_lines: true,
-    trim: true,
-  }) as Record<string, string>[];
-  for (const r of records) {
-    const typeId = Number(r.typeID ?? r.type_id ?? r.typeId);
-    if (Number.isFinite(typeId)) ids.add(typeId);
-  }
-  return ids;
 }
 
 /**
- * Build a WH-code → typeId map from `(code, typeId)` pairs. The SDE ships duplicate
- * `Wormhole <CODE>` types in group 988 (e.g. two "Wormhole J244", ids 30667 & 73748,
- * dogma-identical and both unpublished — ESI won't disambiguate them either). The
- * vendored catalog/override CSVs key on the code, so a collision MUST resolve to the
- * same typeId the statics use: otherwise the routing/override binds to an id no
- * `universe_system_static` row references and the static silently drops from the UI.
- * Prefer the id present in system-static.csv; warn only if both collide there.
+ * The SDE ships duplicate `Wormhole <CODE>` types in group 988 (e.g. two "Wormhole
+ * J244", ids 30667 & 73748, dogma-identical and both unpublished — ESI won't
+ * disambiguate them either). The vendored catalog/override CSVs key on the code, so
+ * a collision MUST resolve to the same typeId the statics use: otherwise the
+ * routing/override binds to an id no `universe_system_static` row references and the
+ * static silently drops from the UI. Prefer the id present in the new build's
+ * system-static rows; warn only if both collide there.
  */
 function buildWormholeCodeToTypeId(
   entries: { code: string; typeId: number }[],
@@ -241,38 +209,422 @@ function buildWormholeCodeToTypeId(
   return map;
 }
 
-/** Returns the set of ingested type ids and the group-988 wormhole-code pairs. */
-async function ingestTypes(zip: AdmZip): Promise<{
-  typeIds: Set<number>;
-  wormholeCodeEntries: { code: string; typeId: number }[];
-}> {
-  const data = readYaml(zip, 'types.yaml');
+function parseTypes(zip: AdmZip) {
+  const data = decodeEntries('types.yaml', readYamlEntry(zip, 'types.yaml'), sdeTypeSchema);
   const typeIds = new Set<number>();
   const wormholeCodeEntries: { code: string; typeId: number }[] = [];
-  const rows = Object.entries(data).map(([id, t]) => {
-    const numId = Number(id);
-    typeIds.add(numId);
-    const name = en(t.name as Loc) ?? '';
+  const rows = Array.from(data, ([id, t]) => {
+    typeIds.add(id);
+    const name = en(t.name) ?? '';
     if (t.groupID === WORMHOLE_GROUP_ID) {
       const code = name.split(' ').pop();
-      if (code) wormholeCodeEntries.push({ code, typeId: numId });
+      if (code) wormholeCodeEntries.push({ code, typeId: id });
     }
     return {
-      id: numId,
-      groupId: t.groupID as number,
+      id,
+      groupId: t.groupID,
       name,
-      description: en(t.description as Loc),
-      mass: num(t.mass),
-      volume: num(t.volume),
-      capacity: num(t.capacity),
-      radius: num(t.radius),
-      packagedVolume: num(t.packagedVolume),
-      portionSize: num(t.portionSize),
-      marketGroupId: num(t.marketGroupID),
-      graphicId: num(t.graphicID),
-      published: bool(t.published),
+      description: en(t.description),
+      mass: t.mass ?? null,
+      volume: t.volume ?? null,
+      capacity: t.capacity ?? null,
+      radius: t.radius ?? null,
+      packagedVolume: t.packagedVolume ?? null,
+      portionSize: t.portionSize ?? null,
+      marketGroupId: t.marketGroupID ?? null,
+      graphicId: t.graphicID ?? null,
+      published: t.published ?? null,
     };
   });
+  return { rows, typeIds, wormholeCodeEntries };
+}
+
+function parseTypeAttributes(zip: AdmZip, typeIds: Set<number>, attrIds: Set<number>) {
+  const data = decodeEntries('typeDogma.yaml', readYamlEntry(zip, 'typeDogma.yaml'), sdeTypeDogmaSchema);
+  const rows: { typeId: number; attributeId: number; value: number | null }[] = [];
+  for (const [typeId, entry] of data) {
+    if (!typeIds.has(typeId)) continue;
+    for (const a of entry.dogmaAttributes ?? []) {
+      if (!attrIds.has(a.attributeID)) continue;
+      rows.push({ typeId, attributeId: a.attributeID, value: a.value ?? null });
+    }
+  }
+  return rows;
+}
+
+function parseRegions(zip: AdmZip) {
+  const data = decodeEntries('mapRegions.yaml', readYamlEntry(zip, 'mapRegions.yaml'), sdeRegionSchema);
+  return Array.from(data, ([id, r]) => ({
+    id,
+    name: en(r.name) ?? String(id),
+    description: en(r.description),
+  }));
+}
+
+/** Returns rows plus a constellation id → wormholeClassID map for system security derivation. */
+function parseConstellations(zip: AdmZip) {
+  const data = decodeEntries(
+    'mapConstellations.yaml',
+    readYamlEntry(zip, 'mapConstellations.yaml'),
+    sdeConstellationSchema,
+  );
+  const whClass = new Map<number, number | null>();
+  const rows = Array.from(data, ([id, c]) => {
+    whClass.set(id, c.wormholeClassID ?? null);
+    return {
+      id,
+      regionId: c.regionID,
+      name: en(c.name) ?? String(id),
+      x: c.position?.x ?? null,
+      y: c.position?.y ?? null,
+      z: c.position?.z ?? null,
+    };
+  });
+  return { rows, whClass };
+}
+
+/** Returns rows, the set of system ids (stargate-edge filtering), and a name → id map (WH catalog `targetSystem` resolution). */
+function parseSystems(zip: AdmZip, whClassByConstellation: Map<number, number | null>) {
+  const data = decodeEntries(
+    'mapSolarSystems.yaml',
+    readYamlEntry(zip, 'mapSolarSystems.yaml'),
+    sdeSolarSystemSchema,
+  );
+  const systemIds = new Set<number>();
+  const systemNameToId = new Map<string, number>();
+  const rows = Array.from(data, ([id, s]) => {
+    systemIds.add(id);
+    const name = en(s.name) ?? String(id);
+    systemNameToId.set(name, id);
+    return {
+      id,
+      constellationId: s.constellationID,
+      name,
+      // Drifter systems share one constellation post-2025, so their class can't
+      // be derived from the constellation — pin C14–C18 by system id.
+      security:
+        drifterClassLabel(id) ??
+        deriveSecurityLabel({
+          regionId: s.regionID,
+          wormholeClassId: whClassByConstellation.get(s.constellationID) ?? null,
+          securityStatus: s.securityStatus,
+        }),
+      trueSec: roundSecurity(s.securityStatus),
+      securityStatus: s.securityStatus,
+      securityClass: en(s.securityClass),
+      // SDE has no wormhole effect; layer it in from the vendored assignment map.
+      effect: SYSTEM_EFFECT_BY_ID[id] ?? null,
+      x: s.position?.x ?? null,
+      y: s.position?.y ?? null,
+      z: s.position?.z ?? null,
+    };
+  });
+  return { rows, systemIds, systemNameToId };
+}
+
+function parseStargateEdges(zip: AdmZip, systemIds: Set<number>) {
+  const data = decodeEntries('mapStargates.yaml', readYamlEntry(zip, 'mapStargates.yaml'), sdeStargateSchema);
+  const seen = new Set<string>();
+  const rows: { fromSystemId: number; toSystemId: number }[] = [];
+  for (const [, gate] of data) {
+    const from = gate.solarSystemID;
+    const to = gate.destination?.solarSystemID;
+    if (to == null) continue;
+    if (!systemIds.has(from) || !systemIds.has(to)) continue;
+    const key = `${from}-${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ fromSystemId: from, toSystemId: to });
+  }
+  return rows;
+}
+
+export interface ParsedSde {
+  categories: ReturnType<typeof parseCategories>;
+  groups: ReturnType<typeof parseGroups>;
+  dogmaAttributes: ReturnType<typeof parseDogmaAttributes>;
+  attrIds: Set<number>;
+  types: ReturnType<typeof parseTypes>['rows'];
+  typeIds: Set<number>;
+  wormholeCodeEntries: { code: string; typeId: number }[];
+  typeAttributes: ReturnType<typeof parseTypeAttributes>;
+  regions: ReturnType<typeof parseRegions>;
+  constellations: ReturnType<typeof parseConstellations>['rows'];
+  systems: ReturnType<typeof parseSystems>['rows'];
+  systemIds: Set<number>;
+  systemNameToId: Map<string, number>;
+  stargateEdges: ReturnType<typeof parseStargateEdges>;
+}
+
+/**
+ * Parses every SDE YAML file into rows, entirely offline — no DB access. A
+ * format-drift failure (`SdeFormatError`) or a truncated zip therefore always
+ * happens before `writeParsedSde` issues its first statement.
+ */
+export function parseSdeArchive(zip: AdmZip): ParsedSde {
+  const categories = parseCategories(zip);
+  const groups = parseGroups(zip);
+  const dogmaAttributes = parseDogmaAttributes(zip);
+  const attrIds = new Set(dogmaAttributes.map((a) => a.id));
+  const { rows: types, typeIds, wormholeCodeEntries } = parseTypes(zip);
+  const typeAttributes = parseTypeAttributes(zip, typeIds, attrIds);
+  const regions = parseRegions(zip);
+  const { rows: constellations, whClass } = parseConstellations(zip);
+  const { rows: systems, systemIds, systemNameToId } = parseSystems(zip, whClass);
+  const stargateEdges = parseStargateEdges(zip, systemIds);
+
+  return {
+    categories,
+    groups,
+    dogmaAttributes,
+    attrIds,
+    types,
+    typeIds,
+    wormholeCodeEntries,
+    typeAttributes,
+    regions,
+    constellations,
+    systems,
+    systemIds,
+    systemNameToId,
+    stargateEdges,
+  };
+}
+
+// --- Vendored CSV parse phase (binds against the parsed build, not the DB) -
+
+export interface CatalogBindings {
+  systemIds: Set<number>;
+  typeIds: Set<number>;
+  systemNameToId: Map<string, number>;
+  wormholeCodeEntries: { code: string; typeId: number }[];
+}
+
+export interface CsvRows {
+  systemStatics: { systemId: number; typeId: number }[];
+  typeOverrides: { typeId: number; attrId: number; value: number; reason: string }[];
+  wormholeCatalog: {
+    typeId: number;
+    name: string;
+    sourceClasses: string[] | null;
+    targetClass: string | null;
+    targetSystemId: number | null;
+  }[];
+}
+
+async function readVendoredCsv(path: string): Promise<Record<string, string>[]> {
+  if (!(await fileExists(path))) {
+    throw new SdeGateError('binding', `${path} is missing`);
+  }
+  const text = await readFile(path, 'utf-8');
+  return parseCsv(text, {
+    columns: true,
+    delimiter: ';',
+    skip_empty_lines: true,
+    trim: true,
+  }) as Record<string, string>[];
+}
+
+/**
+ * Parses the three hand-maintained catalog CSVs (`scripts/data/`) and re-binds
+ * every row against `bindings` (the build being ingested — the freshly parsed
+ * archive for `runIngest`, or the live DB for `runCsvIngest`). A CSV row whose
+ * system id, type id, or WH code no longer resolves is a hard failure
+ * (`SdeGateError('binding')`): the CSVs are checked-in source of truth, so a
+ * miss means the vendored data and the build have drifted, not that the row is
+ * optional.
+ */
+export async function parseVendoredCsvs(bindings: CatalogBindings): Promise<CsvRows> {
+  const systemStaticRecords = await readVendoredCsv(join(DATA_DIR, 'system-static.csv'));
+  const seenStatics = new Set<string>();
+  const systemStatics: CsvRows['systemStatics'] = [];
+  for (const r of systemStaticRecords) {
+    const systemId = Number(r.systemID ?? r.system_id ?? r.systemId);
+    const typeId = Number(r.typeID ?? r.type_id ?? r.typeId);
+    if (!Number.isFinite(systemId) || !bindings.systemIds.has(systemId)) {
+      throw new SdeGateError(
+        'binding',
+        `system-static.csv: systemID ${r.systemID ?? r.system_id ?? r.systemId} not found in the new build's universe_system`,
+      );
+    }
+    if (!Number.isFinite(typeId) || !bindings.typeIds.has(typeId)) {
+      throw new SdeGateError(
+        'binding',
+        `system-static.csv: typeID ${r.typeID ?? r.type_id ?? r.typeId} not found in the new build's universe_type`,
+      );
+    }
+    const key = `${systemId}-${typeId}`;
+    if (seenStatics.has(key)) continue;
+    seenStatics.add(key);
+    systemStatics.push({ systemId, typeId });
+  }
+
+  const staticTypeIds = new Set(systemStatics.map((r) => r.typeId));
+  const wormholeCodeToTypeId = buildWormholeCodeToTypeId(bindings.wormholeCodeEntries, staticTypeIds);
+
+  const overrideRecords = await readVendoredCsv(join(DATA_DIR, 'wormhole-overrides.csv'));
+  const typeOverrides: CsvRows['typeOverrides'] = [];
+  for (const r of overrideRecords) {
+    const raw = r.scanWormholeStrength;
+    if (raw == null || raw === '') continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) continue;
+    const code = r.Name?.toUpperCase();
+    const typeId = code ? wormholeCodeToTypeId.get(code) : undefined;
+    if (typeId == null) {
+      throw new SdeGateError(
+        'binding',
+        `wormhole-overrides.csv: WH code ${r.Name} not found among the new build's group-${WORMHOLE_GROUP_ID} types`,
+      );
+    }
+    typeOverrides.push({ typeId, attrId: DOGMA_ATTR_SCAN_WORMHOLE_STRENGTH, value, reason: OVERRIDE_REASON });
+  }
+
+  const catalogRecords = await readVendoredCsv(join(DATA_DIR, 'wormhole-classes.csv'));
+  const wormholeCatalog: CsvRows['wormholeCatalog'] = [];
+  for (const r of catalogRecords) {
+    const code = r.code?.toUpperCase();
+    if (!code) continue;
+    const typeId = wormholeCodeToTypeId.get(code);
+    if (typeId == null) {
+      throw new SdeGateError(
+        'binding',
+        `wormhole-classes.csv: WH code ${code} not found among the new build's group-${WORMHOLE_GROUP_ID} types`,
+      );
+    }
+    let targetSystemId: number | null = null;
+    if (r.targetSystem) {
+      const id = bindings.systemNameToId.get(r.targetSystem);
+      if (id == null) {
+        throw new SdeGateError(
+          'binding',
+          `wormhole-classes.csv: ${code} targetSystem "${r.targetSystem}" not found in the new build's universe_system`,
+        );
+      }
+      targetSystemId = id;
+    }
+    wormholeCatalog.push({
+      typeId,
+      name: code,
+      sourceClasses: r.sourceClasses ? r.sourceClasses.split('|') : null,
+      targetClass: r.targetClass ? r.targetClass : null,
+      targetSystemId,
+    });
+  }
+
+  return { systemStatics, typeOverrides, wormholeCatalog };
+}
+
+// --- Shrink gate ------------------------------------------------------------
+
+/** counts-object key → the table it gates. CSV-derived tables are exempt (their binding check above is strictly stronger, and a deliberate CSV row removal must not block a refresh). */
+const SHRINK_GATE_KEY_TO_TABLE: Record<string, PgTable> = {
+  categories: universeCategory,
+  groups: universeGroup,
+  dogmaAttributes: universeDogmaAttribute,
+  types: universeType,
+  typeAttributes: universeTypeAttribute,
+  regions: universeRegion,
+  constellations: universeConstellation,
+  systems: universeSystem,
+  stargateEdges: universeStargateEdge,
+};
+
+export interface ShrunkenTable {
+  table: string;
+  live: number;
+  next: number;
+  pctShrink: number;
+}
+
+/**
+ * Pure comparison: which gated tables in `liveCounts` drop more than `maxPct`
+ * in `newCounts`. A live count of 0 is a bootstrap, not a shrink, and is
+ * skipped.
+ */
+export function findShrunkenTables(
+  newCounts: Record<string, number>,
+  liveCounts: Record<string, number>,
+  maxPct: number,
+): ShrunkenTable[] {
+  const offenders: ShrunkenTable[] = [];
+  for (const [table, live] of Object.entries(liveCounts)) {
+    if (live === 0) continue;
+    const next = newCounts[table] ?? 0;
+    const pctShrink = ((live - next) / live) * 100;
+    if (pctShrink > maxPct) offenders.push({ table, live, next, pctShrink });
+  }
+  return offenders;
+}
+
+/** Fails the ingest before any write if a gated table would shrink past `SDE_REFRESH_MAX_SHRINK_PCT`. */
+async function assertNoExcessiveShrink(newCounts: Record<string, number>) {
+  const liveCounts: Record<string, number> = {};
+  for (const [key, table] of Object.entries(SHRINK_GATE_KEY_TO_TABLE)) {
+    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(table);
+    liveCounts[key] = row?.n ?? 0;
+  }
+  const offenders = findShrunkenTables(newCounts, liveCounts, apertureConfig.SDE_REFRESH_MAX_SHRINK_PCT);
+  if (offenders.length > 0) {
+    const detail = offenders
+      .map((o) => `${o.table}: ${o.live} -> ${o.next} (-${o.pctShrink.toFixed(1)}%)`)
+      .join('; ');
+    throw new SdeGateError(
+      'shrink',
+      `SDE build ${SDE_BUILD} shrinks beyond ${apertureConfig.SDE_REFRESH_MAX_SHRINK_PCT}% on: ${detail}`,
+    );
+  }
+}
+
+// --- Write phase -------------------------------------------------------------
+
+async function writeCategories(rows: ParsedSde['categories']) {
+  for (const c of chunk(rows)) {
+    await db
+      .insert(universeCategory)
+      .values(c)
+      .onConflictDoUpdate({
+        target: universeCategory.id,
+        set: excluded(universeCategory, ['name', 'published']),
+      });
+  }
+}
+
+async function writeGroups(rows: ParsedSde['groups']) {
+  for (const c of chunk(rows)) {
+    await db
+      .insert(universeGroup)
+      .values(c)
+      .onConflictDoUpdate({
+        target: universeGroup.id,
+        set: excluded(universeGroup, ['categoryId', 'name', 'published']),
+      });
+  }
+}
+
+async function writeDogmaAttributes(rows: ParsedSde['dogmaAttributes']) {
+  for (const c of chunk(rows)) {
+    await db
+      .insert(universeDogmaAttribute)
+      .values(c)
+      .onConflictDoUpdate({
+        target: universeDogmaAttribute.id,
+        set: excluded(universeDogmaAttribute, [
+          'name',
+          'displayName',
+          'description',
+          'published',
+          'stackable',
+          'highIsGood',
+          'defaultValue',
+          'iconId',
+          'unitId',
+        ]),
+      });
+  }
+}
+
+async function writeTypes(rows: ParsedSde['types']) {
   for (const c of chunk(rows)) {
     await db
       .insert(universeType)
@@ -295,21 +647,9 @@ async function ingestTypes(zip: AdmZip): Promise<{
         ]),
       });
   }
-  return { typeIds, wormholeCodeEntries };
 }
 
-async function ingestTypeAttributes(zip: AdmZip, typeIds: Set<number>, attrIds: Set<number>) {
-  const data = readYaml(zip, 'typeDogma.yaml');
-  const rows: { typeId: number; attributeId: number; value: number | null }[] = [];
-  for (const [id, entry] of Object.entries(data)) {
-    const typeId = Number(id);
-    if (!typeIds.has(typeId)) continue;
-    const attrs = (entry.dogmaAttributes as { attributeID: number; value: number }[]) ?? [];
-    for (const a of attrs) {
-      if (!attrIds.has(a.attributeID)) continue;
-      rows.push({ typeId, attributeId: a.attributeID, value: num(a.value) });
-    }
-  }
+async function writeTypeAttributes(rows: ParsedSde['typeAttributes']) {
   for (const c of chunk(rows)) {
     await db
       .insert(universeTypeAttribute)
@@ -319,16 +659,9 @@ async function ingestTypeAttributes(zip: AdmZip, typeIds: Set<number>, attrIds: 
         set: excluded(universeTypeAttribute, ['value']),
       });
   }
-  return rows.length;
 }
 
-async function ingestRegions(zip: AdmZip) {
-  const data = readYaml(zip, 'mapRegions.yaml');
-  const rows = Object.entries(data).map(([id, r]) => ({
-    id: Number(id),
-    name: en(r.name as Loc) ?? String(id),
-    description: en(r.description as Loc),
-  }));
+async function writeRegions(rows: ParsedSde['regions']) {
   for (const c of chunk(rows)) {
     await db
       .insert(universeRegion)
@@ -338,25 +671,9 @@ async function ingestRegions(zip: AdmZip) {
         set: excluded(universeRegion, ['name', 'description']),
       });
   }
-  return rows.length;
 }
 
-/** Returns a constellation id → wormholeClassID map for security derivation. */
-async function ingestConstellations(zip: AdmZip): Promise<Map<number, number | null>> {
-  const data = readYaml(zip, 'mapConstellations.yaml');
-  const whClass = new Map<number, number | null>();
-  const rows = Object.entries(data).map(([id, c]) => {
-    const pos = (c.position as Record<string, number>) ?? {};
-    whClass.set(Number(id), (c.wormholeClassID as number) ?? null);
-    return {
-      id: Number(id),
-      regionId: c.regionID as number,
-      name: en(c.name as Loc) ?? String(id),
-      x: num(pos.x),
-      y: num(pos.y),
-      z: num(pos.z),
-    };
-  });
+async function writeConstellations(rows: ParsedSde['constellations']) {
   for (const c of chunk(rows)) {
     await db
       .insert(universeConstellation)
@@ -366,46 +683,9 @@ async function ingestConstellations(zip: AdmZip): Promise<Map<number, number | n
         set: excluded(universeConstellation, ['regionId', 'name', 'x', 'y', 'z']),
       });
   }
-  return whClass;
 }
 
-/** Returns the set of ingested system ids (for stargate-edge filtering). */
-async function ingestSystems(
-  zip: AdmZip,
-  whClassByConstellation: Map<number, number | null>,
-): Promise<Set<number>> {
-  const data = readYaml(zip, 'mapSolarSystems.yaml');
-  const systemIds = new Set<number>();
-  const rows = Object.entries(data).map(([id, s]) => {
-    const sysId = Number(id);
-    systemIds.add(sysId);
-    const pos = (s.position as Record<string, number>) ?? {};
-    const securityStatus = num(s.securityStatus);
-    const regionId = s.regionID as number;
-    const constellationId = s.constellationID as number;
-    return {
-      id: sysId,
-      constellationId,
-      name: en(s.name as Loc) ?? String(id),
-      // Drifter systems share one constellation post-2025, so their class can't
-      // be derived from the constellation — pin C14–C18 by system id.
-      security:
-        drifterClassLabel(sysId) ??
-        deriveSecurityLabel({
-          regionId,
-          wormholeClassId: whClassByConstellation.get(constellationId) ?? null,
-          securityStatus,
-        }),
-      trueSec: securityStatus == null ? null : roundSecurity(securityStatus),
-      securityStatus,
-      securityClass: en(s.securityClass as Loc),
-      // SDE has no wormhole effect; layer it in from the vendored assignment map.
-      effect: SYSTEM_EFFECT_BY_ID[sysId] ?? null,
-      x: num(pos.x),
-      y: num(pos.y),
-      z: num(pos.z),
-    };
-  });
+async function writeSystems(rows: ParsedSde['systems']) {
   for (const c of chunk(rows)) {
     await db
       .insert(universeSystem)
@@ -426,183 +706,50 @@ async function ingestSystems(
         ]),
       });
   }
-  return systemIds;
 }
 
-async function ingestStargateEdges(zip: AdmZip, systemIds: Set<number>) {
-  const data = readYaml(zip, 'mapStargates.yaml');
-  const seen = new Set<string>();
-  const rows: { fromSystemId: number; toSystemId: number }[] = [];
-  for (const gate of Object.values(data)) {
-    const from = gate.solarSystemID as number;
-    const dest = gate.destination as { solarSystemID: number } | undefined;
-    const to = dest?.solarSystemID;
-    if (to == null) continue;
-    if (!systemIds.has(from) || !systemIds.has(to)) continue;
-    const key = `${from}-${to}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    rows.push({ fromSystemId: from, toSystemId: to });
-  }
+async function writeStargateEdges(rows: ParsedSde['stargateEdges']) {
   for (const c of chunk(rows)) {
     await db.insert(universeStargateEdge).values(c).onConflictDoNothing();
   }
-  return rows.length;
 }
 
-/** Vendored community CSV: `systemID;typeID` rows (WH statics, not in the SDE). */
-async function ingestSystemStatics(systemIds: Set<number>, typeIds: Set<number>) {
-  const path = join(DATA_DIR, 'system-static.csv');
-  if (!(await fileExists(path))) {
-    console.warn(`  system-static.csv not found at ${path} — skipping WH statics.`);
-    return 0;
-  }
-  const text = await readFile(path, 'utf-8');
-  const records = parseCsv(text, {
-    columns: true,
-    delimiter: ';',
-    skip_empty_lines: true,
-    trim: true,
-  }) as Record<string, string>[];
-  const seen = new Set<string>();
-  const rows: { systemId: number; typeId: number }[] = [];
-  for (const r of records) {
-    const systemId = Number(r.systemID ?? r.system_id ?? r.systemId);
-    const typeId = Number(r.typeID ?? r.type_id ?? r.typeId);
-    if (!Number.isFinite(systemId) || !Number.isFinite(typeId)) continue;
-    if (!systemIds.has(systemId) || !typeIds.has(typeId)) continue;
-    const key = `${systemId}-${typeId}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    rows.push({ systemId, typeId });
-  }
+async function writeSystemStatics(rows: CsvRows['systemStatics']) {
   for (const c of chunk(rows)) {
     await db.insert(universeSystemStatic).values(c).onConflictDoNothing();
   }
-  return rows.length;
 }
 
-/** Vendored `Id;Name;scanWormholeStrength` CSV → attr-3974 overrides. */
-async function ingestTypeOverrides(wormholeCodeToTypeId: Map<string, number>) {
-  const path = join(DATA_DIR, 'wormhole-overrides.csv');
-  if (!(await fileExists(path))) {
-    console.warn(`  wormhole-overrides.csv not found at ${path} — skipping overrides.`);
-    return 0;
-  }
-  const text = await readFile(path, 'utf-8');
-  const records = parseCsv(text, {
-    columns: true,
-    delimiter: ';',
-    skip_empty_lines: true,
-    trim: true,
-  }) as Record<string, string>[];
-  const rows: { typeId: number; attrId: number; value: number; reason: string }[] = [];
-  for (const r of records) {
-    const raw = r.scanWormholeStrength;
-    if (raw == null || raw === '') continue;
-    const value = Number(raw);
-    if (!Number.isFinite(value)) continue;
-    const code = r.Name?.toUpperCase();
-    const typeId = code ? wormholeCodeToTypeId.get(code) : undefined;
-    if (typeId == null) continue;
-    rows.push({ typeId, attrId: DOGMA_ATTR_SCAN_WORMHOLE_STRENGTH, value, reason: OVERRIDE_REASON });
-  }
-  // Reseed authoritatively so a re-run after a code→typeId remap drops overrides
-  // left on a now-unused duplicate type id.
-  await db.delete(universeTypeOverride).where(eq(universeTypeOverride.reason, OVERRIDE_REASON));
-  for (const c of chunk(rows)) {
-    await db
-      .insert(universeTypeOverride)
-      .values(c)
-      .onConflictDoUpdate({
-        target: [universeTypeOverride.typeId, universeTypeOverride.attrId],
-        set: { value: sql.raw('excluded."value"'), reason: sql.raw('excluded."reason"') },
-      });
-  }
-  return rows.length;
-}
-
-/**
- * Vendored `code;sourceClasses;targetClass;targetSystem` CSV → the
- * `universe_wormhole` routing catalog. Class labels are absent from the SDE;
- * mass/lifetime stay dogma-sourced. `sourceClasses` is a `|`-joined set (a hole
- * can spawn in several classes, e.g. `S199` = `L|0.0`); an empty cell becomes
- * null (source unspecified — K162 and the Drifter/shattered-access holes).
- * `targetSystem` names the fixed destination for holes that always exit to one
- * system (J377 → Turnur); resolved to an id against `universe_system`.
- */
-async function ingestWormholeCatalog(wormholeCodeToTypeId: Map<string, number>) {
-  const path = join(DATA_DIR, 'wormhole-classes.csv');
-  if (!(await fileExists(path))) {
-    console.warn(`  wormhole-classes.csv not found at ${path} — skipping WH catalog.`);
-    return 0;
-  }
-  const text = await readFile(path, 'utf-8');
-  const records = parseCsv(text, {
-    columns: true,
-    delimiter: ';',
-    skip_empty_lines: true,
-    trim: true,
-  }) as Record<string, string>[];
-
-  // Only fixed-destination holes carry a targetSystem name; resolve it against
-  // universe_system so the FK is guaranteed valid.
-  const systemNameToId = new Map<string, number>();
-  if (records.some((r) => r.targetSystem)) {
-    const systemRows = await db
-      .select({ id: universeSystem.id, name: universeSystem.name })
-      .from(universeSystem);
-    for (const s of systemRows) systemNameToId.set(s.name, s.id);
-  }
-
-  const rows: {
-    typeId: number;
-    name: string;
-    sourceClasses: string[] | null;
-    targetClass: string | null;
-    targetSystemId: number | null;
-  }[] = [];
-  for (const r of records) {
-    const code = r.code?.toUpperCase();
-    if (!code) continue;
-    const typeId = wormholeCodeToTypeId.get(code);
-    if (typeId == null) continue;
-    let targetSystemId: number | null = null;
-    if (r.targetSystem) {
-      const id = systemNameToId.get(r.targetSystem);
-      if (id == null) {
-        throw new Error(
-          `wormhole-classes.csv: ${code} targetSystem "${r.targetSystem}" not found in universe_system`,
-        );
-      }
-      targetSystemId = id;
+/** Reseeds authoritatively (delete-by-reason then insert) inside one transaction so a mid-insert failure can't leave the overrides deleted but not replaced. */
+async function writeTypeOverrides(rows: CsvRows['typeOverrides']) {
+  await db.transaction(async (tx) => {
+    await tx.delete(universeTypeOverride).where(eq(universeTypeOverride.reason, OVERRIDE_REASON));
+    for (const c of chunk(rows)) {
+      await tx
+        .insert(universeTypeOverride)
+        .values(c)
+        .onConflictDoUpdate({
+          target: [universeTypeOverride.typeId, universeTypeOverride.attrId],
+          set: { value: sql.raw('excluded."value"'), reason: sql.raw('excluded."reason"') },
+        });
     }
-    rows.push({
-      typeId,
-      name: code,
-      sourceClasses: r.sourceClasses ? r.sourceClasses.split('|') : null,
-      targetClass: r.targetClass ? r.targetClass : null,
-      targetSystemId,
-    });
-  }
-  // Reseed authoritatively (table is fully derived from this CSV) so a re-run after
-  // a code→typeId remap drops catalog rows left on a now-unused duplicate type id.
-  await db.delete(universeWormhole);
-  for (const c of chunk(rows)) {
-    await db
-      .insert(universeWormhole)
-      .values(c)
-      .onConflictDoUpdate({
-        target: universeWormhole.typeId,
-        set: excluded(universeWormhole, [
-          'name',
-          'sourceClasses',
-          'targetClass',
-          'targetSystemId',
-        ]),
-      });
-  }
-  return rows.length;
+  });
+}
+
+/** Reseeds authoritatively (full delete then insert) inside one transaction — the table is fully derived from the CSV, and an untransacted delete-then-fail would leave it empty. */
+async function writeWormholeCatalog(rows: CsvRows['wormholeCatalog']) {
+  await db.transaction(async (tx) => {
+    await tx.delete(universeWormhole);
+    for (const c of chunk(rows)) {
+      await tx
+        .insert(universeWormhole)
+        .values(c)
+        .onConflictDoUpdate({
+          target: universeWormhole.typeId,
+          set: excluded(universeWormhole, ['name', 'sourceClasses', 'targetClass', 'targetSystemId']),
+        });
+    }
+  });
 }
 
 export interface IngestResult {
@@ -638,12 +785,15 @@ async function recordSdeIngestSuccess(build: number, releaseDate: string) {
 
 /**
  * Re-runnable ingest of only the vendored CSV files (system statics,
- * attr-3974 overrides, WH catalog). Derives the needed ID sets from the DB
- * rather than from an SDE zip, so it can run independently of sde:bootstrap.
+ * attr-3974 overrides, WH catalog). Binds against the live DB rather than an
+ * SDE zip, so it can run independently of sde:bootstrap.
  */
 export async function runCsvIngest(): Promise<IngestResult> {
-  const systemRows = await db.select({ id: universeSystem.id }).from(universeSystem);
+  const systemRows = await db
+    .select({ id: universeSystem.id, name: universeSystem.name })
+    .from(universeSystem);
   const systemIds = new Set(systemRows.map((r) => r.id));
+  const systemNameToId = new Map(systemRows.map((r) => [r.name, r.id]));
 
   const typeRows = await db
     .select({ id: universeType.id, groupId: universeType.groupId, name: universeType.name })
@@ -656,59 +806,80 @@ export async function runCsvIngest(): Promise<IngestResult> {
       if (code) wormholeCodeEntries.push({ code, typeId: r.id });
     }
   }
-  const wormholeCodeToTypeId = buildWormholeCodeToTypeId(
-    wormholeCodeEntries,
-    await readStaticTypeIds(),
-  );
 
-  const counts: Record<string, number> = {};
   console.log('Ingesting vendored CSVs (system statics, overrides, wormhole catalog) ...');
-  counts.systemStatics = await ingestSystemStatics(systemIds, typeIds);
-  counts.typeOverrides = await ingestTypeOverrides(wormholeCodeToTypeId);
-  counts.wormholes = await ingestWormholeCatalog(wormholeCodeToTypeId);
+  const csv = await parseVendoredCsvs({ systemIds, typeIds, systemNameToId, wormholeCodeEntries });
 
-  return { build: SDE_BUILD, counts };
+  await writeSystemStatics(csv.systemStatics);
+  await writeTypeOverrides(csv.typeOverrides);
+  await writeWormholeCatalog(csv.wormholeCatalog);
+
+  return {
+    build: SDE_BUILD,
+    counts: {
+      systemStatics: csv.systemStatics.length,
+      typeOverrides: csv.typeOverrides.length,
+      wormholes: csv.wormholeCatalog.length,
+    },
+  };
 }
 
 /**
  * One-shot, re-runnable ingest of the pinned SDE build into every `universe_*`
- * table. Downloads the zip if absent, then upserts in FK-safe order. Vendored
- * CSVs seed WH statics and the attr-3974 overrides.
+ * table. Downloads the zip if absent, parses it and the vendored CSVs fully
+ * (Zod decoders + CSV re-binding — format drift and an unresolvable catalog
+ * row both fail here), checks for excessive per-table shrink against the live
+ * tables, and only then writes — in FK-safe order, upserts (re-runnable).
  */
 export async function runIngest(): Promise<IngestResult> {
   const zipPath = await ensureSdeZip();
   const zip = new AdmZip(zipPath);
-  const counts: Record<string, number> = {};
 
-  console.log('Ingesting categories, groups, dogma attributes ...');
-  counts.categories = await ingestCategories(zip);
-  counts.groups = await ingestGroups(zip);
-  const attrIds = await ingestDogmaAttributes(zip);
-  counts.dogmaAttributes = attrIds.size;
+  console.log('Parsing SDE archive ...');
+  const parsed = parseSdeArchive(zip);
 
-  console.log('Ingesting types + type attributes ...');
-  const { typeIds, wormholeCodeEntries } = await ingestTypes(zip);
-  counts.types = typeIds.size;
-  counts.typeAttributes = await ingestTypeAttributes(zip, typeIds, attrIds);
-  const wormholeCodeToTypeId = buildWormholeCodeToTypeId(
-    wormholeCodeEntries,
-    await readStaticTypeIds(),
-  );
+  console.log('Parsing vendored CSVs ...');
+  const csv = await parseVendoredCsvs(parsed);
 
-  console.log('Ingesting regions, constellations, systems ...');
-  counts.regions = await ingestRegions(zip);
-  const whClass = await ingestConstellations(zip);
-  counts.constellations = whClass.size;
-  const systemIds = await ingestSystems(zip, whClass);
-  counts.systems = systemIds.size;
+  const counts: Record<string, number> = {
+    categories: parsed.categories.length,
+    groups: parsed.groups.length,
+    dogmaAttributes: parsed.dogmaAttributes.length,
+    types: parsed.typeIds.size,
+    typeAttributes: parsed.typeAttributes.length,
+    regions: parsed.regions.length,
+    constellations: parsed.constellations.length,
+    systems: parsed.systemIds.size,
+    stargateEdges: parsed.stargateEdges.length,
+    systemStatics: csv.systemStatics.length,
+    typeOverrides: csv.typeOverrides.length,
+    wormholes: csv.wormholeCatalog.length,
+  };
 
-  console.log('Ingesting stargate edges ...');
-  counts.stargateEdges = await ingestStargateEdges(zip, systemIds);
+  console.log('Checking for excessive shrink against the live tables ...');
+  await assertNoExcessiveShrink(counts);
 
-  console.log('Ingesting vendored CSVs (system statics, overrides) ...');
-  counts.systemStatics = await ingestSystemStatics(systemIds, typeIds);
-  counts.typeOverrides = await ingestTypeOverrides(wormholeCodeToTypeId);
-  counts.wormholes = await ingestWormholeCatalog(wormholeCodeToTypeId);
+  console.log('Writing categories, groups, dogma attributes ...');
+  await writeCategories(parsed.categories);
+  await writeGroups(parsed.groups);
+  await writeDogmaAttributes(parsed.dogmaAttributes);
+
+  console.log('Writing types + type attributes ...');
+  await writeTypes(parsed.types);
+  await writeTypeAttributes(parsed.typeAttributes);
+
+  console.log('Writing regions, constellations, systems ...');
+  await writeRegions(parsed.regions);
+  await writeConstellations(parsed.constellations);
+  await writeSystems(parsed.systems);
+
+  console.log('Writing stargate edges ...');
+  await writeStargateEdges(parsed.stargateEdges);
+
+  console.log('Writing vendored CSVs (system statics, overrides, wormhole catalog) ...');
+  await writeSystemStatics(csv.systemStatics);
+  await writeTypeOverrides(csv.typeOverrides);
+  await writeWormholeCatalog(csv.wormholeCatalog);
 
   console.log('Computing trade-hub proximity ...');
   counts.hubProximity = await computeHubProximity();

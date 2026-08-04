@@ -571,6 +571,17 @@ export const apertureConfig = {
    * wider request is a 400 telling the caller to page.
    */
   INTEGRATION_PRESENCE_MAX_WINDOW_DAYS: 366,
+
+  /**
+   * Acceptance gate on an SDE ingest: a per-table row count more than this
+   * percent below what the database already holds fails the run before any row
+   * is written, so a truncated or partially-decompressed build can never
+   * overwrite good static data. Wide enough to absorb a genuine CCP purge of
+   * unpublished types, far tighter than the loss a truncated file causes.
+   * Tables seeded from the hand-maintained CSVs are exempt — their binding
+   * check is stricter.
+   */
+  SDE_REFRESH_MAX_SHRINK_PCT: 5,
 } as const;
 
 export type ApertureConfig = typeof apertureConfig;

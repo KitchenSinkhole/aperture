@@ -5,6 +5,16 @@
 
 Pinned build: **`SDE_BUILD = 3453885`** (released 2026-07-31), YAML variant. Source: https://developers.eveonline.com/docs/services/static-data. Zip cached at `.sde-cache/sde-<build>-yaml.zip`.
 
+### Parse-then-write, gated
+
+`runIngest` never writes before the whole build has been validated: `parseSdeArchive` (zip → rows, every YAML entry through a Zod decoder from `./decoders`, zero DB access) and `parseVendoredCsvs` (the three catalog CSVs, re-bound against the parsed build) both run to completion first; `assertNoExcessiveShrink` then compares the parsed counts against the live tables. Only after all three pass does `writeParsedSde`'s write phase (`writeCategories`, `writeTypes`, …) issue a single statement. This makes "a malformed build can't partially overwrite good data" structural — the write functions have no path back to the parse functions.
+
+Two failure modes surface as typed errors:
+- **`SdeFormatError`** (`./decoders.ts`) — an SDE YAML entry fails its schema (renamed/dropped key, wrong type, list-shaped file). Names the file, entry key, and failing field path.
+- **`SdeGateError`** (`code: 'binding' | 'shrink'`) — `binding`: a vendored CSV is missing, or a row's system id / type id / WH code / `targetSystem` name doesn't resolve against the build being ingested. `shrink`: a gated table's new-build count is more than `apertureConfig.SDE_REFRESH_MAX_SHRINK_PCT` below its live count (a table with a live count of 0 is exempt — that's a bootstrap). Gated tables are the nine SDE-derived ones; the three CSV-derived tables (`universe_system_static`, `universe_type_override`, `universe_wormhole`) are exempt since their binding check is strictly stronger.
+
+`writeTypeOverrides` and `writeWormholeCatalog` each reseed authoritatively (delete then insert) inside one `db.transaction` — the two tables where an untransacted mid-insert failure would otherwise leave the table empty. The bulk upsert paths stay untransacted; they are idempotent, so a failure mid-run leaves a merged-but-consistent state a re-run repairs.
+
 ### SDE file → table mapping (new flat SDE layout)
 | SDE entry | Target table | Notes |
 |---|---|---|
@@ -17,12 +27,14 @@ Pinned build: **`SDE_BUILD = 3453885`** (released 2026-07-31), YAML variant. Sou
 | `mapConstellations.yaml` | `universe_constellation` | `position.{x,y,z}`; `wormholeClassID` retained for system security derivation |
 | `mapSolarSystems.yaml` | `universe_system` | `security` via `deriveSecurityLabel`, overridden to C14–C18 for the five Drifter systems via `drifterClassLabel` (`@/lib/eve/drifterSystems`) since they now share one constellation; `trueSec` = rounded status; `effect` from `SYSTEM_EFFECT_BY_ID` (vendored, not in SDE) |
 | `mapStargates.yaml` | `universe_stargate_edge` | edge `(solarSystemID → destination.solarSystemID)`, deduped, skips edges whose endpoint system is absent |
-| `scripts/data/system-static.csv` | `universe_system_static` | vendored community data (WH statics not in SDE); skipped with a warning if absent |
-| `scripts/data/wormhole-overrides.csv` | `universe_type_override` | `Id;Name;scanWormholeStrength`; resolves WH code → typeId, writes attr `3974` with `reason='esi-missing-3974'`. Reseeds authoritatively (delete-by-reason then insert). |
-| `scripts/data/wormhole-classes.csv` | `universe_wormhole` | `code;sourceClasses;targetClass;targetSystem`; `sourceClasses` is a `|`-joined set; resolves WH code → typeId, and a non-empty `targetSystem` name → `universe_system.id` (throws if the name is unknown); empty source/target cells → null; skipped with a warning if absent. Reseeds authoritatively (full delete then insert). |
+| `scripts/data/system-static.csv` | `universe_system_static` | vendored community data (WH statics not in SDE); every row's `systemID`/`typeID` must resolve against the build being ingested (`SdeGateError('binding')` otherwise) |
+| `scripts/data/wormhole-overrides.csv` | `universe_type_override` | `Id;Name;scanWormholeStrength`; resolves WH code → typeId (unresolvable code is a hard failure), writes attr `3974` with `reason='esi-missing-3974'`. Reseeds authoritatively (delete-by-reason then insert) inside a transaction. |
+| `scripts/data/wormhole-classes.csv` | `universe_wormhole` | `code;sourceClasses;targetClass;targetSystem`; `sourceClasses` is a `|`-joined set; resolves WH code → typeId and a non-empty `targetSystem` name → the parsed build's system id (both hard failures if unresolvable); empty source/target cells → null. Reseeds authoritatively (full delete then insert) inside a transaction. |
+
+A missing CSV file is a hard failure (`SdeGateError('binding')`), not a skip — the CSVs are checked-in source of truth, so absence is an environment fault.
 
 ### Wormhole code → typeId disambiguation
-The SDE ships duplicate `Wormhole <CODE>` types under group `988` (e.g. two "Wormhole J244", ids `30667` & `73748` — dogma-identical, both unpublished; ESI returns both and won't pick one). Because the catalog/override CSVs key on the WH code, a naive last-write-wins map can bind routing/overrides to a type id that **no `universe_system_static` row uses** — the static then silently drops from the UI (its `universe_wormhole` join finds nothing). `buildWormholeCodeToTypeId(entries, staticTypeIds)` resolves each collision toward the id present in `system-static.csv` (`readStaticTypeIds()`), and warns only if both colliding ids are referenced by statics.
+The SDE ships duplicate `Wormhole <CODE>` types under group `988` (e.g. two "Wormhole J244", ids `30667` & `73748` — dogma-identical, both unpublished; ESI returns both and won't pick one). Because the catalog/override CSVs key on the WH code, a naive last-write-wins map can bind routing/overrides to a type id that **no `universe_system_static` row uses** — the static then silently drops from the UI (its `universe_wormhole` join finds nothing). `buildWormholeCodeToTypeId(entries, staticTypeIds)` resolves each collision toward the id present in the parsed `system-static.csv` rows, and warns only if both colliding ids are referenced by statics.
 
 ---
 
@@ -47,8 +59,17 @@ Pinned-build constants. Bump deliberately and re-validate the Phase-0 gate count
 ### ensureSdeZip(): Promise<string>
 Downloads the pinned zip into `.sde-cache/` if not already present; returns its path.
 
+### parseSdeArchive(zip): ParsedSde
+Parses every SDE YAML file into rows through the `./decoders` Zod schemas, entirely offline (no DB access). Returns the row arrays plus the derived `typeIds`/`attrIds`/`systemIds` sets, `systemNameToId`, and `wormholeCodeEntries`. Throws `SdeFormatError` on the first entry that fails its schema.
+
+### parseVendoredCsvs(bindings): Promise<CsvRows>
+Parses the three vendored catalog CSVs and re-binds every row against `bindings` (a `ParsedSde` for `runIngest`, or DB-derived sets for `runCsvIngest`). Throws `SdeGateError('binding')` on a missing file or an unresolvable system id / type id / WH code / `targetSystem` name.
+
+### findShrunkenTables(newCounts, liveCounts, maxPct): ShrunkenTable[]
+Pure. Returns the gated tables whose `newCounts` entry is more than `maxPct` below `liveCounts` (a live count of 0 — bootstrap — is skipped).
+
 ### runIngest(): Promise<IngestResult>
-Orchestrates the full ingest in FK-safe order (SDE YAML + vendored CSVs). Upserts via `onConflictDoUpdate` (re-runnable). Returns `{ build, counts }` (row counts per logical table). Bulk inserts chunked at 1000. Invoked by `scripts/sde-bootstrap.ts` (`pnpm sde:bootstrap`). As a final step it calls `computeHubProximity()` (`src/lib/sde/hubProximity.ts`) to recompute each HS system's nearest trade hub onto `universe_system` (`counts.hubProximity`); this runs only in the full ingest (it needs freshly-loaded stargate edges + security), not in `runCsvIngest`. On success it upserts the `ap_sde_state` singleton row (`current_build`, `current_release_date`, `refreshed_at`; clears `failed_at`/`failure_reason`/`consecutive_failures`) so every deployment records which build it actually holds.
+Parses the whole build (`parseSdeArchive` + `parseVendoredCsvs`) and checks it for excessive shrink (`findShrunkenTables` against the live tables) before writing anything. Only then writes in FK-safe order via `onConflictDoUpdate` (re-runnable). Returns `{ build, counts }` (row counts per logical table). Bulk inserts chunked at 1000. Invoked by `scripts/sde-bootstrap.ts` (`pnpm sde:bootstrap`). As a final step it calls `computeHubProximity()` (`src/lib/sde/hubProximity.ts`) to recompute each HS system's nearest trade hub onto `universe_system` (`counts.hubProximity`); this runs only in the full ingest (it needs freshly-loaded stargate edges + security), not in `runCsvIngest`. On success it upserts the `ap_sde_state` singleton row (`current_build`, `current_release_date`, `refreshed_at`; clears `failed_at`/`failure_reason`/`consecutive_failures`) so every deployment records which build it actually holds.
 
 ### runCsvIngest(): Promise<IngestResult>
-Re-ingests only the three vendored CSVs (`system-static.csv`, `wormhole-overrides.csv`, `wormhole-classes.csv`) without touching the SDE zip. Derives `systemIds`, `typeIds`, and `wormholeCodeToTypeId` by querying `universe_system` and `universe_type` — requires those tables to be populated first. Invoked by `scripts/csv-ingest.ts` (`pnpm sde:csv`).
+Re-ingests only the three vendored CSVs without touching the SDE zip, through the same `parseVendoredCsvs` gates as `runIngest`. Derives `systemIds`, `typeIds`, `systemNameToId`, and `wormholeCodeEntries` by querying `universe_system` and `universe_type` — requires those tables to be populated first. Invoked by `scripts/csv-ingest.ts` (`pnpm sde:csv`).
