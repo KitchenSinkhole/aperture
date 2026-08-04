@@ -203,6 +203,23 @@ export async function setupRunSdeIngest(): Promise<ActionResult<EnqueueResult>> 
 }
 
 /**
+ * Enqueue the `sde-refresh` graphile-worker job — the daily self-refresh path,
+ * run now. Checks CCP's latest manifest and ingests it when it is newer than
+ * the build the database holds; a no-op when already current.
+ */
+export async function setupRunSdeRefresh(): Promise<ActionResult<EnqueueResult>> {
+  const gated = await gate();
+  if (!gated.ok) return gated;
+  await logAction('run-sde-refresh');
+
+  try {
+    return { ok: true, data: await enqueueJob('sde-refresh') };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Enqueue failed.' };
+  }
+}
+
+/**
  * Enqueue the `csv-ingest` graphile-worker job — re-ingests the vendored
  * wormhole CSVs only. Requires `universe_system`/`universe_type` to be
  * populated (run the SDE ingest first on a fresh database).

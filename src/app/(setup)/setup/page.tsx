@@ -1,6 +1,7 @@
-import { desc, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { apJobRun } from '@/db/schema';
+import { apJobRun, apSdeState } from '@/db/schema';
+import type { ApSdeState } from '@/types';
 import { getInstanceConfig } from '@/lib/auth/instanceConfig';
 import { readSetupCookie } from '@/lib/auth/setup-cookie';
 import { onDemandJobModules } from '@/lib/jobs/registry';
@@ -12,6 +13,7 @@ import { RunCronCard } from '@/components/setup/RunCronCard';
 import { RunCsvIngestCard } from '@/components/setup/RunCsvIngestCard';
 import { RunMigrationsCard } from '@/components/setup/RunMigrationsCard';
 import { RunSdeIngestCard } from '@/components/setup/RunSdeIngestCard';
+import { RunSdeRefreshCard } from '@/components/setup/RunSdeRefreshCard';
 import { SetupUnlockForm } from '@/components/setup/SetupUnlockForm';
 import { setupLogoutAction } from '@/app/(setup)/actions';
 import { Button } from '@/components/ui/button';
@@ -79,6 +81,16 @@ async function loadStatus(): Promise<StatusSummary> {
   };
 }
 
+async function loadSdeState(): Promise<ApSdeState | null> {
+  try {
+    const [row] = await db.select().from(apSdeState).where(eq(apSdeState.id, 1));
+    return row ?? null;
+  } catch {
+    // Table not migrated yet on a fresh DB.
+    return null;
+  }
+}
+
 async function loadInstanceAccess(): Promise<SerializedInstanceConfig> {
   try {
     const config = await getInstanceConfig();
@@ -124,7 +136,11 @@ export default async function SetupPage() {
     );
   }
 
-  const [status, instanceAccess] = await Promise.all([loadStatus(), loadInstanceAccess()]);
+  const [status, instanceAccess, sdeState] = await Promise.all([
+    loadStatus(),
+    loadInstanceAccess(),
+    loadSdeState(),
+  ]);
   const knownTaskNames = onDemandJobModules()
     .map((m) => m.name)
     .sort();
@@ -154,9 +170,12 @@ export default async function SetupPage() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <RunMigrationsCard />
+        <RunSdeRefreshCard />
         <RunSdeIngestCard />
         <RunCsvIngestCard />
       </div>
+
+      <SdeStatePanel state={sdeState} />
 
       <InstanceAccessPanel config={instanceAccess} />
 
@@ -236,6 +255,97 @@ function StatusPanel({ status }: { status: StatusSummary }) {
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+function iso(at: Date | null): string {
+  return at ? at.toISOString() : '—';
+}
+
+function buildLabel(build: number | null, releaseDate: string | null): string {
+  if (build === null) return '—';
+  return releaseDate ? `${build} (${releaseDate})` : String(build);
+}
+
+/** `retained_orphans` is jsonb, so it arrives untyped; narrow before reading. */
+function orphanSummary(value: unknown): string | null {
+  if (value === null || typeof value !== 'object') return null;
+  const parts = Object.entries(value as Record<string, unknown>).flatMap(([table, v]) => {
+    const retained = (v as { retained?: unknown } | null)?.retained;
+    return typeof retained === 'number' && retained > 0 ? [`${table} (${retained})`] : [];
+  });
+  return parts.length > 0 ? parts.join(', ') : null;
+}
+
+function codeSummary(value: unknown): string | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  return value.map(String).join(', ');
+}
+
+function SdeField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="font-medium text-foreground">{label}</div>
+      <div>{value}</div>
+    </div>
+  );
+}
+
+function SdeStatePanel({ state }: { state: ApSdeState | null }) {
+  if (!state) {
+    return (
+      <section className="flex flex-col gap-3">
+        <h2 className="font-heading text-lg font-semibold tracking-tight">Static data (SDE)</h2>
+        <p className="text-sm text-muted-foreground">
+          No state recorded yet. Run an SDE ingest or the refresh job to populate it.
+        </p>
+      </section>
+    );
+  }
+
+  const orphans = orphanSummary(state.retainedOrphans);
+  const codes = codeSummary(state.uncatalogedWormholeCodes);
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-heading text-lg font-semibold tracking-tight">Static data (SDE)</h2>
+      <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-3">
+        <SdeField
+          label="Current build"
+          value={buildLabel(state.currentBuild, state.currentReleaseDate)}
+        />
+        <SdeField
+          label="Latest seen"
+          value={buildLabel(state.latestBuild, state.latestReleaseDate)}
+        />
+        <SdeField label="Last checked" value={iso(state.checkedAt)} />
+        <SdeField label="Last refreshed" value={iso(state.refreshedAt)} />
+        <SdeField label="Behind since" value={iso(state.behindSince)} />
+        <SdeField label="Consecutive failures" value={String(state.consecutiveFailures)} />
+      </div>
+      {state.failedAt && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+          <div className="font-medium text-foreground">
+            Last failure {state.failedAt.toISOString()}
+          </div>
+          <div className="text-muted-foreground">
+            {state.failureReason ?? 'No reason recorded.'}
+          </div>
+        </div>
+      )}
+      {orphans && (
+        <div className="text-sm">
+          <div className="font-medium text-foreground">Retained orphans</div>
+          <div className="text-muted-foreground">{orphans}</div>
+        </div>
+      )}
+      {codes && (
+        <div className="text-sm">
+          <div className="font-medium text-foreground">Uncataloged wormhole codes</div>
+          <div className="text-muted-foreground">{codes}</div>
+        </div>
+      )}
     </section>
   );
 }

@@ -17,6 +17,9 @@ Gated. Diffs `src/db/migrations/meta/_journal.json` against `drizzle.__drizzle_m
 ### setupRunSdeIngest(): Promise<ActionResult<{ jobId: string }>>
 Gated. Enqueues the `sde-ingest` graphile-worker task via `graphile_worker.add_job`. Returns the queued job id as a base-10 string.
 
+### setupRunSdeRefresh(): Promise<ActionResult<{ jobId: string }>>
+Gated. Enqueues the `sde-refresh` graphile-worker task via `graphile_worker.add_job` — the daily self-refresh path, run on demand. Ingests CCP's latest build when it is newer than the one the database holds; a no-op when already current. Returns the queued job id.
+
 ### setupRunCsvIngest(): Promise<ActionResult<{ jobId: string }>>
 Gated. Enqueues the `csv-ingest` graphile-worker task (vendored wormhole CSV re-ingest only — statics/overrides/classes) via `graphile_worker.add_job`. Returns the queued job id. Requires `universe_system`/`universe_type` to be populated first.
 

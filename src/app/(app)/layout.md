@@ -4,7 +4,7 @@
 **File:** `src/app/(app)/layout.tsx`
 
 ### Renders
-A `RealtimeProvider` wrapping a `CurrentMapScopeProvider` (spans header + `<main>` so the header's Statistics dialog can read the viewed map's scope), which wraps the chrome: a `LowContrastController` (applies the per-device low-contrast preference to `<html>` on mount), a `ClientErrorReporter` (window-level error capture), the `RealtimeStatusBanner` (degraded-mode), the `AppUpdateBanner` (stale build after a deploy), `AppHeader` (active character + roster) above a `<main>` content area, `AppFooter` below, and a `sonner` `Toaster`.
+A `RealtimeProvider` wrapping a `CurrentMapScopeProvider` (spans header + `<main>` so the header's Statistics dialog can read the viewed map's scope), which wraps the chrome: a `LowContrastController` (applies the per-device low-contrast preference to `<html>` on mount), a `ClientErrorReporter` (window-level error capture), the `RealtimeStatusBanner` (degraded-mode), the `SdeStatusBanner` (out-of-date or failing static data), the `AppUpdateBanner` (stale build after a deploy), `AppHeader` (active character + roster) above a `<main>` content area, `AppFooter` below, and a `sonner` `Toaster`.
 
 The `<main>` is full-width (no `max-w-*` constraint) so wide pages like the map canvas can fill the viewport; pages that need a narrower box (e.g. `/maps`) wrap their own content in `mx-auto max-w-*`.
 
@@ -12,8 +12,9 @@ The `<main>` is full-width (no `max-w-*` constraint) so wide pages like the map 
 
 ### Behaviour & Interactions
 - `requireSession()` redirects to `/` when logged out.
+- `getSdeStatus()` is resolved server-side and passed to `SdeStatusBanner` as its initial value, so a degraded banner is present on first paint rather than appearing after a client fetch.
 - Resolves the active character (`getActiveCharacter`), the account roster (`getAccountCharacters`), the account's main (`getMainCharacterId`), the connection-travel-animation toggle (`getConnectionTravelAnimation`), and the signature-indicator settings (`getSignatureIndicatorAccountSettings`) server-side; redirects to `/` if the active character row is missing. The roster + main id + travel toggle + signature-indicator settings thread through `AppHeader` to the switcher's Account settings dialog.
 - The `RealtimeProvider` boots the SharedWorker once for the whole authenticated tree, so the banner and any `useMapSubscription` share one socket.
 
 ### Depends On
-- `src/lib/session.ts`, `AppHeader`, `AppFooter`, `sonner`, `RealtimeProvider` (`@/lib/realtime/useRealtime`), `RealtimeStatusBanner`, `AppUpdateBanner`, `LowContrastController`, `ClientErrorReporter`, `ClientErrorBoundary`.
+- `src/lib/session.ts`, `AppHeader`, `AppFooter`, `sonner`, `RealtimeProvider` (`@/lib/realtime/useRealtime`), `RealtimeStatusBanner`, [[SdeStatusBanner]] + `getSdeStatus` ([[status]]), `AppUpdateBanner`, `LowContrastController`, `ClientErrorReporter`, `ClientErrorBoundary`.
