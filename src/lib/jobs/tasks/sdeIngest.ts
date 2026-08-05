@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apSdeState } from '@/db/schema';
 import { recordSdeFailure, SDE_BUILD, SDE_RELEASE_DATE } from '@/lib/sde/ingest';
+import { SDE_QUEUE } from '../queues';
 import { runSdeIngestChild, type SdeIngestOverride } from '../sdeIngestChild';
 import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
@@ -45,5 +46,6 @@ async function ingest() {
 
 export const sdeIngest: JobModule = {
   name: NAME,
+  queue: SDE_QUEUE,
   run: withInstrumentation(NAME, ingest),
 };

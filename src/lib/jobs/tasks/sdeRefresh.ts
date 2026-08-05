@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apSdeState } from '@/db/schema';
 import { fetchLatestSdeManifest, recordSdeFailure, SDE_BUILD, SDE_RELEASE_DATE } from '@/lib/sde/ingest';
+import { SDE_QUEUE } from '../queues';
 import { runSdeIngestChild } from '../sdeIngestChild';
 import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
@@ -82,5 +83,6 @@ async function refresh(): Promise<RefreshResult> {
 export const sdeRefresh: JobModule = {
   name: NAME,
   cron: '15 12 * * *',
+  queue: SDE_QUEUE,
   run: withInstrumentation(NAME, refresh),
 };

@@ -6,7 +6,7 @@
 ---
 
 ### sdeIngest: JobModule
-Registered task `'sde-ingest'`. No cron — enqueued only via the setup wizard's `setupRunSdeIngest()` Server Action (which calls `graphile_worker.add_job('sde-ingest', '{}'::json)`). The CLI path (`pnpm sde:bootstrap`) bypasses graphile-worker and calls `runIngest()` directly, in-process, on the pinned build.
+Registered task `'sde-ingest'` on the `SDE_QUEUE` ([[queues]]). No cron — enqueued only via the setup wizard's `setupRunSdeIngest()` Server Action. The CLI path (`pnpm sde:bootstrap`) bypasses graphile-worker and calls `runIngest()` directly, in-process, on the pinned build.
 
 Each run:
 1. Resolves the build from `ap_sde_state.current_build`/`current_release_date`, falling back to the pinned `SDE_BUILD`/`SDE_RELEASE_DATE` when the row is absent (a fresh database bootstrapping). Which build the ops console re-runs is decided here and passed as an explicit override, so `runIngest()` with no override keeps meaning "the pin".
@@ -21,4 +21,5 @@ Each run:
 - Resolving to `current_build` also means the zip `evictSupersededSdeZips` kept is the one this task needs, so a re-run on a refreshed deployment does not re-download ~100MB.
 - A deployment stale enough that CCP has pruned its build fails at the download rather than falling back to the pin, which would be a downgrade. The recorded failure reason names it; "Refresh to latest" is the way forward from there.
 - Occupies one `JOB_WORKER_CONCURRENCY` slot for the run's duration (awaiting the child), same as any other job.
+- The shared queue makes it mutually exclusive with `sde-refresh` and `csv-ingest`: two ingests resolving different builds would run deletion sync with different keep sets, and the older one's would delete the newer build's rows.
 - The daily `sde-refresh` task ([[sdeRefresh]]) covers moving onto a newer build CCP has published; this task never advances the build.

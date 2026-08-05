@@ -6,7 +6,7 @@
 ---
 
 ### csvIngest: JobModule
-Registered task `'csv-ingest'`. No cron — enqueued only via the setup wizard's `setupRunCsvIngest()` Server Action (which calls `graphile_worker.add_job('csv-ingest', '{}'::json)`). The CLI path (`pnpm sde:csv`) still bypasses graphile-worker and calls `runCsvIngest()` directly.
+Registered task `'csv-ingest'` on the `SDE_QUEUE` ([[queues]]), so it never overlaps an SDE ingest writing the `universe_*` tables it resolves against. No cron — enqueued only via the setup wizard's `setupRunCsvIngest()` Server Action. The CLI path (`pnpm sde:csv`) still bypasses graphile-worker and calls `runCsvIngest()` directly.
 
 **Returns** (as `ap_job_run.notes`): the `IngestResult` from `runCsvIngest()` — `{ build, counts }`.
 

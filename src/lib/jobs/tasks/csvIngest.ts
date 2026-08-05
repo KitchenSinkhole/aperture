@@ -1,4 +1,5 @@
 import { runCsvIngest } from '@/lib/sde/ingest';
+import { SDE_QUEUE } from '../queues';
 import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
 
@@ -22,5 +23,6 @@ async function ingest() {
 
 export const csvIngest: JobModule = {
   name: NAME,
+  queue: SDE_QUEUE,
   run: withInstrumentation(NAME, ingest),
 };

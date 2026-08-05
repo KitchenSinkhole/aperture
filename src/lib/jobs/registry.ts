@@ -38,6 +38,11 @@ export interface JobModule {
    * scheduled by `addJob` rather than cron.
    */
   cron?: string;
+  /**
+   * Named graphile-worker queue (see `queues.ts`). Jobs sharing a queue run
+   * strictly one at a time. Omit for tasks that may run concurrently.
+   */
+  queue?: string;
   /** Instrumented handler — typically the return value of `withInstrumentation(name, raw)`. */
   run: Task;
 }
@@ -107,7 +112,22 @@ export function buildTaskList(extra: readonly JobModule[] = []): TaskList {
 export function buildCronItems(extra: readonly JobModule[] = []): CronItem[] {
   const out: CronItem[] = [];
   for (const m of [...modules, ...extra]) {
-    if (m.cron) out.push({ task: m.name, match: m.cron, identifier: m.name });
+    if (!m.cron) continue;
+    out.push({
+      task: m.name,
+      match: m.cron,
+      identifier: m.name,
+      ...(m.queue ? { options: { backfillPeriod: 0, queueName: m.queue } } : {}),
+    });
   }
   return out;
+}
+
+/**
+ * The named queue a task is registered under, or `null` for an unqueued task.
+ * Callers enqueuing by task name (the `/setup` console) resolve the queue here
+ * so an on-demand run lands under the same mutual exclusion as its cron.
+ */
+export function jobQueueFor(taskName: string): string | null {
+  return modules.find((m) => m.name === taskName)?.queue ?? null;
 }
