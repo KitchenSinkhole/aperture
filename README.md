@@ -72,9 +72,39 @@ This bare `docker compose up -d` does not include `docker-compose.dev.yml`, so P
 **never published to the host** in production — only the `app` and `migrate` services reach
 it over the internal compose network. Only port **3003** (the app) is exposed.
 
-Migrations run on every `up` and are idempotent. The **SDE static-data ingest is not run
-automatically** — after the first deploy, open `/setup`, unlock with `SETUP_PASSWORD`, and
-trigger the ingest from the operator console.
+Migrations run on every `up` and are idempotent.
+
+#### Static data (SDE)
+
+Migrations create the `universe_*` tables but leave them empty. **The SDE ingest is never run
+automatically**, not on the first deploy and not on an upgrade.
+
+**First deploy.** Open `/setup`, unlock with `SETUP_PASSWORD`, and run **Re-ingest current
+build**. That populates `universe_*` from the pinned bootstrap build and takes several minutes;
+`ap_job_run` shows progress. From a shell on the host, `pnpm sde:bootstrap` does the same thing.
+
+Use that card, not **Refresh to latest**, for the first ingest. Refresh only acts when FC's
+latest build is newer than the one this database records, so if the two happen to match it
+decides there is nothing to do and leaves the tables empty.
+
+**After that it keeps itself current.** The `sde-refresh` job runs daily at 12:15 UTC, compares
+FC's published build against `ap_sde_state`, and ingests a newer one when it appears. A build
+that fails validation is rejected whole, so the database keeps serving the build it already has.
+Static data that has fallen behind, or a refresh that keeps failing, raises a banner for every
+user; `/setup` carries the operator detail and a **Refresh to latest** card to run the check on
+demand.
+
+**Upgrading a deployment older than the self-refresh job.** Run **Re-ingest current build** once
+after the deploy. `ap_sde_state` records which build the database holds, and a database populated
+before that table existed carries no record of its build, so the first refresh check seeds it
+from the pinned build without being able to verify that claim. Until something is actually
+ingested, the recorded build is a guess: if FC's latest matches the pin at that moment, the
+check reports current and no banner appears while the data on disk is genuinely older. One
+manual ingest replaces the guess with the truth, and every later upgrade is fine.
+
+If you reach for `pnpm sde:bootstrap` instead and it fails saying the build is older than the one
+the database holds, that is the downgrade gate doing its job: the refresh has already moved past
+the pinned build and no action is needed.
 
 #### Required environment
 
