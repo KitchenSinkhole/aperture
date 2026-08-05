@@ -96,6 +96,26 @@ describe.skipIf(!run)('sde-refresh (real Postgres)', () => {
     });
   });
 
+  it('stamps behind_since on the first check that sees a gap, holds it, and clears it on convergence', async () => {
+    await seedState({ currentBuild: 100, currentReleaseDate: '2026-01-01' });
+    mockedManifest.mockResolvedValue({ build: 200, releaseDate: '2026-02-01' });
+    mockedChild.mockResolvedValue({ build: 200, counts: { systems: 1 } });
+
+    await sdeRefresh.run(null, FAKE_HELPERS);
+    const stamped = (await readState())!.behindSince;
+    expect(stamped).not.toBeNull();
+
+    // The child is mocked, so current_build stays at 100 and the second check
+    // still sees the gap. The stamp must measure the age of the gap, not the
+    // age of the most recent check.
+    await sdeRefresh.run(null, FAKE_HELPERS);
+    expect((await readState())!.behindSince).toEqual(stamped);
+
+    mockedManifest.mockResolvedValue({ build: 100, releaseDate: '2026-01-01' });
+    await sdeRefresh.run(null, FAKE_HELPERS);
+    expect((await readState())!.behindSince).toBeNull();
+  });
+
   it('records the failure and leaves current_build unchanged when the child rejects', async () => {
     await seedState({ currentBuild: 100, currentReleaseDate: '2026-01-01' });
     mockedManifest.mockResolvedValue({ build: 200, releaseDate: '2026-02-01' });
