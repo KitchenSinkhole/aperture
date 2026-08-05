@@ -4,6 +4,7 @@ import {
   BASE_PITCH_PX,
   FACE_MARGIN_PX,
   anchorPoint,
+  faceNormal,
   faceRank,
   pickFace,
   type IncidentEdge,
@@ -175,6 +176,15 @@ describe('faceRank', () => {
     ];
     expect(faceRank(incidentA, center, Position.Right)).toEqual(['a', 'b', 'c']);
     expect(faceRank(incidentB, center, Position.Right)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('faceNormal', () => {
+  it('points away from the node across each face', () => {
+    expect(faceNormal(Position.Right)).toEqual({ x: 1, y: 0 });
+    expect(faceNormal(Position.Left)).toEqual({ x: -1, y: 0 });
+    expect(faceNormal(Position.Bottom)).toEqual({ x: 0, y: 1 });
+    expect(faceNormal(Position.Top)).toEqual({ x: 0, y: -1 });
   });
 });
 

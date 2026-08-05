@@ -35,5 +35,8 @@ Returns `{ stroke, strokeWidth, strokeDasharray? }`. Scope sets the base colour;
 ### connectionBadges(edge: Pick&lt;MapConnectionEdge, 'isStatic' | 'jumpMassClass' | 'eolStage'&gt;): ConnectionBadge[]
 Structured text badges for a connection: `STATIC` (user-designated static), jump-mass class (`S`/`M`/`L`/`XL`), then `EOL` (eol stage), `EOL 1h` (critical stage), or `EXPIRED` (manual expired stage). Each badge is `{ key, label, tone? }`. The small (`s`) size badge carries `tone: 'warn'` (filled amber pill — small holes are easy to miss) and the `EXPIRED` badge `tone: 'danger'` (filled red pill — do-not-jump hazard); `ConnectionEdge`/`SystemOverlay` colour the pill by tone. Rolling and preserve-mass are **not** returned here; `ConnectionEdge` renders them as standalone icons.
 
+### connectionBubbleColor(): string
+Returns the desaturated blue-grey (`#8ea9c8`) used for a bubbled connection end: the `ConnectionBubble` marker/wash and the `ConnectionEndpoint` hover dot. Held apart from the mass/scope palette so a bubble never reads as connection state.
+
 ### Notes
 - Kept out of Tailwind tokens because they're consumed inside SVG/inline styles.

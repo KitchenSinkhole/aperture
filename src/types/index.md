@@ -29,7 +29,9 @@ Defines `UnderglowConfig` (directly defined, not a re-export) — the color/brig
 
 Re-exports `TagScheme` (the `tag_scheme` pgEnum union: `none`/`abc`/`0121`) and the auto-tagging strategy contract from `src/lib/tagging/types.ts`: `ActiveScheme`, `TagSystem`, `TagEdge`, `TagContext`, `TagStrategy`, `AvailableTags`. `MapSettings` + `MapViewData.map` gain `tagScheme` + `homeMapSystemId`.
 
-`MapContextMenuTarget` (directly defined) — the right-click target on the map canvas: a discriminated union over `system`/`connection`/`pane` carrying the row `id` (except `pane`) plus the cursor's client `x`/`y` for anchoring the menu. `null` ⇒ no menu open. Consumed by `MapContextMenu` (`src/components/map/MapContextMenu.tsx`) and driven by `MapCanvas`'s xyflow context-menu handlers.
+`MapContextMenuTarget` (directly defined) — the right-click target on the map canvas: a discriminated union over `system`/`connection`/`note`/`pane` carrying the row `id` (except `pane`) plus the cursor's client `x`/`y` for anchoring the menu. `null` ⇒ no menu open. Consumed by `MapContextMenu` (`src/components/map/MapContextMenu.tsx`) and driven by `MapCanvas`'s xyflow context-menu handlers.
+
+`ConnectionEnd` (directly defined) — `'source' | 'target'`, which mouth of a connection an operation refers to. Used by `ConnectionEdge`/`ConnectionEndpoint`'s endpoint context-menu callback.
 
 Re-exports the Thera module types from `src/lib/map/thera.ts`: `TheraHub` (`'Thera' | 'Turnur'`), `TheraConnection` (oriented + class-enriched EVE-Scout row), `TheraSyncInput`, and `TheraSyncResult` (`{ summary, payloads }`).
 

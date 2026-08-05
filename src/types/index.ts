@@ -698,6 +698,9 @@ export type MapContextMenuTarget =
   | { kind: 'note'; id: string; x: number; y: number }
   | { kind: 'pane'; x: number; y: number };
 
+/** Which mouth of a connection an operation refers to. */
+export type ConnectionEnd = 'source' | 'target';
+
 /** Filter state for the `sigSearch` panel (`SignatureSearchModule`). Owned by `MapCanvas` so it persists across the session. */
 export type SigSearchFilters = {
   name: string;

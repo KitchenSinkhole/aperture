@@ -38,3 +38,8 @@ Ties (two holes to the same neighbour) break by lexicographic `id` comparison, n
 
 ### anchorPoint(rect: Rect, face: Position, index: number, count: number): Point
 Attachment point for edge `index` of `count` sharing one node face. Pitch is `min(BASE_PITCH_PX, (faceLength - FACE_MARGIN_PX) / (count - 1))` for `count > 1`, so pitch shrinks as degree grows and the fan stays within the face instead of spilling past its corners. Offsets are centred: `(index - (count - 1) / 2) * pitch`.
+
+---
+
+### faceNormal(face: Position): Point
+Unit vector pointing away from the node across the given face (`Right → {1,0}`, `Left → {-1,0}`, `Bottom → {0,1}`, `Top → {0,-1}`). Used to nudge a bubble or endpoint dot clear of the node tile, since the edges layer paints below nodes.

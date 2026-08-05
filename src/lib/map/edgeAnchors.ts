@@ -25,6 +25,20 @@ function faceOf(from: Point, to: Point): Position {
   return dy >= 0 ? Position.Bottom : Position.Top;
 }
 
+/** Unit vector pointing away from the node across the given face. */
+export function faceNormal(face: Position): Point {
+  switch (face) {
+    case Position.Right:
+      return { x: 1, y: 0 };
+    case Position.Left:
+      return { x: -1, y: 0 };
+    case Position.Bottom:
+      return { x: 0, y: 1 };
+    case Position.Top:
+      return { x: 0, y: -1 };
+  }
+}
+
 function opposite(face: Position): Position {
   switch (face) {
     case Position.Right:

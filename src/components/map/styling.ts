@@ -134,6 +134,15 @@ const SCOPE_COLORS: Record<MapConnectionEdge['scope'], string> = {
   abyssal: '#f97316',
 };
 
+// Warp-bubble marker at a connection mouth. A desaturated blue-grey, held apart
+// from the mass/scope palette so a bubble never reads as connection state.
+const BUBBLE_COLOR = '#8ea9c8';
+
+/** Fill/stroke hue for the bubbled-end marker and its wash. */
+export function connectionBubbleColor(): string {
+  return BUBBLE_COLOR;
+}
+
 export type EdgeStyle = {
   stroke: string;
   strokeWidth: number;
