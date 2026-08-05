@@ -359,6 +359,24 @@ function renderItems({
         />
       );
     }
+    case 'connectionEnd': {
+      const connection = connections.find((c) => c.id === target.id);
+      if (!connection) return <MenuItem disabled>Connection not found</MenuItem>;
+      const endSystemId = target.end === 'source' ? connection.source : connection.target;
+      const endSystem = systems.find((s) => s.id === endSystemId);
+      const bubbledKey = target.end === 'source' ? 'sourceBubbled' : 'targetBubbled';
+      return (
+        <MenuCheckboxItem
+          checked={connection[bubbledKey]}
+          onCheckedChange={(checked) => {
+            onConnectionPatch(connection.id, { [bubbledKey]: checked });
+            onClose();
+          }}
+        >
+          Bubbled at {endSystem ? systemLabel(endSystem) : 'unknown system'}
+        </MenuCheckboxItem>
+      );
+    }
     case 'pane': {
       // "Delete disconnected" needs a Home to measure against and at least one
       // system actually cut off from it — otherwise the action is a no-op, so

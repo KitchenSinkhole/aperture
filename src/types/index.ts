@@ -695,6 +695,7 @@ export type StoredMapLayout = Omit<MapLayoutConfig, 'groups'> & {
 export type MapContextMenuTarget =
   | { kind: 'system'; id: string; x: number; y: number }
   | { kind: 'connection'; id: string; x: number; y: number }
+  | { kind: 'connectionEnd'; id: string; end: ConnectionEnd; x: number; y: number }
   | { kind: 'note'; id: string; x: number; y: number }
   | { kind: 'pane'; x: number; y: number };
 

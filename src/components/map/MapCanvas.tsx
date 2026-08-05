@@ -1305,11 +1305,9 @@ export function MapCanvas({
     setContextMenu({ kind: 'connection', id: edge.id, x: event.clientX, y: event.clientY });
   }, []);
 
-  // Right-click on a connection endpoint dot. Opens the same connection menu
-  // as the line itself until Stage 4 adds the dedicated per-end target.
   const onEndpointContextMenu = useCallback(
-    (connectionId: string, _end: ConnectionEnd, clientX: number, clientY: number) => {
-      setContextMenu({ kind: 'connection', id: connectionId, x: clientX, y: clientY });
+    (connectionId: string, end: ConnectionEnd, clientX: number, clientY: number) => {
+      setContextMenu({ kind: 'connectionEnd', id: connectionId, end, x: clientX, y: clientY });
     },
     [],
   );
