@@ -13,6 +13,14 @@ import type { IngestResult } from '@/lib/sde/ingest';
 
 const CHILD_POOL_MAX = 2;
 const STDERR_TAIL_LINES = 20;
+/**
+ * Ceiling on a whole ingest — download, ~100MB YAML parse, bulk upserts,
+ * deletion sync. Generous enough that a slow box finishes inside it, finite so
+ * a wedged child can never hold one of the four worker slots indefinitely.
+ */
+const CHILD_TIMEOUT_MS = 30 * 60_000;
+/** Grace between SIGTERM and SIGKILL for a child that has stopped responding. */
+const CHILD_SIGKILL_GRACE_MS = 10_000;
 
 export interface SdeIngestOverride {
   build: number;
@@ -54,18 +62,38 @@ export function runSdeIngestChild(override?: SdeIngestOverride): Promise<IngestR
     child.stderr.on('data', (d: Buffer) => {
       stderrLines = [...stderrLines, ...d.toString().split('\n')].slice(-STDERR_TAIL_LINES);
     });
-    child.on('error', reject);
-    child.on('exit', (code) => {
-      if (code === 0) {
-        try {
-          resolve(lastJsonLine(stdout));
-        } catch (err) {
-          reject(new Error(`sde-ingest child produced unparseable output: ${(err as Error).message}`));
+
+    let settled = false;
+    let sigkillTimer: NodeJS.Timeout | undefined;
+    const timeoutTimer = setTimeout(() => {
+      child.kill('SIGTERM');
+      sigkillTimer = setTimeout(() => child.kill('SIGKILL'), CHILD_SIGKILL_GRACE_MS);
+      settle(() => reject(new Error(`sde-ingest child timed out after ${CHILD_TIMEOUT_MS}ms and was killed`)));
+    }, CHILD_TIMEOUT_MS);
+
+    function settle(fn: () => void) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutTimer);
+      fn();
+    }
+
+    child.on('error', (err) => settle(() => reject(err)));
+    child.on('exit', (code, signal) => {
+      if (sigkillTimer) clearTimeout(sigkillTimer);
+      settle(() => {
+        if (code === 0) {
+          try {
+            resolve(lastJsonLine(stdout));
+          } catch (err) {
+            reject(new Error(`sde-ingest child produced unparseable output: ${(err as Error).message}`));
+          }
+          return;
         }
-        return;
-      }
-      const tail = stderrLines.filter(Boolean).join('\n');
-      reject(new Error(`sde-ingest child exited with code ${code}: ${tail}`));
+        const tail = stderrLines.filter(Boolean).join('\n');
+        const how = code == null ? `killed by ${signal}` : `exited with code ${code}`;
+        reject(new Error(`sde-ingest child ${how}: ${tail}`));
+      });
     });
   });
 }

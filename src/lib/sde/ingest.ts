@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs';
-import { mkdir, readdir, readFile, stat, unlink } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -77,6 +77,10 @@ const WORMHOLE_GROUP_ID = 988;
 const OVERRIDE_REASON = 'esi-missing-3974';
 const CHUNK = 1000;
 const MANIFEST_FETCH_TIMEOUT_MS = 30_000;
+/** Hard cap on a ~100MB zip download. A stalled CDN connection must not hang the ingest child forever. */
+const ZIP_FETCH_TIMEOUT_MS = 10 * 60_000;
+/** Floor below which a cached zip is treated as truncated without opening it. The real archive is ~100MB. */
+const MIN_SDE_ZIP_BYTES = 1_000_000;
 
 const CACHE_DIR = join(process.cwd(), '.sde-cache');
 const DATA_DIR = join(process.cwd(), 'scripts', 'data');
@@ -117,27 +121,89 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
-/** Download `build`'s SDE zip into the cache dir if not already present. Defaults to the pinned bootstrap build. */
-export async function ensureSdeZip(build: number = SDE_BUILD): Promise<string> {
-  const dest = join(CACHE_DIR, `sde-${build}-yaml.zip`);
-  if (await fileExists(dest)) return dest;
+/** Byte size of `p`, or null when it doesn't exist. */
+async function fileSize(p: string): Promise<number | null> {
+  try {
+    return (await stat(p)).size;
+  } catch {
+    return null;
+  }
+}
+
+async function unlinkIfPresent(p: string): Promise<void> {
+  try {
+    await unlink(p);
+  } catch {
+    // already gone, or held by something else — the caller re-downloads either way
+  }
+}
+
+function sdeZipPath(build: number): string {
+  return join(CACHE_DIR, `sde-${build}-yaml.zip`);
+}
+
+/**
+ * Downloads `build`'s zip into the cache, unconditionally and to a
+ * process-private `.part` file that is renamed onto the cache path only once
+ * the stream has completed and its length has been verified. An interrupted or
+ * short download therefore never leaves anything a later run would mistake for
+ * a complete archive, and two concurrent downloaders of the same build cannot
+ * interleave their bytes.
+ */
+async function downloadSdeZip(build: number): Promise<string> {
+  const dest = sdeZipPath(build);
+  const part = `${dest}.${process.pid}.part`;
   await mkdir(CACHE_DIR, { recursive: true });
   const url = sdeZipUrl(build);
   console.log(`Downloading SDE build ${build} from ${url} ...`);
-  const res = await fetch(url);
-  if (!res.ok || !res.body) throw new Error(`SDE download failed: HTTP ${res.status}`);
-  await pipeline(Readable.fromWeb(res.body as never), createWriteStream(dest));
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(ZIP_FETCH_TIMEOUT_MS) });
+    if (!res.ok || !res.body) throw new Error(`SDE download failed: HTTP ${res.status}`);
+    const declared = Number(res.headers.get('content-length'));
+    await pipeline(Readable.fromWeb(res.body as never), createWriteStream(part));
+    const written = (await fileSize(part)) ?? 0;
+    if (Number.isFinite(declared) && declared > 0 && written !== declared) {
+      throw new Error(`SDE download truncated: expected ${declared} bytes, wrote ${written}`);
+    }
+    if (written < MIN_SDE_ZIP_BYTES) {
+      throw new Error(`SDE download implausibly small: ${written} bytes`);
+    }
+    await rename(part, dest);
+  } catch (err) {
+    await unlinkIfPresent(part);
+    throw err;
+  }
   return dest;
 }
 
+/**
+ * Returns the path to `build`'s cached zip, downloading it if absent. Defaults
+ * to the pinned bootstrap build. A cached file below `MIN_SDE_ZIP_BYTES` is
+ * treated as debris from an older, non-atomic download and replaced rather
+ * than handed on.
+ */
+export async function ensureSdeZip(build: number = SDE_BUILD): Promise<string> {
+  const dest = sdeZipPath(build);
+  const size = await fileSize(dest);
+  if (size != null && size >= MIN_SDE_ZIP_BYTES) return dest;
+  if (size != null) {
+    console.warn(`Cached SDE zip for build ${build} is only ${size} bytes — discarding and re-downloading.`);
+    await unlinkIfPresent(dest);
+  }
+  return downloadSdeZip(build);
+}
+
 const CACHE_ZIP_NAME = /^sde-(\d+)-yaml\.zip$/;
+const CACHE_PART_NAME = /^sde-\d+-yaml\.zip\.\d+\.part$/;
 
 /**
- * Deletes every cached SDE zip except `keepBuild`'s, so a self-refreshing
- * deployment doesn't accumulate one ~100MB zip per historical build. Called
+ * Deletes every cached SDE zip except `keepBuild`'s, plus any `.part` file no
+ * longer being written to, so a self-refreshing deployment doesn't accumulate
+ * one ~100MB file per historical build or per hard-killed download. Called
  * after a successful `runIngest` so `keepBuild` (the build just written) is
- * never at risk. Best-effort: a stray unremovable file logs a warning rather
- * than failing an otherwise-successful ingest.
+ * never at risk; a `.part` younger than the download timeout belongs to a live
+ * download and is left alone. Best-effort: a stray unremovable file logs a
+ * warning rather than failing an otherwise-successful ingest.
  */
 async function evictSupersededSdeZips(keepBuild: number): Promise<void> {
   let entries: string[];
@@ -146,11 +212,21 @@ async function evictSupersededSdeZips(keepBuild: number): Promise<void> {
   } catch {
     return; // cache dir doesn't exist — nothing to evict
   }
+  const partCutoff = Date.now() - ZIP_FETCH_TIMEOUT_MS;
   for (const entry of entries) {
-    const match = CACHE_ZIP_NAME.exec(entry);
-    if (!match || Number(match[1]) === keepBuild) continue;
+    const path = join(CACHE_DIR, entry);
+    if (CACHE_PART_NAME.test(entry)) {
+      try {
+        if ((await stat(path)).mtimeMs > partCutoff) continue;
+      } catch {
+        continue;
+      }
+    } else {
+      const match = CACHE_ZIP_NAME.exec(entry);
+      if (!match || Number(match[1]) === keepBuild) continue;
+    }
     try {
-      await unlink(join(CACHE_DIR, entry));
+      await unlink(path);
     } catch (err) {
       console.warn(`Failed to evict superseded SDE cache entry ${entry}: ${(err as Error).message}`);
     }
@@ -463,6 +539,37 @@ export function parseSdeArchive(zip: AdmZip): ParsedSde {
     systemNameToId,
     stargateEdges,
   };
+}
+
+/**
+ * Resolves `build` to a fully parsed archive, treating any failure to open or
+ * decode the zip as a suspect artifact rather than a verdict on the build: the
+ * cached file is deleted, and a zip that had been sitting in the cache is
+ * re-downloaded and parsed once more before the error is allowed to stand. A
+ * corrupt cache therefore heals inside the run that hits it, and a zip that
+ * failed to parse is never left on disk for the next run to pick up.
+ */
+async function loadSdeBuild(build: number): Promise<ParsedSde> {
+  const servedFromCache = ((await fileSize(sdeZipPath(build))) ?? 0) >= MIN_SDE_ZIP_BYTES;
+  const zipPath = await ensureSdeZip(build);
+
+  console.log('Parsing SDE archive ...');
+  try {
+    return parseSdeArchive(new AdmZip(zipPath));
+  } catch (err) {
+    await unlinkIfPresent(zipPath);
+    if (!servedFromCache) throw err;
+    console.warn(
+      `Cached SDE zip for build ${build} failed to parse (${(err as Error).message}) — re-downloading and retrying once.`,
+    );
+    const fresh = await downloadSdeZip(build);
+    try {
+      return parseSdeArchive(new AdmZip(fresh));
+    } catch (retryErr) {
+      await unlinkIfPresent(fresh);
+      throw retryErr;
+    }
+  }
 }
 
 // --- Vendored CSV parse phase (binds against the parsed build, not the DB) -
@@ -1222,11 +1329,7 @@ export async function runIngest(override?: { build: number; releaseDate: string 
 
   await assertNotADowngrade(build);
 
-  const zipPath = await ensureSdeZip(build);
-  const zip = new AdmZip(zipPath);
-
-  console.log('Parsing SDE archive ...');
-  const parsed = parseSdeArchive(zip);
+  const parsed = await loadSdeBuild(build);
 
   console.log('Parsing vendored CSVs ...');
   const csv = await parseVendoredCsvs(parsed);

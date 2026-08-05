@@ -3,7 +3,16 @@
 **Purpose:** One-shot, re-runnable ingest of a CCP SDE build into every `universe_*` table.
 **File:** `src/lib/sde/ingest.ts`
 
-Bootstrap-floor build: **`SDE_BUILD = 3453885`** (released 2026-07-31), YAML variant — what a fresh database is seeded with, not a ceiling; `runIngest`'s optional `override` advances a running deployment past it. Source: https://developers.eveonline.com/docs/services/static-data. Zip cached at `.sde-cache/sde-<build>-yaml.zip`, one file per build currently on disk (`evictSupersededSdeZips` deletes the rest after each successful ingest).
+Bootstrap-floor build: **`SDE_BUILD = 3453885`** (released 2026-07-31), YAML variant — what a fresh database is seeded with, not a ceiling; `runIngest`'s optional `override` advances a running deployment past it. Source: https://developers.eveonline.com/docs/services/static-data. Zip cached at `.sde-cache/sde-<build>-yaml.zip`, one file per build currently on disk (`evictSupersededSdeZips` deletes the rest, plus any `.part` file older than the download timeout, after each successful ingest).
+
+### The cached zip is never trusted
+
+A cache entry only ever exists as a complete, verified download, and never survives failing to parse — so a corrupt archive cannot become a permanent, self-perpetuating ingest failure:
+
+- Downloads stream to a process-private `.<pid>.part` file and are `rename`d onto the cache path only after the stream completes, its byte count matches the response's `content-length` (when the CDN declares one), and it clears `MIN_SDE_ZIP_BYTES` (1MB, against a ~100MB archive). An interrupted download, a short body, or a full disk leaves nothing at the cache path, and two concurrent downloaders of the same build cannot interleave bytes.
+- The zip `fetch` is capped by `AbortSignal.timeout` at 10 minutes, so a stalled CDN connection fails the ingest instead of hanging its child process.
+- `ensureSdeZip` re-downloads a cached file below `MIN_SDE_ZIP_BYTES` rather than returning it.
+- Failing to open or decode the archive deletes the cached file. If that file came from the cache rather than the download just made, the build is fetched again and parsed once more before the error stands: a poisoned cache heals inside the run that hits it, and a zip that failed to parse is never left for the next run.
 
 ### Parse-then-write, gated
 
@@ -69,7 +78,7 @@ Editing: hand-edit rows directly (add types, refine sources/targets, set fixed d
 `SDE_BUILD`/`SDE_RELEASE_DATE`/`SDE_ZIP_URL` are the bootstrap-floor build constants (bump deliberately and re-validate the Phase-0 gate counts). `SDE_LATEST_MANIFEST_URL` is the newline-delimited build-freshness manifest `fetchLatestSdeManifest` polls.
 
 ### ensureSdeZip(build?: number): Promise<string>
-Downloads `build`'s zip into `.sde-cache/` if not already present; returns its path. Defaults to `SDE_BUILD`.
+Returns the path to `build`'s zip in `.sde-cache/`, downloading it when absent or below `MIN_SDE_ZIP_BYTES`. Defaults to `SDE_BUILD`. See "The cached zip is never trusted" above for the download and verification rules.
 
 ### fetchLatestSdeManifest(): Promise<{ build: number; releaseDate: string }>
 Fetches `SDE_LATEST_MANIFEST_URL`, parses each line through `sdeLatestManifestSchema` (`./decoders.ts`), and returns the `_key: "sde"` line's `buildNumber`/`releaseDate` (truncated to `YYYY-MM-DD`). Throws on an HTTP failure or a manifest with no `sde` entry. Called by the `sde-refresh` job task (`src/lib/jobs/tasks/sdeRefresh.ts`).
