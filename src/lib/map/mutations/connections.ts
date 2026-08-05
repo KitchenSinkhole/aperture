@@ -27,6 +27,8 @@ export type CreateConnectionInput = {
   preserveMass?: boolean;
   isRolling?: boolean;
   isStatic?: boolean;
+  sourceBubbled?: boolean;
+  targetBubbled?: boolean;
   /** Optional outer transaction (joined by `addSystemWithStargateLinks` to commit gate links atomically with the system add). */
   tx?: Tx;
 };
@@ -48,6 +50,8 @@ export type UpdateConnectionPatch = {
   preserveMass?: boolean;
   isRolling?: boolean;
   isStatic?: boolean;
+  sourceBubbled?: boolean;
+  targetBubbled?: boolean;
 };
 
 export type UpdateConnectionInput = {
@@ -81,6 +85,8 @@ export function createConnection(
           preserveMass: input.preserveMass ?? false,
           isRolling: input.isRolling ?? false,
           isStatic: input.isStatic ?? false,
+          sourceBubbled: input.sourceBubbled ?? false,
+          targetBubbled: input.targetBubbled ?? false,
           eolAt: stage !== 'none' ? new Date() : null,
           // Every create is a fresh assertion (manual draw, sig link, stargate
           // auto-link) → confirmed now. removeSystem dormants wh rows by NULLing this.
@@ -97,6 +103,8 @@ export function createConnection(
           preserveMass: apMapConnection.preserveMass,
           isRolling: apMapConnection.isRolling,
           isStatic: apMapConnection.isStatic,
+          sourceBubbled: apMapConnection.sourceBubbled,
+          targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
           createdAt: apMapConnection.createdAt,
         });
@@ -111,6 +119,8 @@ export function createConnection(
         preserveMass: row!.preserveMass,
         isRolling: row!.isRolling,
         isStatic: row!.isStatic,
+        sourceBubbled: row!.sourceBubbled,
+        targetBubbled: row!.targetBubbled,
         eolAt: row!.eolAt ? row!.eolAt.toISOString() : null,
         createdAt: row!.createdAt.toISOString(),
       };
@@ -170,6 +180,8 @@ export function updateConnection(
       if ('preserveMass' in patch) set.preserveMass = patch.preserveMass;
       if ('isRolling' in patch) set.isRolling = patch.isRolling;
       if ('isStatic' in patch) set.isStatic = patch.isStatic;
+      if ('sourceBubbled' in patch) set.sourceBubbled = patch.sourceBubbled;
+      if ('targetBubbled' in patch) set.targetBubbled = patch.targetBubbled;
 
       let nextEolAt: Date | null | undefined;
       if ('eolStage' in patch && patch.eolStage !== undefined) {
@@ -220,6 +232,8 @@ export function updateConnection(
       if ('preserveMass' in patch) out.preserveMass = patch.preserveMass;
       if ('isRolling' in patch) out.isRolling = patch.isRolling;
       if ('isStatic' in patch) out.isStatic = patch.isStatic;
+      if ('sourceBubbled' in patch) out.sourceBubbled = patch.sourceBubbled;
+      if ('targetBubbled' in patch) out.targetBubbled = patch.targetBubbled;
       if ('eolStage' in patch && patch.eolStage !== undefined) {
         out.eolStage = patch.eolStage;
         out.eolAt = nextEolAt ? nextEolAt.toISOString() : null;

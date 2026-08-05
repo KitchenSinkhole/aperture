@@ -314,6 +314,8 @@ async function ensureConnection(
           preserveMass: apMapConnection.preserveMass,
           isRolling: apMapConnection.isRolling,
           isStatic: apMapConnection.isStatic,
+          sourceBubbled: apMapConnection.sourceBubbled,
+          targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
           createdAt: apMapConnection.createdAt,
         });
@@ -329,6 +331,8 @@ async function ensureConnection(
         preserveMass: row!.preserveMass,
         isRolling: row!.isRolling,
         isStatic: row!.isStatic,
+        sourceBubbled: row!.sourceBubbled,
+        targetBubbled: row!.targetBubbled,
         eolAt: row!.eolAt ? row!.eolAt.toISOString() : null,
         createdAt: row!.createdAt.toISOString(),
       };
@@ -374,6 +378,8 @@ async function reconfirmConnection(
           preserveMass: apMapConnection.preserveMass,
           isRolling: apMapConnection.isRolling,
           isStatic: apMapConnection.isStatic,
+          sourceBubbled: apMapConnection.sourceBubbled,
+          targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
           createdAt: apMapConnection.createdAt,
         });
@@ -389,6 +395,8 @@ async function reconfirmConnection(
         preserveMass: row.preserveMass,
         isRolling: row.isRolling,
         isStatic: row.isStatic,
+        sourceBubbled: row.sourceBubbled,
+        targetBubbled: row.targetBubbled,
         eolAt: row.eolAt ? row.eolAt.toISOString() : null,
         createdAt: row.createdAt.toISOString(),
       };

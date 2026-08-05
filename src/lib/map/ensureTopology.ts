@@ -147,6 +147,8 @@ export async function ensureWhConnection(
           preserveMass: apMapConnection.preserveMass,
           isRolling: apMapConnection.isRolling,
           isStatic: apMapConnection.isStatic,
+          sourceBubbled: apMapConnection.sourceBubbled,
+          targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
           createdAt: apMapConnection.createdAt,
         });
@@ -162,6 +164,8 @@ export async function ensureWhConnection(
         preserveMass: row!.preserveMass,
         isRolling: row!.isRolling,
         isStatic: row!.isStatic,
+        sourceBubbled: row!.sourceBubbled,
+        targetBubbled: row!.targetBubbled,
         eolAt: row!.eolAt ? row!.eolAt.toISOString() : null,
         createdAt: row!.createdAt.toISOString(),
       };

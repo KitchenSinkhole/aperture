@@ -29,10 +29,10 @@ Returns the amber/gold accent (`#fbbf24`) used to mark the map's designated Home
 ### noteSeverityColor(severity: NoteSeverity): string
 Border colour for a map note (`MapNoteNode`), by `map_note_severity`: `neutral`→grey `#6b7280` (the file's default, so an unflagged note reads as "no severity"), `green`→`#22c55e`, `yellow`→`#eab308`, `red`→`#ef4444`.
 
-### connectionStyle(edge: MapConnectionEdge): EdgeStyle
+### connectionStyle(edge: Pick&lt;MapConnectionEdge, 'scope' | 'massStatus' | 'jumpMassClass' | 'eolStage'&gt;): EdgeStyle
 Returns `{ stroke, strokeWidth, strokeDasharray? }`. Scope sets the base colour; wormholes are recoloured by `massStatus` (fresh/reduced/critical). `eolStage` dashes the line — `expired` sparsest (`1 4`, barely-there), `critical` (1h) tighter (`2 3`) than `eol` (4h, `6 4`) — to read as progressively more urgent; `jumpMassClass === 's'` thins the stroke (frigate/small holes).
 
-### connectionBadges(edge: MapConnectionEdge): ConnectionBadge[]
+### connectionBadges(edge: Pick&lt;MapConnectionEdge, 'isStatic' | 'jumpMassClass' | 'eolStage'&gt;): ConnectionBadge[]
 Structured text badges for a connection: `STATIC` (user-designated static), jump-mass class (`S`/`M`/`L`/`XL`), then `EOL` (eol stage), `EOL 1h` (critical stage), or `EXPIRED` (manual expired stage). Each badge is `{ key, label, tone? }`. The small (`s`) size badge carries `tone: 'warn'` (filled amber pill — small holes are easy to miss) and the `EXPIRED` badge `tone: 'danger'` (filled red pill — do-not-jump hazard); `ConnectionEdge`/`SystemOverlay` colour the pill by tone. Rolling and preserve-mass are **not** returned here; `ConnectionEdge` renders them as standalone icons.
 
 ### Notes

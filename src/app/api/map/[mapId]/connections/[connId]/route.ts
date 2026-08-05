@@ -24,6 +24,8 @@ const updateConnectionBodySchema = z.object({
   preserveMass: z.boolean().optional(),
   isRolling: z.boolean().optional(),
   isStatic: z.boolean().optional(),
+  sourceBubbled: z.boolean().optional(),
+  targetBubbled: z.boolean().optional(),
 });
 
 export const runtime = 'nodejs';

@@ -133,7 +133,7 @@ export function describeMapEvent(event: MapEventPayload, ctx: WebhookEventContex
     case 'connection.update': {
       const src = ctx.sourceSystemName ?? 'a system';
       const dst = ctx.targetSystemName ?? 'another system';
-      const changes = describeConnectionChanges(event);
+      const changes = describeConnectionChanges(event, ctx);
       if (changes.length === 0) return null;
       return `updated **${src}** ↔ **${dst}** (${changes.join(', ')})`;
     }
@@ -244,6 +244,7 @@ const CAPABILITY_LABEL: Record<
 /** Per-field `field → value` clauses for a `connection.update` patch (only changed keys). */
 function describeConnectionChanges(
   event: Extract<MapEventPayload, { kind: 'connection.update' }>,
+  ctx: WebhookEventContext,
 ): string[] {
   const changes: string[] = [];
   if (event.scope) changes.push(`scope → \`${event.scope}\``);
@@ -265,6 +266,14 @@ function describeConnectionChanges(
   else if (event.preserveMass === false) changes.push('mass preservation off');
   if (event.isStatic === true) changes.push('flagged as static');
   else if (event.isStatic === false) changes.push('unflagged as static');
+  if (event.sourceBubbled === true) changes.push(`bubbled at **${ctx.sourceSystemName ?? 'a system'}**`);
+  else if (event.sourceBubbled === false) {
+    changes.push(`bubble cleared at **${ctx.sourceSystemName ?? 'a system'}**`);
+  }
+  if (event.targetBubbled === true) changes.push(`bubbled at **${ctx.targetSystemName ?? 'a system'}**`);
+  else if (event.targetBubbled === false) {
+    changes.push(`bubble cleared at **${ctx.targetSystemName ?? 'a system'}**`);
+  }
   return changes;
 }
 

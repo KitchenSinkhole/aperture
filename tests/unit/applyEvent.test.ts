@@ -15,6 +15,8 @@ function connection(id: string): MapConnectionEdge {
     preserveMass: false,
     isRolling: false,
     isStatic: false,
+    sourceBubbled: false,
+    targetBubbled: false,
     eolAt: null,
     createdAt: '2026-06-07T00:00:00.000Z',
   };

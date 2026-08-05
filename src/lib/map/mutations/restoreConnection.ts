@@ -107,6 +107,8 @@ export async function restoreConnection(
               preserveMass: apMapConnection.preserveMass,
               isRolling: apMapConnection.isRolling,
               isStatic: apMapConnection.isStatic,
+              sourceBubbled: apMapConnection.sourceBubbled,
+              targetBubbled: apMapConnection.targetBubbled,
               eolAt: apMapConnection.eolAt,
               createdAt: apMapConnection.createdAt,
             });
@@ -122,6 +124,8 @@ export async function restoreConnection(
             preserveMass: row.preserveMass,
             isRolling: row.isRolling,
             isStatic: row.isStatic,
+            sourceBubbled: row.sourceBubbled,
+            targetBubbled: row.targetBubbled,
             eolAt: row.eolAt ? row.eolAt.toISOString() : null,
             createdAt: row.createdAt.toISOString(),
           };

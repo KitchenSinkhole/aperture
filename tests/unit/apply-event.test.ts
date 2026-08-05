@@ -52,6 +52,8 @@ const conn1: MapConnectionEdge = {
   eolStage: 'none',
   preserveMass: false,
   isStatic: false,
+  sourceBubbled: false,
+  targetBubbled: false,
   isRolling: false,
   eolAt: null,
   createdAt: '2026-01-01T00:00:00.000Z',

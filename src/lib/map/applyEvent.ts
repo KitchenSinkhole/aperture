@@ -90,6 +90,8 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
           if (payload.preserveMass !== undefined) next.preserveMass = payload.preserveMass;
           if (payload.isRolling !== undefined) next.isRolling = payload.isRolling;
           if (payload.isStatic !== undefined) next.isStatic = payload.isStatic;
+          if (payload.sourceBubbled !== undefined) next.sourceBubbled = payload.sourceBubbled;
+          if (payload.targetBubbled !== undefined) next.targetBubbled = payload.targetBubbled;
           if (payload.eolAt !== undefined) next.eolAt = payload.eolAt;
           return next;
         }),

@@ -89,6 +89,8 @@ export type UpdateConnectionBody = {
   preserveMass?: boolean;
   isRolling?: boolean;
   isStatic?: boolean;
+  sourceBubbled?: boolean;
+  targetBubbled?: boolean;
 };
 
 export type CreateNoteBody = {

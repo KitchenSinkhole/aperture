@@ -99,6 +99,9 @@ export type MapConnectionEdge = {
   isRolling: boolean;
   /** User-designated as the source system's static (free manual flag). */
   isStatic: boolean;
+  /** Per-end "bubbled" markers (issue #159). Independent — both ends can be set at once. */
+  sourceBubbled: boolean;
+  targetBubbled: boolean;
   /** When the current `eol_stage` was entered (ISO). Null when `eolStage === 'none'`. */
   eolAt: string | null;
   /** ISO timestamp the row was inserted. Drives the pre-EOL "expires in X" hint. */
@@ -351,6 +354,8 @@ export async function loadMapForView(
           preserveMass: apMapConnection.preserveMass,
           isRolling: apMapConnection.isRolling,
           isStatic: apMapConnection.isStatic,
+          sourceBubbled: apMapConnection.sourceBubbled,
+          targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
           createdAt: apMapConnection.createdAt,
         })
@@ -448,6 +453,8 @@ export async function loadMapForView(
       preserveMass: c.preserveMass,
       isRolling: c.isRolling,
       isStatic: c.isStatic,
+      sourceBubbled: c.sourceBubbled,
+      targetBubbled: c.targetBubbled,
       eolAt: c.eolAt ? c.eolAt.toISOString() : null,
       createdAt: c.createdAt.toISOString(),
     })),

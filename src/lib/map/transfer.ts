@@ -378,6 +378,8 @@ export async function importMapData(args: {
               preserveMass: row!.preserveMass,
               isRolling: row!.isRolling,
               isStatic: row!.isStatic,
+              sourceBubbled: row!.sourceBubbled,
+              targetBubbled: row!.targetBubbled,
               eolAt: row!.eolAt ? row!.eolAt.toISOString() : null,
               createdAt: row!.createdAt.toISOString(),
             };

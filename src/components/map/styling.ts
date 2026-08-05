@@ -147,7 +147,9 @@ export type EdgeStyle = {
  * manual `expired` stage dashes sparsest of all to read as barely-there; frigate
  * holes thin out.
  */
-export function connectionStyle(edge: MapConnectionEdge): EdgeStyle {
+export function connectionStyle(
+  edge: Pick<MapConnectionEdge, 'scope' | 'massStatus' | 'jumpMassClass' | 'eolStage'>,
+): EdgeStyle {
   const stroke = edge.scope === 'wh' ? MASS_COLORS[edge.massStatus] : SCOPE_COLORS[edge.scope];
   return {
     stroke,
@@ -180,7 +182,9 @@ export type ConnectionBadge = {
  * preserve-mass are surfaced as standalone icons by `ConnectionEdge`, not here,
  * because they carry enough operational weight to warrant a glyph over text.
  */
-export function connectionBadges(edge: MapConnectionEdge): ConnectionBadge[] {
+export function connectionBadges(
+  edge: Pick<MapConnectionEdge, 'isStatic' | 'jumpMassClass' | 'eolStage'>,
+): ConnectionBadge[] {
   const badges: ConnectionBadge[] = [];
   if (edge.isStatic) badges.push({ key: 'static', label: 'STATIC' });
   if (edge.jumpMassClass) {
