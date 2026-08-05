@@ -64,6 +64,12 @@ async function refresh(): Promise<RefreshResult> {
       // across every later check, so the grace window measures the age of the
       // gap rather than the age of the most recent check.
       behindSince: behind ? sql`coalesce(${apSdeState.behindSince}, now())` : null,
+      // A converged check is the only thing that retires a failure on a healthy
+      // deployment: the steady state ingests nothing, so `recordSdeIngestSuccess`
+      // never runs and a transient blip would otherwise stand in `/setup` forever
+      // and accumulate into a counter that is no longer consecutive. While
+      // behind, the ingest that follows owns the outcome, so leave it alone.
+      ...(behind ? {} : { failedAt: null, failureReason: null, consecutiveFailures: 0 }),
     })
     .where(eq(apSdeState.id, 1));
 

@@ -137,6 +137,43 @@ describe.skipIf(!run)('sde-refresh (real Postgres)', () => {
     expect(runRow!.success).toBe(false);
   });
 
+  it('clears a prior failure when the check converges without ingesting', async () => {
+    await seedState({
+      currentBuild: 100,
+      currentReleaseDate: '2026-01-01',
+      failedAt: new Date('2026-01-02T00:00:00Z'),
+      failureReason: 'fetch failed',
+      consecutiveFailures: 3,
+    });
+    mockedManifest.mockResolvedValue({ build: 100, releaseDate: '2026-01-01' });
+
+    await sdeRefresh.run(null, FAKE_HELPERS);
+
+    expect(mockedChild).not.toHaveBeenCalled();
+    expect(await readState()).toMatchObject({
+      failedAt: null,
+      failureReason: null,
+      consecutiveFailures: 0,
+    });
+  });
+
+  it('leaves a prior failure standing when the check finds the instance behind', async () => {
+    await seedState({
+      currentBuild: 100,
+      currentReleaseDate: '2026-01-01',
+      failedAt: new Date('2026-01-02T00:00:00Z'),
+      failureReason: 'fetch failed',
+      consecutiveFailures: 3,
+    });
+    mockedManifest.mockResolvedValue({ build: 200, releaseDate: '2026-02-01' });
+    // The child is mocked, so nothing writes the success that would clear these.
+    mockedChild.mockResolvedValue({ build: 200, counts: { systems: 1 } });
+
+    await sdeRefresh.run(null, FAKE_HELPERS);
+
+    expect(await readState()).toMatchObject({ failureReason: 'fetch failed', consecutiveFailures: 3 });
+  });
+
   it('seeds the row from the pinned build when absent, for a deployment upgrading in place', async () => {
     await db.delete(apSdeState).where(eq(apSdeState.id, 1));
     mockedManifest.mockResolvedValue({ build: SDE_BUILD, releaseDate: SDE_RELEASE_DATE });
@@ -149,7 +186,10 @@ describe.skipIf(!run)('sde-refresh (real Postgres)', () => {
   });
 });
 
-async function seedState(row: Pick<ApSdeState, 'currentBuild' | 'currentReleaseDate'>) {
+async function seedState(
+  row: Pick<ApSdeState, 'currentBuild' | 'currentReleaseDate'> &
+    Partial<Pick<ApSdeState, 'failedAt' | 'failureReason' | 'consecutiveFailures'>>,
+) {
   await db.delete(apSdeState).where(eq(apSdeState.id, 1));
   await db.insert(apSdeState).values({ id: 1, ...row });
 }
