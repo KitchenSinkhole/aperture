@@ -84,6 +84,9 @@ const exportConnectionSchema = z.object({
   isRolling: z.boolean(),
   // Optional+default so pre-0032 export files (no `isStatic`) still import.
   isStatic: z.boolean().optional().default(false),
+  // Optional+default so pre-0065 export files (no bubbled flags) still import.
+  sourceBubbled: z.boolean().optional().default(false),
+  targetBubbled: z.boolean().optional().default(false),
 });
 
 const exportSignatureSchema = z.object({
@@ -181,6 +184,8 @@ export async function buildMapExport(mapId: bigint): Promise<MapExportFile> {
       preserveMass: apMapConnection.preserveMass,
       isRolling: apMapConnection.isRolling,
       isStatic: apMapConnection.isStatic,
+      sourceBubbled: apMapConnection.sourceBubbled,
+      targetBubbled: apMapConnection.targetBubbled,
     })
     .from(apMapConnection)
     .where(eq(apMapConnection.mapId, mapId))
@@ -229,6 +234,8 @@ export async function buildMapExport(mapId: bigint): Promise<MapExportFile> {
       preserveMass: c.preserveMass,
       isRolling: c.isRolling,
       isStatic: c.isStatic,
+      sourceBubbled: c.sourceBubbled,
+      targetBubbled: c.targetBubbled,
     })),
     signatures: signatureRows.map((r) => ({
       mapSystemId: r.mapSystemId.toString(),
@@ -339,6 +346,8 @@ export async function importMapData(args: {
                 preserveMass: conn.preserveMass,
                 isRolling: conn.isRolling,
                 isStatic: conn.isStatic,
+                sourceBubbled: conn.sourceBubbled,
+                targetBubbled: conn.targetBubbled,
                 eolAt: conn.eolStage !== 'none' ? new Date() : null,
               })
               .returning({
@@ -352,6 +361,8 @@ export async function importMapData(args: {
                 preserveMass: apMapConnection.preserveMass,
                 isRolling: apMapConnection.isRolling,
                 isStatic: apMapConnection.isStatic,
+                sourceBubbled: apMapConnection.sourceBubbled,
+                targetBubbled: apMapConnection.targetBubbled,
                 eolAt: apMapConnection.eolAt,
                 createdAt: apMapConnection.createdAt,
               });

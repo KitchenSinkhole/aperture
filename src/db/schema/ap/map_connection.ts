@@ -33,6 +33,10 @@ export const apMapConnection = pgTable(
     // manual flag (no catalog validation): the home system's static target can
     // be exempted from the ABC auto-tag (see `ap_map.exempt_home_static_from_tag`).
     isStatic: boolean('is_static').notNull().default(false),
+    // Per-end "bubbled" markers (issue #159). Independent booleans: both ends
+    // can be bubbled at once.
+    sourceBubbled: boolean('source_bubbled').notNull().default(false),
+    targetBubbled: boolean('target_bubbled').notNull().default(false),
     // When the *current* `eol_stage` was entered (re-stamped on each stage
     // change) — used by the EOL-expiry cron and the countdown.
     eolAt: timestamp('eol_at', { withTimezone: true }),

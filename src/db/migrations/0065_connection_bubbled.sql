@@ -1,0 +1,2 @@
+ALTER TABLE "ap_map_connection" ADD COLUMN "source_bubbled" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "ap_map_connection" ADD COLUMN "target_bubbled" boolean DEFAULT false NOT NULL;

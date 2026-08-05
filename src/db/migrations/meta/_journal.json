@@ -449,6 +449,13 @@
       "when": 1785884826635,
       "tag": "0064_sde_behind_since",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1785969066196,
+      "tag": "0065_connection_bubbled",
+      "breakpoints": true
     }
   ]
 }
