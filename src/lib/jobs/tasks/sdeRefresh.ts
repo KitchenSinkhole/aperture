@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apSdeState } from '@/db/schema';
-import { fetchLatestSdeManifest, SDE_BUILD, SDE_RELEASE_DATE } from '@/lib/sde/ingest';
+import { fetchLatestSdeManifest, recordSdeFailure, SDE_BUILD, SDE_RELEASE_DATE } from '@/lib/sde/ingest';
 import { runSdeIngestChild } from '../sdeIngestChild';
 import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
@@ -32,17 +32,6 @@ async function ensureStateRow(): Promise<{ currentBuild: number }> {
   return { currentBuild: SDE_BUILD };
 }
 
-async function recordFailure(reason: string): Promise<void> {
-  await db
-    .update(apSdeState)
-    .set({
-      failedAt: new Date(),
-      failureReason: reason,
-      consecutiveFailures: sql`${apSdeState.consecutiveFailures} + 1`,
-    })
-    .where(eq(apSdeState.id, 1));
-}
-
 interface RefreshResult {
   latestBuild: number;
   currentBuild: number;
@@ -59,7 +48,7 @@ async function refresh(): Promise<RefreshResult> {
   } catch (err) {
     // A check that never reached its comparison is a failure worth naming in
     // `/setup`; `checked_at` stops advancing, which is what the banner reads.
-    await recordFailure(err instanceof Error ? err.message : String(err));
+    await recordSdeFailure(err instanceof Error ? err.message : String(err));
     throw err;
   }
 
@@ -85,7 +74,7 @@ async function refresh(): Promise<RefreshResult> {
     const result = await runSdeIngestChild({ build: manifest.build, releaseDate: manifest.releaseDate });
     return { latestBuild: manifest.build, currentBuild, refreshed: true, counts: result.counts };
   } catch (err) {
-    await recordFailure(err instanceof Error ? err.message : String(err));
+    await recordSdeFailure(err instanceof Error ? err.message : String(err));
     throw err;
   }
 }

@@ -196,10 +196,10 @@ function readYamlEntry(zip: AdmZip, entry: string): unknown {
   }
 }
 
-/** Thrown by a gate that must block a write: an unresolvable CSV binding, or a per-table shrink past `SDE_REFRESH_MAX_SHRINK_PCT`. Raised before the write phase runs, so nothing has been written. */
+/** Thrown by a gate that must block a write: an unresolvable CSV binding, a per-table shrink past `SDE_REFRESH_MAX_SHRINK_PCT`, or a build older than the one the database holds. Raised before the write phase runs, so nothing has been written. */
 export class SdeGateError extends Error {
   constructor(
-    public readonly code: 'binding' | 'shrink',
+    public readonly code: 'binding' | 'shrink' | 'downgrade',
     message: string,
   ) {
     super(message);
@@ -1100,6 +1100,47 @@ export interface IngestResult {
   counts: Record<string, number>;
 }
 
+/**
+ * Blocks an ingest of a build older than the one `ap_sde_state` records. The
+ * write phase is upsert-only, but `syncSdeDeletions` runs against the older
+ * build's keep-sets and would remove every row the newer build added — new
+ * systems, and stargate edges, which `syncStargateEdges` deletes with no FK
+ * guard at all. The shrink gate can't see it: a few dozen systems out of ~8k
+ * is far under `SDE_REFRESH_MAX_SHRINK_PCT`.
+ */
+async function assertNotADowngrade(build: number): Promise<void> {
+  const [row] = await db
+    .select({ currentBuild: apSdeState.currentBuild })
+    .from(apSdeState)
+    .where(eq(apSdeState.id, 1));
+  if (row?.currentBuild != null && build < row.currentBuild) {
+    throw new SdeGateError(
+      'downgrade',
+      `SDE build ${build} is older than build ${row.currentBuild}, which this database already holds`,
+    );
+  }
+}
+
+/**
+ * Records a failed static-data refresh onto the `ap_sde_state` singleton row,
+ * so a failure is visible in `/setup` rather than only in `ap_job_run`. Shared
+ * by the `sde-refresh` and `sde-ingest` tasks.
+ */
+export async function recordSdeFailure(reason: string): Promise<void> {
+  const failedAt = new Date();
+  await db
+    .insert(apSdeState)
+    .values({ id: 1, failedAt, failureReason: reason, consecutiveFailures: 1 })
+    .onConflictDoUpdate({
+      target: apSdeState.id,
+      set: {
+        failedAt,
+        failureReason: reason,
+        consecutiveFailures: sql`${apSdeState.consecutiveFailures} + 1`,
+      },
+    });
+}
+
 /** Records a successful full ingest onto the `ap_sde_state` singleton row. */
 async function recordSdeIngestSuccess(
   build: number,
@@ -1168,15 +1209,18 @@ export async function runCsvIngest(): Promise<IngestResult> {
 /**
  * One-shot, re-runnable ingest of an SDE build into every `universe_*` table —
  * the pinned bootstrap build by default, or `override.build` when called from
- * `sde-refresh`. Downloads the zip if absent, parses it and the vendored CSVs
- * fully (Zod decoders + CSV re-binding — format drift and an unresolvable
- * catalog row both fail here), checks for excessive per-table shrink against
- * the live tables, and only then writes — in FK-safe order, upserts
- * (re-runnable).
+ * `sde-refresh` / `sde-ingest`. Rejects a build older than the one
+ * `ap_sde_state` records, downloads the zip if absent, parses it and the
+ * vendored CSVs fully (Zod decoders + CSV re-binding — format drift and an
+ * unresolvable catalog row both fail here), checks for excessive per-table
+ * shrink against the live tables, and only then writes — in FK-safe order,
+ * upserts (re-runnable).
  */
 export async function runIngest(override?: { build: number; releaseDate: string }): Promise<IngestResult> {
   const build = override?.build ?? SDE_BUILD;
   const releaseDate = override?.releaseDate ?? SDE_RELEASE_DATE;
+
+  await assertNotADowngrade(build);
 
   const zipPath = await ensureSdeZip(build);
   const zip = new AdmZip(zipPath);

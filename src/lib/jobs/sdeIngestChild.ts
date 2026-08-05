@@ -6,8 +6,9 @@ import type { IngestResult } from '@/lib/sde/ingest';
  * Spawns `scripts/sde-ingest-child.ts` as an isolated child process running
  * `runIngest` — own dedicated `pg.Pool`, own event loop — so an SDE ingest
  * never starves the app's WS heartbeats or shares its pool with location-poll.
- * Shared by the `sde-ingest` (on-demand, pinned build) and `sde-refresh`
- * (cron, `override`d to the newly observed build) job tasks.
+ * Shared by the `sde-ingest` (on-demand, `override`d to the build the database
+ * holds) and `sde-refresh` (cron, `override`d to the newly observed build) job
+ * tasks.
  */
 
 const CHILD_POOL_MAX = 2;

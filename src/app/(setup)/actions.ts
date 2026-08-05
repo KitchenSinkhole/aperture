@@ -189,7 +189,10 @@ async function enqueueJob(taskName: string): Promise<EnqueueResult> {
   return { jobId: id === undefined || id === null ? '' : String(id) };
 }
 
-/** Enqueue the `sde-ingest` graphile-worker job. Returns the queued job id. */
+/**
+ * Enqueue the `sde-ingest` graphile-worker job — a re-run of the pipeline
+ * against the build the database already holds. Returns the queued job id.
+ */
 export async function setupRunSdeIngest(): Promise<ActionResult<EnqueueResult>> {
   const gated = await gate();
   if (!gated.ok) return gated;
