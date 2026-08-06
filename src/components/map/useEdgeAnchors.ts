@@ -3,9 +3,9 @@
 import { useCallback } from 'react';
 import { useStore, type Edge, type InternalNode, type Node, type ReactFlowState } from '@xyflow/react';
 import { Position } from '@xyflow/react';
-import { anchorPoint, center, faceRank, pickFace, type Rect } from '@/lib/map/edgeAnchors';
+import { anchorPoint, center, facePitch, faceRank, pickFace, type Rect } from '@/lib/map/edgeAnchors';
 
-export type EdgeAnchor = { x: number; y: number; position: Position };
+export type EdgeAnchor = { x: number; y: number; position: Position; pitch: number };
 export type EdgeAnchors = { source: EdgeAnchor; target: EdgeAnchor };
 
 type Adjacency = Map<string, { id: string; other: string }[]>;
@@ -56,8 +56,9 @@ function endpointAnchor(
 
   const ranked = faceRank(incident, nodeCenter, face);
   const index = ranked.indexOf(edgeId);
-  const { x, y } = anchorPoint(rect, face, index === -1 ? 0 : index, index === -1 ? 1 : ranked.length);
-  return { x, y, position: face };
+  const count = index === -1 ? 1 : ranked.length;
+  const { x, y } = anchorPoint(rect, face, index === -1 ? 0 : index, count);
+  return { x, y, position: face, pitch: facePitch(rect, face, count) };
 }
 
 function anchorsEqual(a: EdgeAnchors | null, b: EdgeAnchors | null): boolean {
@@ -67,9 +68,11 @@ function anchorsEqual(a: EdgeAnchors | null, b: EdgeAnchors | null): boolean {
     a.source.x === b.source.x &&
     a.source.y === b.source.y &&
     a.source.position === b.source.position &&
+    a.source.pitch === b.source.pitch &&
     a.target.x === b.target.x &&
     a.target.y === b.target.y &&
-    a.target.position === b.target.position
+    a.target.position === b.target.position &&
+    a.target.pitch === b.target.pitch
   );
 }
 

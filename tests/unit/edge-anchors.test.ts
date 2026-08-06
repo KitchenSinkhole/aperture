@@ -5,6 +5,7 @@ import {
   FACE_MARGIN_PX,
   anchorPoint,
   faceNormal,
+  facePitch,
   faceRank,
   pickFace,
   type IncidentEdge,
@@ -188,6 +189,31 @@ describe('faceNormal', () => {
   });
 });
 
+describe('facePitch', () => {
+  const tallRect = rect(0, 0, 20, 45);
+
+  it('is 0 when unconstrained (count <= 1)', () => {
+    expect(facePitch(tallRect, Position.Right, 1)).toBe(0);
+    expect(facePitch(tallRect, Position.Right, 0)).toBe(0);
+  });
+
+  it('holds at BASE_PITCH_PX when the face has room to spare', () => {
+    expect(facePitch(tallRect, Position.Right, 3)).toBeCloseTo(BASE_PITCH_PX);
+  });
+
+  it('clamps below BASE_PITCH_PX at high degree', () => {
+    const expectedPitch = (45 - FACE_MARGIN_PX) / 4;
+    expect(facePitch(tallRect, Position.Right, 5)).toBeCloseTo(expectedPitch);
+    expect(expectedPitch).toBeLessThan(BASE_PITCH_PX);
+  });
+
+  it('reads face length from width on Top/Bottom faces', () => {
+    const wideRect = rect(0, 0, 45, 20);
+    const expectedPitch = (45 - FACE_MARGIN_PX) / 4;
+    expect(facePitch(wideRect, Position.Bottom, 5)).toBeCloseTo(expectedPitch);
+  });
+});
+
 describe('anchorPoint', () => {
   const tallRect = rect(0, 0, 20, 45);
 
@@ -252,6 +278,18 @@ describe('anchorPoint', () => {
     for (const p of points) {
       expect(p.y).toBeGreaterThanOrEqual(tallRect.y);
       expect(p.y).toBeLessThanOrEqual(tallRect.y + tallRect.h);
+    }
+  });
+
+  it('spaces consecutive anchors exactly facePitch apart, at low and high degree', () => {
+    for (const count of [3, 5]) {
+      const pitch = facePitch(tallRect, Position.Right, count);
+      const points = Array.from({ length: count }, (_, i) => anchorPoint(tallRect, Position.Right, i, count));
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i - 1]!;
+        const curr = points[i]!;
+        expect(curr.y - prev.y).toBeCloseTo(pitch);
+      }
     }
   });
 });

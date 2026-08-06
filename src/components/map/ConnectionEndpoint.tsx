@@ -1,3 +1,4 @@
+import { Position } from '@xyflow/react';
 import { faceNormal } from '@/lib/map/edgeAnchors';
 import type { EdgeAnchor } from './useEdgeAnchors';
 import type { ConnectionEnd } from '@/types';
@@ -13,16 +14,22 @@ import { useMarkScale } from './useMarkScale';
 // the handle, not the state, and the two must not be mistaken for each other
 // when a bubbled end is hovered.
 //
-// The armed halo is drawn at exactly the hit radius. The dot alone understates
-// its own target by an order of magnitude in area, and a fanned face packs
-// neighbouring endpoints closer together than that target is wide, so the only
+// The armed halo is drawn at exactly the hit target's boundary. The dot alone
+// understates its own target by an order of magnitude in area, so the only
 // reliable way to know which end a right-click will land on is to see the
 // boundary of the one currently under the pointer.
+//
+// The hit target is a face-oriented slot, not a plain circle: neighbours on a
+// crowded face separate only *along* the face, so its along-face half-extent
+// is capped at half the fan's pitch while its cross-face half-extent (the
+// reach outward from the mouth, where the pointer arrives from) stays at the
+// full radius. That keeps adjacent endpoints' targets disjoint without
+// shrinking the direction that has room to spare.
 
 const HIT_RADIUS_PX = 11;
 const DOT_RADIUS_PX = 3;
 const HALO_STROKE_PX = 1.5;
-/** Held clear of the node tile, which would otherwise swallow the hit circle's pointer events. */
+/** Held clear of the node tile, which would otherwise swallow the hit target's pointer events. */
 const STANDOFF_PX = 10;
 
 /** `idle` is inert: no mark, and no hit target to right-click by accident. */
@@ -52,6 +59,17 @@ export function ConnectionEndpoint({
   const cy = anchor.y + normal.y * STANDOFF_PX * scale;
   const color = connectionEndpointColor();
 
+  // Clamped against the raw (unscaled) pitch, after the radius has already
+  // been scaled: the mark holds a constant screen size and so grows in flow
+  // space as the canvas zooms out, whereas the fan's pitch is fixed in flow
+  // space and must not grow with it.
+  const radius = HIT_RADIUS_PX * scale;
+  const alongHalf = anchor.pitch > 0 ? Math.min(radius, anchor.pitch / 2) : radius;
+  const vertical = anchor.position === Position.Left || anchor.position === Position.Right;
+  const halfW = vertical ? radius : alongHalf;
+  const halfH = vertical ? alongHalf : radius;
+  const slotCorner = Math.min(halfW, halfH);
+
   return (
     <g
       className="nodrag nopan"
@@ -64,18 +82,24 @@ export function ConnectionEndpoint({
         onContextMenu(end, e.clientX, e.clientY);
       }}
     >
-      <circle
-        cx={cx}
-        cy={cy}
-        r={HIT_RADIUS_PX * scale}
+      <rect
+        x={cx - halfW}
+        y={cy - halfH}
+        width={halfW * 2}
+        height={halfH * 2}
+        rx={slotCorner}
+        ry={slotCorner}
         fill="transparent"
         style={{ pointerEvents: state === 'idle' ? 'none' : 'all' }}
       />
       {state === 'armed' && (
-        <circle
-          cx={cx}
-          cy={cy}
-          r={HIT_RADIUS_PX * scale}
+        <rect
+          x={cx - halfW}
+          y={cy - halfH}
+          width={halfW * 2}
+          height={halfH * 2}
+          rx={slotCorner}
+          ry={slotCorner}
           fill={color}
           fillOpacity={0.16}
           stroke={color}

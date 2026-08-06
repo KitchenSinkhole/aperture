@@ -36,8 +36,13 @@ Ties (two holes to the same neighbour) break by lexicographic `id` comparison, n
 
 ---
 
+### facePitch(rect: Rect, face: Position, count: number): number
+Spacing between adjacent attachment points on one node face carrying `count` edges: `min(BASE_PITCH_PX, (faceLength - FACE_MARGIN_PX) / (count - 1))` for `count > 1`, so pitch shrinks as degree grows and the fan stays within the face instead of spilling past its corners. `0` for `count <= 1` — unconstrained, no neighbour to collide with. `faceLength` is `rect.h` for `Left`/`Right`, `rect.w` for `Top`/`Bottom`.
+
+---
+
 ### anchorPoint(rect: Rect, face: Position, index: number, count: number): Point
-Attachment point for edge `index` of `count` sharing one node face. Pitch is `min(BASE_PITCH_PX, (faceLength - FACE_MARGIN_PX) / (count - 1))` for `count > 1`, so pitch shrinks as degree grows and the fan stays within the face instead of spilling past its corners. Offsets are centred: `(index - (count - 1) / 2) * pitch`.
+Attachment point for edge `index` of `count` sharing one node face, spaced by `facePitch`. Offsets are centred: `(index - (count - 1) / 2) * pitch`.
 
 ---
 

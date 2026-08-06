@@ -92,14 +92,20 @@ export function faceRank(incident: IncidentEdge[], nodeCenter: Point, face: Posi
 }
 
 /**
- * Attachment point for index `index` of `count` edges sharing one node face.
- * Pitch shrinks below `BASE_PITCH_PX` as degree grows so the fan never spills
- * past the face's corners.
+ * Spacing between adjacent attachment points on one node face carrying
+ * `count` edges. Shrinks below `BASE_PITCH_PX` as degree grows so the fan
+ * never spills past the face's corners. `0` for `count <= 1` — unconstrained,
+ * no neighbour to collide with.
  */
-export function anchorPoint(rect: Rect, face: Position, index: number, count: number): Point {
+export function facePitch(rect: Rect, face: Position, count: number): number {
+  if (count <= 1) return 0;
   const faceLength = face === Position.Left || face === Position.Right ? rect.h : rect.w;
-  const pitch =
-    count > 1 ? Math.min(BASE_PITCH_PX, (faceLength - FACE_MARGIN_PX) / (count - 1)) : 0;
+  return Math.min(BASE_PITCH_PX, (faceLength - FACE_MARGIN_PX) / (count - 1));
+}
+
+/** Attachment point for index `index` of `count` edges sharing one node face. */
+export function anchorPoint(rect: Rect, face: Position, index: number, count: number): Point {
+  const pitch = facePitch(rect, face, count);
   const offset = (index - (count - 1) / 2) * pitch;
   const { x: cx, y: cy } = center(rect);
 

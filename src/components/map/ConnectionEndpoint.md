@@ -15,17 +15,19 @@
 | onContextMenu | (end: ConnectionEnd, clientX: number, clientY: number) => void | yes | Fired on right-click, after `preventDefault`/`stopPropagation`. |
 
 ### Renders
-A `<g className="nodrag nopan">` containing a transparent hit `<circle>` and, by state, the marks over it — all in `connectionEndpointColor()`, all centred at `anchor` nudged outward along `faceNormal(anchor.position)`, far enough that the node tile doesn't swallow the hit circle's pointer events (further out than `ConnectionBubble`'s ring, which deliberately sits on the mouth):
+A `<g className="nodrag nopan">` containing a transparent hit `<rect>` (rounded to a stadium) and, by state, the marks over it — all in `connectionEndpointColor()`, all centred at `anchor` nudged outward along `faceNormal(anchor.position)`, far enough that the node tile doesn't swallow the hit target's pointer events (further out than `ConnectionBubble`'s ring, which deliberately sits on the mouth):
 
-- **idle** — nothing, and the hit circle is `pointer-events: none`.
+- **idle** — nothing, and the hit target is `pointer-events: none`.
 - **revealed** — a small faint dot, omitted when `bubbled` (the bubble's ring already marks that mouth).
-- **armed** — a translucent halo filling the hit radius exactly, ringed by a crisper stroke, with the dot at full opacity in its centre.
+- **armed** — a translucent halo filling the hit target's exact shape, ringed by a crisper stroke, with the dot at full opacity in its centre.
 
-The hit circle is `pointer-events: all` whenever live — needed because `.react-flow__edge` sets `pointer-events: visibleStroke`, which a fill-only circle wouldn't satisfy.
+The hit target is `pointer-events: all` whenever live — needed because `.react-flow__edge` sets `pointer-events: visibleStroke`, which a fill-only shape wouldn't satisfy.
+
+The hit target and halo are a face-oriented slot, not a plain circle: cross-face half-extent (the reach outward from the mouth, where the pointer arrives from) is always the full `HIT_RADIUS_PX * useMarkScale()`; along-face half-extent is that same radius clamped to `anchor.pitch / 2` — half the spacing to this end's nearest neighbour on the same node face, `0` when it's the sole occupant (unconstrained, so the slot degenerates to that same circle). Corner radius is `min(halfW, halfH)`, so an unconstrained slot renders as a circle and a squeezed one as a lozenge whose flat sides tile against its neighbours' with no gap and no overlap along the sweep.
 
 ### Behaviour & Interactions
-- Hit radius, mark radii and standoff are all multiplied by `useMarkScale()`, so the target holds a clickable size on screen at any zoom. Must therefore be mounted inside a `ReactFlow` provider.
-- The armed halo is drawn at exactly the hit radius, so what the pointer will act on is visible rather than inferred. A fanned node face packs neighbouring endpoints closer together than one hit circle is wide, and overlapping circles resolve by edge z-order, so seeing the armed boundary is the only reliable way to tell which end a right-click lands on.
+- Hit radius, mark radii and standoff are all multiplied by `useMarkScale()`, so the target holds a clickable size on screen at any zoom; the along-face clamp is applied to the already-scaled radius but against the raw (unscaled) `anchor.pitch`, since the mark grows in flow space as the canvas zooms out while the fan's pitch does not. Must therefore be mounted inside a `ReactFlow` provider.
+- The armed halo is drawn to exactly the hit target's shape, so what the pointer will act on is visible rather than inferred. Because the slot's along-face extent is capped at half the fan pitch, adjacent endpoints' targets are disjoint by construction — the armed mark is always the one nearest the pointer, not whichever overlapping circle happens to sit on top in DOM order.
 - An idle endpoint takes no pointer events at all, so a right-click near a node face can't open an endpoint menu for a mark that isn't showing.
 - The marks are a neutral grey rather than the bubble hue: they mark where a control is, not what state the end is in, and the two must not be confused when a bubbled end is hovered.
 - `onContextMenu` stops propagation so xyflow's edge-level `onEdgeContextMenu` doesn't also fire — right-clicking an endpoint opens only the endpoint menu, not the connection menu.

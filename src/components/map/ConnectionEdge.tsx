@@ -74,11 +74,13 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
     x: pathArgs.sourceX,
     y: pathArgs.sourceY,
     position: pathArgs.sourcePosition,
+    pitch: anchors?.source.pitch ?? 0,
   };
   const targetAnchor = {
     x: pathArgs.targetX,
     y: pathArgs.targetY,
     position: pathArgs.targetPosition,
+    pitch: anchors?.target.pitch ?? 0,
   };
   // Gate links render as right-angled (orthogonal) paths to read distinctly from
   // the smooth bezier of wormhole/jumpbridge/abyssal connections; `borderRadius:
