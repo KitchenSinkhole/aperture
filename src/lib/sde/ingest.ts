@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, rename, stat, unlink } from 'node:fs/promises
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import AdmZip from 'adm-zip';
+import StreamZip from 'node-stream-zip';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { and, eq, inArray, notExists, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
@@ -261,11 +261,15 @@ export async function fetchLatestSdeManifest(): Promise<{ build: number; release
   throw new SdeFormatError('latest.jsonl', 'sde', 'no "sde" entry found');
 }
 
-/** Reads `entry`'s raw bytes out of `zip` for `decodeJsonlEntries` to stream, without converting the whole entry to a string first. */
-function readJsonlEntry(zip: AdmZip, entry: string): Buffer {
-  const buf = zip.getEntry(entry)?.getData();
-  if (!buf) throw new SdeFormatError(entry, '<root>', 'zip entry missing');
-  return buf;
+/** Opens `entry` as a stream straight out of the archive, for `decodeJsonlEntries` to read without ever holding the whole decompressed entry in memory. */
+type SdeEntryOpener = (entry: string) => Promise<NodeJS.ReadableStream>;
+
+/** Builds an `SdeEntryOpener` bound to `zip`'s already-fetched entry index, so a missing entry is a name-map lookup rather than a failed read. */
+function openerFor(zip: InstanceType<typeof StreamZip.async>, names: Set<string>): SdeEntryOpener {
+  return async (entry: string) => {
+    if (!names.has(entry)) throw new SdeFormatError(entry, '<root>', 'zip entry missing');
+    return zip.stream(entry);
+  };
 }
 
 /** Thrown by a gate that must block a write: an unresolvable CSV binding, a per-table shrink past `SDE_REFRESH_MAX_SHRINK_PCT`, or a build older than the one the database holds. Raised before the write phase runs, so nothing has been written. */
@@ -281,23 +285,23 @@ export class SdeGateError extends Error {
 
 // --- Parse phase (no DB access) -------------------------------------------
 
-function parseCategories(zip: AdmZip) {
+async function parseCategories(open: SdeEntryOpener) {
   const rows: { id: number; name: string; published: boolean | null }[] = [];
-  decodeJsonlEntries('categories.jsonl', readJsonlEntry(zip, 'categories.jsonl'), sdeCategorySchema, (id, c) => {
+  await decodeJsonlEntries('categories.jsonl', await open('categories.jsonl'), sdeCategorySchema, (id, c) => {
     rows.push({ id, name: en(c.name) ?? '', published: c.published ?? null });
   });
   return rows;
 }
 
-function parseGroups(zip: AdmZip) {
+async function parseGroups(open: SdeEntryOpener) {
   const rows: { id: number; categoryId: number; name: string; published: boolean | null }[] = [];
-  decodeJsonlEntries('groups.jsonl', readJsonlEntry(zip, 'groups.jsonl'), sdeGroupSchema, (id, g) => {
+  await decodeJsonlEntries('groups.jsonl', await open('groups.jsonl'), sdeGroupSchema, (id, g) => {
     rows.push({ id, categoryId: g.categoryID, name: en(g.name) ?? '', published: g.published ?? null });
   });
   return rows;
 }
 
-function parseDogmaAttributes(zip: AdmZip) {
+async function parseDogmaAttributes(open: SdeEntryOpener) {
   const rows: {
     id: number;
     name: string | null;
@@ -310,9 +314,9 @@ function parseDogmaAttributes(zip: AdmZip) {
     iconId: number | null;
     unitId: number | null;
   }[] = [];
-  decodeJsonlEntries(
+  await decodeJsonlEntries(
     'dogmaAttributes.jsonl',
-    readJsonlEntry(zip, 'dogmaAttributes.jsonl'),
+    await open('dogmaAttributes.jsonl'),
     sdeDogmaAttributeSchema,
     (id, a) => {
       rows.push({
@@ -378,7 +382,7 @@ function wormholeCodeFromTypeName(name: string): string | null {
   return name.split(' ').pop() || null;
 }
 
-function parseTypes(zip: AdmZip) {
+async function parseTypes(open: SdeEntryOpener) {
   const typeIds = new Set<number>();
   const wormholeCodeEntries: { code: string; typeId: number }[] = [];
   const rows: {
@@ -396,7 +400,7 @@ function parseTypes(zip: AdmZip) {
     graphicId: number | null;
     published: boolean | null;
   }[] = [];
-  decodeJsonlEntries('types.jsonl', readJsonlEntry(zip, 'types.jsonl'), sdeTypeSchema, (id, t) => {
+  await decodeJsonlEntries('types.jsonl', await open('types.jsonl'), sdeTypeSchema, (id, t) => {
     typeIds.add(id);
     const name = en(t.name) ?? '';
     if (t.groupID === WORMHOLE_GROUP_ID) {
@@ -422,11 +426,11 @@ function parseTypes(zip: AdmZip) {
   return { rows, typeIds, wormholeCodeEntries };
 }
 
-function parseTypeAttributes(zip: AdmZip, typeIds: Set<number>, attrIds: Set<number>) {
+async function parseTypeAttributes(open: SdeEntryOpener, typeIds: Set<number>, attrIds: Set<number>) {
   const rows: { typeId: number; attributeId: number; value: number | null }[] = [];
-  decodeJsonlEntries(
+  await decodeJsonlEntries(
     'typeDogma.jsonl',
-    readJsonlEntry(zip, 'typeDogma.jsonl'),
+    await open('typeDogma.jsonl'),
     sdeTypeDogmaSchema,
     (typeId, entry) => {
       if (!typeIds.has(typeId)) return;
@@ -439,16 +443,16 @@ function parseTypeAttributes(zip: AdmZip, typeIds: Set<number>, attrIds: Set<num
   return rows;
 }
 
-function parseRegions(zip: AdmZip) {
+async function parseRegions(open: SdeEntryOpener) {
   const rows: { id: number; name: string; description: string | null }[] = [];
-  decodeJsonlEntries('mapRegions.jsonl', readJsonlEntry(zip, 'mapRegions.jsonl'), sdeRegionSchema, (id, r) => {
+  await decodeJsonlEntries('mapRegions.jsonl', await open('mapRegions.jsonl'), sdeRegionSchema, (id, r) => {
     rows.push({ id, name: en(r.name) ?? String(id), description: en(r.description) });
   });
   return rows;
 }
 
 /** Returns rows plus a constellation id → wormholeClassID map for system security derivation. */
-function parseConstellations(zip: AdmZip) {
+async function parseConstellations(open: SdeEntryOpener) {
   const whClass = new Map<number, number | null>();
   const rows: {
     id: number;
@@ -458,9 +462,9 @@ function parseConstellations(zip: AdmZip) {
     y: number | null;
     z: number | null;
   }[] = [];
-  decodeJsonlEntries(
+  await decodeJsonlEntries(
     'mapConstellations.jsonl',
-    readJsonlEntry(zip, 'mapConstellations.jsonl'),
+    await open('mapConstellations.jsonl'),
     sdeConstellationSchema,
     (id, c) => {
       whClass.set(id, c.wormholeClassID ?? null);
@@ -478,7 +482,7 @@ function parseConstellations(zip: AdmZip) {
 }
 
 /** Returns rows, the set of system ids (stargate-edge filtering), and a name → id map (WH catalog `targetSystem` resolution). */
-function parseSystems(zip: AdmZip, whClassByConstellation: Map<number, number | null>) {
+async function parseSystems(open: SdeEntryOpener, whClassByConstellation: Map<number, number | null>) {
   const systemIds = new Set<number>();
   const systemNameToId = new Map<string, number>();
   const rows: {
@@ -494,9 +498,9 @@ function parseSystems(zip: AdmZip, whClassByConstellation: Map<number, number | 
     y: number | null;
     z: number | null;
   }[] = [];
-  decodeJsonlEntries(
+  await decodeJsonlEntries(
     'mapSolarSystems.jsonl',
-    readJsonlEntry(zip, 'mapSolarSystems.jsonl'),
+    await open('mapSolarSystems.jsonl'),
     sdeSolarSystemSchema,
     (id, s) => {
       systemIds.add(id);
@@ -529,12 +533,12 @@ function parseSystems(zip: AdmZip, whClassByConstellation: Map<number, number | 
   return { rows, systemIds, systemNameToId };
 }
 
-function parseStargateEdges(zip: AdmZip, systemIds: Set<number>) {
+async function parseStargateEdges(open: SdeEntryOpener, systemIds: Set<number>) {
   const seen = new Set<string>();
   const rows: { fromSystemId: number; toSystemId: number }[] = [];
-  decodeJsonlEntries(
+  await decodeJsonlEntries(
     'mapStargates.jsonl',
-    readJsonlEntry(zip, 'mapStargates.jsonl'),
+    await open('mapStargates.jsonl'),
     sdeStargateSchema,
     (_id, gate) => {
       const from = gate.solarSystemID;
@@ -551,57 +555,67 @@ function parseStargateEdges(zip: AdmZip, systemIds: Set<number>) {
 }
 
 export interface ParsedSde {
-  categories: ReturnType<typeof parseCategories>;
-  groups: ReturnType<typeof parseGroups>;
-  dogmaAttributes: ReturnType<typeof parseDogmaAttributes>;
+  categories: Awaited<ReturnType<typeof parseCategories>>;
+  groups: Awaited<ReturnType<typeof parseGroups>>;
+  dogmaAttributes: Awaited<ReturnType<typeof parseDogmaAttributes>>;
   attrIds: Set<number>;
-  types: ReturnType<typeof parseTypes>['rows'];
+  types: Awaited<ReturnType<typeof parseTypes>>['rows'];
   typeIds: Set<number>;
   wormholeCodeEntries: { code: string; typeId: number }[];
-  typeAttributes: ReturnType<typeof parseTypeAttributes>;
-  regions: ReturnType<typeof parseRegions>;
-  constellations: ReturnType<typeof parseConstellations>['rows'];
-  systems: ReturnType<typeof parseSystems>['rows'];
+  typeAttributes: Awaited<ReturnType<typeof parseTypeAttributes>>;
+  regions: Awaited<ReturnType<typeof parseRegions>>;
+  constellations: Awaited<ReturnType<typeof parseConstellations>>['rows'];
+  systems: Awaited<ReturnType<typeof parseSystems>>['rows'];
   systemIds: Set<number>;
   systemNameToId: Map<string, number>;
-  stargateEdges: ReturnType<typeof parseStargateEdges>;
+  stargateEdges: Awaited<ReturnType<typeof parseStargateEdges>>;
 }
 
 /**
  * Parses every SDE JSONL file into rows, entirely offline — no DB access. A
  * format-drift failure (`SdeFormatError`) or a truncated zip therefore always
- * happens before the write phase issues its first statement. Each file is
- * decoded one record at a time (`decodeJsonlEntries`), so no whole-file
- * document graph is ever resident.
+ * happens before the write phase issues its first statement. Each entry is
+ * streamed straight out of the archive and decoded one record at a time
+ * (`decodeJsonlEntries`), so no whole-file document graph, whole-archive
+ * buffer, or whole-decompressed-entry buffer is ever resident. The zip handle
+ * is always closed before returning or throwing.
  */
-export function parseSdeArchive(zip: AdmZip): ParsedSde {
-  const categories = parseCategories(zip);
-  const groups = parseGroups(zip);
-  const dogmaAttributes = parseDogmaAttributes(zip);
-  const attrIds = new Set(dogmaAttributes.map((a) => a.id));
-  const { rows: types, typeIds, wormholeCodeEntries } = parseTypes(zip);
-  const typeAttributes = parseTypeAttributes(zip, typeIds, attrIds);
-  const regions = parseRegions(zip);
-  const { rows: constellations, whClass } = parseConstellations(zip);
-  const { rows: systems, systemIds, systemNameToId } = parseSystems(zip, whClass);
-  const stargateEdges = parseStargateEdges(zip, systemIds);
+export async function parseSdeArchive(zipPath: string): Promise<ParsedSde> {
+  const zip = new StreamZip.async({ file: zipPath });
+  try {
+    const names = new Set(Object.keys(await zip.entries()));
+    const open = openerFor(zip, names);
 
-  return {
-    categories,
-    groups,
-    dogmaAttributes,
-    attrIds,
-    types,
-    typeIds,
-    wormholeCodeEntries,
-    typeAttributes,
-    regions,
-    constellations,
-    systems,
-    systemIds,
-    systemNameToId,
-    stargateEdges,
-  };
+    const categories = await parseCategories(open);
+    const groups = await parseGroups(open);
+    const dogmaAttributes = await parseDogmaAttributes(open);
+    const attrIds = new Set(dogmaAttributes.map((a) => a.id));
+    const { rows: types, typeIds, wormholeCodeEntries } = await parseTypes(open);
+    const typeAttributes = await parseTypeAttributes(open, typeIds, attrIds);
+    const regions = await parseRegions(open);
+    const { rows: constellations, whClass } = await parseConstellations(open);
+    const { rows: systems, systemIds, systemNameToId } = await parseSystems(open, whClass);
+    const stargateEdges = await parseStargateEdges(open, systemIds);
+
+    return {
+      categories,
+      groups,
+      dogmaAttributes,
+      attrIds,
+      types,
+      typeIds,
+      wormholeCodeEntries,
+      typeAttributes,
+      regions,
+      constellations,
+      systems,
+      systemIds,
+      systemNameToId,
+      stargateEdges,
+    };
+  } finally {
+    await zip.close();
+  }
 }
 
 /**
@@ -618,7 +632,7 @@ async function loadSdeBuild(build: number): Promise<ParsedSde> {
 
   console.log('Parsing SDE archive ...');
   try {
-    return parseSdeArchive(new AdmZip(zipPath));
+    return await parseSdeArchive(zipPath);
   } catch (err) {
     await unlinkIfPresent(zipPath);
     if (!servedFromCache) throw err;
@@ -627,7 +641,7 @@ async function loadSdeBuild(build: number): Promise<ParsedSde> {
     );
     const fresh = await downloadSdeZip(build);
     try {
-      return parseSdeArchive(new AdmZip(fresh));
+      return await parseSdeArchive(fresh);
     } catch (retryErr) {
       await unlinkIfPresent(fresh);
       throw retryErr;

@@ -1,6 +1,9 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import AdmZip from 'adm-zip';
 import { getTableName } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { DELETION_SPECS, findShrunkenTables, parseSdeArchive } from '@/lib/sde/ingest';
 import { SdeFormatError } from '@/lib/sde/decoders';
 
@@ -31,8 +34,19 @@ function toJsonl(map: Record<string, unknown>): string {
     .join('\n');
 }
 
-/** Builds a minimal valid SDE archive, with any entry overridable for a negative case. A string override is written verbatim, letting a case supply a single malformed or non-object line. */
-function buildArchive(overrides: Record<string, unknown> = {}): AdmZip {
+const tmpDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tmpDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+/**
+ * Builds a minimal valid SDE archive on disk, with any entry overridable for
+ * a negative case. A string override is written verbatim, letting a case
+ * supply a single malformed or non-object line. Returns the zip's path —
+ * `parseSdeArchive` streams entries out of a file, not an in-memory handle.
+ */
+async function buildArchive(overrides: Record<string, unknown> = {}): Promise<string> {
   const zip = new AdmZip();
   const entries: Record<string, unknown> = {
     'categories.jsonl': CATEGORY,
@@ -51,12 +65,16 @@ function buildArchive(overrides: Record<string, unknown> = {}): AdmZip {
     const content = typeof value === 'string' ? value : toJsonl(value as Record<string, unknown>);
     zip.addFile(name, Buffer.from(content, 'utf-8'));
   }
-  return zip;
+  const dir = await mkdtemp(join(tmpdir(), 'sde-fixture-'));
+  tmpDirs.push(dir);
+  const zipPath = join(dir, 'sde.zip');
+  await zip.writeZipPromise(zipPath);
+  return zipPath;
 }
 
 describe('parseSdeArchive', () => {
-  it('parses a minimal valid archive into rows with no DB access', () => {
-    const parsed = parseSdeArchive(buildArchive());
+  it('parses a minimal valid archive into rows with no DB access', async () => {
+    const parsed = await parseSdeArchive(await buildArchive());
 
     expect(parsed.categories).toHaveLength(1);
     expect(parsed.groups).toHaveLength(1);
@@ -72,9 +90,9 @@ describe('parseSdeArchive', () => {
     expect(parsed.systemNameToId.get('Alpha')).toBe(30000001);
   });
 
-  it('throws SdeFormatError naming the file on a malformed (invalid JSON) line', () => {
+  it('throws SdeFormatError naming the file on a malformed (invalid JSON) line', async () => {
     try {
-      parseSdeArchive(buildArchive({ 'categories.jsonl': '{not valid json' }));
+      await parseSdeArchive(await buildArchive({ 'categories.jsonl': '{not valid json' }));
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(SdeFormatError);
@@ -82,9 +100,9 @@ describe('parseSdeArchive', () => {
     }
   });
 
-  it('throws SdeFormatError naming the file when a line is not a JSON object', () => {
+  it('throws SdeFormatError naming the file when a line is not a JSON object', async () => {
     try {
-      parseSdeArchive(buildArchive({ 'mapStargates.jsonl': '[1, 2, 3]' }));
+      await parseSdeArchive(await buildArchive({ 'mapStargates.jsonl': '[1, 2, 3]' }));
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(SdeFormatError);
@@ -92,9 +110,9 @@ describe('parseSdeArchive', () => {
     }
   });
 
-  it('throws SdeFormatError naming the file when a line has no "_key"', () => {
+  it('throws SdeFormatError naming the file when a line has no "_key"', async () => {
     try {
-      parseSdeArchive(buildArchive({ 'categories.jsonl': JSON.stringify({ name: 'oops' }) }));
+      await parseSdeArchive(await buildArchive({ 'categories.jsonl': JSON.stringify({ name: 'oops' }) }));
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(SdeFormatError);
@@ -102,14 +120,14 @@ describe('parseSdeArchive', () => {
     }
   });
 
-  it('throws SdeFormatError naming the file, entry, and field path when a required key is renamed', () => {
+  it('throws SdeFormatError naming the file, entry, and field path when a required key is renamed', async () => {
     const renamed = JSON.stringify({
       _key: 40000001,
       solar_system_id: 30000001,
       destination: { solarSystemID: 30000002 },
     });
     try {
-      parseSdeArchive(buildArchive({ 'mapStargates.jsonl': renamed }));
+      await parseSdeArchive(await buildArchive({ 'mapStargates.jsonl': renamed }));
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(SdeFormatError);
@@ -120,10 +138,10 @@ describe('parseSdeArchive', () => {
     }
   });
 
-  it('throws when a zip entry is missing entirely', () => {
-    expect(() =>
-      parseSdeArchive(buildArchive({ 'mapConstellations.jsonl': undefined })),
-    ).toThrow(SdeFormatError);
+  it('throws when a zip entry is missing entirely', async () => {
+    await expect(parseSdeArchive(await buildArchive({ 'mapConstellations.jsonl': undefined }))).rejects.toThrow(
+      SdeFormatError,
+    );
   });
 });
 

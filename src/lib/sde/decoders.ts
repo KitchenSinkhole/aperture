@@ -158,32 +158,45 @@ function decodeJsonlLine<T extends z.ZodType>(
 }
 
 /**
- * Decodes a `.jsonl` SDE entry buffer one line at a time — `JSON.parse`s the
+ * Decodes a `.jsonl` SDE entry stream one line at a time — `JSON.parse`s the
  * line, reads its `_key` as the record id, `safeParse`s the line against
  * `schema`, and hands `(id, entry)` to `onEntry` before discarding it. No
- * whole-file document tree or intermediate `Map` of validated entries is ever
- * held; only one decoded line is live at a time. Lines are read directly off
- * `buf` without first converting the whole buffer to a string. Rejects a line
- * that isn't a JSON object, a line missing `_key`, and a line failing `schema`
- * as a named `SdeFormatError`; a malformed line surfaces as `SdeFormatError`
- * wrapping the underlying `JSON.parse` error.
+ * whole-file document tree, intermediate `Map` of validated entries, or
+ * whole-entry buffer is ever held; only one decoded line and the unconsumed
+ * tail of the current chunk are live at a time. Rejects a line that isn't a
+ * JSON object, a line missing `_key`, and a line failing `schema` as a named
+ * `SdeFormatError`; a malformed line surfaces as `SdeFormatError` wrapping the
+ * underlying `JSON.parse` error. Rejects with the stream's error on a read
+ * failure.
  */
-export function decodeJsonlEntries<T extends z.ZodType>(
+export async function decodeJsonlEntries<T extends z.ZodType>(
   file: string,
-  buf: Buffer,
+  stream: NodeJS.ReadableStream,
   schema: T,
   onEntry: (id: number, entry: z.infer<T>) => void,
-): void {
-  let start = 0;
+): Promise<void> {
+  let tail = Buffer.alloc(0);
   let lineNo = 0;
-  for (let i = 0; i <= buf.length; i++) {
-    if (i !== buf.length && buf[i] !== 0x0a) continue;
-    let end = i;
-    if (end > start && buf[end - 1] === 0x0d) end--; // trailing \r
-    lineNo++;
-    if (end > start) {
-      decodeJsonlLine(file, buf.subarray(start, end).toString('utf-8'), lineNo, schema, onEntry);
+  for await (const part of stream) {
+    const chunk = tail.length > 0 ? Buffer.concat([tail, part as Buffer]) : (part as Buffer);
+    let start = 0;
+    for (let i = 0; i < chunk.length; i++) {
+      if (chunk[i] !== 0x0a) continue;
+      let end = i;
+      if (end > start && chunk[end - 1] === 0x0d) end--; // trailing \r
+      lineNo++;
+      if (end > start) {
+        decodeJsonlLine(file, chunk.subarray(start, end).toString('utf-8'), lineNo, schema, onEntry);
+      }
+      start = i + 1;
     }
-    start = i + 1;
+    // Copy rather than subarray: a subarray view would pin the whole backing chunk alive.
+    tail = start < chunk.length ? Buffer.from(chunk.subarray(start)) : Buffer.alloc(0);
+  }
+  lineNo++;
+  if (tail.length > 0) {
+    let end = tail.length;
+    if (tail[end - 1] === 0x0d) end--; // trailing \r
+    decodeJsonlLine(file, tail.subarray(0, end).toString('utf-8'), lineNo, schema, onEntry);
   }
 }

@@ -23,14 +23,16 @@ const CHILD_TIMEOUT_MS = 30 * 60_000;
 /** Grace between SIGTERM and SIGKILL for a child that has stopped responding. */
 const CHILD_SIGKILL_GRACE_MS = 10_000;
 /**
- * Ceiling on the child's V8 old space. `parseSdeArchive` decodes each SDE file
- * one JSONL record at a time and never holds a whole-file document graph, so
- * the parse's peak footprint is the derived row arrays plus one decoded record
- * — a regression back to whole-file parsing would blow this ceiling and abort
- * the child with SIGABRT (exit 134) instead of silently reappearing. Capped
- * both absolutely and as a share of physical memory so that raising the
- * ceiling can never trade a contained V8 abort for a host OOM kill that takes
- * the whole process tree with it.
+ * Ceiling on the child's V8 old space. `parseSdeArchive` streams each SDE
+ * entry straight out of the archive and decodes it one JSONL record at a
+ * time, so the parse's peak footprint is the derived row arrays plus one
+ * decoded record — never a whole-file document graph, a whole-archive
+ * buffer, or a whole-decompressed-entry buffer. A regression back to
+ * whole-file parsing would blow this ceiling and abort the child with
+ * SIGABRT (exit 134) instead of silently reappearing. Capped both absolutely
+ * and as a share of physical memory so that raising the ceiling can never
+ * trade a contained V8 abort for a host OOM kill that takes the whole
+ * process tree with it.
  */
 const CHILD_MAX_OLD_SPACE_MB = 512;
 const CHILD_MAX_OLD_SPACE_SHARE = 0.6;

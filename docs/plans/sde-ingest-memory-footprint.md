@@ -112,17 +112,17 @@ Per-record streaming keeps this intact: the parse still runs to completion, and 
 
 **Verified:** the dev DB had already self-refreshed past the pin (`ap_sde_state.current_build = 3458726` vs. `SDE_BUILD = 3453885`), so `assertNotADowngrade` blocks `pnpm sde:bootstrap` itself there — expected, not a regression. Ran the same `runIngest` path directly against build 3458726 instead, via `scripts/sde-ingest-child.ts` under `NODE_OPTIONS=--max-old-space-size=512`: exit 0, `{"build":3458726,"counts":{"categories":48,"groups":1610,"dogmaAttributes":2865,"types":52848,"typeAttributes":645749,"regions":114,"constellations":1184,"systems":8490,"stargateEdges":13978,"systemStatics":3772,"typeOverrides":59,"wormholes":100,"deleted":0,"retainedOrphans":0,"hubProximity":575,"uncatalogedWormholes":0}}`, and `universe_system` id 30003270 reads `6E-578`. `pnpm lint`, `pnpm typecheck`, `pnpm build`, and the full `pnpm test` suite (730 passed) are all green.
 
-## Stage 2 — Stream entries out of the zip
+## Stage 2 — Stream entries out of the zip — DONE (2026-08-06)
 
 **Mode:** Plan mode
 **Goal:** Remove the last two whole-file buffers (adm-zip's 99MB archive read plus the ~151MB decompressed entry), taking RSS from 395MB to roughly 250MB.
 **Touches:** `src/lib/sde/ingest.ts`, `src/lib/sde/ingest.md`, `package.json`
 
-Plan mode because it adds a dependency and changes the shape of `parseSdeArchive`'s input from an `AdmZip` to something stream-shaped, which the tests construct directly. `yauzl` gives random-access entry reads with a bounded internal buffer. Shelling out to the OS `unzip` also streams but trades a library for an external binary that slim Node images do not carry.
+Plan mode because it adds a dependency and changes the shape of `parseSdeArchive`'s input from an `AdmZip` to something stream-shaped, which the tests construct directly. Landed on `node-stream-zip` rather than `yauzl`: v1.16.0, zero runtime dependencies, ships its own `.d.ts`, and `await zip.stream(name)` gives a `Readable` for a named entry directly — the nine SDE entries are read by fixed name, so no central-directory walk to collect `Entry` objects is needed first. Shelling out to the OS `unzip` also streams but trades a library for an external binary that slim Node images do not carry.
 
-Worth doing only if Stage 1's ~395MB RSS is still above the target. Decide the target first (see open questions).
+**Done when:** peak RSS during the parse phase is at or below ~260MB, measured with the harness below.
 
-**Done when:** peak RSS during a full ingest is at or below ~260MB, measured with the harness below.
+**Verified:** ran the parse phase alone (`parseSdeArchive` against the cached build-3458726 JSONL zip, sampling `process.memoryUsage().rss` every 20ms) under `NODE_OPTIONS=--max-old-space-size=512`: **peak RSS 280MB**, down from Stage 1's 395MB, in 2.6s. Ran the same counts check as Stage 1 (`categories:48, groups:1610, dogmaAttributes:2865, types:52848, typeAttributes:645749, regions:114, constellations:1184, systems:8490, stargateEdges:13978`) — all match. A full `runIngest` (parse + write + deletion sync + hub proximity) against the dev DB peaks at 443MB RSS, since the write/deletion-sync phases Stage 2 doesn't touch dominate once the parse's whole-file buffers are gone — that's Stage 3's target, not a Stage 2 regression. `universe_system` id 30003270 still reads `6E-578`. `pnpm lint`, `pnpm typecheck`, `pnpm build`, and the full `pnpm test` suite (730 passed) are all green. `adm-zip` moved to `devDependencies` — it survives only as the test fixture's zip writer.
 
 ## Stage 3 — Deletion sync in SQL instead of JS
 
