@@ -25,7 +25,7 @@ import {
   setAccessMode,
 } from '@/lib/auth/instanceConfig';
 import { env } from '@/lib/env';
-import { jobQueueFor, onDemandJobModules } from '@/lib/jobs/registry';
+import { jobMaxAttemptsFor, jobQueueFor, onDemandJobModules } from '@/lib/jobs/registry';
 import { logger } from '@/lib/log/logger';
 
 /**
@@ -183,8 +183,14 @@ interface EnqueueResult {
 
 async function enqueueJob(taskName: string): Promise<EnqueueResult> {
   const queueName = jobQueueFor(taskName);
+  const maxAttempts = jobMaxAttemptsFor(taskName);
   const result = await db.execute<{ id: string | number }>(
-    sql`SELECT graphile_worker.add_job(${taskName}, '{}'::json, ${queueName}::text) AS id`,
+    sql`SELECT graphile_worker.add_job(
+          ${taskName},
+          '{}'::json,
+          ${queueName}::text,
+          max_attempts := ${maxAttempts}::smallint
+        ) AS id`,
   );
   const id = result.rows[0]?.id;
   return { jobId: id === undefined || id === null ? '' : String(id) };

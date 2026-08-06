@@ -23,12 +23,14 @@ Wraps a raw handler in one of two write modes. `recordJobRun(name, outcome, dura
 
 **Returns:** A `Task` ready to drop into the registry / `TaskList`.
 
+**Error rendering:** `error_text` is the error's `cause` chain rendered innermost-first, joined by ` <- `. Each link contributes its message plus any `node-postgres` diagnostics it carries (`SQLSTATE <code>`, `constraint <name>`, `DETAIL`). Innermost-first matters because a Drizzle wrapper's own message is the whole failed statement plus every bound parameter, so the length cap truncates the wrapper rather than the diagnosis.
+
 **Caps:**
-- `apertureConfig.JOB_INSTRUMENTATION_ERROR_MAX_LENGTH` — truncates very large `Error.message` strings.
+- `apertureConfig.JOB_INSTRUMENTATION_ERROR_MAX_LENGTH` — truncates the rendered error, keeping the innermost cause.
 - `apertureConfig.JOB_INSTRUMENTATION_NOTES_MAX_BYTES` — oversize `notes` JSON is replaced with `{ truncated: true, originalLength: N }` instead of dropped, so the row still records the size signal.
 
 **Non-serialisable returns** (functions, raw bigints) are stored as `null` rather than failing the row write.
 
 ### Notes
 - The row write uses the app's drizzle `db` client, **not** `helpers.withPgClient` — the run row is intentionally outside the graphile-worker job transaction so it survives a handler crash mid-transaction.
-- Operators inspecting `ap_job_run` see in-flight full-fidelity handlers as `ended_at IS NULL`. A worker that dies mid-handler leaves such a row; the operability sweep reports those as "abandoned". Sampled tasks write no in-flight row, so they never contribute to the abandoned count.
+- Operators inspecting `ap_job_run` see in-flight full-fidelity handlers as `ended_at IS NULL`. A worker that dies mid-handler leaves such a row; the operability sweep reports those as "abandoned", and `closeOrphanedJobRuns` ([[runner]]) clears them on the next boot. Sampled tasks write no in-flight row, so they never contribute to the abandoned count.

@@ -53,6 +53,7 @@ export async function startWorker(extraModules: readonly JobModule[] = []): Prom
   await runMigrations(opts);
   await rearmLocationPollLoop();
   await reapExhaustedLocationPollZombies();
+  await closeOrphanedJobRuns();
   activeRunner = await graphileRun(opts);
   return activeRunner;
 }
@@ -121,6 +122,33 @@ export async function reapExhaustedLocationPollZombies(): Promise<void> {
   );
   if (res.rowCount && res.rowCount > 0) {
     jobLog.info('Reaped exhausted NULL-key location-poll job(s)', { count: res.rowCount });
+  }
+}
+
+/**
+ * Close out `ap_job_run` rows left un-ended on boot. `withInstrumentation`
+ * finalises its row from a `catch`, so a row with `ended_at IS NULL` and no
+ * worker alive to finish it means the process was killed outright — SIGKILL on
+ * a container recreate, a host OOM kill, a V8 abort. Nothing else ever ends
+ * those rows, and the `job_abandoned` alert counts exactly this shape, so a
+ * single killed handler otherwise leaves the instance alerting forever with no
+ * path back to healthy.
+ *
+ * Boot is the safe moment: no handler of this process is in flight yet. A run
+ * still executing in an overlapping instance is closed here but re-finalised
+ * correctly by its own handler's terminal `UPDATE`, which sets `ended_at`,
+ * `success` and `notes` unconditionally.
+ */
+async function closeOrphanedJobRuns(): Promise<void> {
+  const res = await pool.query(
+    `UPDATE ap_job_run
+        SET ended_at = now(),
+            success = false,
+            error_text = 'Worker process exited before the handler recorded an end.'
+      WHERE ended_at IS NULL`,
+  );
+  if (res.rowCount && res.rowCount > 0) {
+    jobLog.warn('Closed orphaned job run(s) left by a killed worker', { count: res.rowCount });
   }
 }
 

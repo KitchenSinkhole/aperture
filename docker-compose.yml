@@ -55,6 +55,11 @@ services:
       PORT: '3003'
     ports:
       - '3003:3003'
+    volumes:
+      # The ~100MB SDE zip lives at `<cwd>/.sde-cache`. Without a volume every
+      # container recreate discards it, so the next ingest re-downloads from
+      # CCP before it can start parsing.
+      - sdecache:/app/.sde-cache
     depends_on:
       db:
         condition: service_healthy
@@ -74,3 +79,4 @@ services:
 
 volumes:
   pgdata:
+  sdecache:

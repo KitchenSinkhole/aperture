@@ -47,5 +47,9 @@ async function ingest() {
 export const sdeIngest: JobModule = {
   name: NAME,
   queue: SDE_QUEUE,
+  // An operator-triggered run that fails is a run the operator is watching:
+  // one retry covers a flaky download, and anything past that should surface
+  // in `/setup` as a failure to act on rather than grind for hours.
+  maxAttempts: 2,
   run: withInstrumentation(NAME, ingest),
 };
