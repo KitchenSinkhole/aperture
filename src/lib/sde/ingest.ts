@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { mkdir, readdir, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -5,7 +6,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import StreamZip from 'node-stream-zip';
 import { parse as parseCsv } from 'csv-parse/sync';
-import { and, eq, inArray, notExists, sql, type SQL } from 'drizzle-orm';
+import { and, eq, ne, notExists, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { apertureConfig } from '../../../aperture.config';
 import { db } from '@/db/client';
@@ -24,6 +25,7 @@ import {
   universeGroup,
   universeIncursion,
   universeRegion,
+  universeSdeStage,
   universeSovereigntyMap,
   universeStargateEdge,
   universeSystem,
@@ -1017,35 +1019,47 @@ async function writeWormholeCatalog(rows: CsvRows['wormholeCatalog']) {
 // --- Deletion sync ------------------------------------------------------------
 
 /**
- * Row-id sets for every table the deletion pass covers, keyed the same as
- * `IngestResult.counts`. Split out of `ParsedSde` so `syncSdeDeletions` can be
- * driven from either a freshly parsed build (`runIngest`) or a hand-built
- * keep-set in tests, without needing a full archive.
+ * Stages `rows`' keys into `universe_sde_stage` under `runId` /
+ * `tableName`, chunked so peak JS cost is one chunk of stage objects, never
+ * the whole table.
  */
-export interface SdeKeepSets {
-  categories: Set<number>;
-  groups: Set<number>;
-  dogmaAttributes: Set<number>;
-  types: Set<number>;
-  typeAttributes: Set<string>; // `${typeId}:${attributeId}`
-  regions: Set<number>;
-  constellations: Set<number>;
-  systems: Set<number>;
-  stargateEdges: Set<string>; // `${fromSystemId}-${toSystemId}`
+async function stageKeys<T>(
+  runId: string,
+  tableName: string,
+  rows: T[],
+  key: (row: T) => readonly [number, number | null],
+): Promise<void> {
+  for (const c of chunk(rows)) {
+    await db.insert(universeSdeStage).values(
+      c.map((row) => {
+        const [idA, idB] = key(row);
+        return { runId, tableName, idA, idB };
+      }),
+    );
+  }
 }
 
-export function buildKeepSets(parsed: ParsedSde): SdeKeepSets {
-  return {
-    categories: new Set(parsed.categories.map((c) => c.id)),
-    groups: new Set(parsed.groups.map((g) => g.id)),
-    dogmaAttributes: parsed.attrIds,
-    types: parsed.typeIds,
-    typeAttributes: new Set(parsed.typeAttributes.map((a) => `${a.typeId}:${a.attributeId}`)),
-    regions: new Set(parsed.regions.map((r) => r.id)),
-    constellations: new Set(parsed.constellations.map((c) => c.id)),
-    systems: parsed.systemIds,
-    stargateEdges: new Set(parsed.stargateEdges.map((e) => `${e.fromSystemId}-${e.toSystemId}`)),
-  };
+/**
+ * Sweeps any other run's rows (an abandoned attempt, or a `pnpm
+ * sde:bootstrap` overlapping a job-driven refresh — the two are not
+ * mutually excluded by `SDE_QUEUE`), then stages this build's key set for
+ * every table `syncSdeDeletions` covers.
+ */
+async function stageBuildKeys(runId: string, parsed: ParsedSde): Promise<void> {
+  await db.delete(universeSdeStage).where(ne(universeSdeStage.runId, runId));
+  await stageKeys(runId, 'universe_category', parsed.categories, (c) => [c.id, null]);
+  await stageKeys(runId, 'universe_group', parsed.groups, (g) => [g.id, null]);
+  await stageKeys(runId, 'universe_dogma_attribute', [...parsed.attrIds], (id) => [id, null]);
+  await stageKeys(runId, 'universe_type', [...parsed.typeIds], (id) => [id, null]);
+  await stageKeys(runId, 'universe_type_attribute', parsed.typeAttributes, (a) => [a.typeId, a.attributeId]);
+  await stageKeys(runId, 'universe_region', parsed.regions, (r) => [r.id, null]);
+  await stageKeys(runId, 'universe_constellation', parsed.constellations, (c) => [c.id, null]);
+  await stageKeys(runId, 'universe_system', [...parsed.systemIds], (id) => [id, null]);
+  await stageKeys(runId, 'universe_stargate_edge', parsed.stargateEdges, (e) => [e.fromSystemId, e.toSystemId]);
+}
+
+async function clearStagedBuildKeys(runId: string): Promise<void> {
+  await db.delete(universeSdeStage).where(eq(universeSdeStage.runId, runId));
 }
 
 export interface SdeDeletionReport {
@@ -1063,22 +1077,26 @@ export interface DeletionGuard {
 }
 
 export interface DeletionSpec {
+  /** db table name — the report key, and the `universe_sde_stage.table_name` discriminator. */
   name: string;
   table: PgTable;
   idColumn: AnyPgColumn;
-  keep: (keep: SdeKeepSets) => Set<number>;
+  /** Set for the two composite-key tables; matched against `universe_sde_stage.id_b`. */
+  idColumnB?: AnyPgColumn;
   guards: DeletionGuard[];
 }
 
 /**
- * One entry per single-PK SDE-derived table, in leaf-first processing order:
- * every table named in a `guards` entry is itself synced earlier in this list
- * (or, for `universe_stargate_edge` / `universe_type_attribute`, by the
- * bespoke composite-key helpers that run before this list). That ordering is
- * what makes retention transitive for free — a system kept alive by
- * `ap_map_system` still has a live row when its constellation's guard checks
- * `universe_system.constellation_id`, so the constellation (and in turn its
- * region) is retained too, without any extra bookkeeping.
+ * One entry per SDE-derived table, in leaf-first processing order: every
+ * table named in a `guards` entry is itself synced earlier in this list.
+ * That ordering is what makes retention transitive for free — a system kept
+ * alive by `ap_map_system` still has a live row when its constellation's
+ * guard checks `universe_system.constellation_id`, so the constellation (and
+ * in turn its region) is retained too, without any extra bookkeeping. It's
+ * also why `universe_stargate_edge` and `universe_type_attribute` — which
+ * have no inbound FKs of their own — sit first: `universe_system`'s guard
+ * reads the former and `universe_type`/`universe_dogma_attribute`'s guards
+ * read the latter, and both must see only the new build's rows.
  *
  * `universe_system.nearest_trade_hub_id` is deliberately not a guard: it's a
  * derived column `computeHubProximity` clears and recomputes after this runs,
@@ -1091,10 +1109,23 @@ export interface DeletionSpec {
  */
 export const DELETION_SPECS: DeletionSpec[] = [
   {
+    name: 'universe_stargate_edge',
+    table: universeStargateEdge,
+    idColumn: universeStargateEdge.fromSystemId,
+    idColumnB: universeStargateEdge.toSystemId,
+    guards: [],
+  },
+  {
+    name: 'universe_type_attribute',
+    table: universeTypeAttribute,
+    idColumn: universeTypeAttribute.typeId,
+    idColumnB: universeTypeAttribute.attributeId,
+    guards: [],
+  },
+  {
     name: 'universe_system',
     table: universeSystem,
     idColumn: universeSystem.id,
-    keep: (k) => k.systems,
     guards: [
       { table: universeStargateEdge, column: universeStargateEdge.fromSystemId },
       { table: universeStargateEdge, column: universeStargateEdge.toSystemId },
@@ -1112,7 +1143,6 @@ export const DELETION_SPECS: DeletionSpec[] = [
     name: 'universe_constellation',
     table: universeConstellation,
     idColumn: universeConstellation.id,
-    keep: (k) => k.constellations,
     guards: [
       { table: universeSystem, column: universeSystem.constellationId },
       { table: universeIncursion, column: universeIncursion.constellationId },
@@ -1122,14 +1152,12 @@ export const DELETION_SPECS: DeletionSpec[] = [
     name: 'universe_region',
     table: universeRegion,
     idColumn: universeRegion.id,
-    keep: (k) => k.regions,
     guards: [{ table: universeConstellation, column: universeConstellation.regionId }],
   },
   {
     name: 'universe_type',
     table: universeType,
     idColumn: universeType.id,
-    keep: (k) => k.types,
     guards: [
       { table: universeTypeAttribute, column: universeTypeAttribute.typeId },
       { table: universeTypeOverride, column: universeTypeOverride.typeId },
@@ -1144,134 +1172,121 @@ export const DELETION_SPECS: DeletionSpec[] = [
     name: 'universe_group',
     table: universeGroup,
     idColumn: universeGroup.id,
-    keep: (k) => k.groups,
     guards: [{ table: universeType, column: universeType.groupId }],
   },
   {
     name: 'universe_category',
     table: universeCategory,
     idColumn: universeCategory.id,
-    keep: (k) => k.categories,
     guards: [{ table: universeGroup, column: universeGroup.categoryId }],
   },
   {
     name: 'universe_dogma_attribute',
     table: universeDogmaAttribute,
     idColumn: universeDogmaAttribute.id,
-    keep: (k) => k.dogmaAttributes,
     guards: [{ table: universeTypeAttribute, column: universeTypeAttribute.attributeId }],
   },
 ];
 
-async function syncDeletionSpec(
-  spec: DeletionSpec,
-  keep: Set<number>,
-): Promise<{ name: string; deleted: number; retained: { retained: number; ids: number[] } | null }> {
-  const liveRows = await db.select({ id: spec.idColumn }).from(spec.table);
-  const absentees = liveRows.map((r) => r.id as number).filter((id) => !keep.has(id));
-  if (absentees.length === 0) return { name: spec.name, deleted: 0, retained: null };
+/** Correlated `NOT EXISTS` against this run's staged key set for `spec`'s table. */
+function absentFromStage(runId: string, spec: DeletionSpec) {
+  return notExists(
+    db
+      .select({ one: sql<number>`1` })
+      .from(universeSdeStage)
+      .where(
+        and(
+          eq(universeSdeStage.runId, runId),
+          eq(universeSdeStage.tableName, spec.name),
+          eq(universeSdeStage.idA, spec.idColumn),
+          ...(spec.idColumnB ? [eq(universeSdeStage.idB, spec.idColumnB)] : []),
+        ),
+      ),
+  );
+}
 
+/**
+ * Deletes `spec.table` rows absent from this run's staged key set and clear
+ * of every guard, then measures what's left. Retention is measured *after*
+ * the delete rather than by diffing beforehand: a later spec can only reach
+ * an earlier spec's table through an `ON DELETE CASCADE` FK pointing at the
+ * later table, which is exactly what the later table's guard already checks,
+ * so leaf-first ordering makes each table's post-delete survivor count the
+ * true retained set. Skipped for the two composite-key tables (`guards:
+ * []`), whose retained count is provably zero.
+ */
+async function syncDeletionSpec(
+  runId: string,
+  spec: DeletionSpec,
+): Promise<{ name: string; deleted: number; retained: { retained: number; ids: number[] } | null }> {
   const guardConditions = spec.guards.map((g) =>
     notExists(db.select({ one: sql<number>`1` }).from(g.table).where(eq(g.column, spec.idColumn))),
   );
 
-  let deletedTotal = 0;
-  let retainedTotal = 0;
-  const retainedIds: number[] = [];
+  const deleteResult = await db.delete(spec.table).where(and(absentFromStage(runId, spec), ...guardConditions));
+  const deleted = deleteResult.rowCount ?? 0;
 
-  for (const c of chunk(absentees)) {
-    const deletedRows = await db
-      .delete(spec.table)
-      .where(and(inArray(spec.idColumn, c), ...guardConditions))
-      .returning({ id: spec.idColumn });
-    const deletedIds = new Set(deletedRows.map((r) => r.id as number));
-    deletedTotal += deletedIds.size;
-    for (const id of c) {
-      if (!deletedIds.has(id)) {
-        retainedTotal += 1;
-        if (retainedIds.length < RETAINED_ORPHAN_SAMPLE) retainedIds.push(id);
-      }
-    }
+  if (spec.guards.length === 0) {
+    return { name: spec.name, deleted, retained: null };
   }
+
+  const [retainedRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(spec.table)
+    .where(absentFromStage(runId, spec));
+  const retainedTotal = retainedRow?.n ?? 0;
+
+  if (!retainedTotal) {
+    return { name: spec.name, deleted, retained: null };
+  }
+
+  const sample = await db
+    .select({ id: spec.idColumn })
+    .from(spec.table)
+    .where(absentFromStage(runId, spec))
+    .orderBy(spec.idColumn)
+    .limit(RETAINED_ORPHAN_SAMPLE);
 
   return {
     name: spec.name,
-    deleted: deletedTotal,
-    retained: retainedTotal > 0 ? { retained: retainedTotal, ids: retainedIds } : null,
+    deleted,
+    retained: { retained: retainedTotal, ids: sample.map((r) => r.id as number) },
   };
 }
 
-/** No inbound FKs: full unconditional sync against the new build's edge set. */
-async function syncStargateEdges(keep: Set<string>): Promise<{ name: string; deleted: number }> {
-  const rows = await db
-    .select({ from: universeStargateEdge.fromSystemId, to: universeStargateEdge.toSystemId })
-    .from(universeStargateEdge);
-  const absentees = rows.filter((r) => !keep.has(`${r.from}-${r.to}`));
-  let deleted = 0;
-  for (const c of chunk(absentees)) {
-    const tuples = sql.join(
-      c.map((r) => sql`(${r.from}, ${r.to})`),
-      sql`, `,
-    );
-    const result = await db.execute(
-      sql`delete from universe_stargate_edge where (from_system_id, to_system_id) in (${tuples})`,
-    );
-    deleted += result.rowCount ?? 0;
-  }
-  return { name: 'universe_stargate_edge', deleted };
-}
-
 /**
- * No inbound FKs: full unconditional sync. Runs before `DELETION_SPECS`
- * because `universe_type`'s guard reads this table and must see only the new
- * build's rows.
- */
-async function syncTypeAttributes(keep: Set<string>): Promise<{ name: string; deleted: number }> {
-  const rows = await db
-    .select({ typeId: universeTypeAttribute.typeId, attributeId: universeTypeAttribute.attributeId })
-    .from(universeTypeAttribute);
-  const absentees = rows.filter((r) => !keep.has(`${r.typeId}:${r.attributeId}`));
-  let deleted = 0;
-  for (const c of chunk(absentees)) {
-    const tuples = sql.join(
-      c.map((r) => sql`(${r.typeId}, ${r.attributeId})`),
-      sql`, `,
-    );
-    const result = await db.execute(
-      sql`delete from universe_type_attribute where (type_id, attribute_id) in (${tuples})`,
-    );
-    deleted += result.rowCount ?? 0;
-  }
-  return { name: 'universe_type_attribute', deleted };
-}
-
-/**
- * Removes rows absent from `keep` across the nine SDE-derived `universe_*`
- * tables, guarded per-table against every inbound FK (not only `RESTRICT`
- * ones — see `DELETION_SPECS`). Must run after the write phase (the new
- * build's own rows need to already be in place for the anti-join and for
- * `universe_wormhole` to be current as a guard) and before
+ * Removes rows absent from this run's staged key set (`universe_sde_stage`,
+ * populated by `stageBuildKeys` during the write phase) across the nine
+ * SDE-derived `universe_*` tables, guarded per-table against every inbound FK
+ * (not only `RESTRICT` ones — see `DELETION_SPECS`). Must run after the
+ * write phase (the new build's own rows need to already be in place for the
+ * anti-join and for `universe_wormhole` to be current as a guard) and before
  * `computeHubProximity` (which BFSes `universe_stargate_edge` and would bake
  * a removed gate into `nearest_trade_hub_jumps` otherwise).
  */
-export async function syncSdeDeletions(keep: SdeKeepSets): Promise<SdeDeletionReport> {
-  for (const [key, set] of Object.entries(keep)) {
-    if (set.size === 0) {
-      throw new SdeGateError('shrink', `SDE deletion sync refuses to run with an empty keep-set for ${key}`);
+export async function syncSdeDeletions(runId: string): Promise<SdeDeletionReport> {
+  const staged = await db
+    .select({ tableName: universeSdeStage.tableName, n: sql<number>`count(*)::int` })
+    .from(universeSdeStage)
+    .where(eq(universeSdeStage.runId, runId))
+    .groupBy(universeSdeStage.tableName);
+  const stagedCounts = new Map(staged.map((r) => [r.tableName, r.n]));
+  for (const spec of DELETION_SPECS) {
+    if (!stagedCounts.get(spec.name)) {
+      throw new SdeGateError('shrink', `SDE deletion sync refuses to run with no staged keys for ${spec.name}`);
     }
   }
+
+  // Freshly staged rows have reset planner stats; table_name has exactly nine
+  // distinct values, and without stats the default-distinct estimate can be
+  // orders of magnitude off on that discriminator.
+  await db.execute(sql`ANALYZE "universe_sde_stage"`);
 
   const deleted: Record<string, number> = {};
   const retained: Record<string, { retained: number; ids: number[] }> = {};
 
-  const edges = await syncStargateEdges(keep.stargateEdges);
-  deleted[edges.name] = edges.deleted;
-
-  const attrs = await syncTypeAttributes(keep.typeAttributes);
-  deleted[attrs.name] = attrs.deleted;
-
   for (const spec of DELETION_SPECS) {
-    const result = await syncDeletionSpec(spec, spec.keep(keep));
+    const result = await syncDeletionSpec(runId, spec);
     deleted[result.name] = result.deleted;
     if (result.retained) retained[result.name] = result.retained;
   }
@@ -1287,10 +1302,10 @@ export interface IngestResult {
 /**
  * Blocks an ingest of a build older than the one `ap_sde_state` records. The
  * write phase is upsert-only, but `syncSdeDeletions` runs against the older
- * build's keep-sets and would remove every row the newer build added — new
- * systems, and stargate edges, which `syncStargateEdges` deletes with no FK
- * guard at all. The shrink gate can't see it: a few dozen systems out of ~8k
- * is far under `SDE_REFRESH_MAX_SHRINK_PCT`.
+ * build's staged keys and would remove every row the newer build added — new
+ * systems, and stargate edges, which have no FK guard at all. The shrink gate
+ * can't see it: a few dozen systems out of ~8k is far under
+ * `SDE_REFRESH_MAX_SHRINK_PCT`.
  */
 async function assertNotADowngrade(build: number): Promise<void> {
   const [row] = await db
@@ -1391,21 +1406,16 @@ export async function runCsvIngest(): Promise<IngestResult> {
 }
 
 /**
- * One-shot, re-runnable ingest of an SDE build into every `universe_*` table —
- * the pinned bootstrap build by default, or `override.build` when called from
- * `sde-refresh` / `sde-ingest`. Rejects a build older than the one
- * `ap_sde_state` records, downloads the zip if absent, parses it and the
- * vendored CSVs fully (Zod decoders + CSV re-binding — format drift and an
- * unresolvable catalog row both fail here), checks for excessive per-table
- * shrink against the live tables, and only then writes — in FK-safe order,
- * upserts (re-runnable).
+ * Parses `build`, writes it, and stages its key set for deletion sync —
+ * everything that needs the parsed row arrays resident. Returns only
+ * primitives, so `parsed`/`csv` (the whole-build row arrays) become garbage
+ * the moment this returns, rather than staying live for the rest of the
+ * ingest.
  */
-export async function runIngest(override?: { build: number; releaseDate: string }): Promise<IngestResult> {
-  const build = override?.build ?? SDE_BUILD;
-  const releaseDate = override?.releaseDate ?? SDE_RELEASE_DATE;
-
-  await assertNotADowngrade(build);
-
+async function parseWriteAndStage(
+  build: number,
+  runId: string,
+): Promise<{ counts: Record<string, number>; uncatalogedWormholeCodes: string[] }> {
   const parsed = await loadSdeBuild(build);
 
   console.log('Parsing vendored CSVs ...');
@@ -1451,8 +1461,40 @@ export async function runIngest(override?: { build: number; releaseDate: string 
   await writeTypeOverrides(csv.typeOverrides);
   await writeWormholeCatalog(csv.wormholeCatalog);
 
+  console.log('Staging the new build for deletion sync ...');
+  await stageBuildKeys(runId, parsed);
+
+  const catalogedCodes = new Set(csv.wormholeCatalog.map((r) => r.name));
+  const uncatalogedWormholeCodes = Array.from(
+    new Set(parsed.wormholeCodeEntries.map((e) => e.code.toUpperCase())),
+  )
+    .filter((code) => !catalogedCodes.has(code))
+    .sort();
+
+  return { counts, uncatalogedWormholeCodes };
+}
+
+/**
+ * One-shot, re-runnable ingest of an SDE build into every `universe_*` table —
+ * the pinned bootstrap build by default, or `override.build` when called from
+ * `sde-refresh` / `sde-ingest`. Rejects a build older than the one
+ * `ap_sde_state` records, downloads the zip if absent, parses it and the
+ * vendored CSVs fully (Zod decoders + CSV re-binding — format drift and an
+ * unresolvable catalog row both fail here), checks for excessive per-table
+ * shrink against the live tables, and only then writes — in FK-safe order,
+ * upserts (re-runnable).
+ */
+export async function runIngest(override?: { build: number; releaseDate: string }): Promise<IngestResult> {
+  const build = override?.build ?? SDE_BUILD;
+  const releaseDate = override?.releaseDate ?? SDE_RELEASE_DATE;
+
+  await assertNotADowngrade(build);
+
+  const runId = randomUUID();
+  const { counts, uncatalogedWormholeCodes } = await parseWriteAndStage(build, runId);
+
   console.log('Syncing deletions against the new build ...');
-  const deletion = await syncSdeDeletions(buildKeepSets(parsed));
+  const deletion = await syncSdeDeletions(runId);
   for (const [table, n] of Object.entries(deletion.deleted)) {
     if (n > 0) console.log(`  deleted ${n} row(s) from ${table}`);
   }
@@ -1461,16 +1503,10 @@ export async function runIngest(override?: { build: number; releaseDate: string 
   }
   counts.deleted = Object.values(deletion.deleted).reduce((a, b) => a + b, 0);
   counts.retainedOrphans = Object.values(deletion.retained).reduce((a, b) => a + b.retained, 0);
+  await clearStagedBuildKeys(runId);
 
   console.log('Computing trade-hub proximity ...');
   counts.hubProximity = await computeHubProximity();
-
-  const catalogedCodes = new Set(csv.wormholeCatalog.map((r) => r.name));
-  const uncatalogedWormholeCodes = Array.from(
-    new Set(parsed.wormholeCodeEntries.map((e) => e.code.toUpperCase())),
-  )
-    .filter((code) => !catalogedCodes.has(code))
-    .sort();
   counts.uncatalogedWormholes = uncatalogedWormholeCodes.length;
 
   await recordSdeIngestSuccess(build, releaseDate, deletion.retained, uncatalogedWormholeCodes);

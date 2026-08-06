@@ -11,7 +11,9 @@
  * The static-data pipeline (`sde-ingest`, `sde-refresh`, `csv-ingest`).
  *
  * Two ingests running at once each parse the full SDE, doubling the memory
- * spike, and — if they resolved different builds — run deletion sync with
- * different keep sets, so the older run deletes the newer build's rows.
+ * spike. `pnpm sde:bootstrap` runs in-process outside the worker, so it can
+ * still overlap a job-driven ingest despite this queue — the losing run's
+ * `universe_sde_stage` keys get swept by the other run's staging pass and it
+ * aborts on the empty-keep gate rather than deleting the winner's rows.
  */
 export const SDE_QUEUE = 'sde';
