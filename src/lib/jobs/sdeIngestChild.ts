@@ -12,7 +12,8 @@ import type { IngestResult } from '@/lib/sde/ingest';
  * tasks.
  */
 
-const CHILD_POOL_MAX = 2;
+/** One connection is pinned for the run's advisory lock; the rest serve the ingest, which issues one statement at a time. */
+const CHILD_POOL_MAX = 3;
 const STDERR_TAIL_LINES = 20;
 /**
  * Ceiling on a whole ingest — download, ~100MB JSONL parse, bulk upserts,

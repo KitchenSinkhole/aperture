@@ -9,7 +9,7 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import { and, eq, ne, notExists, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { apertureConfig } from '../../../aperture.config';
-import { db } from '@/db/client';
+import { db, pool } from '@/db/client';
 import {
   apMapConnectionLog,
   apMapSignature,
@@ -274,10 +274,10 @@ function openerFor(zip: InstanceType<typeof StreamZip.async>, names: Set<string>
   };
 }
 
-/** Thrown by a gate that must block a write: an unresolvable CSV binding, a per-table shrink past `SDE_REFRESH_MAX_SHRINK_PCT`, or a build older than the one the database holds. Raised before the write phase runs, so nothing has been written. */
+/** Thrown by a gate that must block a write: an unresolvable CSV binding, a per-table shrink past `SDE_REFRESH_MAX_SHRINK_PCT`, a build older than the one the database holds, or another ingest already holding the run lock. Every code but `shrink` is raised before the write phase; the deletion-sync `shrink` gate runs after it, inside the transaction it aborts. */
 export class SdeGateError extends Error {
   constructor(
-    public readonly code: 'binding' | 'shrink' | 'downgrade',
+    public readonly code: 'binding' | 'shrink' | 'downgrade' | 'concurrent',
     message: string,
   ) {
     super(message);
@@ -1188,6 +1188,8 @@ export const DELETION_SPECS: DeletionSpec[] = [
   },
 ];
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 /** Correlated `NOT EXISTS` against this run's staged key set for `spec`'s table. */
 function absentFromStage(runId: string, spec: DeletionSpec) {
   return notExists(
@@ -1216,6 +1218,7 @@ function absentFromStage(runId: string, spec: DeletionSpec) {
  * []`), whose retained count is provably zero.
  */
 async function syncDeletionSpec(
+  tx: Tx,
   runId: string,
   spec: DeletionSpec,
 ): Promise<{ name: string; deleted: number; retained: { retained: number; ids: number[] } | null }> {
@@ -1223,14 +1226,14 @@ async function syncDeletionSpec(
     notExists(db.select({ one: sql<number>`1` }).from(g.table).where(eq(g.column, spec.idColumn))),
   );
 
-  const deleteResult = await db.delete(spec.table).where(and(absentFromStage(runId, spec), ...guardConditions));
+  const deleteResult = await tx.delete(spec.table).where(and(absentFromStage(runId, spec), ...guardConditions));
   const deleted = deleteResult.rowCount ?? 0;
 
   if (spec.guards.length === 0) {
     return { name: spec.name, deleted, retained: null };
   }
 
-  const [retainedRow] = await db
+  const [retainedRow] = await tx
     .select({ n: sql<number>`count(*)::int` })
     .from(spec.table)
     .where(absentFromStage(runId, spec));
@@ -1240,7 +1243,7 @@ async function syncDeletionSpec(
     return { name: spec.name, deleted, retained: null };
   }
 
-  const sample = await db
+  const sample = await tx
     .select({ id: spec.idColumn })
     .from(spec.table)
     .where(absentFromStage(runId, spec))
@@ -1263,35 +1266,53 @@ async function syncDeletionSpec(
  * anti-join and for `universe_wormhole` to be current as a guard) and before
  * `computeHubProximity` (which BFSes `universe_stargate_edge` and would bake
  * a removed gate into `nearest_trade_hub_jumps` otherwise).
+ *
+ * The empty-keep gate and all nine deletes share one `repeatable read`
+ * snapshot, so the gate's verdict holds for every statement that follows it.
+ * An overlapping run's `stageBuildKeys` sweep (which clears every other
+ * `run_id` unconditionally) is therefore invisible once this transaction has
+ * started; without that, a sweep landing mid-loop would empty the stage under
+ * a run that had already passed the gate and every remaining spec would
+ * anti-join against nothing — deleting `universe_stargate_edge` and
+ * `universe_type_attribute` outright, neither of which has an FK guard. Two
+ * runs deleting the same rows now surface as a serialization failure that
+ * fails the ingest, and the all-or-nothing commit means a mid-loop error can
+ * no longer leave the tables partially synced.
  */
 export async function syncSdeDeletions(runId: string): Promise<SdeDeletionReport> {
-  const staged = await db
-    .select({ tableName: universeSdeStage.tableName, n: sql<number>`count(*)::int` })
-    .from(universeSdeStage)
-    .where(eq(universeSdeStage.runId, runId))
-    .groupBy(universeSdeStage.tableName);
-  const stagedCounts = new Map(staged.map((r) => [r.tableName, r.n]));
-  for (const spec of DELETION_SPECS) {
-    if (!stagedCounts.get(spec.name)) {
-      throw new SdeGateError('shrink', `SDE deletion sync refuses to run with no staged keys for ${spec.name}`);
-    }
-  }
-
   // Freshly staged rows have reset planner stats; table_name has exactly nine
   // distinct values, and without stats the default-distinct estimate can be
-  // orders of magnitude off on that discriminator.
+  // orders of magnitude off on that discriminator. Kept outside the
+  // transaction so the stats survive a rollback.
   await db.execute(sql`ANALYZE "universe_sde_stage"`);
 
-  const deleted: Record<string, number> = {};
-  const retained: Record<string, { retained: number; ids: number[] }> = {};
+  return db.transaction(
+    async (tx) => {
+      const staged = await tx
+        .select({ tableName: universeSdeStage.tableName, n: sql<number>`count(*)::int` })
+        .from(universeSdeStage)
+        .where(eq(universeSdeStage.runId, runId))
+        .groupBy(universeSdeStage.tableName);
+      const stagedCounts = new Map(staged.map((r) => [r.tableName, r.n]));
+      for (const spec of DELETION_SPECS) {
+        if (!stagedCounts.get(spec.name)) {
+          throw new SdeGateError('shrink', `SDE deletion sync refuses to run with no staged keys for ${spec.name}`);
+        }
+      }
 
-  for (const spec of DELETION_SPECS) {
-    const result = await syncDeletionSpec(runId, spec);
-    deleted[result.name] = result.deleted;
-    if (result.retained) retained[result.name] = result.retained;
-  }
+      const deleted: Record<string, number> = {};
+      const retained: Record<string, { retained: number; ids: number[] }> = {};
 
-  return { deleted, retained };
+      for (const spec of DELETION_SPECS) {
+        const result = await syncDeletionSpec(tx, runId, spec);
+        deleted[result.name] = result.deleted;
+        if (result.retained) retained[result.name] = result.retained;
+      }
+
+      return { deleted, retained };
+    },
+    { isolationLevel: 'repeatable read' },
+  );
 }
 
 export interface IngestResult {
@@ -1475,6 +1496,53 @@ async function parseWriteAndStage(
 }
 
 /**
+ * Advisory-lock key serialising whole ingests across every entry point.
+ * `SDE_QUEUE` mutually excludes the three job tasks, but `pnpm sde:bootstrap`
+ * calls `runIngest` in-process and never reaches graphile-worker, so the queue
+ * alone cannot stop a hand-run bootstrap from overlapping the daily refresh —
+ * the case `stageBuildKeys`'s unconditional sweep of other runs' staged keys
+ * exists to tolerate.
+ */
+const INGEST_LOCK_KEY = 'sde-ingest';
+
+/**
+ * Takes the ingest lock on a dedicated pooled client, held for the run's whole
+ * duration. Session-scoped rather than transaction-scoped because an ingest is
+ * hundreds of statements over many minutes, and pinned to one client because a
+ * session lock belongs to the connection that took it — releasing it from
+ * whichever connection the pool handed out next would fail. A killed or
+ * crashed ingest drops its session, so the lock cannot outlive its holder.
+ *
+ * Fails fast rather than queueing: a second concurrent run would only re-ingest
+ * the build the first is already writing, so waiting out a ~20 minute ingest
+ * buys nothing an operator wants.
+ */
+async function acquireIngestLock(): Promise<{ release: () => Promise<void> }> {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query<{ locked: boolean }>(
+      'select pg_try_advisory_lock(hashtextextended($1, 0)) as locked',
+      [INGEST_LOCK_KEY],
+    );
+    if (!rows[0]?.locked) {
+      throw new SdeGateError('concurrent', 'Another SDE ingest is already running against this database');
+    }
+  } catch (err) {
+    client.release();
+    throw err;
+  }
+  return {
+    async release() {
+      try {
+        await client.query('select pg_advisory_unlock(hashtextextended($1, 0))', [INGEST_LOCK_KEY]);
+      } finally {
+        client.release();
+      }
+    },
+  };
+}
+
+/**
  * One-shot, re-runnable ingest of an SDE build into every `universe_*` table —
  * the pinned bootstrap build by default, or `override.build` when called from
  * `sde-refresh` / `sde-ingest`. Rejects a build older than the one
@@ -1483,34 +1551,49 @@ async function parseWriteAndStage(
  * unresolvable catalog row both fail here), checks for excessive per-table
  * shrink against the live tables, and only then writes — in FK-safe order,
  * upserts (re-runnable).
+ *
+ * Runs under the `sde-ingest` advisory lock, so two ingests can never interleave
+ * whichever entry points they came from. The downgrade gate is inside the lock:
+ * it reads `ap_sde_state.current_build`, which a concurrent run would advance.
  */
 export async function runIngest(override?: { build: number; releaseDate: string }): Promise<IngestResult> {
   const build = override?.build ?? SDE_BUILD;
   const releaseDate = override?.releaseDate ?? SDE_RELEASE_DATE;
 
-  await assertNotADowngrade(build);
-
+  const lock = await acquireIngestLock();
   const runId = randomUUID();
-  const { counts, uncatalogedWormholeCodes } = await parseWriteAndStage(build, runId);
+  try {
+    try {
+      await assertNotADowngrade(build);
 
-  console.log('Syncing deletions against the new build ...');
-  const deletion = await syncSdeDeletions(runId);
-  for (const [table, n] of Object.entries(deletion.deleted)) {
-    if (n > 0) console.log(`  deleted ${n} row(s) from ${table}`);
+      const { counts, uncatalogedWormholeCodes } = await parseWriteAndStage(build, runId);
+
+      console.log('Syncing deletions against the new build ...');
+      const deletion = await syncSdeDeletions(runId);
+      for (const [table, n] of Object.entries(deletion.deleted)) {
+        if (n > 0) console.log(`  deleted ${n} row(s) from ${table}`);
+      }
+      for (const [table, r] of Object.entries(deletion.retained)) {
+        console.log(`  retained ${r.retained} row(s) in ${table} (still referenced)`);
+      }
+      counts.deleted = Object.values(deletion.deleted).reduce((a, b) => a + b, 0);
+      counts.retainedOrphans = Object.values(deletion.retained).reduce((a, b) => a + b.retained, 0);
+
+      console.log('Computing trade-hub proximity ...');
+      counts.hubProximity = await computeHubProximity();
+      counts.uncatalogedWormholes = uncatalogedWormholeCodes.length;
+
+      await recordSdeIngestSuccess(build, releaseDate, deletion.retained, uncatalogedWormholeCodes);
+      await evictSupersededSdeZips(build);
+
+      return { build, counts };
+    } finally {
+      // A failed run's ~1.4M staged rows would otherwise sit in the (unlogged)
+      // stage table until the next ingest's sweep — a full day of footprint for
+      // nothing when a daily `sde-refresh` is the thing failing.
+      await clearStagedBuildKeys(runId);
+    }
+  } finally {
+    await lock.release();
   }
-  for (const [table, r] of Object.entries(deletion.retained)) {
-    console.log(`  retained ${r.retained} row(s) in ${table} (still referenced)`);
-  }
-  counts.deleted = Object.values(deletion.deleted).reduce((a, b) => a + b, 0);
-  counts.retainedOrphans = Object.values(deletion.retained).reduce((a, b) => a + b.retained, 0);
-  await clearStagedBuildKeys(runId);
-
-  console.log('Computing trade-hub proximity ...');
-  counts.hubProximity = await computeHubProximity();
-  counts.uncatalogedWormholes = uncatalogedWormholeCodes.length;
-
-  await recordSdeIngestSuccess(build, releaseDate, deletion.retained, uncatalogedWormholeCodes);
-  await evictSupersededSdeZips(build);
-
-  return { build, counts };
 }
