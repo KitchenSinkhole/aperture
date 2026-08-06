@@ -14,9 +14,9 @@
 | far | EdgeAnchor | yes | The connection's other end — the wash fades toward it. |
 
 ### Renders
-One `pointer-events: none` `<g>`: a `<linearGradient gradientUnits="userSpaceOnUse" spreadMethod="pad">` running from `anchor` toward `far`, stops fading from 70% through 32% at the 45% mark to 0% opacity of `connectionBubbleColor()`; an overlay `<path>` reusing `path`, stroked with that gradient — no `strokeDasharray`, so a solid wash reads correctly even under a dashed EOL line. Plus a stroked, faintly filled `<circle>` centred on `anchor` nudged a few px outward along `faceNormal(anchor.position)`.
+One `pointer-events: none` `<g>`: a `<linearGradient gradientUnits="userSpaceOnUse" spreadMethod="pad">` running from `anchor` toward `far`, in `connectionBubbleColor()` — near-full opacity at the mouth, held through the first stretch before falling away to fully transparent at the wash's end, since a straight ramp to zero spends most of its length too faint to register. An overlay `<path>` reusing `path`, stroked with that gradient — no `strokeDasharray`, so a solid wash reads correctly even under a dashed EOL line. Plus a stroked, faintly filled `<circle>` centred on `anchor` nudged a few px outward along `faceNormal(anchor.position)`.
 
-Wash length is `dist * 0.4` clamped to `[90px, 220px]`, with the floor itself yielding to `dist * 0.45` — a wash never reaches the far end, so a single flagged end never reads as staining the whole line.
+Wash length is a fraction of the connection's straight-line length, floored so two adjacent systems still get a readable run of gradient and capped so a long connection doesn't smear it too far. The floor yields to half the connection rather than overriding it, so a wash never reaches the far end and a single flagged end never reads as staining the whole line.
 
 ### Behaviour & Interactions
 - Consumers render it **before** `<BaseEdge>`, so the connection stroke paints over the ring's midline: the line visibly enters and leaves the ring, which is what a bubble is — a volume crossed on the jump, not a property hanging off the line. An open ring also holds its contrast at small sizes far better than a translucent disc.
