@@ -11,7 +11,7 @@ import { useTravelForConnection } from './MapTravelContext';
 import { ConnectionDetailPopover } from './ConnectionDetailPopover';
 import { useEdgeAnchors } from './useEdgeAnchors';
 import { ConnectionBubble } from './ConnectionBubble';
-import { ConnectionEndpoint } from './ConnectionEndpoint';
+import { ConnectionEndpoint, type ConnectionEndpointState } from './ConnectionEndpoint';
 
 // Selectable connection edge. Scope + mass status drive the stroke colour; EOL
 // dashes the line; flags (jump-mass / EOL / frigate / rolling / preserve) render
@@ -29,6 +29,11 @@ import { ConnectionEndpoint } from './ConnectionEndpoint';
 // (`ConnectionEndpoint`); right-clicking one opens the per-end context menu.
 // A flagged end additionally renders a `ConnectionBubble` (a translucent
 // circle plus a gradient wash fading out a short way along the line).
+//
+// The line and the two endpoints are competing right-click targets sharing the
+// same patch of canvas, so exactly one of the three is ever emphasised: an
+// endpoint under the pointer arms and the line drops its hover weight. Whatever
+// is lit is what the click will hit.
 
 export type ConnectionEdgeData = MapConnectionEdge & {
   /** Owning map id — feeds the detail popover's mass-log fetch. */
@@ -82,17 +87,33 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
     data.scope === 'stargate'
       ? getSmoothStepPath({ ...pathArgs, borderRadius: 0 })
       : getBezierPath(pathArgs);
+  const [hovered, setHovered] = useState(false);
+  const [hoveredEnd, setHoveredEnd] = useState<ConnectionEnd | null>(null);
+
   const style = connectionStyle(data);
-  const finalStyle = selected ? { ...style, strokeWidth: (style.strokeWidth ?? 3) + 2 } : style;
+  const lineWeight = selected ? 2 : hovered && hoveredEnd === null ? 1.5 : 0;
+  const finalStyle = lineWeight
+    ? { ...style, strokeWidth: (style.strokeWidth ?? 3) + lineWeight }
+    : style;
   const badges = connectionBadges(data);
   const hasLabel = badges.length > 0 || data.isRolling || data.preserveMass;
   const travel = useTravelForConnection(props.id);
 
-  const [hovered, setHovered] = useState(false);
+  const endpointState = (end: ConnectionEnd): ConnectionEndpointState =>
+    hoveredEnd === end ? 'armed' : hovered ? 'revealed' : 'idle';
+
+  const onEndpointHover = (end: ConnectionEnd, isHovered: boolean) =>
+    setHoveredEnd((current) => (isHovered ? end : current === end ? null : current));
 
   return (
     <>
-      <g onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+      <g
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => {
+          setHovered(false);
+          setHoveredEnd(null);
+        }}
+      >
         {data.sourceBubbled && (
           <ConnectionBubble
             gradientId={`bubble-${props.id}-source`}
@@ -115,13 +136,17 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
         <ConnectionEndpoint
           end="source"
           anchor={sourceAnchor}
-          visible={hovered}
+          state={endpointState('source')}
+          bubbled={data.sourceBubbled}
+          onHoverChange={onEndpointHover}
           onContextMenu={(end, clientX, clientY) => data.onEndpointContextMenu(props.id, end, clientX, clientY)}
         />
         <ConnectionEndpoint
           end="target"
           anchor={targetAnchor}
-          visible={hovered}
+          state={endpointState('target')}
+          bubbled={data.targetBubbled}
+          onHoverChange={onEndpointHover}
           onContextMenu={(end, clientX, clientY) => data.onEndpointContextMenu(props.id, end, clientX, clientY)}
         />
       </g>

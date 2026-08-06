@@ -96,6 +96,28 @@ Menu wiring: extend `ConnectionEdgeData` with a stable `onEndpointContextMenu: (
 
 **Done when:** a share with the toggle on shows bubbles at `/live/<token>`; a share with it off shows none, and the flags are absent from the payload on the wire.
 
+## Stage 6 — Endpoint hit targets on a crowded face
+
+**Mode:** Plan mode
+
+**Goal:** Make right-clicking a *specific* endpoint reliable on a node face carrying several connections.
+
+**Problem:** `anchorPoint` fans a face's endpoints at `pitch = min(BASE_PITCH_PX, (faceLength - FACE_MARGIN_PX) / (count - 1))` — at most 12px apart, and closer as node degree grows. `ConnectionEndpoint`'s hit circle is `HIT_RADIUS_PX = 11` (times `useMarkScale()`), so from degree 2 upward on a face the circles overlap, and by degree 4 or so each one is mostly buried under its neighbours. Overlaps resolve by DOM order across separate edge elements, which follows nothing a user could predict — so the armed halo can light up on a connection the pointer is not nearest to. Stage 3's armed state makes the mistake *visible* before the click lands, but the target itself is still wrong.
+
+**Touches:** `src/lib/map/edgeAnchors.ts`, `src/components/map/useEdgeAnchors.ts`, `src/components/map/ConnectionEndpoint.tsx`
+
+**Approach — size the hit target from the live pitch, anisotropically.** Neighbours separate only *along* the face, so shrinking the target in both axes throws away room that exists. Replace the hit circle with a face-oriented slot: half-extent along the face capped at `pitch / 2`, half-extent along the face normal left at the current radius. Targets become disjoint by construction while keeping the generous reach outward from the mouth, which is the direction the pointer arrives from.
+
+- `edgeAnchors.ts` — lift the pitch expression out of `anchorPoint` into an exported `facePitch(rect, face, count)` that `anchorPoint` then calls. `count <= 1` yields 0, meaning unconstrained.
+- `useEdgeAnchors.ts` — `EdgeAnchor` gains `pitch: number`, filled by `endpointAnchor` from `facePitch`. `anchorsEqual` must compare it, or a degree change that leaves this edge's own anchor coordinates untouched won't re-render the endpoint.
+- `ConnectionEndpoint.tsx` — derive the slot's along-face half-extent as `min(HIT_RADIUS_PX * scale, pitch / 2)`. The clamp goes *after* the mark scaling and against the raw pitch: the mark holds a constant screen size and so grows in flow space as the canvas zooms out, whereas the pitch is fixed in flow space. Draw the armed halo to the same shape (a rounded `<rect>` oriented to the face, or an `<ellipse>`) — the premise of the armed state is that the mark is congruent with what responds, so the mark has to narrow along with it.
+
+Zoomed far out, `pitch / 2` is only a few screen px and individual endpoints stop being pickable. That is inherent to a fan that tight and is acceptable: the connection's own line menu stays reachable throughout.
+
+**Rejected:** a single hit-test overlay per node face owning all its endpoints and dispatching to the nearest anchor. It gives each endpoint a true Voronoi cell, but moves endpoint hit-testing out of the per-edge component into a node-level layer, fighting the edge-owned model and complicating the drag handle #124 wants on that same element. Not worth it over a pitch-sized slot.
+
+**Done when:** on a node with 5+ connections sharing one face, sweeping the pointer along the fan arms each endpoint in turn with no dead bands and no band claimed by two edges, and the armed mark covers exactly the region that responds.
+
 ## Verification
 
 1. `pnpm dev`, open a map with a node carrying several connections. Confirm the pre-existing fan still looks right, then hover an edge: a dot appears at each end.
@@ -105,4 +127,5 @@ Menu wiring: extend `ConnectionEdgeData` with a stable `onEndpointContextMenu: (
 5. Map settings, Audit tab: the toggle is logged naming the correct end's system.
 6. Mint a share with bubbles on, load `/live/<token>`, confirm bubbles render and nothing is interactable. Mint one with it off and confirm the flags never reach the client (check the snapshot in the network tab, not just the render).
 7. Export the map, re-import it, confirm the bubbled ends survive the round trip.
-8. `pnpm lint && pnpm typecheck && pnpm build` (`ci-verifier`). No DB integration tests exist for connection flags, so there is nothing to add under `RUN_DB_TESTS` beyond the existing suite staying green.
+8. Park a node with 5+ connections leaving one face and sweep the pointer across the fan: each endpoint arms in turn, in the order they sit on the face.
+9. `pnpm lint && pnpm typecheck && pnpm build` (`ci-verifier`). No DB integration tests exist for connection flags, so there is nothing to add under `RUN_DB_TESTS` beyond the existing suite staying green.
