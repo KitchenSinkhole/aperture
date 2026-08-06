@@ -3,7 +3,7 @@
 **Purpose:** One-shot, re-runnable ingest of a CCP SDE build into every `universe_*` table.
 **File:** `src/lib/sde/ingest.ts`
 
-Bootstrap-floor build: **`SDE_BUILD = 3453885`** (released 2026-07-31), YAML variant — what a fresh database is seeded with, not a ceiling; `runIngest`'s optional `override` advances a running deployment past it. Source: https://developers.eveonline.com/docs/services/static-data. Zip cached at `.sde-cache/sde-<build>-yaml.zip`, one file per build currently on disk (`evictSupersededSdeZips` deletes the rest, plus any `.part` file older than the download timeout, after each successful ingest).
+Bootstrap-floor build: **`SDE_BUILD = 3453885`** (released 2026-07-31), JSONL variant — what a fresh database is seeded with, not a ceiling; `runIngest`'s optional `override` advances a running deployment past it. Source: https://developers.eveonline.com/docs/services/static-data. Zip cached at `.sde-cache/sde-<build>-jsonl.zip`, one file per build currently on disk (`evictSupersededSdeZips` deletes the rest, plus any `.part` file older than the download timeout, after each successful ingest).
 
 ### The cached zip is never trusted
 
@@ -16,10 +16,10 @@ A cache entry only ever exists as a complete, verified download, and never survi
 
 ### Parse-then-write, gated
 
-`runIngest` never writes before the whole build has been validated: `parseSdeArchive` (zip → rows, every YAML entry through a Zod decoder from `./decoders`, zero DB access) and `parseVendoredCsvs` (the three catalog CSVs, re-bound against the parsed build) both run to completion first; `assertNoExcessiveShrink` then compares the parsed counts against the live tables. Only after all three pass does the write phase (`writeCategories`, `writeTypes`, …) issue a single statement. This makes "a malformed build can't partially overwrite good data" structural — the write functions have no path back to the parse functions.
+`runIngest` never writes before the whole build has been validated: `parseSdeArchive` (zip → rows, every JSONL file streamed one record at a time through a Zod decoder from `./decoders`, zero DB access) and `parseVendoredCsvs` (the three catalog CSVs, re-bound against the parsed build) both run to completion first; `assertNoExcessiveShrink` then compares the parsed counts against the live tables. Only after all three pass does the write phase (`writeCategories`, `writeTypes`, …) issue a single statement. This makes "a malformed build can't partially overwrite good data" structural — the write functions have no path back to the parse functions.
 
 Two failure modes surface as typed errors:
-- **`SdeFormatError`** (`./decoders.ts`) — an SDE YAML entry fails its schema (renamed/dropped key, wrong type, list-shaped file). Names the file, entry key, and failing field path.
+- **`SdeFormatError`** (`./decoders.ts`) — an SDE JSONL line fails its schema (renamed/dropped key, wrong type), isn't a JSON object, is missing `_key`, or isn't valid JSON at all. Names the file, entry key, and failing field path.
 - **`SdeGateError`** (`code: 'binding' | 'shrink' | 'downgrade'`) — `binding`: a vendored CSV is missing, or a row's system id / type id / WH code / `targetSystem` name doesn't resolve against the build being ingested. `shrink`: a gated table's new-build count is more than `apertureConfig.SDE_REFRESH_MAX_SHRINK_PCT` below its live count (a table with a live count of 0 is exempt — that's a bootstrap), or `syncSdeDeletions` was handed an empty keep-set. Gated tables are the nine SDE-derived ones; the three CSV-derived tables (`universe_system_static`, `universe_type_override`, `universe_wormhole`) are exempt since their binding check is strictly stronger. `downgrade`: the requested build is older than `ap_sde_state.current_build`.
 
 The downgrade gate runs first, before the zip is even downloaded. The write phase is upsert-only, but deletion sync runs against the older build's keep-sets and would remove every row the newer build added, including stargate edges (`syncStargateEdges` has no FK guard); the shrink gate cannot catch it, since a few dozen systems out of ~8k is far under the threshold. This is what keeps `pnpm sde:bootstrap` on a deployment that has self-refreshed past the pin from walking it backwards.
@@ -37,15 +37,15 @@ Deletion sync runs after `universe_wormhole` and `universe_system_static` have b
 ### SDE file → table mapping (new flat SDE layout)
 | SDE entry | Target table | Notes |
 |---|---|---|
-| `categories.yaml` | `universe_category` | `name.en`, `published` |
-| `groups.yaml` | `universe_group` | `categoryID`, `name.en` |
-| `dogmaAttributes.yaml` | `universe_dogma_attribute` | `name`/`description` are plain strings; `displayName` localized |
-| `types.yaml` | `universe_type` | 52k rows; builds WH-code→typeId map (group `988`, name `"Wormhole <CODE>"`) |
-| `typeDogma.yaml` | `universe_type_attribute` | `dogmaAttributes[]`; skips type/attr ids absent from their tables (FK safety) |
-| `mapRegions.yaml` | `universe_region` | `name.en`, `description.en` |
-| `mapConstellations.yaml` | `universe_constellation` | `position.{x,y,z}`; `wormholeClassID` retained for system security derivation |
-| `mapSolarSystems.yaml` | `universe_system` | `security` via `deriveSecurityLabel`, overridden to C14–C18 for the five Drifter systems via `drifterClassLabel` (`@/lib/eve/drifterSystems`) since they now share one constellation; `trueSec` = rounded status; `effect` from `SYSTEM_EFFECT_BY_ID` (vendored, not in SDE) |
-| `mapStargates.yaml` | `universe_stargate_edge` | edge `(solarSystemID → destination.solarSystemID)`, deduped, skips edges whose endpoint system is absent |
+| `categories.jsonl` | `universe_category` | `name.en`, `published` |
+| `groups.jsonl` | `universe_group` | `categoryID`, `name.en` |
+| `dogmaAttributes.jsonl` | `universe_dogma_attribute` | `name`/`description` are plain strings; `displayName` localized |
+| `types.jsonl` | `universe_type` | 52k rows; builds WH-code→typeId map (group `988`, name `"Wormhole <CODE>"`) |
+| `typeDogma.jsonl` | `universe_type_attribute` | `dogmaAttributes[]`; skips type/attr ids absent from their tables (FK safety) |
+| `mapRegions.jsonl` | `universe_region` | `name.en`, `description.en` |
+| `mapConstellations.jsonl` | `universe_constellation` | `position.{x,y,z}`; `wormholeClassID` retained for system security derivation |
+| `mapSolarSystems.jsonl` | `universe_system` | `security` via `deriveSecurityLabel`, overridden to C14–C18 for the five Drifter systems via `drifterClassLabel` (`@/lib/eve/drifterSystems`) since they now share one constellation; `trueSec` = rounded status; `effect` from `SYSTEM_EFFECT_BY_ID` (vendored, not in SDE); a purely-numeric-looking system name (e.g. `6E-578`, id `30003270`) stays a string since JSON quotes it |
+| `mapStargates.jsonl` | `universe_stargate_edge` | edge `(solarSystemID → destination.solarSystemID)`, deduped, skips edges whose endpoint system is absent |
 | `scripts/data/system-static.csv` | `universe_system_static` | vendored community data (WH statics not in SDE); every row's `systemID`/`typeID` must resolve against the build being ingested (`SdeGateError('binding')` otherwise). Reseeds authoritatively (full delete then insert) inside a transaction — the CSV, not the SDE, is authoritative for this table. |
 | `scripts/data/wormhole-overrides.csv` | `universe_type_override` | `Id;Name;scanWormholeStrength`; resolves WH code → typeId (unresolvable code is a hard failure), writes attr `3974` with `reason='esi-missing-3974'`. Reseeds authoritatively (delete-by-reason then insert) inside a transaction. |
 | `scripts/data/wormhole-classes.csv` | `universe_wormhole` | `code;sourceClasses;targetClass;targetSystem`; `sourceClasses` is a `|`-joined set; resolves WH code → typeId and a non-empty `targetSystem` name → the parsed build's system id (both hard failures if unresolvable); empty source/target cells → null. Reseeds authoritatively (full delete then insert) inside a transaction. |
@@ -86,7 +86,7 @@ Returns the path to `build`'s zip in `.sde-cache/`, downloading it when absent o
 Fetches `SDE_LATEST_MANIFEST_URL`, parses each line through `sdeLatestManifestSchema` (`./decoders.ts`), and returns the `_key: "sde"` line's `buildNumber`/`releaseDate` (truncated to `YYYY-MM-DD`). Throws on an HTTP failure or a manifest with no `sde` entry. Called by the `sde-refresh` job task (`src/lib/jobs/tasks/sdeRefresh.ts`).
 
 ### parseSdeArchive(zip): ParsedSde
-Parses every SDE YAML file into rows through the `./decoders` Zod schemas, entirely offline (no DB access). Returns the row arrays plus the derived `typeIds`/`attrIds`/`systemIds` sets, `systemNameToId`, and `wormholeCodeEntries`. Throws `SdeFormatError` on the first entry that fails its schema.
+Parses every SDE JSONL file into rows through the `./decoders` Zod schemas, one record at a time and entirely offline (no DB access) — no whole-file document graph is ever resident. Returns the row arrays plus the derived `typeIds`/`attrIds`/`systemIds` sets, `systemNameToId`, and `wormholeCodeEntries`. Throws `SdeFormatError` on the first entry that fails its schema.
 
 ### parseVendoredCsvs(bindings): Promise<CsvRows>
 Parses the three vendored catalog CSVs and re-binds every row against `bindings` (a `ParsedSde` for `runIngest`, or DB-derived sets for `runCsvIngest`). Throws `SdeGateError('binding')` on a missing file or an unresolvable system id / type id / WH code / `targetSystem` name.

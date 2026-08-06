@@ -93,11 +93,11 @@ Per-record streaming keeps this intact: the parse still runs to completion, and 
 
 ---
 
-## Stage 1 — Switch the ingest to the JSONL variant
+## Stage 1 — Switch the ingest to the JSONL variant — DONE (2026-08-06)
 
 **Mode:** Accept edits
 **Goal:** Take peak heap from 2621MB to ~156MB by parsing line-delimited JSON per record instead of whole-file YAML.
-**Touches:** `src/lib/sde/ingest.ts`, `src/lib/sde/decoders.ts`, their companions, `src/lib/jobs/sdeIngestChild.ts`, `tests/unit/sde-decoders.test.ts`, `package.json`
+**Touches:** `src/lib/sde/ingest.ts`, `src/lib/sde/decoders.ts`, their companions, `src/lib/jobs/sdeIngestChild.ts`, `tests/unit/sde-decoders.test.ts`, `tests/unit/sde-zip-cache.test.ts` + its companion, `package.json`
 
 - `sdeZipUrl` requests `eve-online-static-data-${build}-jsonl.zip`. `sdeZipPath` becomes `sde-${build}-jsonl.zip`, and `CACHE_ZIP_NAME` / `CACHE_PART_NAME` must match the new suffix, otherwise `evictSupersededSdeZips` silently never cleans up and the old YAML zips linger forever.
 - Replace `readYamlEntry` + `decodeEntries` with a single per-record streaming decoder in `decoders.ts` that walks the entry buffer line by line, `JSON.parse`s one line, `safeParse`s it, hands the projected row to a callback, and discards. This fuses validation and projection in one pass, so no intermediate `Map` of validated objects is ever built.
@@ -109,6 +109,8 @@ Per-record streaming keeps this intact: the parse still runs to completion, and 
 - Lower `CHILD_MAX_OLD_SPACE_MB` from 4096 to 512 as a regression tripwire, and rewrite the comment above it, which currently documents the old whole-archive-resident behaviour as the reason the ceiling is high.
 
 **Done when:** `pnpm sde:bootstrap` completes under `NODE_OPTIONS=--max-old-space-size=512`; the counts in `IngestResult` match the table above; `universe_system` id 30003270 has name `6E-578` rather than `0`; `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
+
+**Verified:** the dev DB had already self-refreshed past the pin (`ap_sde_state.current_build = 3458726` vs. `SDE_BUILD = 3453885`), so `assertNotADowngrade` blocks `pnpm sde:bootstrap` itself there — expected, not a regression. Ran the same `runIngest` path directly against build 3458726 instead, via `scripts/sde-ingest-child.ts` under `NODE_OPTIONS=--max-old-space-size=512`: exit 0, `{"build":3458726,"counts":{"categories":48,"groups":1610,"dogmaAttributes":2865,"types":52848,"typeAttributes":645749,"regions":114,"constellations":1184,"systems":8490,"stargateEdges":13978,"systemStatics":3772,"typeOverrides":59,"wormholes":100,"deleted":0,"retainedOrphans":0,"hubProximity":575,"uncatalogedWormholes":0}}`, and `universe_system` id 30003270 reads `6E-578`. `pnpm lint`, `pnpm typecheck`, `pnpm build`, and the full `pnpm test` suite (730 passed) are all green.
 
 ## Stage 2 — Stream entries out of the zip
 

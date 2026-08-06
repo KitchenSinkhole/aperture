@@ -7,7 +7,7 @@ import { ensureSdeZip } from '@/lib/sde/ingest';
 /** A build number CCP will never publish, so the test can't collide with a real cached zip. */
 const TEST_BUILD = 999000001;
 const CACHE_DIR = join(process.cwd(), '.sde-cache');
-const ZIP_PATH = join(CACHE_DIR, `sde-${TEST_BUILD}-yaml.zip`);
+const ZIP_PATH = join(CACHE_DIR, `sde-${TEST_BUILD}-jsonl.zip`);
 
 /** Above `MIN_SDE_ZIP_BYTES`, so a complete download is accepted as plausible. */
 const FULL_BODY = Buffer.alloc(1_200_000, 7);
@@ -35,7 +35,7 @@ function response(body: ReadableStream, contentLength?: number) {
 /** Every cache entry for the test build — the zip itself and any `.part` left behind. */
 async function cacheEntries(): Promise<string[]> {
   const entries = await readdir(CACHE_DIR).catch(() => [] as string[]);
-  return entries.filter((e) => e.startsWith(`sde-${TEST_BUILD}-yaml.zip`));
+  return entries.filter((e) => e.startsWith(`sde-${TEST_BUILD}-jsonl.zip`));
 }
 
 async function clearCacheEntries() {
@@ -94,7 +94,7 @@ describe('ensureSdeZip', () => {
     expect(await ensureSdeZip(TEST_BUILD)).toBe(ZIP_PATH);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(await cacheEntries()).toEqual([`sde-${TEST_BUILD}-yaml.zip`]);
+    expect(await cacheEntries()).toEqual([`sde-${TEST_BUILD}-jsonl.zip`]);
     expect((await readFile(ZIP_PATH)).byteLength).toBe(FULL_BODY.byteLength);
   });
 

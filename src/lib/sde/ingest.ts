@@ -7,7 +7,6 @@ import AdmZip from 'adm-zip';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { and, eq, inArray, notExists, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
-import { parse as parseYaml } from 'yaml';
 import { apertureConfig } from '../../../aperture.config';
 import { db } from '@/db/client';
 import {
@@ -35,7 +34,7 @@ import {
   universeWormhole,
 } from '@/db/schema';
 import {
-  decodeEntries,
+  decodeJsonlEntries,
   SdeFormatError,
   sdeCategorySchema,
   sdeConstellationSchema,
@@ -67,7 +66,7 @@ export const SDE_BUILD = 3453885;
 export const SDE_RELEASE_DATE = '2026-07-31';
 const SDE_BASE = 'https://developers.eveonline.com/static-data/tranquility';
 function sdeZipUrl(build: number): string {
-  return `${SDE_BASE}/eve-online-static-data-${build}-yaml.zip`;
+  return `${SDE_BASE}/eve-online-static-data-${build}-jsonl.zip`;
 }
 export const SDE_ZIP_URL = sdeZipUrl(SDE_BUILD);
 export const SDE_LATEST_MANIFEST_URL = `${SDE_BASE}/latest.jsonl`;
@@ -139,7 +138,7 @@ async function unlinkIfPresent(p: string): Promise<void> {
 }
 
 function sdeZipPath(build: number): string {
-  return join(CACHE_DIR, `sde-${build}-yaml.zip`);
+  return join(CACHE_DIR, `sde-${build}-jsonl.zip`);
 }
 
 /**
@@ -193,8 +192,8 @@ export async function ensureSdeZip(build: number = SDE_BUILD): Promise<string> {
   return downloadSdeZip(build);
 }
 
-const CACHE_ZIP_NAME = /^sde-(\d+)-yaml\.zip$/;
-const CACHE_PART_NAME = /^sde-\d+-yaml\.zip\.\d+\.part$/;
+const CACHE_ZIP_NAME = /^sde-(\d+)-jsonl\.zip$/;
+const CACHE_PART_NAME = /^sde-\d+-jsonl\.zip\.\d+\.part$/;
 
 /**
  * Deletes every cached SDE zip except `keepBuild`'s, plus any `.part` file no
@@ -262,14 +261,11 @@ export async function fetchLatestSdeManifest(): Promise<{ build: number; release
   throw new SdeFormatError('latest.jsonl', 'sde', 'no "sde" entry found');
 }
 
-function readYamlEntry(zip: AdmZip, entry: string): unknown {
+/** Reads `entry`'s raw bytes out of `zip` for `decodeJsonlEntries` to stream, without converting the whole entry to a string first. */
+function readJsonlEntry(zip: AdmZip, entry: string): Buffer {
   const buf = zip.getEntry(entry)?.getData();
   if (!buf) throw new SdeFormatError(entry, '<root>', 'zip entry missing');
-  try {
-    return parseYaml(buf.toString('utf-8'));
-  } catch (err) {
-    throw new SdeFormatError(entry, '<root>', err);
-  }
+  return buf;
 }
 
 /** Thrown by a gate that must block a write: an unresolvable CSV binding, a per-table shrink past `SDE_REFRESH_MAX_SHRINK_PCT`, or a build older than the one the database holds. Raised before the write phase runs, so nothing has been written. */
@@ -286,42 +282,54 @@ export class SdeGateError extends Error {
 // --- Parse phase (no DB access) -------------------------------------------
 
 function parseCategories(zip: AdmZip) {
-  const data = decodeEntries('categories.yaml', readYamlEntry(zip, 'categories.yaml'), sdeCategorySchema);
-  return Array.from(data, ([id, c]) => ({
-    id,
-    name: en(c.name) ?? '',
-    published: c.published ?? null,
-  }));
+  const rows: { id: number; name: string; published: boolean | null }[] = [];
+  decodeJsonlEntries('categories.jsonl', readJsonlEntry(zip, 'categories.jsonl'), sdeCategorySchema, (id, c) => {
+    rows.push({ id, name: en(c.name) ?? '', published: c.published ?? null });
+  });
+  return rows;
 }
 
 function parseGroups(zip: AdmZip) {
-  const data = decodeEntries('groups.yaml', readYamlEntry(zip, 'groups.yaml'), sdeGroupSchema);
-  return Array.from(data, ([id, g]) => ({
-    id,
-    categoryId: g.categoryID,
-    name: en(g.name) ?? '',
-    published: g.published ?? null,
-  }));
+  const rows: { id: number; categoryId: number; name: string; published: boolean | null }[] = [];
+  decodeJsonlEntries('groups.jsonl', readJsonlEntry(zip, 'groups.jsonl'), sdeGroupSchema, (id, g) => {
+    rows.push({ id, categoryId: g.categoryID, name: en(g.name) ?? '', published: g.published ?? null });
+  });
+  return rows;
 }
 
 function parseDogmaAttributes(zip: AdmZip) {
-  const data = decodeEntries(
-    'dogmaAttributes.yaml',
-    readYamlEntry(zip, 'dogmaAttributes.yaml'),
+  const rows: {
+    id: number;
+    name: string | null;
+    displayName: string | null;
+    description: string | null;
+    published: boolean | null;
+    stackable: boolean | null;
+    highIsGood: boolean | null;
+    defaultValue: number | null;
+    iconId: number | null;
+    unitId: number | null;
+  }[] = [];
+  decodeJsonlEntries(
+    'dogmaAttributes.jsonl',
+    readJsonlEntry(zip, 'dogmaAttributes.jsonl'),
     sdeDogmaAttributeSchema,
+    (id, a) => {
+      rows.push({
+        id,
+        name: en(a.name),
+        displayName: en(a.displayName),
+        description: en(a.description),
+        published: a.published ?? null,
+        stackable: a.stackable ?? null,
+        highIsGood: a.highIsGood ?? null,
+        defaultValue: a.defaultValue ?? null,
+        iconId: a.iconID ?? null,
+        unitId: a.unitID ?? null,
+      });
+    },
   );
-  return Array.from(data, ([id, a]) => ({
-    id,
-    name: en(a.name),
-    displayName: en(a.displayName),
-    description: en(a.description),
-    published: a.published ?? null,
-    stackable: a.stackable ?? null,
-    highIsGood: a.highIsGood ?? null,
-    defaultValue: a.defaultValue ?? null,
-    iconId: a.iconID ?? null,
-    unitId: a.unitID ?? null,
-  }));
+  return rows;
 }
 
 /**
@@ -371,17 +379,31 @@ function wormholeCodeFromTypeName(name: string): string | null {
 }
 
 function parseTypes(zip: AdmZip) {
-  const data = decodeEntries('types.yaml', readYamlEntry(zip, 'types.yaml'), sdeTypeSchema);
   const typeIds = new Set<number>();
   const wormholeCodeEntries: { code: string; typeId: number }[] = [];
-  const rows = Array.from(data, ([id, t]) => {
+  const rows: {
+    id: number;
+    groupId: number;
+    name: string;
+    description: string | null;
+    mass: number | null;
+    volume: number | null;
+    capacity: number | null;
+    radius: number | null;
+    packagedVolume: number | null;
+    portionSize: number | null;
+    marketGroupId: number | null;
+    graphicId: number | null;
+    published: boolean | null;
+  }[] = [];
+  decodeJsonlEntries('types.jsonl', readJsonlEntry(zip, 'types.jsonl'), sdeTypeSchema, (id, t) => {
     typeIds.add(id);
     const name = en(t.name) ?? '';
     if (t.groupID === WORMHOLE_GROUP_ID) {
       const code = wormholeCodeFromTypeName(name);
       if (code) wormholeCodeEntries.push({ code, typeId: id });
     }
-    return {
+    rows.push({
       id,
       groupId: t.groupID,
       name,
@@ -395,108 +417,136 @@ function parseTypes(zip: AdmZip) {
       marketGroupId: t.marketGroupID ?? null,
       graphicId: t.graphicID ?? null,
       published: t.published ?? null,
-    };
+    });
   });
   return { rows, typeIds, wormholeCodeEntries };
 }
 
 function parseTypeAttributes(zip: AdmZip, typeIds: Set<number>, attrIds: Set<number>) {
-  const data = decodeEntries('typeDogma.yaml', readYamlEntry(zip, 'typeDogma.yaml'), sdeTypeDogmaSchema);
   const rows: { typeId: number; attributeId: number; value: number | null }[] = [];
-  for (const [typeId, entry] of data) {
-    if (!typeIds.has(typeId)) continue;
-    for (const a of entry.dogmaAttributes ?? []) {
-      if (!attrIds.has(a.attributeID)) continue;
-      rows.push({ typeId, attributeId: a.attributeID, value: a.value ?? null });
-    }
-  }
+  decodeJsonlEntries(
+    'typeDogma.jsonl',
+    readJsonlEntry(zip, 'typeDogma.jsonl'),
+    sdeTypeDogmaSchema,
+    (typeId, entry) => {
+      if (!typeIds.has(typeId)) return;
+      for (const a of entry.dogmaAttributes ?? []) {
+        if (!attrIds.has(a.attributeID)) continue;
+        rows.push({ typeId, attributeId: a.attributeID, value: a.value ?? null });
+      }
+    },
+  );
   return rows;
 }
 
 function parseRegions(zip: AdmZip) {
-  const data = decodeEntries('mapRegions.yaml', readYamlEntry(zip, 'mapRegions.yaml'), sdeRegionSchema);
-  return Array.from(data, ([id, r]) => ({
-    id,
-    name: en(r.name) ?? String(id),
-    description: en(r.description),
-  }));
+  const rows: { id: number; name: string; description: string | null }[] = [];
+  decodeJsonlEntries('mapRegions.jsonl', readJsonlEntry(zip, 'mapRegions.jsonl'), sdeRegionSchema, (id, r) => {
+    rows.push({ id, name: en(r.name) ?? String(id), description: en(r.description) });
+  });
+  return rows;
 }
 
 /** Returns rows plus a constellation id → wormholeClassID map for system security derivation. */
 function parseConstellations(zip: AdmZip) {
-  const data = decodeEntries(
-    'mapConstellations.yaml',
-    readYamlEntry(zip, 'mapConstellations.yaml'),
-    sdeConstellationSchema,
-  );
   const whClass = new Map<number, number | null>();
-  const rows = Array.from(data, ([id, c]) => {
-    whClass.set(id, c.wormholeClassID ?? null);
-    return {
-      id,
-      regionId: c.regionID,
-      name: en(c.name) ?? String(id),
-      x: c.position?.x ?? null,
-      y: c.position?.y ?? null,
-      z: c.position?.z ?? null,
-    };
-  });
+  const rows: {
+    id: number;
+    regionId: number;
+    name: string;
+    x: number | null;
+    y: number | null;
+    z: number | null;
+  }[] = [];
+  decodeJsonlEntries(
+    'mapConstellations.jsonl',
+    readJsonlEntry(zip, 'mapConstellations.jsonl'),
+    sdeConstellationSchema,
+    (id, c) => {
+      whClass.set(id, c.wormholeClassID ?? null);
+      rows.push({
+        id,
+        regionId: c.regionID,
+        name: en(c.name) ?? String(id),
+        x: c.position?.x ?? null,
+        y: c.position?.y ?? null,
+        z: c.position?.z ?? null,
+      });
+    },
+  );
   return { rows, whClass };
 }
 
 /** Returns rows, the set of system ids (stargate-edge filtering), and a name → id map (WH catalog `targetSystem` resolution). */
 function parseSystems(zip: AdmZip, whClassByConstellation: Map<number, number | null>) {
-  const data = decodeEntries(
-    'mapSolarSystems.yaml',
-    readYamlEntry(zip, 'mapSolarSystems.yaml'),
-    sdeSolarSystemSchema,
-  );
   const systemIds = new Set<number>();
   const systemNameToId = new Map<string, number>();
-  const rows = Array.from(data, ([id, s]) => {
-    systemIds.add(id);
-    const name = en(s.name) ?? String(id);
-    systemNameToId.set(name, id);
-    return {
-      id,
-      constellationId: s.constellationID,
-      name,
-      // Drifter systems share one constellation post-2025, so their class can't
-      // be derived from the constellation — pin C14–C18 by system id.
-      security:
-        drifterClassLabel(id) ??
-        deriveSecurityLabel({
-          regionId: s.regionID,
-          wormholeClassId: whClassByConstellation.get(s.constellationID) ?? null,
-          securityStatus: s.securityStatus,
-        }),
-      trueSec: roundSecurity(s.securityStatus),
-      securityStatus: s.securityStatus,
-      securityClass: en(s.securityClass),
-      // SDE has no wormhole effect; layer it in from the vendored assignment map.
-      effect: SYSTEM_EFFECT_BY_ID[id] ?? null,
-      x: s.position?.x ?? null,
-      y: s.position?.y ?? null,
-      z: s.position?.z ?? null,
-    };
-  });
+  const rows: {
+    id: number;
+    constellationId: number;
+    name: string;
+    security: string;
+    trueSec: number;
+    securityStatus: number;
+    securityClass: string | null;
+    effect: string | null;
+    x: number | null;
+    y: number | null;
+    z: number | null;
+  }[] = [];
+  decodeJsonlEntries(
+    'mapSolarSystems.jsonl',
+    readJsonlEntry(zip, 'mapSolarSystems.jsonl'),
+    sdeSolarSystemSchema,
+    (id, s) => {
+      systemIds.add(id);
+      const name = en(s.name) ?? String(id);
+      systemNameToId.set(name, id);
+      rows.push({
+        id,
+        constellationId: s.constellationID,
+        name,
+        // Drifter systems share one constellation post-2025, so their class can't
+        // be derived from the constellation — pin C14–C18 by system id.
+        security:
+          drifterClassLabel(id) ??
+          deriveSecurityLabel({
+            regionId: s.regionID,
+            wormholeClassId: whClassByConstellation.get(s.constellationID) ?? null,
+            securityStatus: s.securityStatus,
+          }),
+        trueSec: roundSecurity(s.securityStatus),
+        securityStatus: s.securityStatus,
+        securityClass: en(s.securityClass),
+        // SDE has no wormhole effect; layer it in from the vendored assignment map.
+        effect: SYSTEM_EFFECT_BY_ID[id] ?? null,
+        x: s.position?.x ?? null,
+        y: s.position?.y ?? null,
+        z: s.position?.z ?? null,
+      });
+    },
+  );
   return { rows, systemIds, systemNameToId };
 }
 
 function parseStargateEdges(zip: AdmZip, systemIds: Set<number>) {
-  const data = decodeEntries('mapStargates.yaml', readYamlEntry(zip, 'mapStargates.yaml'), sdeStargateSchema);
   const seen = new Set<string>();
   const rows: { fromSystemId: number; toSystemId: number }[] = [];
-  for (const [, gate] of data) {
-    const from = gate.solarSystemID;
-    const to = gate.destination?.solarSystemID;
-    if (to == null) continue;
-    if (!systemIds.has(from) || !systemIds.has(to)) continue;
-    const key = `${from}-${to}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    rows.push({ fromSystemId: from, toSystemId: to });
-  }
+  decodeJsonlEntries(
+    'mapStargates.jsonl',
+    readJsonlEntry(zip, 'mapStargates.jsonl'),
+    sdeStargateSchema,
+    (_id, gate) => {
+      const from = gate.solarSystemID;
+      const to = gate.destination?.solarSystemID;
+      if (to == null) return;
+      if (!systemIds.has(from) || !systemIds.has(to)) return;
+      const key = `${from}-${to}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push({ fromSystemId: from, toSystemId: to });
+    },
+  );
   return rows;
 }
 
@@ -518,9 +568,11 @@ export interface ParsedSde {
 }
 
 /**
- * Parses every SDE YAML file into rows, entirely offline — no DB access. A
+ * Parses every SDE JSONL file into rows, entirely offline — no DB access. A
  * format-drift failure (`SdeFormatError`) or a truncated zip therefore always
- * happens before the write phase issues its first statement.
+ * happens before the write phase issues its first statement. Each file is
+ * decoded one record at a time (`decodeJsonlEntries`), so no whole-file
+ * document graph is ever resident.
  */
 export function parseSdeArchive(zip: AdmZip): ParsedSde {
   const categories = parseCategories(zip);
