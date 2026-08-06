@@ -134,13 +134,25 @@ const SCOPE_COLORS: Record<MapConnectionEdge['scope'], string> = {
   abyssal: '#f97316',
 };
 
-// Warp-bubble marker at a connection mouth. A desaturated blue-grey, held apart
-// from the mass/scope palette so a bubble never reads as connection state.
-const BUBBLE_COLOR = '#8ea9c8';
+// Warp-bubble marker at a connection mouth. A cold, bright ice blue: held apart
+// from the mass/scope palette so a bubble never reads as connection state, and
+// high enough in luminance to carry against the near-black canvas at the low
+// alphas the ring fill and wash use.
+const BUBBLE_COLOR = '#9ec9f0';
 
 /** Fill/stroke hue for the bubbled-end marker and its wash. */
 export function connectionBubbleColor(): string {
   return BUBBLE_COLOR;
+}
+
+// The hover-revealed handle at a connection mouth. Neutral by design — it marks
+// where a control is, not what state the end is in, so it must not be confused
+// with the bubble marker sharing that spot.
+const ENDPOINT_COLOR = '#94a3b8';
+
+/** Fill hue for the hover-revealed endpoint handle. */
+export function connectionEndpointColor(): string {
+  return ENDPOINT_COLOR;
 }
 
 export type EdgeStyle = {

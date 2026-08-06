@@ -6,7 +6,7 @@ import type { MapConnectionEdge } from '@/lib/map/loadMap';
 import type { ConnectionEnd } from '@/types';
 import { Tooltip } from '@base-ui/react/tooltip';
 import { RefreshCw, Shield, type LucideIcon } from 'lucide-react';
-import { connectionBadges, connectionBubbleColor, connectionStyle } from './styling';
+import { connectionBadges, connectionStyle } from './styling';
 import { useTravelForConnection } from './MapTravelContext';
 import { ConnectionDetailPopover } from './ConnectionDetailPopover';
 import { useEdgeAnchors } from './useEdgeAnchors';
@@ -87,7 +87,6 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
   const badges = connectionBadges(data);
   const hasLabel = badges.length > 0 || data.isRolling || data.preserveMass;
   const travel = useTravelForConnection(props.id);
-  const bubbleColor = connectionBubbleColor();
 
   const [hovered, setHovered] = useState(false);
 
@@ -117,14 +116,12 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
           end="source"
           anchor={sourceAnchor}
           visible={hovered}
-          color={bubbleColor}
           onContextMenu={(end, clientX, clientY) => data.onEndpointContextMenu(props.id, end, clientX, clientY)}
         />
         <ConnectionEndpoint
           end="target"
           anchor={targetAnchor}
           visible={hovered}
-          color={bubbleColor}
           onContextMenu={(end, clientX, clientY) => data.onEndpointContextMenu(props.id, end, clientX, clientY)}
         />
       </g>

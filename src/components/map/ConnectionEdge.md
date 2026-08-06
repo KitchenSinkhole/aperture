@@ -28,5 +28,5 @@ A `BaseEdge` styled via `connectionStyle` (scope→colour, wormhole recoloured b
 - `./ConnectionEndpoint` — the hoverable, right-clickable per-end hit target.
 - `@base-ui/react/tooltip` (`Tooltip`) for the do-not-jump flag tooltips.
 - `lucide-react` (`RefreshCw` rolling icon, `Shield` preserve-mass icon, `LucideIcon` type).
-- `./styling` for stroke + badge + bubble colour calculation.
+- `./styling` for stroke + badge calculation.
 - `./ConnectionDetailPopover` — hover popover wrapping the badge cluster.
