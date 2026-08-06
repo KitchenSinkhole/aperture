@@ -12,6 +12,7 @@ import {
 import { Tooltip } from '@base-ui/react/tooltip';
 import { RefreshCw, Shield, type LucideIcon } from 'lucide-react';
 import { connectionBadges, connectionStyle, systemClassColor } from '@/components/map/styling';
+import { ConnectionBubble } from '@/components/map/ConnectionBubble';
 import { useEdgeAnchors, type EdgeAnchor } from '@/components/map/useEdgeAnchors';
 import type { PublicMapConnectionEdge } from '@/types';
 
@@ -23,6 +24,9 @@ import type { PublicMapConnectionEdge } from '@/types';
 // Hovering a wormhole reveals the sig code at each end, placed against its own
 // endpoint node: the two mouths of one hole carry different codes, and knowing
 // which to look for in which system is the whole point.
+//
+// A bubbled end renders the same `ConnectionBubble` the app canvas draws, with
+// no endpoint dot and no hit target: a spectator cannot set or clear the flag.
 
 export type PublicConnectionEdgeData = PublicMapConnectionEdge & {
   /** `universe_system.security` at each end, for tinting that end's sig tag with the far system's class. */
@@ -114,6 +118,16 @@ export function PublicConnectionEdge(props: EdgeProps & { data: PublicConnection
     targetY: anchors?.target.y ?? targetY,
     targetPosition: anchors?.target.position ?? targetPosition,
   };
+  const sourceAnchor = {
+    x: pathArgs.sourceX,
+    y: pathArgs.sourceY,
+    position: pathArgs.sourcePosition,
+  };
+  const targetAnchor = {
+    x: pathArgs.targetX,
+    y: pathArgs.targetY,
+    position: pathArgs.targetPosition,
+  };
   // Gate links render as right-angled paths to read distinctly from the smooth
   // bezier of wormhole/jumpbridge/abyssal connections.
   const [path, labelX, labelY] =
@@ -128,15 +142,37 @@ export function PublicConnectionEdge(props: EdgeProps & { data: PublicConnection
   const showSigTags = sigIds !== null && anchors !== null;
   const revealSigTags = showSigTags && (hovered || data.highlighted);
 
+  const strokeWidth = data.highlighted
+    ? style.strokeWidth + HIGHLIGHT_STROKE_BOOST_PX
+    : style.strokeWidth;
+
   return (
     <>
+      {data.sourceBubbled && (
+        <ConnectionBubble
+          gradientId={`pub-bubble-${props.id}-source`}
+          path={path}
+          strokeWidth={strokeWidth}
+          anchor={sourceAnchor}
+          far={targetAnchor}
+        />
+      )}
+      {data.targetBubbled && (
+        <ConnectionBubble
+          gradientId={`pub-bubble-${props.id}-target`}
+          path={path}
+          strokeWidth={strokeWidth}
+          anchor={targetAnchor}
+          far={sourceAnchor}
+        />
+      )}
       <BaseEdge
         path={path}
         style={
           data.highlighted
             ? {
                 ...style,
-                strokeWidth: style.strokeWidth + HIGHLIGHT_STROKE_BOOST_PX,
+                strokeWidth,
                 filter: `drop-shadow(0 0 6px ${style.stroke})`,
               }
             : style

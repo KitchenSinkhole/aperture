@@ -64,6 +64,7 @@ const createSchema = z.object({
   presenceMode: z.enum(sharePresenceMode.enumValues),
   showSignatures: z.boolean(),
   showConnectionSigIds: z.boolean(),
+  showBubbles: z.boolean(),
   /** Hours from now, resolved server-side so a skewed client clock can't extend a link. */
   expiresInHours: z.number().int().positive().max(MAX_EXPIRY_HOURS).nullable(),
 });
@@ -75,7 +76,8 @@ export async function createMapShare(
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]!.message };
   const mapId = BigInt(parsed.data.mapId);
-  const { label, presenceMode, showSignatures, showConnectionSigIds, expiresInHours } = parsed.data;
+  const { label, presenceMode, showSignatures, showConnectionSigIds, showBubbles, expiresInHours } =
+    parsed.data;
 
   const actorId = await gate(mapId);
   if (!actorId) return { ok: false, error: 'Forbidden.' };
@@ -98,6 +100,7 @@ export async function createMapShare(
           presenceMode,
           showSignatures,
           showConnectionSigIds,
+          showBubbles,
           expiresAt,
           createdByCharacterId: actorId,
         })
@@ -108,6 +111,7 @@ export async function createMapShare(
         presenceMode,
         showSignatures,
         showConnectionSigIds,
+        showBubbles,
         expiresAt: expiresAt?.toISOString() ?? null,
       };
     },

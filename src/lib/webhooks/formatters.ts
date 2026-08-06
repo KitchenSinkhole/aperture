@@ -221,6 +221,7 @@ function describeShareProfile(
   const clauses = [PRESENCE_LABEL[event.presenceMode]];
   if (event.showSignatures) clauses.push('signatures shown');
   if (event.showConnectionSigIds) clauses.push('hole sig IDs shown');
+  if (event.showBubbles) clauses.push('bubbled ends shown');
   clauses.push(
     event.expiresAt ? `expires ${event.expiresAt.slice(0, 10)}` : 'no expiry',
   );

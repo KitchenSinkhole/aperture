@@ -14,6 +14,7 @@
 - `presence_mode` — `share_presence_mode` enum, default `anonymous`.
 - `show_signatures` — `boolean`, default `false`.
 - `show_connection_sig_ids` — `boolean`, default `false`. Independent of `show_signatures`.
+- `show_bubbles` — `boolean`, default `false` (migration 0066). Publishes the per-end bubbled flags on `ap_map_connection`.
 - `expires_at` — `timestamptz`, nullable. NULL = no expiry.
 - `revoked_at` — `timestamptz`, nullable. Non-null = revoked; not a row delete.
 - `created_by_character_id` — `bigint`, → `ap_character` **SET NULL**.

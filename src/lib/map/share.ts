@@ -44,6 +44,7 @@ export async function resolveShareToken(token: string): Promise<ResolvedShareTok
       presenceMode: apMapShare.presenceMode,
       showSignatures: apMapShare.showSignatures,
       showConnectionSigIds: apMapShare.showConnectionSigIds,
+      showBubbles: apMapShare.showBubbles,
     })
     .from(apMapShare)
     .innerJoin(apMap, eq(apMap.id, apMapShare.mapId))
@@ -71,6 +72,7 @@ export async function resolveShareToken(token: string): Promise<ResolvedShareTok
       presenceMode: row.presenceMode,
       showSignatures: row.showSignatures,
       showConnectionSigIds: row.showConnectionSigIds,
+      showBubbles: row.showBubbles,
     },
   };
 }
@@ -92,6 +94,7 @@ export async function listMapShares(mapId: bigint): Promise<MapShareListItem[]> 
       presenceMode: apMapShare.presenceMode,
       showSignatures: apMapShare.showSignatures,
       showConnectionSigIds: apMapShare.showConnectionSigIds,
+      showBubbles: apMapShare.showBubbles,
       expiresAt: apMapShare.expiresAt,
       createdAt: apMapShare.createdAt,
       createdByName: apCharacter.name,
@@ -108,6 +111,7 @@ export async function listMapShares(mapId: bigint): Promise<MapShareListItem[]> 
     presenceMode: r.presenceMode,
     showSignatures: r.showSignatures,
     showConnectionSigIds: r.showConnectionSigIds,
+    showBubbles: r.showBubbles,
     expiresAt: r.expiresAt?.toISOString() ?? null,
     expired: r.expiresAt !== null && r.expiresAt.getTime() <= now,
     createdAt: r.createdAt.toISOString(),

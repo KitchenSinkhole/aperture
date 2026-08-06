@@ -255,6 +255,7 @@ export type ShareRedactionProfile = {
   presenceMode: SharePresenceMode;
   showSignatures: boolean;
   showConnectionSigIds: boolean;
+  showBubbles: boolean;
 };
 
 /**

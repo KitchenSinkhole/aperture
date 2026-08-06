@@ -156,6 +156,8 @@ describe.skipIf(!run)('Public map share — redacted projection (real Postgres)'
           scope: 'wh',
           massStatus: 'fresh',
           confirmedAt: new Date(),
+          sourceBubbled: true,
+          targetBubbled: true,
         },
         {
           mapId,
@@ -241,6 +243,7 @@ describe.skipIf(!run)('Public map share — redacted projection (real Postgres)'
       { mapId, token: 'pub-defaults', label: 'Defaults' },
       { mapId, token: 'pub-signatures', label: 'Signatures', showSignatures: true },
       { mapId, token: 'pub-sigids', label: 'Sig IDs', showConnectionSigIds: true },
+      { mapId, token: 'pub-bubbles', label: 'Bubbles', showBubbles: true },
       { mapId, token: 'pub-presence-none', label: 'No presence', presenceMode: 'none' },
       { mapId, token: 'pub-presence-full', label: 'Full presence', presenceMode: 'full' },
       { mapId, token: 'pub-revoked', label: 'Revoked', revokedAt: new Date() },
@@ -271,6 +274,7 @@ describe.skipIf(!run)('Public map share — redacted projection (real Postgres)'
       'pub-defaults',
       'pub-signatures',
       'pub-sigids',
+      'pub-bubbles',
       'pub-presence-none',
       'pub-presence-full',
     ]) {
@@ -342,6 +346,22 @@ describe.skipIf(!run)('Public map share — redacted projection (real Postgres)'
 
     const ad = data!.connections.find((c) => c.id === connAD.toString())!;
     expect(ad.sigIds).toBeNull();
+  });
+
+  it('flattens both bubbled ends to false when the flag is off, and publishes them when on', async () => {
+    const off = await loadPublicMapView('pub-defaults');
+    for (const c of off!.connections) {
+      expect(c.sourceBubbled).toBe(false);
+      expect(c.targetBubbled).toBe(false);
+    }
+
+    const on = await loadPublicMapView('pub-bubbles');
+    const ab = on!.connections.find((c) => c.id === connAB.toString())!;
+    expect(ab.sourceBubbled).toBe(true);
+    expect(ab.targetBubbled).toBe(true);
+    const ac = on!.connections.find((c) => c.id === connAC.toString())!;
+    expect(ac.sourceBubbled).toBe(false);
+    expect(ac.targetBubbled).toBe(false);
   });
 
   it('presence mode none omits the roster entirely', async () => {

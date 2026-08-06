@@ -10,7 +10,7 @@
 | mapId | string | yes | Map whose share links are managed |
 
 ### Renders
-An explainer paragraph, a table of non-revoked links (Label / Exposes / Expires / Created by / copy + revoke actions), and a create form below it (label, pilot-presence select, expiry select, and the two disclosure checkboxes). Empty-state line when the map has no links.
+An explainer paragraph, a table of non-revoked links (Label / Exposes / Expires / Created by / copy + revoke actions), and a create form below it (label, pilot-presence select, expiry select, and the three disclosure checkboxes). Empty-state line when the map has no links.
 
 ### Behaviour & Interactions
 - Loads `listShares(mapId)` on mount (the tab only mounts when selected) and reloads after every create and revoke.
@@ -29,4 +29,4 @@ An explainer paragraph, a table of non-revoked links (Label / Exposes / Expires 
 
 ### Local State
 - `shares: MapShareListItem[]`, `loading`, `error` — the list request.
-- Create form: `label`, `presenceMode`, `showSignatures`, `showConnectionSigIds`, `expiry`.
+- Create form: `label`, `presenceMode`, `showSignatures`, `showConnectionSigIds`, `showBubbles`, `expiry`.

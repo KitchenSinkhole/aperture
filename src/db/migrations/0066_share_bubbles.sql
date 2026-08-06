@@ -1,0 +1,1 @@
+ALTER TABLE "ap_map_share" ADD COLUMN "show_bubbles" boolean DEFAULT false NOT NULL;

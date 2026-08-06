@@ -69,6 +69,7 @@ function describeProfile(share: MapShareListItem): string {
   const clauses = [`Pilots: ${PRESENCE_LABEL[share.presenceMode].toLowerCase()}`];
   if (share.showSignatures) clauses.push('signatures');
   if (share.showConnectionSigIds) clauses.push('hole sig IDs');
+  if (share.showBubbles) clauses.push('bubbled ends');
   return clauses.join(' · ');
 }
 
@@ -180,6 +181,7 @@ function CreateShareForm({ mapId, onCreated }: { mapId: string; onCreated: () =>
   const [presenceMode, setPresenceMode] = useState<SharePresenceMode>('anonymous');
   const [showSignatures, setShowSignatures] = useState(false);
   const [showConnectionSigIds, setShowConnectionSigIds] = useState(false);
+  const [showBubbles, setShowBubbles] = useState(false);
   const [expiry, setExpiry] = useState('24');
   const [pending, startTransition] = useTransition();
 
@@ -196,6 +198,7 @@ function CreateShareForm({ mapId, onCreated }: { mapId: string; onCreated: () =>
         presenceMode,
         showSignatures,
         showConnectionSigIds,
+        showBubbles,
         expiresInHours: EXPIRY_OPTIONS.find((o) => o.value === expiry)?.hours ?? null,
       });
       if (!result.ok) {
@@ -285,6 +288,23 @@ function CreateShareForm({ mapId, onCreated }: { mapId: string; onCreated: () =>
           checked={showConnectionSigIds}
           onChange={(e) => setShowConnectionSigIds(e.target.checked)}
           aria-label="Show connection sig IDs"
+        />
+      </label>
+
+      <label className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted">
+        <div className="flex flex-1 flex-col gap-0.5">
+          <span className="font-medium text-foreground">Show bubbled ends</span>
+          <span className="text-xs text-muted-foreground">
+            Which mouths of which holes your scouts have marked as bubbled. Useful to a guest flying
+            the chain, but it also tells them where you have put your own bubbles.
+          </span>
+        </div>
+        <input
+          type="checkbox"
+          className="size-4 accent-primary"
+          checked={showBubbles}
+          onChange={(e) => setShowBubbles(e.target.checked)}
+          aria-label="Show bubbled ends"
         />
       </label>
 

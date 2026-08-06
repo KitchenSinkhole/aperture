@@ -460,6 +460,10 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     presenceMode: z.enum(sharePresenceMode.enumValues),
     showSignatures: z.boolean(),
     showConnectionSigIds: z.boolean(),
+    // Optional so a payload written before bubbles were publishable still
+    // parses — an audit line must not degrade to the generic fallback because
+    // the profile grew a flag.
+    showBubbles: z.boolean().optional().default(false),
     expiresAt: z.string().nullable(),
   }),
   z.object({

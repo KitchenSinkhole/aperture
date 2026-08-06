@@ -77,6 +77,9 @@ export type PublicMapConnectionEdge = {
   preserveMass: boolean;
   isRolling: boolean;
   isStatic: boolean;
+  /** Both `false` on a token that does not publish bubbles — a suppressed flag never reaches the client. */
+  sourceBubbled: boolean;
+  targetBubbled: boolean;
   eolAt: string | null;
   createdAt: string;
   sigIds: { source: string | null; target: string | null } | null;
@@ -205,6 +208,8 @@ export async function loadPublicMapView(token: string): Promise<PublicMapViewDat
           preserveMass: apMapConnection.preserveMass,
           isRolling: apMapConnection.isRolling,
           isStatic: apMapConnection.isStatic,
+          sourceBubbled: apMapConnection.sourceBubbled,
+          targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
           createdAt: apMapConnection.createdAt,
         })
@@ -267,6 +272,8 @@ export async function loadPublicMapView(token: string): Promise<PublicMapViewDat
     preserveMass: c.preserveMass,
     isRolling: c.isRolling,
     isStatic: c.isStatic,
+    sourceBubbled: profile.showBubbles && c.sourceBubbled,
+    targetBubbled: profile.showBubbles && c.targetBubbled,
     eolAt: c.eolAt ? c.eolAt.toISOString() : null,
     createdAt: c.createdAt.toISOString(),
     sigIds:

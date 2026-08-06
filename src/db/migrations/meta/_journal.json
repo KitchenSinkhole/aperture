@@ -456,6 +456,13 @@
       "when": 1785969066196,
       "tag": "0065_connection_bubbled",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1786012171019,
+      "tag": "0066_share_bubbles",
+      "breakpoints": true
     }
   ]
 }

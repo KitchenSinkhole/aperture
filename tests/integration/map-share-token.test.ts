@@ -105,6 +105,7 @@ describe.skipIf(!run)('Public map share — token model (real Postgres)', () => 
       presenceMode: 'anonymous',
       showSignatures: false,
       showConnectionSigIds: false,
+      showBubbles: false,
     });
   });
 

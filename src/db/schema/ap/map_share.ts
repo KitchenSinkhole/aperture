@@ -24,6 +24,9 @@ export const apMapShare = pgTable(
     // Independent of `showSignatures` — the two endpoint sig IDs on an
     // already-visible wormhole disclose nothing about unscanned sigs.
     showConnectionSigIds: boolean('show_connection_sig_ids').notNull().default(false),
+    // Bubbled connection ends. A bubble is a fleet's own doctrine call, so it
+    // stays off unless the operator publishes it deliberately.
+    showBubbles: boolean('show_bubbles').notNull().default(false),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     createdByCharacterId: bigint('created_by_character_id', { mode: 'bigint' }).references(
