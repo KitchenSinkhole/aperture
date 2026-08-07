@@ -15,7 +15,7 @@ import {
   universeSystem,
   universeType,
 } from '@/db/schema';
-import { createSignature } from '@/lib/map/mutations/signatures';
+import { createSignature, updateSignature } from '@/lib/map/mutations/signatures';
 import { createConnection } from '@/lib/map/mutations/connections';
 import { pasteSignatures } from '@/lib/map/mutations/bulkSignatures';
 import { addSystem } from '@/lib/map/mutations/systems';
@@ -43,6 +43,7 @@ const CONSTELLATION = 98046001;
 const SYSTEM_A1 = 98046002;
 const SYSTEM_A2 = 98046003;
 const SYSTEM_B1 = 98046004;
+const SYSTEM_B2 = 98046005;
 const CATEGORY = 98046001;
 const GROUP = 98046001;
 const TYPE_ID = 98046001;
@@ -54,6 +55,8 @@ describe.skipIf(!run)('cross-tenant create-path regression (real Postgres)', () 
   let mapSystemA1 = 0n;
   let mapSystemA2 = 0n;
   let mapSystemB1 = 0n;
+  let mapSystemB2 = 0n;
+  let connectionB = 0n;
 
   beforeAll(async () => {
     await migrate(db, { migrationsFolder: 'src/db/migrations' });
@@ -67,6 +70,7 @@ describe.skipIf(!run)('cross-tenant create-path regression (real Postgres)', () 
       { id: SYSTEM_A1, constellationId: CONSTELLATION, name: 'J160001', security: 'C4' },
       { id: SYSTEM_A2, constellationId: CONSTELLATION, name: 'J160002', security: 'C4' },
       { id: SYSTEM_B1, constellationId: CONSTELLATION, name: 'J160003', security: 'C5' },
+      { id: SYSTEM_B2, constellationId: CONSTELLATION, name: 'J160004', security: 'C5' },
     ]);
     await db.insert(universeCategory).values({ id: CATEGORY, name: 'Cross-Tenant Cat' });
     await db.insert(universeGroup).values({ id: GROUP, categoryId: CATEGORY, name: 'Cross-Tenant Grp' });
@@ -89,9 +93,22 @@ describe.skipIf(!run)('cross-tenant create-path regression (real Postgres)', () 
     expect(resA2.ok).toBe(true);
     const resB1 = await addSystem({ mapId: mapBId, systemId: SYSTEM_B1, characterId: null });
     expect(resB1.ok).toBe(true);
+    const resB2 = await addSystem({ mapId: mapBId, systemId: SYSTEM_B2, characterId: null });
+    expect(resB2.ok).toBe(true);
     mapSystemA1 = BigInt((resA1 as { ok: true; data: { id: string } }).data.id);
     mapSystemA2 = BigInt((resA2 as { ok: true; data: { id: string } }).data.id);
     mapSystemB1 = BigInt((resB1 as { ok: true; data: { id: string } }).data.id);
+    mapSystemB2 = BigInt((resB2 as { ok: true; data: { id: string } }).data.id);
+
+    const resConnB = await createConnection({
+      mapId: mapBId,
+      characterId: null,
+      sourceMapSystemId: mapSystemB1,
+      targetMapSystemId: mapSystemB2,
+      scope: 'wh',
+    });
+    expect(resConnB.ok).toBe(true);
+    connectionB = BigInt((resConnB as { ok: true; data: { id: string } }).data.id);
   });
 
   afterAll(async () => {
@@ -170,6 +187,37 @@ describe.skipIf(!run)('cross-tenant create-path regression (real Postgres)', () 
     expect(await connCount(mapAId)).toBe(beforeConns + 1);
   });
 
+  // ─── updateSignature ──────────────────────────────────────────────────────
+
+  it('updateSignature rejects a mapConnectionId that belongs to another map and writes nothing', async () => {
+    const created = await createSignature({
+      mapId: mapAId,
+      mapSystemId: mapSystemA1,
+      characterId: null,
+      sigId: 'XTC-001',
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const signatureId = BigInt((created.data as { id: string }).id);
+
+    const beforeEvents = await eventCount(mapAId);
+
+    const result = await updateSignature({
+      mapId: mapAId,
+      signatureId,
+      characterId: null,
+      patch: { mapConnectionId: connectionB }, // belongs to map B
+    });
+
+    expect(result.ok).toBe(false);
+    expect(await eventCount(mapAId)).toBe(beforeEvents);
+    // An accepted link would both leak map B's far endpoint back through
+    // `leadsToMapSystemId` and expose this row to cascade-deletion when map B's
+    // users collapse that hole.
+    expect(await sigConnectionId(signatureId)).toBeNull();
+  });
+
   // ─── pasteSignatures (bulk-add branch) ────────────────────────────────────
 
   it('pasteSignatures add branch rejects a mapSystemId that belongs to another map and writes nothing', async () => {
@@ -196,6 +244,53 @@ describe.skipIf(!run)('cross-tenant create-path regression (real Postgres)', () 
       options: {
         addMissing: true,
         updateExisting: true,
+        removeMissing: false,
+        removeOrphanedConnections: false,
+      },
+      defaultExpiresAt: new Date(Date.now() + 86_400_000),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(await eventCount(mapAId)).toBe(beforeEvents);
+    expect(await sigCount(mapSystemB1)).toBe(beforeSigs);
+  });
+
+  // The branch where no per-sig helper is reached at all: with `updateExisting`
+  // off, an incoming code that already exists on the foreign system hits
+  // `continue`, so nothing downstream can throw. Without the up-front assert the
+  // call returns ok, and the ok/reject split is an oracle for enumerating which
+  // signature codes exist on any system of any map.
+  it('pasteSignatures rejects a foreign mapSystemId even when every row short-circuits', async () => {
+    const seeded = await createSignature({
+      mapId: mapBId,
+      mapSystemId: mapSystemB1,
+      characterId: null,
+      sigId: 'XTD-001',
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+    expect(seeded.ok).toBe(true);
+
+    const beforeEvents = await eventCount(mapAId);
+    const beforeSigs = await sigCount(mapSystemB1);
+
+    const result = await pasteSignatures({
+      mapId: mapAId,
+      mapSystemId: mapSystemB1, // belongs to map B
+      characterId: null,
+      rows: [
+        {
+          sigId: 'XTD-001', // already on map B's system, so the add branch is skipped
+          name: null,
+          groupName: null,
+          signal: '100.0%',
+          classKind: 'signature',
+          groupKey: null,
+          typeId: null,
+        },
+      ],
+      options: {
+        addMissing: true,
+        updateExisting: false,
         removeMissing: false,
         removeOrphanedConnections: false,
       },
@@ -262,6 +357,15 @@ async function sigCount(mapSystemId: bigint): Promise<number> {
   return rows[0]!.count;
 }
 
+async function sigConnectionId(signatureId: bigint): Promise<string | null> {
+  const rows = (
+    await db.execute(
+      sql`SELECT map_connection_id::text AS id FROM ap_map_signature WHERE id = ${signatureId}`,
+    )
+  ).rows as Array<{ id: string | null }>;
+  return rows[0]?.id ?? null;
+}
+
 async function connCount(mapId: bigint): Promise<number> {
   const rows = (
     await db.execute(
@@ -289,7 +393,7 @@ async function cleanup() {
   await db.delete(universeCategory).where(eq(universeCategory.id, CATEGORY));
   await db
     .delete(universeSystem)
-    .where(inArray(universeSystem.id, [SYSTEM_A1, SYSTEM_A2, SYSTEM_B1]));
+    .where(inArray(universeSystem.id, [SYSTEM_A1, SYSTEM_A2, SYSTEM_B1, SYSTEM_B2]));
   await db.delete(universeConstellation).where(eq(universeConstellation.id, CONSTELLATION));
   await db.delete(universeRegion).where(eq(universeRegion.id, REGION));
 }

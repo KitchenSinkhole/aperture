@@ -204,7 +204,12 @@ export function updateSignature(
       if (!sys) throw new Error('Signature does not belong to this map.');
 
       const set: Partial<InferInsertModel<typeof apMapSignature>> = { updatedAt: new Date() };
-      if ('mapConnectionId' in patch) set.mapConnectionId = patch.mapConnectionId;
+      if ('mapConnectionId' in patch) {
+        if (patch.mapConnectionId != null) {
+          await assertConnectionOnMap(tx, patch.mapConnectionId, input.mapId);
+        }
+        set.mapConnectionId = patch.mapConnectionId;
+      }
       if ('sigId' in patch) set.sigId = patch.sigId;
       if ('groupKey' in patch) set.groupKey = patch.groupKey;
       if ('classKind' in patch) set.classKind = patch.classKind;
