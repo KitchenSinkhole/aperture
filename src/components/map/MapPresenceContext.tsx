@@ -238,9 +238,11 @@ const PresenceContext = createContext<PresenceStore | null>(null);
 
 export function MapPresenceProvider({
   initial,
+  mapId,
   children,
 }: {
   initial: MapPresenceEntry[];
+  mapId: string;
   children: ReactNode;
 }) {
   // Seed synchronously so the first paint shows badges instead of empty +
@@ -264,6 +266,10 @@ export function MapPresenceProvider({
   useRealtimeEvents(
     useCallback(
       (envelope: Envelope) => {
+        // Belt-and-suspenders: the SharedWorker already routes map-scoped
+        // envelopes only to subscribed ports; a foreign mapId here would mean
+        // a worker routing regression, not a legitimate cross-map pilot move.
+        if (envelope.mapId != null && envelope.mapId !== Number(mapId)) return;
         if (envelope.task === 'characterUpdate') {
           const parsed = characterUpdateLoadSchema.safeParse(envelope.load);
           if (!parsed.success) return;
@@ -277,7 +283,7 @@ export function MapPresenceProvider({
           return;
         }
       },
-      [store],
+      [store, mapId],
     ),
   );
 

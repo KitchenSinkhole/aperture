@@ -2141,7 +2141,7 @@ export function MapCanvas({
   };
 
   return (
-    <MapPresenceProvider initial={data.presence}>
+    <MapPresenceProvider initial={data.presence} mapId={data.map.id}>
       <MapActiveCharProvider viewerCharacters={viewerCharacters} mainCharacterId={mainCharacterId}>
       <MapTravelProvider>
         <MapUnderglowProvider>
