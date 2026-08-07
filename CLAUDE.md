@@ -241,10 +241,13 @@ A plan has real overhead. It pays for work that genuinely spans sessions; for a 
    - **`Barrier`** — the user runs it themselves, in plan mode, and reviews the approach before any file is written.
 
    **A stage is a `Barrier` only when it needs to see something that does not exist yet** — a file format an earlier stage will fetch, the real shape of an external response, code a prior stage will restructure. Anything designable against the code as it stands today is settled *before* execution by a design pass, never deferred into the run. "This stage is intricate" argues for a design pass or a smaller stage; on its own it is not a reason to stop a run. Every barrier halts the run and waits for the user, so front-load them and merge adjacent ones touching the same code into one session.
-4. **Size stages by quality, not by capacity.** Target a stage that finishes in roughly half a context window, not one that barely fits — reasoning degrades well before the window fills, and a stage that runs to 70% has already lost something in its final third. Smells that a stage is too big: it touches more than five or six files, its **Done when** mixes clauses of different kinds, or its goal can't be stated in one sentence without an "and".
-5. **Give each stage its own `References`.** A stage session should load exactly the companions it will touch, not the whole feature's reading list.
-6. **Pin the boundary, not the method.** `Goal`, `Touches` and `Done when` are the stage's contract and must be unambiguous. Beyond that, be sparing with prescribed implementation — a schema shape or an agreed design decision is fair, step-by-step logic is not. The code will have moved by the time a later stage runs, and a session given the goal handles that better than one holding a stale recipe.
-7. After writing the plan file, tell the user:
+4. **A stage's `Done when` holds only gates that can be run where the stage runs.** Anything needing a human (a browser, two tabs side by side, an in-game client) goes in a `## Manual verification` section at the foot of the plan, one line per check, **attributed to the stage it belongs to** so a failure points somewhere. The user works that list once, after the run, instead of being interrupted per stage. The plan is not complete until it passes.
+
+   The exception is load-bearing: **if a later stage depends on what the check verifies, it cannot be deferred.** Either cover it with something runnable in its own stage, or make that stage a `Barrier`. Batching is for confirming an outcome, never for postponing a question a later stage needs answered. And drop a manual check outright when a later stage automates it — a test that runs beats a line on a checklist.
+5. **Size stages by quality, not by capacity.** Target a stage that finishes in roughly half a context window, not one that barely fits — reasoning degrades well before the window fills, and a stage that runs to 70% has already lost something in its final third. Smells that a stage is too big: it touches more than five or six files, its **Done when** mixes clauses of different kinds, or its goal can't be stated in one sentence without an "and".
+6. **Give each stage its own `References`.** A stage session should load exactly the companions it will touch, not the whole feature's reading list.
+7. **Pin the boundary, not the method.** `Goal`, `Touches` and `Done when` are the stage's contract and must be unambiguous. Beyond that, be sparing with prescribed implementation — a schema shape or an agreed design decision is fair, step-by-step logic is not. The code will have moved by the time a later stage runs, and a session given the goal handles that better than one holding a stale recipe.
+8. After writing the plan file, tell the user:
    - The plan is at `docs/plans/<feature-name>.md`.
    - **Which stages carry a `Design pass` marker**, if any — each needs its own fresh planning session, and execution shouldn't start until all are cleared.
    - **They should start a new session for each stage** (a fresh context window keeps each stage focused). `/stage` runs the next `todo` stage in the current session and stops; `/run-plan` runs a whole block of `Execute` stages, each in its own fresh subagent, and halts at the first barrier. Both notify on completion.
@@ -258,6 +261,7 @@ The stage is the scope: don't drift into later stages, and don't fix unrelated t
 2. **Append non-obvious findings to `## Notes`** at the foot of the plan: a rejected approach and why, a constraint found the hard way, a dev-DB quirk. Nothing the diff, a companion `.md`, or the commit message already carries — this section rots the same way a bloated companion does.
 3. **Record what landed.** Set the stage's `**Status:**` to `done — <commit sha>`. When a later stage misbehaves, the first question is whether an earlier one delivered its contract. If the stage could not be finished, set `blocked — <one line why>` instead and stop there; a half-done stage left marked `todo` will be silently redone.
 4. **Don't self-certify.** Run the mechanical gate (the `ci-verifier` agent), then tell the user to review the stage from a fresh session before starting the next one. The session that wrote the code is the worst available reviewer of it: it can't see the failure modes its own approach implies.
+5. **Keep `## Manual verification` honest.** If the stage's work needs a human check the section doesn't already carry, add it, attributed to this stage. If a check there is now covered by something that runs, delete it and say so. A stage is `done` when its own `Done when` passes; the **plan** is finished only when that list has been worked, so never report a plan complete on a green CI run alone.
 
 ### Plan file shape
 
@@ -288,6 +292,10 @@ The stage is the scope: don't drift into later stages, and don't fix unrelated t
 **Status:** todo
 **Goal:** ...
 _(`Mode`, `References`, `Touches`, `Done when` are filled in by that session, which may also split this stage.)_
+
+## Manual verification
+_(worked by the user once, after the run — the plan is not complete until it passes)_
+- **Stage 2** — <what to look at, and what right looks like>
 
 ## Notes
 _(appended by executing sessions — non-obvious findings only)_
