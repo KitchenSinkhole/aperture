@@ -34,7 +34,7 @@ The fix is one shared check reused by the create paths: **does this child belong
 ## Stage 1 — Tenancy-binding assertion on the create paths
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 0af91534
 **Goal:** A create mutation can only attach a child to systems/connections that live on the same map the caller is authorized on. Naming a foreign `ap_map_system.id` / `ap_map_connection.id` is rejected and rolls the transaction back.
 **References:** `src/lib/map/mutations/core.md`, `signatures.md`, `connections.md`, `bulkSignatures.md`, `systems.md`; `src/lib/auth/rights.md`; `src/app/api/map/README.md`.
 **Touches:** new `src/lib/map/mutations/tenancy.ts` (+ `.md`); `src/lib/map/mutations/signatures.ts` (+ `.md`); `src/lib/map/mutations/connections.ts` (+ `.md`).
@@ -149,7 +149,7 @@ This is display/local-state corruption only: mutations go through per-map API ro
 
 _(worked by the user once, after the run — the plan is not complete until it passes. Everything a machine can check lives in a stage's **Done when**, not here.)_
 
-- **Stage 1** — the two create paths that reach `createConnection` indirectly still work on a same-map operation: stargate auto-link when adding a system, and connection restore. Stage 2's spec covers the direct create paths but not these two, and a false rejection here would look like a broken map rather than a security error.
+- **Stage 1** — the one create path that reaches `createConnection` indirectly still works on a same-map operation: stargate auto-link when adding a system (`addSystemWithStargateLinks`). Stage 2's spec covers the direct create paths but not this one, and a false rejection here would look like a broken map rather than a security error. (Connection restore does not route through `createConnection` — it re-confirms the dormant row via its own `commitMapEvent` call — so it is unaffected by this stage and needs no check here.)
 - **Stage 4** — reproduce the original report. Two corp maps side by side in two windows; scan, add and move systems on map A; map B stays clean across systems, connections, presence roster, and kill/ping underglow. No "System not found" toast on the secondary map, no phantom nodes, nothing to clean up on reload.
 - **Stage 4** — the degraded banner still clears on the `healthCheck` heartbeat in **both** tabs. This is the one that catches an over-tight fix: routing map-scoped envelopes per-port must not also strand the control-plane fan-out.
 - **Stage 4** — a single tab on a single map behaves exactly as before.
@@ -160,6 +160,9 @@ _(worked by the user once, after the run — the plan is not complete until it p
 ## Notes
 
 _(appended by executing sessions — non-obvious findings only)_
+
+- **Stage 1** — `restoreConnection.ts` does not call `createConnection`; it re-confirms the dormant row via its own direct `commitMapEvent` call (`kind: 'connection.create'`, reusing the event kind but not the helper). It is therefore untouched by the Stage 1 assert and was removed from the Stage 1 manual-verification bullet, which had incorrectly listed it as a second indirect caller alongside `addSystemWithStargateLinks`.
+- **Stage 1** — `pasteSignatures`' add branch never sets `mapConnectionId` on the `CreateSignatureInput` it builds (the field is simply omitted, so it's `undefined`, not `null`). The spec's `input.mapConnectionId != null` guard (loose inequality) treats `undefined` the same as `null` and correctly skips `assertConnectionOnMap` in that case — a strict `!== null` check would NOT have.
 
 ---
 

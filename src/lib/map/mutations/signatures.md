@@ -6,7 +6,7 @@
 ---
 
 ### createSignature(input: CreateSignatureInput): Promise<ActionResult<MapEventPayload>>
-Inserts an `ap_map_signature` row and emits `signature.create` with the full body (all columns the canvas needs, including `createdAt`/`updatedAt`, plus the `leadsToMapSystemId` audit descriptor — the far endpoint of the linked connection when the sig is created already linked, else null). Does not validate that `mapSystemId` belongs to `mapId` at this layer — the calling route handler is expected to have already confirmed map ownership.
+Inserts an `ap_map_signature` row and emits `signature.create` with the full body (all columns the canvas needs, including `createdAt`/`updatedAt`, plus the `leadsToMapSystemId` audit descriptor — the far endpoint of the linked connection when the sig is created already linked, else null). Validates that `mapSystemId` belongs to `mapId` (and, when supplied, that `mapConnectionId` does too) via `assertSystemOnMap` / `assertConnectionOnMap` (`./tenancy`) before the insert — throws and rolls back on a foreign id.
 
 **Parameters:**
 - `input.mapId` — the owning map (for the event row).

@@ -2,6 +2,7 @@ import 'server-only';
 import { and, eq, type InferInsertModel } from 'drizzle-orm';
 import { apMapConnection, apMapSignature, apMapSystem, eolStage, universeWormhole } from '@/db/schema';
 import { commitMapEvent, type ActionResult, type Tx } from './core';
+import { assertConnectionOnMap, assertSystemOnMap } from './tenancy';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 import type { SignatureActivity, SignatureClassKind, SignatureGroupKey } from '@/types';
 
@@ -14,8 +15,8 @@ type EolStage = (typeof eolStage.enumValues)[number];
  * cascade-delete when that connection collapses.
  *
  * `apMapSignature` has no direct `map_id` column — ownership is validated
- * through `apMapSystem.map_id` in update/delete so a client cannot reach a
- * signature on a different map via a forged id.
+ * in create/update/delete so a client cannot reach a signature (or link it to
+ * a connection) on a different map via a forged id.
  *
  * Each helper accepts an optional `tx` so a bulk caller (`bulkSignatures.ts`)
  * can commit N sig events under one outer transaction.
@@ -76,6 +77,11 @@ export function createSignature(
     kind: 'signature.create',
     tx: input.tx,
     mutate: async (tx) => {
+      await assertSystemOnMap(tx, input.mapSystemId, input.mapId);
+      if (input.mapConnectionId != null) {
+        await assertConnectionOnMap(tx, input.mapConnectionId, input.mapId);
+      }
+
       const [row] = await tx
         .insert(apMapSignature)
         .values({
