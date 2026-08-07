@@ -2,13 +2,7 @@
 
 **Goal:** Close the cross-tenant data-isolation gaps before the public FFA deployment, in priority order: server-side write isolation (a real authorization leak) first, then client-side realtime routing (cross-tab display bleed).
 
-**References:**
-- `src/lib/auth/rights.md` / `rights.ts` — the actor-authorization gate (`canViewMap` / `canMutateMap` / `requireMapRight`). Already correct; not where the write leak lives.
-- `src/app/api/map/README.md` — the JSON API mutation contract.
-- `src/lib/map/mutations/core.md`, `signatures.md`, `connections.md`, `bulkSignatures.md`, `systems.md` — the mutation helpers.
-- `src/lib/realtime/bus.md`, `protocol.ts`, `wsServer.md`, `sharedWorker.md`, `useRealtime.md` — the realtime fanout path.
-- `src/components/map/MapCanvas.md` — the per-map realtime consumer.
-- CLAUDE.md "Mutation pathways", "Realtime", "Database" (real FKs across boundaries).
+**References:** CLAUDE.md "Mutation pathways", "Realtime", "Database" (real FKs across boundaries). `src/lib/auth/rights.md` — the actor-authorization gate (`canViewMap` / `canMutateMap` / `requireMapRight`), correct as it stands and not where either defect lives; it is the backdrop for the whole threat model. `src/app/api/map/README.md` — the JSON API mutation contract. Per-stage references below carry the rest.
 
 ---
 
@@ -39,8 +33,10 @@ The fix is one shared check reused by the create paths: **does this child belong
 
 ## Stage 1 — Tenancy-binding assertion on the create paths
 
-**Mode:** Accept edits
+**Mode:** Execute
+**Status:** todo
 **Goal:** A create mutation can only attach a child to systems/connections that live on the same map the caller is authorized on. Naming a foreign `ap_map_system.id` / `ap_map_connection.id` is rejected and rolls the transaction back.
+**References:** `src/lib/map/mutations/core.md`, `signatures.md`, `connections.md`, `bulkSignatures.md`, `systems.md`; `src/lib/auth/rights.md`; `src/app/api/map/README.md`.
 **Touches:** new `src/lib/map/mutations/tenancy.ts` (+ `.md`); `src/lib/map/mutations/signatures.ts` (+ `.md`); `src/lib/map/mutations/connections.ts` (+ `.md`).
 
 **Spec:**
@@ -56,17 +52,21 @@ The fix is one shared check reused by the create paths: **does this child belong
 - Companion updates: state the create-path invariant in present tense (e.g. `signatures.md` header note becomes "ownership is validated in create/update/delete"); document the two new `tenancy.ts` exports.
 
 **Done when:**
-- `POST /api/map/{mapA}/signatures` with a `mapSystemId` on map B returns 400 / `{ ok: false }` and writes no row.
-- `POST /api/map/{mapA}/connections` with an endpoint on map B is rejected likewise.
-- Same-map create still succeeds unchanged: single sig, bulk paste, stargate auto-link, connection restore.
 - `pnpm lint && pnpm typecheck && pnpm build` green.
+- `POST /api/map/{mapA}/signatures` with a `mapSystemId` on map B returns 400 / `{ ok: false }` and writes no row. _(by hand)_
+- `POST /api/map/{mapA}/connections` with an endpoint on map B is rejected likewise. _(by hand)_
+- Same-map create still succeeds unchanged: single sig, bulk paste, stargate auto-link, connection restore. _(by hand)_
+
+Stage 2 converts the three by-hand gates into a spec that runs, so this stage's manual pass is a one-time confirmation rather than the standing guarantee.
 
 ---
 
 ## Stage 2 — Cross-tenant write regression tests
 
-**Mode:** Accept edits
+**Mode:** Execute
+**Status:** todo
 **Goal:** Lock the Stage 1 invariant so a future create path cannot silently reintroduce the gap.
+**References:** `src/lib/map/mutations/tenancy.md` (written by Stage 1), `signatures.md`, `connections.md`, `bulkSignatures.md`; `tests/integration/map-api-routes.md` for the suite's conventions.
 **Touches:** new spec under `tests/integration/` (+ a note in `tests/unit/route-rights-coverage.test.ts` pointing at it).
 
 **Spec:**
@@ -88,8 +88,10 @@ This is display/local-state corruption only: mutations go through per-map API ro
 
 ## Stage 3 — Tag every realtime envelope with its source map
 
-**Mode:** Accept edits
+**Mode:** Execute
+**Status:** todo
 **Goal:** Every map-scoped envelope crossing the wire carries an envelope-level `mapId`; control-plane frames (`healthCheck`, connection `status`) carry none.
+**References:** `src/lib/realtime/protocol.md`, `bus.md`, `wsServer.md`; `tests/unit/realtime-delivery.md`.
 **Touches:** `src/lib/realtime/protocol.ts` (+ `.md` if the contract description changes), `src/lib/realtime/bus.ts` (+ `bus.md`).
 
 **Spec:**
@@ -109,8 +111,10 @@ This is display/local-state corruption only: mutations go through per-map API ro
 
 ## Stage 4 — Route per-port in the SharedWorker
 
-**Mode:** Accept edits
+**Mode:** Execute
+**Status:** todo
 **Goal:** The worker delivers a map-scoped envelope only to the tabs subscribed to that map; control-plane frames still reach all tabs.
+**References:** `src/lib/realtime/sharedWorker.md`, `protocol.md`, `useRealtime.md`; `tests/unit/realtime-delivery.md`, `realtime-reconnect.md`.
 **Touches:** `src/lib/realtime/sharedWorker.ts` (+ `sharedWorker.md`).
 
 **Spec:**
@@ -127,16 +131,21 @@ This is display/local-state corruption only: mutations go through per-map API ro
 **Note (pre-existing, out of scope):** a tab that closes without unsubscribing leaves its port lingering in the sets, keeping that map subscribed on the server. This leak already exists with the refcount; posting to a dead port is a harmless no-op. Port-close cleanup is later hardening; do not expand scope here.
 
 **Done when:**
-- Two maps open in two tabs of one browser: each tab's canvas, presence roster, and underglow reflect only its own map. No "System not found" toast on the secondary map; no phantom nodes; nothing to clean up on reload.
-- The degraded banner still clears on the `healthCheck` heartbeat in every tab (control-plane fan-out intact).
-- A single tab on a single map is unaffected.
+- `tests/unit/realtime-delivery.test.tsx` extended: a `mapId`-tagged envelope reaches only a matching subscriber, and a control-plane frame reaches all ports. `pnpm lint && pnpm typecheck && pnpm build` green.
+- Two maps open in two tabs of one browser: each tab's canvas, presence roster, and underglow reflect only its own map. No "System not found" toast on the secondary map; no phantom nodes; nothing to clean up on reload. _(by hand)_
+- The degraded banner still clears on the `healthCheck` heartbeat in every tab (control-plane fan-out intact). _(by hand)_
+- A single tab on a single map is unaffected. _(by hand)_
+
+This stage is the one whose real acceptance lives in a browser. The unit extension covers the routing logic; the two-tab observation is what confirms the defect is actually gone, and no runner can stand in for it.
 
 ---
 
 ## Stage 5 — (optional) Client defense-in-depth
 
-**Mode:** Accept edits
+**Mode:** Execute
+**Status:** todo
 **Goal:** Belt-and-suspenders guard so a future routing regression cannot silently corrupt a canvas.
+**References:** `src/components/map/MapCanvas.md`, `MapUnderglowBridge.md`, `MapPresenceContext.md`; `src/components/sidebar/ConnectionMassLog.md`; `src/lib/realtime/protocol.md`.
 **Touches:** `src/components/map/MapCanvas.tsx` (+ `.md`) and any other map-scoped consumer whose envelope now carries `mapId`.
 
 **Spec:**
@@ -154,6 +163,12 @@ This is display/local-state corruption only: mutations go through per-map API ro
 - **P2:** reproduce the original report: two corp maps side by side in two windows, scan/add/move systems on map A, confirm map B stays clean (systems, connections, presence roster, kill/ping underglow).
 - `pnpm lint && pnpm typecheck && pnpm build`.
 - Tests: the new Stage 2 integration spec; `tests/unit/realtime-delivery.test.tsx` extended so an envelope carries `mapId`, a `mapId`-tagged envelope reaches only a matching subscriber, and a control-plane frame reaches all; plus any bus/wsServer test asserting envelope shape.
+
+---
+
+## Notes
+
+_(appended by executing sessions — non-obvious findings only)_
 
 ---
 
