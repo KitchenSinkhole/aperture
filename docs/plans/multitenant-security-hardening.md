@@ -51,13 +51,7 @@ The fix is one shared check reused by the create paths: **does this child belong
 - `addSystemWithStargateLinks` calls `createConnection` with neighbour ids it selected `WHERE map_id = input.mapId`, so the new asserts are satisfied (redundant but harmless). Confirm no false rejection on stargate auto-link and on the restore path.
 - Companion updates: state the create-path invariant in present tense (e.g. `signatures.md` header note becomes "ownership is validated in create/update/delete"); document the two new `tenancy.ts` exports.
 
-**Done when:**
-- `pnpm lint && pnpm typecheck && pnpm build` green.
-- `POST /api/map/{mapA}/signatures` with a `mapSystemId` on map B returns 400 / `{ ok: false }` and writes no row. _(by hand)_
-- `POST /api/map/{mapA}/connections` with an endpoint on map B is rejected likewise. _(by hand)_
-- Same-map create still succeeds unchanged: single sig, bulk paste, stargate auto-link, connection restore. _(by hand)_
-
-Stage 2 converts the three by-hand gates into a spec that runs, so this stage's manual pass is a one-time confirmation rather than the standing guarantee.
+**Done when:** `pnpm lint && pnpm typecheck && pnpm build` green. The behavioural gates — a cross-tenant create rejected, a same-map create unaffected — are Stage 2's spec, which runs; do not hand-test what the next stage automates.
 
 ---
 
@@ -130,13 +124,7 @@ This is display/local-state corruption only: mutations go through per-map API ro
 
 **Note (pre-existing, out of scope):** a tab that closes without unsubscribing leaves its port lingering in the sets, keeping that map subscribed on the server. This leak already exists with the refcount; posting to a dead port is a harmless no-op. Port-close cleanup is later hardening; do not expand scope here.
 
-**Done when:**
-- `tests/unit/realtime-delivery.test.tsx` extended: a `mapId`-tagged envelope reaches only a matching subscriber, and a control-plane frame reaches all ports. `pnpm lint && pnpm typecheck && pnpm build` green.
-- Two maps open in two tabs of one browser: each tab's canvas, presence roster, and underglow reflect only its own map. No "System not found" toast on the secondary map; no phantom nodes; nothing to clean up on reload. _(by hand)_
-- The degraded banner still clears on the `healthCheck` heartbeat in every tab (control-plane fan-out intact). _(by hand)_
-- A single tab on a single map is unaffected. _(by hand)_
-
-This stage is the one whose real acceptance lives in a browser. The unit extension covers the routing logic; the two-tab observation is what confirms the defect is actually gone, and no runner can stand in for it.
+**Done when:** `tests/unit/realtime-delivery.test.tsx` extended so a `mapId`-tagged envelope reaches only a matching subscriber and a control-plane frame reaches all ports. `pnpm lint && pnpm typecheck && pnpm build` green. The routing logic is testable and belongs here; whether the defect is actually gone is a browser observation, and it sits in **Manual verification**.
 
 ---
 
@@ -157,12 +145,15 @@ This stage is the one whose real acceptance lives in a browser. The unit extensi
 
 ---
 
-## Verification (all stages)
+## Manual verification
 
-- **P0:** attempt each cross-tenant create (single sig, bulk add, connection) from a map you own against another map's child ids; confirm rejection and no write. Confirm same-map creates, stargate auto-link, and connection restore still work.
-- **P2:** reproduce the original report: two corp maps side by side in two windows, scan/add/move systems on map A, confirm map B stays clean (systems, connections, presence roster, kill/ping underglow).
-- `pnpm lint && pnpm typecheck && pnpm build`.
-- Tests: the new Stage 2 integration spec; `tests/unit/realtime-delivery.test.tsx` extended so an envelope carries `mapId`, a `mapId`-tagged envelope reaches only a matching subscriber, and a control-plane frame reaches all; plus any bus/wsServer test asserting envelope shape.
+_(worked by the user once, after the run — the plan is not complete until it passes. Everything a machine can check lives in a stage's **Done when**, not here.)_
+
+- **Stage 1** — the two create paths that reach `createConnection` indirectly still work on a same-map operation: stargate auto-link when adding a system, and connection restore. Stage 2's spec covers the direct create paths but not these two, and a false rejection here would look like a broken map rather than a security error.
+- **Stage 4** — reproduce the original report. Two corp maps side by side in two windows; scan, add and move systems on map A; map B stays clean across systems, connections, presence roster, and kill/ping underglow. No "System not found" toast on the secondary map, no phantom nodes, nothing to clean up on reload.
+- **Stage 4** — the degraded banner still clears on the `healthCheck` heartbeat in **both** tabs. This is the one that catches an over-tight fix: routing map-scoped envelopes per-port must not also strand the control-plane fan-out.
+- **Stage 4** — a single tab on a single map behaves exactly as before.
+- **Stage 5** (if built) — the guard is invisible in normal operation. Nothing disappears from a canvas that should be there.
 
 ---
 
