@@ -226,36 +226,68 @@ There are exactly three pathways. Pick the right one; do not invent a fourth.
 
 ## Planning Mode
 
-If a task is too large to complete in a single session, **do not try to power through it.** Instead:
+If a task is too large to complete in a single session, **do not try to power through it.** Write a staged plan instead, and run each stage in its own fresh session.
 
-1. Write a staged plan to `docs/plans/<feature-name>.md`. Each stage must be independently executable and end at a natural checkpoint (a passing test, a green build, a working but feature-flagged path).
-2. For each stage, label which Claude Code mode the user should start the session in:
-   - **`Plan mode`** — when the stage involves design decisions, exploring unknowns, or touching files whose impact you cannot fully predict. Use plan mode so the user can review the approach before any file is written.
-   - **`Accept edits`** — when the stage is mechanical execution against a clear, already-agreed spec (e.g. "translate this Drizzle schema into migration files", "wire up these props to the existing context"). Use accept-edits mode so the user isn't prompted for every file write.
-3. After writing the plan file, tell the user:
+The plan file is the **handoff between sessions**, and that is the point of the whole ritual: a stage starts from the previous stage's conclusions rather than from its dead ends, rejected approaches, and accumulated noise. Everything below exists to keep that handoff honest.
+
+A plan has real overhead. It pays for work that genuinely spans sessions; for a one-file fix, writing the plan costs more than the fix. Don't reach for it below that bar.
+
+### Authoring a plan
+
+1. Write the plan to `docs/plans/<feature-name>.md`. Each stage must be independently executable and end at a natural checkpoint (a passing test, a green build, a working but feature-flagged path).
+2. **Planning itself may take more than one session, and often should.** Context rot degrades a planning session exactly as it degrades an execution session, and what suffers first is the overarching design — the thing this session exists to get right. So when a single stage carries a large sub-design of its own (a whole UI surface, a schema redesign, a protocol), do **not** cram it in alongside. Mark the stage `**Design pass:** <what needs designing>`, finish the rest of the skeleton, and hand off. Each marked stage then gets its **own fresh planning session**, which designs only that stage, writes the result back into the plan (splitting it into sub-stages where warranted, filling in `Mode` / `References` / `Touches` / `Done when`), and deletes the marker. A design pass writes to `docs/plans/` and nothing else. **Execution begins only once no `Design pass` markers remain.**
+3. **Label the mode** each stage should be started in:
+   - **`Plan mode`** — the user reviews an approach before any file is written.
+   - **`Accept edits`** — mechanical execution against a clear, already-agreed spec (e.g. "translate this Drizzle schema into migration files", "wire up these props to the existing context"). The user isn't prompted for every write.
+
+   **A stage carries `Plan mode` into execution only when it needs to see something that does not exist yet** — a file format an earlier stage will fetch, the real shape of an external response, code a prior stage will restructure. Anything designable against the code as it stands today is settled *before* execution by a design pass, never deferred into the run. "This stage is intricate" argues for a design pass or a smaller stage; on its own it is not a reason to stop a run. Each surviving `Plan mode` stage halts execution and waits for the user, so front-load them and merge adjacent ones touching the same code into one session.
+4. **Size stages by quality, not by capacity.** Target a stage that finishes in roughly half a context window, not one that barely fits — reasoning degrades well before the window fills, and a stage that runs to 70% has already lost something in its final third. Smells that a stage is too big: it touches more than five or six files, its **Done when** mixes clauses of different kinds, or its goal can't be stated in one sentence without an "and".
+5. **Give each stage its own `References`.** A stage session should load exactly the companions it will touch, not the whole feature's reading list.
+6. **Pin the boundary, not the method.** `Goal`, `Touches` and `Done when` are the stage's contract and must be unambiguous. Beyond that, be sparing with prescribed implementation — a schema shape or an agreed design decision is fair, step-by-step logic is not. The code will have moved by the time a later stage runs, and a session given the goal handles that better than one holding a stale recipe.
+7. After writing the plan file, tell the user:
    - The plan is at `docs/plans/<feature-name>.md`.
+   - **Which stages carry a `Design pass` marker**, if any — each needs its own fresh planning session, and execution shouldn't start until all are cleared.
    - **They should start a new session for each stage** (a fresh context window keeps each stage focused).
    - For each session: open the plan, read the stage, then enter the mode the stage specifies (`Shift+Tab` cycles between Plan mode and Accept-edits mode), and tell Claude to execute that stage.
 
-Plan files follow this shape:
+### Executing a stage
+
+The stage is the scope: don't drift into later stages, and don't fix unrelated things you notice along the way. Before reporting a stage complete:
+
+1. **Reconcile the downstream stages.** Re-read every stage after this one and edit the ones this stage invalidated. A plan is authored with the least information anyone will ever have about the problem, so a stage that discovers its successor can't be built as specified must say so **in the file**, not in chat. This is a required step, not a courtesy. Resizing counts: a downstream stage that now looks too big should be split here, or marked `**Design pass:**` if splitting it properly needs a session of its own.
+2. **Append non-obvious findings to `## Notes`** at the foot of the plan: a rejected approach and why, a constraint found the hard way, a dev-DB quirk. Nothing the diff, a companion `.md`, or the commit message already carries — this section rots the same way a bloated companion does.
+3. **Record what landed.** Fill in `**Landed:**` with the stage's commit sha. When a later stage misbehaves, the first question is whether an earlier one delivered its contract.
+4. **Don't self-certify.** Run the mechanical gate (the `ci-verifier` agent), then tell the user to review the stage from a fresh session before starting the next one. The session that wrote the code is the worst available reviewer of it: it can't see the failure modes its own approach implies.
+
+### Plan file shape
 
 ```markdown
 # <Feature Name>
 
 **Goal:** One sentence.
-**References:** Relevant companion `.md` files and CLAUDE.md rules.
+**References:** CLAUDE.md rules and companion `.md` files that apply across the whole feature.
 
 ## Stage 1 — <short name>
 **Mode:** Plan mode
 **Goal:** ...
+**References:** `src/lib/<module>.md`, `src/components/<Component>.md`
 **Touches:** `src/...`, `src/...`
 **Done when:** ...
+**Landed:** _(commit sha, filled in by the executing session)_
 
 ## Stage 2 — <short name>
 **Mode:** Accept edits
 **Goal:** ...
+**References:** ...
 **Touches:** ...
 **Done when:** ...
-```
+**Landed:**
 
-Keep stages small enough that each fits comfortably in a single session.
+## Stage 3 — <short name>
+**Design pass:** the whole settings UI — needs its own planning session before execution starts.
+**Goal:** ...
+_(`Mode`, `References`, `Touches`, `Done when` are filled in by that session, which may also split this stage.)_
+
+## Notes
+_(appended by executing sessions — non-obvious findings only)_
+```
