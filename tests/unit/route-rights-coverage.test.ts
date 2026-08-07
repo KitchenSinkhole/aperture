@@ -17,6 +17,12 @@ import { describe, expect, it } from 'vitest';
  *
  * The test is a pure file-scan so it runs without a DB and catches drift the
  * moment a new route lands.
+ *
+ * This only covers actor-authorization (can the caller act on the named
+ * map at all). It does not — and structurally cannot, being a static scan —
+ * cover whether a body-supplied child id (`mapSystemId` / `mapConnectionId`)
+ * actually belongs to that map. That tenancy-binding check is regression-
+ * tested behaviourally in `tests/integration/cross-tenant-writes.test.ts`.
  */
 
 const ROUTES_ROOT = resolve(process.cwd(), 'src/app/api/map');

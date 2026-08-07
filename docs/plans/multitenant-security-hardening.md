@@ -58,7 +58,7 @@ The fix is one shared check reused by the create paths: **does this child belong
 ## Stage 2 — Cross-tenant write regression tests
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 75509ebb
 **Goal:** Lock the Stage 1 invariant so a future create path cannot silently reintroduce the gap.
 **References:** `src/lib/map/mutations/tenancy.md` (written by Stage 1), `signatures.md`, `connections.md`, `bulkSignatures.md`; `tests/integration/map-api-routes.md` for the suite's conventions.
 **Touches:** new spec under `tests/integration/` (+ a note in `tests/unit/route-rights-coverage.test.ts` pointing at it).
@@ -163,6 +163,8 @@ _(appended by executing sessions — non-obvious findings only)_
 
 - **Stage 1** — `restoreConnection.ts` does not call `createConnection`; it re-confirms the dormant row via its own direct `commitMapEvent` call (`kind: 'connection.create'`, reusing the event kind but not the helper). It is therefore untouched by the Stage 1 assert and was removed from the Stage 1 manual-verification bullet, which had incorrectly listed it as a second indirect caller alongside `addSystemWithStargateLinks`.
 - **Stage 1** — `pasteSignatures`' add branch never sets `mapConnectionId` on the `CreateSignatureInput` it builds (the field is simply omitted, so it's `undefined`, not `null`). The spec's `input.mapConnectionId != null` guard (loose inequality) treats `undefined` the same as `null` and correctly skips `assertConnectionOnMap` in that case — a strict `!== null` check would NOT have.
+- **Stage 2** — verified the new spec's regression value directly: with `assertSystemOnMap` temporarily stubbed to a no-op, exactly the 3 rejection cases fail (`createSignature`, `createConnection`, `pasteSignatures` add branch) while the 3 same-map acceptance cases still pass, as expected. Restored and reran green before finishing. `assertConnectionOnMap` isn't independently exercised by this spec since none of the three create paths reachable here set `mapConnectionId` on the fixture rows — `pasteSignatures`' add branch never does (see the Stage 1 note above), so its coverage is already the strict subset of what Stage 1 wired.
+- **Stage 2** — used universe fixture id range `98046xxx` (region/constellation/category/group/type/systems) — grepped `tests/integration/*.test.ts` first to confirm the range wasn't already claimed (existing suites occupy 98040xxx through 98045xxx).
 
 ---
 
