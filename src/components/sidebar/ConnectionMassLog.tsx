@@ -56,6 +56,10 @@ export function ConnectionMassLog({
     useCallback(
       (envelope: Envelope) => {
         if (envelope.task !== 'connectionMassLog') return;
+        // Belt-and-suspenders: the SharedWorker already routes map-scoped
+        // envelopes only to subscribed ports; a foreign mapId here would mean
+        // a worker routing regression, not a legitimate cross-map refetch.
+        if (envelope.mapId != null && envelope.mapId !== Number(mapId)) return;
         const parsed = connectionMassLogLoadSchema.safeParse(envelope.load);
         if (!parsed.success || parsed.data.connectionId !== connectionId) return;
         const seq = ++reqSeq.current;

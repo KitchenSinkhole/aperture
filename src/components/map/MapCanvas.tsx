@@ -875,6 +875,10 @@ export function MapCanvas({
   useRealtimeEvents(
     useCallback((envelope: Envelope) => {
       if (envelope.task !== 'mapUpdate') return;
+      // Belt-and-suspenders: the SharedWorker already routes map-scoped
+      // envelopes only to subscribed ports, but a foreign mapId reaching this
+      // handler (a worker routing regression) must not corrupt this canvas.
+      if (envelope.mapId != null && envelope.mapId !== Number(data.map.id)) return;
       const loadResult = mapUpdateLoadSchema.safeParse(envelope.load);
       if (!loadResult.success || !loadResult.data.data) return;
       const payload = loadResult.data.data;
@@ -896,7 +900,7 @@ export function MapCanvas({
       } else if (payload.kind === 'share.revoked') {
         setLiveShares((prev) => prev.filter((s) => s.id !== payload.shareId));
       }
-    }, [hydrateAddedSystems]),
+    }, [hydrateAddedSystems, data.map.id]),
   );
 
   // ---- On-error resync failsafe ------------------------------------------
@@ -2148,7 +2152,7 @@ export function MapCanvas({
         {travelAnimation && (
           <TravelBridge systems={viewData.systems} connections={viewData.connections} />
         )}
-        <MapUnderglowBridge systems={viewData.systems} />
+        <MapUnderglowBridge systems={viewData.systems} mapId={data.map.id} />
         <SignaturePasteHotkey
           mapId={mapId}
           selectedSystem={selectedSystem}

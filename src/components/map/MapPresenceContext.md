@@ -17,6 +17,8 @@ Wraps the canvas subtree. Owns one `PresenceStore` instance.
 
 The provider seeds the store synchronously inside `useState`'s init so the first paint already shows badges; an effect re-seeds when the `initial` reference actually changes (e.g. soft navigation back to this map). It also registers a `useRealtimeEvents` listener: it calls `store.apply()` for every parsed `characterUpdate` envelope and `store.remove()` for every parsed `characterLogout` envelope — every envelope is delivered exactly once (no `lastEvent` coalescing), so a burst of presence updates in one tick all fold in rather than dropping to the last. `apply()` copies the account/main identity (`userId`/`mainCharacterId`/`mainCharacterName`) from the load onto the rebuilt entry, so the roster keeps grouping alts under their main across live moves.
 
+Unlike `MapCanvas`/`MapUnderglowBridge`/`ConnectionMassLog`, this provider has no client-side foreign-map guard: `characterUpdateLoadSchema`'s load carries no `mapId` (a pilot's presence isn't scoped to a single map in the payload), so there is nothing in the `load` to check it against. It relies entirely on the SharedWorker routing each `characterUpdate` envelope only to ports subscribed to its source map.
+
 ### usePresenceForSystem(systemId: number): readonly MapPresenceEntry[]
 
 Hook returning the pilot list for one EVE solar-system. Returns a stable array reference until that system's slice changes (`useSyncExternalStore` semantics). Returns the module-level `EMPTY` array when the system has no pilots or the hook is used outside a provider (cheap no-op on read-only routes).

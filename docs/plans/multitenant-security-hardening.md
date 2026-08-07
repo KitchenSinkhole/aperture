@@ -131,7 +131,7 @@ This is display/local-state corruption only: mutations go through per-map API ro
 ## Stage 5 — (optional) Client defense-in-depth
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 9ebe3570
 **Goal:** Belt-and-suspenders guard so a future routing regression cannot silently corrupt a canvas.
 **References:** `src/components/map/MapCanvas.md`, `MapUnderglowBridge.md`, `MapPresenceContext.md`; `src/components/sidebar/ConnectionMassLog.md`; `src/lib/realtime/protocol.md`.
 **Touches:** `src/components/map/MapCanvas.tsx` (+ `.md`) and any other map-scoped consumer whose envelope now carries `mapId`.
@@ -171,6 +171,10 @@ _(appended by executing sessions — non-obvious findings only)_
 - **Stage 3** — verified `sharedWorker.ts` (Stage 4's target) and `MapCanvas`/companions (Stage 5's target) against the actual shape shipped here: both downstream specs already assume exactly what landed (`envelope.mapId` present-and-numeric on map-scoped tasks, absent on `healthCheck`), so neither stage needed reconciling.
 - **Stage 4** — `tests/unit/realtime-delivery.test.tsx`'s existing harness (`FakeSharedWorker`/`FakePort`) only exercises `useRealtime.tsx`'s client-side provider — the SharedWorker itself is stubbed out entirely, so it can't observe the worker's internal per-port routing. Proving the Stage 4 routing logic required a second, independent describe block in the same file that imports `sharedWorker.ts` directly (`vi.resetModules()` + a fresh dynamic `import()` per test) against a faked `self` (captures the `connect` listener the module registers at import time) and a faked `WebSocket` (its constructed instance is recovered from a `static instances: FakeWebSocket[]` list, not via `this`-aliasing in the constructor — the repo's `@typescript-eslint/no-this-alias` flags even a plain `outerVar = this;` assignment expression, not just declarations). `noUncheckedIndexedAccess` is on, so post-`toHaveLength(1)` array indexing needs a `!` — TS doesn't narrow array length from a vitest matcher.
 - **Stage 4** — no reconciliation needed downstream: Stage 5's guard operates on the `Envelope`/`useRealtimeEvents` contract, which this stage's routing change doesn't touch (routing is internal to the worker; the client provider still just receives `{ type: 'message', envelope }` postMessage frames from its port, same as before).
+- **Stage 5** — `MapUnderglowBridge` had no `mapId` prop before this stage (only `systems`), so guarding it required adding one, threaded from `MapCanvas` as `data.map.id`. `ConnectionMassLog` already took `mapId: string` for its own fetch/GET scoping, so its guard was a drop-in addition. Both guards compare the envelope-level `mapId` (Stage 3) against `Number(mapId)`.
+- **Stage 5** — `systemNotificationLoadSchema`'s per-kind body (`killmail`/`ping`) already carries its own `mapId` field, independent of and pre-dating the Stage 3 envelope-level `mapId`. `MapUnderglowBridge`'s guard checks the envelope-level field (before the `safeParse`) for consistency with `MapCanvas`/`ConnectionMassLog` rather than the load's own field, but either would work here.
+- **Stage 5** — `MapPresenceContext` was left unguarded per the stage spec: neither `characterUpdateLoadSchema` nor `characterLogoutLoadSchema` carries a `mapId` (presence isn't a map-scoped payload field), so there's nothing to check the envelope's `mapId` against without changing the load contract, which is out of scope. Documented in its companion instead of adding a guard.
+- **Stage 5** — `AppUpdateBanner` (the only other raw `envelope.task` consumer found via a repo-wide grep) filters on `task === 'healthCheck'`, a control-plane frame with no `mapId` by construction — correctly out of scope for this stage.
 
 ---
 

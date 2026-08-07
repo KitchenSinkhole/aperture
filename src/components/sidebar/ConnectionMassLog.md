@@ -19,7 +19,9 @@ and a cumulative total. Loading / failed / empty states are inline text.
 - **Read-only.** The log is server-derived from the location-poll; there is no add/delete control.
 - Lazy `GET`s `/api/map/{mapId}/connections/{id}/mass-log` on mount and whenever `connection.id`
   changes (the parent also remounts via `key={connection.id}`).
-- Registers a `useRealtimeEvents` listener; on a `connectionMassLog` envelope whose `connectionId`
+- Registers a `useRealtimeEvents` listener; drops a `connectionMassLog` envelope whose `mapId` is
+  present and does not match `mapId` (defense-in-depth against a SharedWorker routing regression —
+  the worker itself already scopes delivery to subscribed ports), then on one whose `connectionId`
   matches the open connection, it **refetches** the list. A monotonic `reqSeq` ref makes the latest
   refetch win, so a burst of jump events (each delivered exactly once, no `lastEvent` coalescing)
   can't land an older response after a newer one.
