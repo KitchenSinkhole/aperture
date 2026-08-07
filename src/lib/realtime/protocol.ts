@@ -76,6 +76,10 @@ export type ClientToServerTask = (typeof CLIENT_TO_SERVER_TASKS)[number];
 export const envelopeSchema = z.object({
   task: z.enum([...SERVER_TO_CLIENT_TASKS, ...CLIENT_TO_SERVER_TASKS]),
   load: z.unknown(),
+  // Source map for map-scoped server→client tasks, so a fan-out consumer (the
+  // browser SharedWorker) can route without inspecting `load`. Absent on
+  // control-plane frames (`healthCheck`) and client→server frames.
+  mapId: z.number().int().positive().optional(),
 });
 
 export type Envelope = z.infer<typeof envelopeSchema>;
@@ -662,7 +666,11 @@ export const logDataLoadSchema = z.object({
 // ---------------------------------------------------------------------------
 
 function message<T extends string, L extends z.ZodTypeAny>(task: T, load: L) {
-  return z.object({ task: z.literal(task), load });
+  // `mapId` mirrors `envelopeSchema`'s: present on map-scoped tasks, absent on
+  // control-plane ones (`healthCheck`). Optional here rather than split per-task
+  // so every `message(...)` member — and therefore `ServerToClientMessage` as a
+  // whole — accepts it uniformly.
+  return z.object({ task: z.literal(task), load, mapId: z.number().int().positive().optional() });
 }
 
 export const serverToClientMessageSchema = z.discriminatedUnion('task', [

@@ -166,7 +166,29 @@ describe.skipIf(!run)('realtime transport (WS + bus)', () => {
       if (m.task !== 'mapUpdate') throw new Error(`expected mapUpdate, got ${m.task}`);
       expect(m.load.mapId).toBe(Number(mapId));
       expect(m.load.data).toMatchObject({ hello: 1 });
+      // Envelope-level mapId (Stage 3): every map-scoped message carries its
+      // source map at the top level, not just nested in `load`.
+      expect(m.mapId).toBe(Number(mapId));
     }
+  });
+
+  it('sends the connect healthCheck with no envelope-level mapId', async () => {
+    // Attach the message listener before 'open' resolves: the server sends
+    // the connect healthCheck as soon as its 'connection' handler runs, which
+    // can race the `open()` helper's own 'open' listener.
+    const a = new WebSocket(baseUrl, { headers: { Cookie: cookie } });
+    sockets.push(a);
+    const first = await new Promise<ServerToClientMessage>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('no message within 500ms')), 500);
+      a.once('message', (raw) => {
+        clearTimeout(timer);
+        resolve(JSON.parse(raw.toString()) as ServerToClientMessage);
+      });
+      a.once('error', reject);
+    });
+
+    expect(first.task).toBe('healthCheck');
+    expect(first.mapId).toBeUndefined();
   });
 
   it('rejects an upgrade with no session cookie', async () => {

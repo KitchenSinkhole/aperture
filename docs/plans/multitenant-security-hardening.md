@@ -83,7 +83,7 @@ This is display/local-state corruption only: mutations go through per-map API ro
 ## Stage 3 — Tag every realtime envelope with its source map
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 19964a25
 **Goal:** Every map-scoped envelope crossing the wire carries an envelope-level `mapId`; control-plane frames (`healthCheck`, connection `status`) carry none.
 **References:** `src/lib/realtime/protocol.md`, `bus.md`, `wsServer.md`; `tests/unit/realtime-delivery.md`.
 **Touches:** `src/lib/realtime/protocol.ts` (+ `.md` if the contract description changes), `src/lib/realtime/bus.ts` (+ `bus.md`).
@@ -165,6 +165,10 @@ _(appended by executing sessions — non-obvious findings only)_
 - **Stage 1** — `pasteSignatures`' add branch never sets `mapConnectionId` on the `CreateSignatureInput` it builds (the field is simply omitted, so it's `undefined`, not `null`). The spec's `input.mapConnectionId != null` guard (loose inequality) treats `undefined` the same as `null` and correctly skips `assertConnectionOnMap` in that case — a strict `!== null` check would NOT have.
 - **Stage 2** — verified the new spec's regression value directly: with `assertSystemOnMap` temporarily stubbed to a no-op, exactly the 3 rejection cases fail (`createSignature`, `createConnection`, `pasteSignatures` add branch) while the 3 same-map acceptance cases still pass, as expected. Restored and reran green before finishing. `assertConnectionOnMap` isn't independently exercised by this spec since none of the three create paths reachable here set `mapConnectionId` on the fixture rows — `pasteSignatures`' add branch never does (see the Stage 1 note above), so its coverage is already the strict subset of what Stage 1 wired.
 - **Stage 2** — used universe fixture id range `98046xxx` (region/constellation/category/group/type/systems) — grepped `tests/integration/*.test.ts` first to confirm the range wasn't already claimed (existing suites occupy 98040xxx through 98045xxx).
+- **Stage 3** — `wsServer.ts`'s `send()` does `JSON.stringify(message)` verbatim with no reshaping, confirming the spec's assumption; it needed no change and its companion needed no edit. The connect-time and heartbeat `healthCheck` frames it builds directly are unaffected and stay `mapId`-less by construction.
+- **Stage 3** — `mapAccess`, `mapConnectionAccess`, `mapDeleted`, `logData` are still forward-declared/unproduced (only `publicUpdate` is built directly in `wsServer.ts`, outside `bus.dispatch()`); none of them are emitted by `bus.ts` today, so the Stage 3 spec's four task-tagged branches + the `mapUpdate` fall-through are the complete set of `bus.dispatch()` outputs and all now carry envelope-level `mapId`.
+- **Stage 3** — `tests/integration/realtime-transport.test.ts` had no companion `.md`; created one per the standing instruction while extending the file with two assertions: the existing `mapUpdate` fan-out test now also checks the top-level `mapId`, and a new test checks the connect `healthCheck` carries none. The `healthCheck` test had to construct the `WebSocket` directly and attach the `message` listener before `open()`'s promise resolves — the server's `connection` handler sends `healthCheck` immediately, and it can race the `open()` test helper's own `'open'` listener, causing an intermittent `no message within 500ms` timeout when the listener was attached after `await open(...)` returned.
+- **Stage 3** — verified `sharedWorker.ts` (Stage 4's target) and `MapCanvas`/companions (Stage 5's target) against the actual shape shipped here: both downstream specs already assume exactly what landed (`envelope.mapId` present-and-numeric on map-scoped tasks, absent on `healthCheck`), so neither stage needed reconciling.
 
 ---
 
