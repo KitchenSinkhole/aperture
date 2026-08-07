@@ -234,7 +234,7 @@ A plan has real overhead. It pays for work that genuinely spans sessions; for a 
 
 ### Authoring a plan
 
-1. Write the plan to `docs/plans/<feature-name>.md`. Each stage must be independently executable and end at a natural checkpoint (a passing test, a green build, a working but feature-flagged path).
+1. Write the plan to `docs/plans/<feature-name>.md`. Each stage must be independently executable and end at a natural checkpoint (a passing test, a green build, a working but feature-flagged path). Every stage is written with `**Status:** todo`; execution flips it to `done — <sha>` or `blocked — <why>`. That line is how a human or an automated runner finds where the plan left off, so never omit it.
 2. **Planning itself may take more than one session, and often should.** Context rot degrades a planning session exactly as it degrades an execution session, and what suffers first is the overarching design — the thing this session exists to get right. So when a single stage carries a large sub-design of its own (a whole UI surface, a schema redesign, a protocol), do **not** cram it in alongside. Mark the stage `**Design pass:** <what needs designing>`, finish the rest of the skeleton, and hand off. Each marked stage then gets its **own fresh planning session**, which designs only that stage, writes the result back into the plan (splitting it into sub-stages where warranted, filling in `Mode` / `References` / `Touches` / `Done when`), and deletes the marker. A design pass writes to `docs/plans/` and nothing else. **Execution begins only once no `Design pass` markers remain.**
 3. **Label the mode** each stage should be started in:
    - **`Plan mode`** — the user reviews an approach before any file is written.
@@ -247,8 +247,8 @@ A plan has real overhead. It pays for work that genuinely spans sessions; for a 
 7. After writing the plan file, tell the user:
    - The plan is at `docs/plans/<feature-name>.md`.
    - **Which stages carry a `Design pass` marker**, if any — each needs its own fresh planning session, and execution shouldn't start until all are cleared.
-   - **They should start a new session for each stage** (a fresh context window keeps each stage focused).
-   - For each session: open the plan, read the stage, then enter the mode the stage specifies (`Shift+Tab` cycles between Plan mode and Accept-edits mode), and tell Claude to execute that stage.
+   - **They should start a new session for each stage** (a fresh context window keeps each stage focused). `/stage` runs the next `todo` stage in the current session and stops; `/run-plan` runs a whole block of `Accept edits` stages, each in its own fresh subagent, and halts at the first barrier. Both notify on completion.
+   - A `Plan mode` stage is theirs to run: open the plan, read the stage, enter plan mode (`Shift+Tab` cycles), and tell Claude to execute it.
 
 ### Executing a stage
 
@@ -256,7 +256,7 @@ The stage is the scope: don't drift into later stages, and don't fix unrelated t
 
 1. **Reconcile the downstream stages.** Re-read every stage after this one and edit the ones this stage invalidated. A plan is authored with the least information anyone will ever have about the problem, so a stage that discovers its successor can't be built as specified must say so **in the file**, not in chat. This is a required step, not a courtesy. Resizing counts: a downstream stage that now looks too big should be split here, or marked `**Design pass:**` if splitting it properly needs a session of its own.
 2. **Append non-obvious findings to `## Notes`** at the foot of the plan: a rejected approach and why, a constraint found the hard way, a dev-DB quirk. Nothing the diff, a companion `.md`, or the commit message already carries — this section rots the same way a bloated companion does.
-3. **Record what landed.** Fill in `**Landed:**` with the stage's commit sha. When a later stage misbehaves, the first question is whether an earlier one delivered its contract.
+3. **Record what landed.** Set the stage's `**Status:**` to `done — <commit sha>`. When a later stage misbehaves, the first question is whether an earlier one delivered its contract. If the stage could not be finished, set `blocked — <one line why>` instead and stop there; a half-done stage left marked `todo` will be silently redone.
 4. **Don't self-certify.** Run the mechanical gate (the `ci-verifier` agent), then tell the user to review the stage from a fresh session before starting the next one. The session that wrote the code is the worst available reviewer of it: it can't see the failure modes its own approach implies.
 
 ### Plan file shape
@@ -269,22 +269,23 @@ The stage is the scope: don't drift into later stages, and don't fix unrelated t
 
 ## Stage 1 — <short name>
 **Mode:** Plan mode
+**Status:** todo
 **Goal:** ...
 **References:** `src/lib/<module>.md`, `src/components/<Component>.md`
 **Touches:** `src/...`, `src/...`
 **Done when:** ...
-**Landed:** _(commit sha, filled in by the executing session)_
 
 ## Stage 2 — <short name>
 **Mode:** Accept edits
+**Status:** done — a71cd071
 **Goal:** ...
 **References:** ...
 **Touches:** ...
 **Done when:** ...
-**Landed:**
 
 ## Stage 3 — <short name>
 **Design pass:** the whole settings UI — needs its own planning session before execution starts.
+**Status:** todo
 **Goal:** ...
 _(`Mode`, `References`, `Touches`, `Done when` are filled in by that session, which may also split this stage.)_
 
