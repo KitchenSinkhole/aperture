@@ -106,7 +106,7 @@ This is display/local-state corruption only: mutations go through per-map API ro
 ## Stage 4 — Route per-port in the SharedWorker
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 8f87cb1c
 **Goal:** The worker delivers a map-scoped envelope only to the tabs subscribed to that map; control-plane frames still reach all tabs.
 **References:** `src/lib/realtime/sharedWorker.md`, `protocol.md`, `useRealtime.md`; `tests/unit/realtime-delivery.md`, `realtime-reconnect.md`.
 **Touches:** `src/lib/realtime/sharedWorker.ts` (+ `sharedWorker.md`).
@@ -169,6 +169,8 @@ _(appended by executing sessions — non-obvious findings only)_
 - **Stage 3** — `mapAccess`, `mapConnectionAccess`, `mapDeleted`, `logData` are still forward-declared/unproduced (only `publicUpdate` is built directly in `wsServer.ts`, outside `bus.dispatch()`); none of them are emitted by `bus.ts` today, so the Stage 3 spec's four task-tagged branches + the `mapUpdate` fall-through are the complete set of `bus.dispatch()` outputs and all now carry envelope-level `mapId`.
 - **Stage 3** — `tests/integration/realtime-transport.test.ts` had no companion `.md`; created one per the standing instruction while extending the file with two assertions: the existing `mapUpdate` fan-out test now also checks the top-level `mapId`, and a new test checks the connect `healthCheck` carries none. The `healthCheck` test had to construct the `WebSocket` directly and attach the `message` listener before `open()`'s promise resolves — the server's `connection` handler sends `healthCheck` immediately, and it can race the `open()` test helper's own `'open'` listener, causing an intermittent `no message within 500ms` timeout when the listener was attached after `await open(...)` returned.
 - **Stage 3** — verified `sharedWorker.ts` (Stage 4's target) and `MapCanvas`/companions (Stage 5's target) against the actual shape shipped here: both downstream specs already assume exactly what landed (`envelope.mapId` present-and-numeric on map-scoped tasks, absent on `healthCheck`), so neither stage needed reconciling.
+- **Stage 4** — `tests/unit/realtime-delivery.test.tsx`'s existing harness (`FakeSharedWorker`/`FakePort`) only exercises `useRealtime.tsx`'s client-side provider — the SharedWorker itself is stubbed out entirely, so it can't observe the worker's internal per-port routing. Proving the Stage 4 routing logic required a second, independent describe block in the same file that imports `sharedWorker.ts` directly (`vi.resetModules()` + a fresh dynamic `import()` per test) against a faked `self` (captures the `connect` listener the module registers at import time) and a faked `WebSocket` (its constructed instance is recovered from a `static instances: FakeWebSocket[]` list, not via `this`-aliasing in the constructor — the repo's `@typescript-eslint/no-this-alias` flags even a plain `outerVar = this;` assignment expression, not just declarations). `noUncheckedIndexedAccess` is on, so post-`toHaveLength(1)` array indexing needs a `!` — TS doesn't narrow array length from a vitest matcher.
+- **Stage 4** — no reconciliation needed downstream: Stage 5's guard operates on the `Envelope`/`useRealtimeEvents` contract, which this stage's routing change doesn't touch (routing is internal to the worker; the client provider still just receives `{ type: 'message', envelope }` postMessage frames from its port, same as before).
 
 ---
 
