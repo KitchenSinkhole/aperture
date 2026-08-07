@@ -236,19 +236,19 @@ A plan has real overhead. It pays for work that genuinely spans sessions; for a 
 
 1. Write the plan to `docs/plans/<feature-name>.md`. Each stage must be independently executable and end at a natural checkpoint (a passing test, a green build, a working but feature-flagged path). Every stage is written with `**Status:** todo`; execution flips it to `done — <sha>` or `blocked — <why>`. That line is how a human or an automated runner finds where the plan left off, so never omit it.
 2. **Planning itself may take more than one session, and often should.** Context rot degrades a planning session exactly as it degrades an execution session, and what suffers first is the overarching design — the thing this session exists to get right. So when a single stage carries a large sub-design of its own (a whole UI surface, a schema redesign, a protocol), do **not** cram it in alongside. Mark the stage `**Design pass:** <what needs designing>`, finish the rest of the skeleton, and hand off. Each marked stage then gets its **own fresh planning session**, which designs only that stage, writes the result back into the plan (splitting it into sub-stages where warranted, filling in `Mode` / `References` / `Touches` / `Done when`), and deletes the marker. A design pass writes to `docs/plans/` and nothing else. **Execution begins only once no `Design pass` markers remain.**
-3. **Label the mode** each stage should be started in:
-   - **`Plan mode`** — the user reviews an approach before any file is written.
-   - **`Accept edits`** — mechanical execution against a clear, already-agreed spec (e.g. "translate this Drizzle schema into migration files", "wire up these props to the existing context"). The user isn't prompted for every write.
+3. **Label every stage `**Mode:** Execute` or `**Mode:** Barrier`.** This says whether a stage needs a human before it can start; it is not a Claude Code permission mode.
+   - **`Execute`** — a runner can take it unattended: mechanical work against an already-agreed spec (e.g. "translate this Drizzle schema into migration files", "wire up these props to the existing context").
+   - **`Barrier`** — the user runs it themselves, in plan mode, and reviews the approach before any file is written.
 
-   **A stage carries `Plan mode` into execution only when it needs to see something that does not exist yet** — a file format an earlier stage will fetch, the real shape of an external response, code a prior stage will restructure. Anything designable against the code as it stands today is settled *before* execution by a design pass, never deferred into the run. "This stage is intricate" argues for a design pass or a smaller stage; on its own it is not a reason to stop a run. Each surviving `Plan mode` stage halts execution and waits for the user, so front-load them and merge adjacent ones touching the same code into one session.
+   **A stage is a `Barrier` only when it needs to see something that does not exist yet** — a file format an earlier stage will fetch, the real shape of an external response, code a prior stage will restructure. Anything designable against the code as it stands today is settled *before* execution by a design pass, never deferred into the run. "This stage is intricate" argues for a design pass or a smaller stage; on its own it is not a reason to stop a run. Every barrier halts the run and waits for the user, so front-load them and merge adjacent ones touching the same code into one session.
 4. **Size stages by quality, not by capacity.** Target a stage that finishes in roughly half a context window, not one that barely fits — reasoning degrades well before the window fills, and a stage that runs to 70% has already lost something in its final third. Smells that a stage is too big: it touches more than five or six files, its **Done when** mixes clauses of different kinds, or its goal can't be stated in one sentence without an "and".
 5. **Give each stage its own `References`.** A stage session should load exactly the companions it will touch, not the whole feature's reading list.
 6. **Pin the boundary, not the method.** `Goal`, `Touches` and `Done when` are the stage's contract and must be unambiguous. Beyond that, be sparing with prescribed implementation — a schema shape or an agreed design decision is fair, step-by-step logic is not. The code will have moved by the time a later stage runs, and a session given the goal handles that better than one holding a stale recipe.
 7. After writing the plan file, tell the user:
    - The plan is at `docs/plans/<feature-name>.md`.
    - **Which stages carry a `Design pass` marker**, if any — each needs its own fresh planning session, and execution shouldn't start until all are cleared.
-   - **They should start a new session for each stage** (a fresh context window keeps each stage focused). `/stage` runs the next `todo` stage in the current session and stops; `/run-plan` runs a whole block of `Accept edits` stages, each in its own fresh subagent, and halts at the first barrier. Both notify on completion.
-   - A `Plan mode` stage is theirs to run: open the plan, read the stage, enter plan mode (`Shift+Tab` cycles), and tell Claude to execute it.
+   - **They should start a new session for each stage** (a fresh context window keeps each stage focused). `/stage` runs the next `todo` stage in the current session and stops; `/run-plan` runs a whole block of `Execute` stages, each in its own fresh subagent, and halts at the first barrier. Both notify on completion.
+   - A `Barrier` stage is theirs to run: open the plan, read the stage, enter plan mode (`Shift+Tab` cycles), and tell Claude to execute it.
 
 ### Executing a stage
 
@@ -268,7 +268,7 @@ The stage is the scope: don't drift into later stages, and don't fix unrelated t
 **References:** CLAUDE.md rules and companion `.md` files that apply across the whole feature.
 
 ## Stage 1 — <short name>
-**Mode:** Plan mode
+**Mode:** Barrier
 **Status:** todo
 **Goal:** ...
 **References:** `src/lib/<module>.md`, `src/components/<Component>.md`
@@ -276,7 +276,7 @@ The stage is the scope: don't drift into later stages, and don't fix unrelated t
 **Done when:** ...
 
 ## Stage 2 — <short name>
-**Mode:** Accept edits
+**Mode:** Execute
 **Status:** done — a71cd071
 **Goal:** ...
 **References:** ...
