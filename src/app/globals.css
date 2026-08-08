@@ -342,6 +342,31 @@
     100% { background-color: var(--sig-ping-rest-even); }
   }
 
+  /* Overlay search results (SystemOverlay.tsx): the countdown above a result
+     set — a line filling left to right over the set's lifetime, on a faded
+     track of the same colour. The duration is set inline from the constant
+     that arms the removal timer, so the fill cannot drift from it. */
+  @keyframes ap-result-fill {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+  .ap-result-track {
+    display: block;
+    height: 2px;
+    overflow: hidden;
+    background-color: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
+  }
+  .ap-result-fill {
+    display: block;
+    height: 100%;
+    transform: scaleX(0);
+    transform-origin: left;
+    background-color: var(--muted-foreground);
+    animation-name: ap-result-fill;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+  }
+
   /* Blinking separator for the live EOL countdown colon — a 1s on/off pulse
      signals the clock is ticking. Opacity-only, so the glyph keeps its box and
      the digits don't shift. See ConnectionDetailPopover.tsx. */
