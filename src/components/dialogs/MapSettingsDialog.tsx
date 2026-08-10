@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Download, Save, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -32,9 +33,9 @@ import type { MapCapability, MapEventPayload, MapSettings } from '@/types';
  * `resolveMapCapabilities`; a manager holds all): Behavior + Auto-tagging ←
  * `settings_manage`, Webhooks ← `webhooks_manage`, Share links ←
  * `share_manage`, Export ← `map_export`, Import ← `map_import` — all
- * re-checked server-side. The Roles & Permissions
- * tab (delegating features to titles) is manager-only (`canManage`). The audit
- * log lives in its own dialog (`MapAuditDialog`).
+ * re-checked server-side. The Roles & Permissions tab (delegating features
+ * to titles) is manager-only (`canManage`) and corp-map-only. The audit log
+ * lives in its own dialog (`MapAuditDialog`).
  */
 export function MapSettingsDialog({
   open,
@@ -80,12 +81,14 @@ export function MapSettingsDialog({
             {can('share_manage') && <TabsTab value="shares">Share links</TabsTab>}
             {can('map_export') && <TabsTab value="export">Export</TabsTab>}
             {can('map_import') && <TabsTab value="import">Import</TabsTab>}
-            {canManage && <TabsTab value="roles">Roles &amp; Permissions</TabsTab>}
+            {canManage && settings.type === 'corp' && (
+              <TabsTab value="roles">Roles &amp; Permissions</TabsTab>
+            )}
           </TabsList>
 
           <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
             <TabsPanel value="general">
-              <GeneralPanel mapId={mapId} settings={settings} />
+              <GeneralPanel mapId={mapId} settings={settings} canEdit={can('settings_manage')} />
             </TabsPanel>
             <TabsPanel value="settings">
               <SettingsPanel />
@@ -134,7 +137,7 @@ export function MapSettingsDialog({
                 <ImportPanel mapId={mapId} onImported={onImported} />
               </TabsPanel>
             )}
-            {canManage && (
+            {canManage && settings.type === 'corp' && (
               <TabsPanel value="roles">
                 <MapRolesForm mapId={mapId} />
               </TabsPanel>
@@ -207,10 +210,20 @@ function SettingsPanel() {
   );
 }
 
-function GeneralPanel({ mapId, settings }: { mapId: string; settings: MapSettings }) {
+function GeneralPanel({
+  mapId,
+  settings,
+  canEdit,
+}: {
+  mapId: string;
+  settings: MapSettings;
+  /** Whether the viewer holds `settings_manage`. When false the panel is read-only. */
+  canEdit: boolean;
+}) {
   const [name, setName] = useState(settings.name);
   const [icon, setIcon] = useState(settings.icon ?? '');
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -224,9 +237,29 @@ function GeneralPanel({ mapId, settings }: { mapId: string; settings: MapSetting
         name: name.trim(),
         icon: icon.trim() === '' ? null : icon.trim(),
       });
-      if (result.ok) toast.success('Map updated.');
-      else toast.error(result.error);
+      if (result.ok) {
+        toast.success('Map updated.');
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
     });
+  }
+
+  if (!canEdit) {
+    return (
+      <div className="flex max-w-lg flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">Name</span>
+          <p className="text-sm">{settings.name}</p>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Scope (<span className="capitalize">{settings.scope}</span>) and visibility (
+          <span className="capitalize">{settings.type}</span>) are fixed when the map is created and
+          cannot be changed.
+        </p>
+      </div>
+    );
   }
 
   return (

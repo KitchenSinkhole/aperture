@@ -11,4 +11,4 @@
 | initialValues | Record<'deleteExpiredConnections'\|'deleteEolConnections'\|'trackAbyssalJumps'\|'logActivity', boolean> | yes | Current toggle state |
 
 ### Behaviour & Interactions
-- Submits all four toggles via `updateMapSettingsAction` (gated by `canManageMap`); toasts success/error.
+- Submits all four toggles via `updateMapSettingsAction` (gated by `canManageMap`); toasts success/error, and calls `router.refresh()` on success so the reopened dialog reflects the saved values.

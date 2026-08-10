@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -47,6 +48,7 @@ export function MapTaggingForm({
   const [homeMapSystemId, setHomeMapSystemId] = useState(initialHomeMapSystemId ?? '');
   const [exemptHomeStatic, setExemptHomeStatic] = useState(initialExemptHomeStatic);
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
 
   const canExempt = scheme === 'abc' && homeMapSystemId !== '';
 
@@ -66,8 +68,12 @@ export function MapTaggingForm({
         homeMapSystemId: homeMapSystemId === '' ? null : homeMapSystemId,
         exemptHomeStaticFromTag: exemptHomeStatic,
       });
-      if (result.ok) toast.success('Tagging updated.');
-      else toast.error(result.error);
+      if (result.ok) {
+        toast.success('Tagging updated.');
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
     });
   }
 

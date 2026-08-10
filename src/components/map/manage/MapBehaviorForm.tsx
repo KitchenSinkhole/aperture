@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -44,13 +45,18 @@ export function MapBehaviorForm({
 }) {
   const [values, setValues] = useState(initialValues);
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     startTransition(async () => {
       const result = await updateMapSettingsAction({ mapId, ...values });
-      if (result.ok) toast.success('Settings saved.');
-      else toast.error(result.error);
+      if (result.ok) {
+        toast.success('Settings saved.');
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
     });
   }
 

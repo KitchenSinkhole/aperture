@@ -50,7 +50,7 @@ The cause: both files gate on bare `canUseMapFeature`, whose `hasMapCapability` 
 ## Stage 2 — Capability reveal and post-save refresh in the settings surfaces
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — e45c069b
 **Goal:** Close Findings 1, 2, 4 and 5 — three surfaces offer actions that always fail, and saved settings appear to revert.
 
 **References:** `src/components/dialogs/MapSettingsDialog.md`, `src/components/map/manage/MapBehaviorForm.md`, `src/components/map/manage/MapTaggingForm.md`, `src/app/(app)/maps/page.md`, `src/lib/auth/rights.md`
@@ -169,7 +169,7 @@ Run this stage **last** so the docs describe the finished state.
 
 Keep the column and the create-time choice; stop claiming it is a rule.
 
-- `MapSettingsDialog.tsx:260-264` — "Scope … and visibility … are fixed when the map is created and cannot be changed" is true of visibility (it drives every branch in `rights.ts`) and misleading of scope. Reword so scope reads as a descriptive label and visibility keeps its constraint language.
+- `MapSettingsDialog.tsx` — "Scope … and visibility … are fixed when the map is created and cannot be changed" is true of visibility (it drives every branch in `rights.ts`) and misleading of scope. Reword so scope reads as a descriptive label and visibility keeps its constraint language. **Stage 2 duplicated this paragraph**: `GeneralPanel` now has a read-only branch (viewer lacks `settings_manage`, currently ~line 256-260) and the editable form branch (currently ~line 293-297), each with its own copy of the sentence — reword both, not just one, or the two states will disagree.
 - `enums.ts:19` and `enums.md:15` — "what kinds of systems a map is allowed to hold" / "may hold" → descriptive.
 - `aperture.config.ts:173` — `/** Per-scope ceilings for 'ap_map.scope'. */` is doubly wrong: the keys are `private`/`corp`/`alliance`, which is `ap_map.type`. Fix the comment.
 
@@ -221,3 +221,6 @@ _(worked by the user once, after the run — the plan is not complete until it p
 _(appended by executing sessions — non-obvious findings only)_
 
 - **Stage 1** — Both `gateForMap` (webhooks.ts) and `gate` (mapShares.ts) call `requireSession()` first, which itself redirects on no-session/inactive-character before `requireMapCapability` ever runs. `requireMapCapability`'s `401` branch is therefore unreachable from these two call sites by construction — only its `404` (view) and `403` (capability) branches are live here. Not a bug, just means the two helpers can never surface `'Unauthorized.'`.
+- **Stage 2** — `GeneralPanel`'s new `!canEdit` branch is a second render path, not a disabled version of the form, so it carries its own copy of the scope/visibility disclaimer paragraph. Stage 5's Finding 9 reword now has two occurrences to fix in that function, not one; the plan text above was updated to say so.
+- **Stage 2** — Editing `MapSettingsDialog.tsx` (new imports, the read-only branch, the docblock) and `MapBehaviorForm.tsx` (new import + `router` line) shifted several of Stage 3 and Stage 5's cited line numbers by a handful of lines (e.g. the `map_update` docblock mention is now `:31` not `:30`; the `logActivity` `TOGGLES` entry is now `:32` not `:31`). Not re-verified line-by-line across every stage — grep for the symbol (`icon`, `logActivity`, `map_update`, `canManageMap`) rather than trusting a stage's line number literally, the usual staleness risk with line-anchored references.
+- **Stage 2** — `mapsWithCapability`'s ownership pass filters `isNull(apMap.deletedAt)` even though `/maps` (its only caller) already excludes soft-deleted maps via `listViewableMaps`. Kept for defense-in-depth / future callers rather than relying on the caller's filter, matching `loadMap`'s pattern elsewhere in `rights.ts`.
