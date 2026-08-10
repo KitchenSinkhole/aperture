@@ -5,7 +5,7 @@
 
 ---
 
-Access for every action: `requireSession` → `canUseMapFeature(characterId, mapId, 'share_manage')` (a manager implicitly, or a corp title delegated the capability). `listShares` / `createMapShare` gate on the input `mapId`; `revokeMapShare` resolves `mapId` from the `ap_map_share` row first. No `revalidatePath` — the tab refetches `listShares` after each mutation.
+Access for every action: `requireSession` → `requireMapCapability(session, mapId, 'share_manage')` (a manager implicitly, or a corp title delegated the capability; resolves the map row before the capability check, so a soft-deleted map is off-limits to a delegated title-holder the same as a Director). `listShares` / `createMapShare` gate on the input `mapId`; `revokeMapShare` resolves `mapId` from the `ap_map_share` row first. No `revalidatePath` — the tab refetches `listShares` after each mutation.
 
 A share's redaction profile is fixed at mint; there is no update action. Changing what a link exposes means revoking it and issuing a new one, so a URL already in circulation can never widen its disclosure under the recipient.
 

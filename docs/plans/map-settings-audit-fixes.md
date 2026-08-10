@@ -28,7 +28,7 @@ Each stage runs in its own fresh session.
 ## Stage 1 — Route the webhook and share actions through `requireMapCapability`
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 709e7b6c
 **Goal:** Close Finding 3 — a delegated title-holder can currently mint share links and edit webhooks on a soft-deleted map that its own Director can no longer touch.
 
 **References:** `src/lib/auth/rights.md`, `src/app/(app)/actions/webhooks.md`, `src/app/(app)/actions/mapShares.md`
@@ -219,3 +219,5 @@ _(worked by the user once, after the run — the plan is not complete until it p
 ## Notes
 
 _(appended by executing sessions — non-obvious findings only)_
+
+- **Stage 1** — Both `gateForMap` (webhooks.ts) and `gate` (mapShares.ts) call `requireSession()` first, which itself redirects on no-session/inactive-character before `requireMapCapability` ever runs. `requireMapCapability`'s `401` branch is therefore unreachable from these two call sites by construction — only its `404` (view) and `403` (capability) branches are live here. Not a bug, just means the two helpers can never surface `'Unauthorized.'`.
