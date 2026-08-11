@@ -10,7 +10,7 @@ import { getLogger } from '@/lib/log/logger';
 const jobLog = getLogger('job');
 
 /**
- * The per-map fold for a detected wormhole jump from the
+ * The per-map fold for a detected wormhole or abyssal jump from the
  * location-poll. Wraps the three `commitMapEvent` calls that turn
  * "character moved from system A to system B" into the same set of events a
  * user-driven `addSystem` + `addSystem` + `createConnection` would produce —
@@ -33,6 +33,11 @@ const jobLog = getLogger('job');
  * the fold never makes a non-visible system visible — it records the connection
  * and breadcrumb only between systems already on the map, so a pilot day-tripping
  * with Aperture closed doesn't pollute a dormant map with every hole they transit.
+ *
+ * `scope` selects the resulting connection's `connection_scope`. Auto-tagging
+ * (`tagOnJump`) only fires for `'wh'` — a 0121-scheme map would otherwise root
+ * a chain off a filament hop that isn't a real one. The caller (`locationPoll.ts`)
+ * also skips the mass-log entirely for `'abyssal'`.
  */
 
 export interface FoldArgs {
@@ -42,6 +47,7 @@ export interface FoldArgs {
   toSystemId: number;
   /** Whether this jump may add a system not already on the map (pilot has the map open). */
   addNewSystems: boolean;
+  scope: 'wh' | 'abyssal';
 }
 
 export interface FoldResult {
@@ -57,7 +63,7 @@ export interface FoldResult {
   connectionId: bigint | null;
 }
 
-export async function foldWormholeJumpOntoMap(args: FoldArgs): Promise<FoldResult> {
+export async function foldJumpOntoMap(args: FoldArgs): Promise<FoldResult> {
   // Pilot has the map closed: never add a new system. Only record movement
   // between two systems already visible on the map; skip the jump entirely
   // when either endpoint isn't there yet.
@@ -78,8 +84,11 @@ export async function foldWormholeJumpOntoMap(args: FoldArgs): Promise<FoldResul
       fromMapSystemId,
       toMapSystemId,
       args.characterId,
+      args.scope,
     );
-    await tagOnJump(args.mapId, fromMapSystemId, toMapSystemId, args.characterId);
+    if (args.scope === 'wh') {
+      await tagOnJump(args.mapId, fromMapSystemId, toMapSystemId, args.characterId);
+    }
     return {
       mapId: args.mapId,
       fromSystemAdded: false,
@@ -100,13 +109,17 @@ export async function foldWormholeJumpOntoMap(args: FoldArgs): Promise<FoldResul
     fromOutcome.mapSystemId,
     toOutcome.mapSystemId,
     args.characterId,
+    args.scope,
   );
   // Auto-tagging. On a 0121 map the jump roots the destination as
   // a child of the system the pilot came from; tag it as a separate
   // `system.updated`. Run whether or not the edge was newly created (a prior
   // tick may have laid the edge before either side was tagged). No-op for ABC
-  // (already tagged at add) and unscheme'd maps.
-  await tagOnJump(args.mapId, fromOutcome.mapSystemId, toOutcome.mapSystemId, args.characterId);
+  // (already tagged at add) and unscheme'd maps. Abyssal jumps skip tagging
+  // entirely — 0121 is positional and would root the chain off a filament hop.
+  if (args.scope === 'wh') {
+    await tagOnJump(args.mapId, fromOutcome.mapSystemId, toOutcome.mapSystemId, args.characterId);
+  }
   return {
     mapId: args.mapId,
     fromSystemAdded: fromOutcome.emitted,
@@ -241,12 +254,13 @@ async function ensureConnection(
   sourceMapSystemId: bigint,
   targetMapSystemId: bigint,
   characterId: bigint,
+  scope: 'wh' | 'abyssal',
 ): Promise<EnsureConnectionOutcome> {
   // Reject self-loop early — the underlying table CHECK constraint would
   // throw, but rejecting here keeps the failure mode obvious in the logs.
   if (sourceMapSystemId === targetMapSystemId) {
     throw new Error(
-      `Refusing to fold a self-loop wormhole jump on map ${mapId} (system ${sourceMapSystemId}).`,
+      `Refusing to fold a self-loop ${scope} jump on map ${mapId} (system ${sourceMapSystemId}).`,
     );
   }
 
@@ -293,7 +307,7 @@ async function ensureConnection(
           mapId,
           sourceMapSystemId,
           targetMapSystemId,
-          scope: 'wh',
+          scope,
           massStatus: 'fresh',
           jumpMassClass: null,
           eolStage: 'none',
@@ -340,7 +354,7 @@ async function ensureConnection(
   });
   if (!result.ok || newConnectionId === null) {
     throw new Error(
-      `Failed to create wormhole connection on map ${mapId}: ${result.ok ? 'no id returned' : result.error}`,
+      `Failed to create ${scope} connection on map ${mapId}: ${result.ok ? 'no id returned' : result.error}`,
     );
   }
   return { connectionId: newConnectionId, created: true };

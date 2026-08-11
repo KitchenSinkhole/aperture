@@ -127,7 +127,7 @@ Sweep, in dependency order:
 ## Stage 4 — Implement `trackAbyssalJumps`
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 067d3d29
 **Goal:** Close Finding 6 — make the toggle do what its label says: record abyssal traversals as connections on maps that opt in.
 
 **References:** `src/lib/map/locationToConnection.md`, `src/lib/jobs/locationCommit.md`, `src/lib/jobs/tasks/locationPoll.md`, `src/db/schema/ap/map_connection.md`
@@ -224,3 +224,4 @@ _(appended by executing sessions — non-obvious findings only)_
 - **Stage 2** — `GeneralPanel`'s new `!canEdit` branch is a second render path, not a disabled version of the form, so it carries its own copy of the scope/visibility disclaimer paragraph. Stage 5's Finding 9 reword now has two occurrences to fix in that function, not one; the plan text above was updated to say so.
 - **Stage 2** — Editing `MapSettingsDialog.tsx` (new imports, the read-only branch, the docblock) and `MapBehaviorForm.tsx` (new import + `router` line) shifted several of Stage 3 and Stage 5's cited line numbers by a handful of lines (e.g. the `map_update` docblock mention is now `:31` not `:30`; the `logActivity` `TOGGLES` entry is now `:32` not `:31`). Not re-verified line-by-line across every stage — grep for the symbol (`icon`, `logActivity`, `map_update`, `canManageMap`) rather than trusting a stage's line number literally, the usual staleness risk with line-anchored references.
 - **Stage 2** — `mapsWithCapability`'s ownership pass filters `isNull(apMap.deletedAt)` even though `/maps` (its only caller) already excludes soft-deleted maps via `listViewableMaps`. Kept for defense-in-depth / future callers rather than relying on the caller's filter, matching `loadMap`'s pattern elsewhere in `rights.ts`.
+- **Stage 4** — A folded abyssal edge is permanent: `expiredConnections.ts:36` and `connectionState.ts:40` filter to `scope='wh'`, and `removeSystem` (`mutations/systems.ts:184`) dormants only `wh`, so removing the abyssal node leaves the edge `confirmed_at NOT NULL` and it can silently reappear if that system id is ever re-added. Repeated runs into the same abyssal system hang one more permanent edge per distinct entry system. Acceptable for a first cut of an opt-in toggle (default on); reaping dormant/orphaned abyssal edges is a follow-up, not fixed in this stage per the plan's own instruction. Stage 4 touched only `locationPoll.ts`, `locationCommit.ts`, `locationToConnection.ts` and the two integration tests naming the fold function — none of Stage 5's cited files or line numbers, so no downstream reconciliation was needed.

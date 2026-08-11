@@ -28,8 +28,10 @@ import { universeStargateEdge } from '@/db/schema';
  *
  * `abyssal` covers any transition where either endpoint is an abyssal system
  * (`universe_system.security = 'A'`). Abyssals are reached only through
- * single-use filaments, so the link can never be re-traversed by anyone else —
- * it isn't a real chain edge. We never map abyssal systems or their links.
+ * single-use filaments, so the link can never be re-traversed by anyone else.
+ * The caller (`locationCommit.ts`) folds it as a `scope='abyssal'` connection
+ * on maps with `ap_map.track_abyssal_jumps` set, skipping the mass-log and
+ * auto-tagging that apply to a `wormhole` fold.
  */
 
 export type JumpClass = 'gate' | 'wormhole' | 'teleport' | 'abyssal';
