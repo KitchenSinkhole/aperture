@@ -401,18 +401,15 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     name: z.string(),
     scope: mapScopeEnum,
     type: mapTypeEnum,
-    icon: z.string().nullable(),
   }),
   z.object({
     kind: z.literal('map.update'),
     eventId,
     id: z.string(),
     name: z.string().optional(),
-    icon: z.string().nullable().optional(),
     deleteExpiredConnections: z.boolean().optional(),
     deleteEolConnections: z.boolean().optional(),
     trackAbyssalJumps: z.boolean().optional(),
-    logActivity: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal('map.delete'),

@@ -10,8 +10,8 @@
 - `id` — `bigserial` PK.
 - `scope` — `map_scope` enum, required (which kinds of systems are allowed).
 - `type` — `map_type` enum, required (private/corp/alliance).
-- `name` — `text`, required; `icon` — `text`, nullable.
-- `delete_expired_connections`, `delete_eol_connections`, `track_abyssal_jumps`, `log_activity` — `boolean`, default `true`. Per-map behaviour toggles.
+- `name` — `text`, required.
+- `delete_expired_connections`, `delete_eol_connections`, `track_abyssal_jumps` — `boolean`, default `true`. Per-map behaviour toggles.
 - `next_bookmarks` — `jsonb`, default `'[]'`.
 - `owner_character_id` — `bigint`, nullable, FK → `ap_character.id` `ON DELETE SET NULL`. Required when `type='private'`; NULL otherwise.
 - `owner_corporation_id` — `bigint`, nullable. Required when `type='corp'`; NULL otherwise. No FK to `ap_corporation`.

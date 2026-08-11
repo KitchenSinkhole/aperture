@@ -6,7 +6,7 @@
 ---
 
 ### adminUpdateMapSettings(input: AdminUpdateMapSettingsInput): Promise<ActionResult<MapEventPayload>>
-Updates behavior toggles and/or auto-tagging config. All fields optional (only those present in the input are applied). Input: `{ mapId, deleteExpiredConnections?, deleteEolConnections?, trackAbyssalJumps?, logActivity?, tagScheme?, homeMapSystemId?, exemptHomeStaticFromTag? }`.
+Updates behavior toggles and/or auto-tagging config. All fields optional (only those present in the input are applied). Input: `{ mapId, deleteExpiredConnections?, deleteEolConnections?, trackAbyssalJumps?, tagScheme?, homeMapSystemId?, exemptHomeStaticFromTag? }`.
 
 Gates on `isAdmin`; resolves the map via `selectMap`. Refuses to act on a soft-deleted map. Commits a `map.update` event via `commitMapEvent`; toggle changes are echoed in the realtime payload, tagging fields are not (config propagates on next map load). Validates `homeMapSystemId` is a visible system on the map. After any tagging-config change, calls `applyHomeStaticExemption` (swallows failures — tagging must never fail the primary save). Revalidates `/admin/maps` and `/maps`.
 

@@ -98,7 +98,7 @@ Delegation is corp-map-only, so a private-map owner or alliance manager gets a t
 ## Stage 3 — Retire `icon` and `log_activity`
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 73e3a553
 **Goal:** Close Findings 7 and 8 — remove two columns that nothing reads, `log_activity` being a privacy-shaped promise the system does not keep.
 
 **References:** `src/db/schema/ap/map.md`, `src/app/(app)/actions/map.md`, `src/lib/map/transfer.md`, `src/lib/map/loadMap.md`, `src/lib/realtime/protocol.md`
@@ -169,19 +169,19 @@ Run this stage **last** so the docs describe the finished state.
 
 Keep the column and the create-time choice; stop claiming it is a rule.
 
-- `MapSettingsDialog.tsx` — "Scope … and visibility … are fixed when the map is created and cannot be changed" is true of visibility (it drives every branch in `rights.ts`) and misleading of scope. Reword so scope reads as a descriptive label and visibility keeps its constraint language. **Stage 2 duplicated this paragraph**: `GeneralPanel` now has a read-only branch (viewer lacks `settings_manage`, currently ~line 256-260) and the editable form branch (currently ~line 293-297), each with its own copy of the sentence — reword both, not just one, or the two states will disagree.
+- `MapSettingsDialog.tsx` — "Scope … and visibility … are fixed when the map is created and cannot be changed" is true of visibility (it drives every branch in `rights.ts`) and misleading of scope. Reword so scope reads as a descriptive label and visibility keeps its constraint language. **Stage 2 duplicated this paragraph**: `GeneralPanel` now has a read-only branch (viewer lacks `settings_manage`, currently ~line 253-257) and the editable form branch (currently ~line 277-281), each with its own copy of the sentence — reword both, not just one, or the two states will disagree. (Stage 3 removed the Icon input between the two branches, shifting both down from Stage 2's line numbers — grep for the sentence text rather than trusting either range.)
 - `enums.ts:19` and `enums.md:15` — "what kinds of systems a map is allowed to hold" / "may hold" → descriptive.
 - `aperture.config.ts:173` — `/** Per-scope ceilings for 'ap_map.scope'. */` is doubly wrong: the keys are `private`/`corp`/`alliance`, which is `ap_map.type`. Fix the comment.
 
 ### Finding 10 — gate names predating the R4 rework
 
 - `MapSettingsDialog.tsx:29-30` and `MapSettingsDialog.md:23` say General saves under `map_update`. It is `settings_manage`. **This one inverts the meaning** — `map_update` is view-gated, so the doc reads as "any viewer can rename the map".
-- `MapBehaviorForm.tsx:35` and `MapBehaviorForm.md:14`, `MapTaggingForm.tsx:29` say `canManageMap`; both are `settings_manage`.
+- `MapBehaviorForm.tsx:32` (shifted from `:35` by Stage 3's toggle-list trim — grep `canManageMap` to confirm) and `MapBehaviorForm.md:14`, `MapTaggingForm.tsx:29` say `canManageMap`; both are `settings_manage`.
 - `MapWebhooksPanel.tsx:44` says `canManageMap`; it is `webhooks_manage`.
 - `MapAuditDialog.tsx:13` and `MapAuditDialog.md:20` say the button renders for "`canManageMap` holders"; it is `capabilities.includes('audit_view')` (`MapCanvas.tsx:2233`).
 - `rights.ts:167-170` and `:239-242` call title delegation "the future R4 overlay" directly above the shipped implementation; `rights.md:50` repeats "no per-right granularity at baseline".
-- `transfer.ts:140-141` and `transfer.md:20` claim `buildMapExport` exports `intel_notes` "which `loadMapForView` omits". It selects them (`loadMap.ts:310`, `:421`). Delete the false clause.
-- `loadMap.ts:486` says the dialog's Save re-checks `map_update`; it is `settings_manage`.
+- `transfer.ts:138-139` (shifted from `:140-141` by Stage 3's column removals) and `transfer.md:20` claim `buildMapExport` exports `intel_notes` "which `loadMapForView` omits". It selects them (`loadMap.ts:306`, `:417` — shifted from `:310`/`:421` by Stage 3's column removals). Delete the false clause.
+- `loadMap.ts:482` (shifted from `:486` by Stage 3's column removals) says the dialog's Save re-checks `map_update`; it is `settings_manage`.
 - Correct `docs/audits/map-settings-dialog.md` where this work invalidates it (Findings 6 and 7 in particular).
 
 ### Tests

@@ -133,7 +133,6 @@ const adminMapSettingsSchema = z.object({
   deleteExpiredConnections: z.boolean().optional(),
   deleteEolConnections: z.boolean().optional(),
   trackAbyssalJumps: z.boolean().optional(),
-  logActivity: z.boolean().optional(),
   tagScheme: z.enum(tagScheme.enumValues).optional(),
   homeMapSystemId: z.string().regex(/^\d+$/).nullable().optional(),
   exemptHomeStaticFromTag: z.boolean().optional(),
@@ -184,7 +183,6 @@ export async function adminUpdateMapSettings(
         set.deleteEolConnections = out.deleteEolConnections = patch.deleteEolConnections;
       if ('trackAbyssalJumps' in patch)
         set.trackAbyssalJumps = out.trackAbyssalJumps = patch.trackAbyssalJumps;
-      if ('logActivity' in patch) set.logActivity = out.logActivity = patch.logActivity;
       if ('tagScheme' in patch) set.tagScheme = patch.tagScheme;
       if ('exemptHomeStaticFromTag' in patch)
         set.exemptHomeStaticFromTag = patch.exemptHomeStaticFromTag;

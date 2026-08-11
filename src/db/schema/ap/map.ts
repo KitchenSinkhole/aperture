@@ -17,11 +17,9 @@ export const apMap = pgTable('ap_map', {
   scope: mapScope('scope').notNull(),
   type: mapType('type').notNull(),
   name: text('name').notNull(),
-  icon: text('icon'),
   deleteExpiredConnections: boolean('delete_expired_connections').notNull().default(true),
   deleteEolConnections: boolean('delete_eol_connections').notNull().default(true),
   trackAbyssalJumps: boolean('track_abyssal_jumps').notNull().default(true),
-  logActivity: boolean('log_activity').notNull().default(true),
   nextBookmarks: jsonb('next_bookmarks')
     .notNull()
     .default(sql`'[]'::jsonb`),

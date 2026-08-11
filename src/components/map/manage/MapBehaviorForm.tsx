@@ -7,11 +7,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { updateMapSettingsAction } from '@/app/(app)/actions/map';
 
-type ToggleKey =
-  | 'deleteExpiredConnections'
-  | 'deleteEolConnections'
-  | 'trackAbyssalJumps'
-  | 'logActivity';
+type ToggleKey = 'deleteExpiredConnections' | 'deleteEolConnections' | 'trackAbyssalJumps';
 
 const TOGGLES: { key: ToggleKey; label: string; description: string }[] = [
   {
@@ -29,7 +25,6 @@ const TOGGLES: { key: ToggleKey; label: string; description: string }[] = [
     label: 'Track abyssal jumps',
     description: 'Record abyssal traversals as connections.',
   },
-  { key: 'logActivity', label: 'Log activity', description: 'Record map activity to history.' },
 ];
 
 /**

@@ -101,7 +101,6 @@ export function MapSettingsDialog({
                     deleteExpiredConnections: settings.deleteExpiredConnections,
                     deleteEolConnections: settings.deleteEolConnections,
                     trackAbyssalJumps: settings.trackAbyssalJumps,
-                    logActivity: settings.logActivity,
                   }}
                 />
               </TabsPanel>
@@ -221,7 +220,6 @@ function GeneralPanel({
   canEdit: boolean;
 }) {
   const [name, setName] = useState(settings.name);
-  const [icon, setIcon] = useState(settings.icon ?? '');
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -235,7 +233,6 @@ function GeneralPanel({
       const result = await updateMapSettingsAction({
         mapId,
         name: name.trim(),
-        icon: icon.trim() === '' ? null : icon.trim(),
       });
       if (result.ok) {
         toast.success('Map updated.');
@@ -274,19 +271,6 @@ function GeneralPanel({
           onChange={(e) => setName(e.target.value)}
           maxLength={100}
           autoFocus
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="map-settings-icon" className="text-sm font-medium">
-          Icon <span className="text-muted-foreground">(optional)</span>
-        </label>
-        <Input
-          id="map-settings-icon"
-          value={icon}
-          onChange={(e) => setIcon(e.target.value)}
-          maxLength={100}
-          placeholder="e.g. fa-home"
         />
       </div>
 

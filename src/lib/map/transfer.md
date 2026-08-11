@@ -11,14 +11,14 @@
 ---
 
 ### mapExportSchema
-Zod schema validating an import file. Shape: `{ version, map: { name, scope, type, icon, deleteExpiredConnections, deleteEolConnections, trackAbyssalJumps, logActivity }, systems[], connections[], signatures[] }`. Each connection carries `isStatic` (optional + defaults `false`, so pre-0032 export files still import) and `sourceBubbled`/`targetBubbled` (optional + defaults `false`, so pre-0065 export files still import). Each signature carries `classKind` (`signature`/`anomaly`, optional + defaults `null`, so export files predating the class-kind column still import). Arrays are bounded defensively. System/connection `id` fields are **export-local** strings used only for in-file referencing (connections reference `systems[].id`; wormhole signatures reference `connections[].id`); they are not trusted as DB ids on import.
+Zod schema validating an import file. Shape: `{ version, map: { name, scope, type, deleteExpiredConnections, deleteEolConnections, trackAbyssalJumps }, systems[], connections[], signatures[] }`. Each connection carries `isStatic` (optional + defaults `false`, so pre-0032 export files still import) and `sourceBubbled`/`targetBubbled` (optional + defaults `false`, so pre-0065 export files still import). Each signature carries `classKind` (`signature`/`anomaly`, optional + defaults `null`, so export files predating the class-kind column still import). Arrays are bounded defensively. System/connection `id` fields are **export-local** strings used only for in-file referencing (connections reference `systems[].id`; wormhole signatures reference `connections[].id`); they are not trusted as DB ids on import.
 
 **Exported type:** `MapExportFile = z.infer<typeof mapExportSchema>`.
 
 ---
 
 ### buildMapExport(mapId: bigint): Promise<MapExportFile>
-Reads the map's metadata + four behaviour toggles, its visible `ap_map_system` rows (including `intel_notes`, which `loadMapForView` omits), all `ap_map_connection` rows, and the `ap_map_signature` rows in visible systems, into a `MapExportFile`. Omits timestamps and DB ids (beyond export-local references).
+Reads the map's metadata + three behaviour toggles, its visible `ap_map_system` rows (including `intel_notes`, which `loadMapForView` omits), all `ap_map_connection` rows, and the `ap_map_signature` rows in visible systems, into a `MapExportFile`. Omits timestamps and DB ids (beyond export-local references).
 
 **Throws:** `Map not found.` if the map is missing or soft-deleted (callers gate `map_export` first).
 **Returns:** the export document.
