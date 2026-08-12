@@ -15,8 +15,8 @@ import { logger } from '@/lib/log/logger';
 
 /**
  * Admin map actions — the `/admin` operator's cross-tenant oversight surface,
- * gated `isAdmin` (global operator only). Corp Directors / owners manage their
- * own maps in-place via `canManageMap`, not here.
+ * gated `isAdmin` (global operator only). Corp Directors / owners, and the corp
+ * titles they delegate to, manage their own maps in-place, not here.
  *
  *   - `adminSoftDeleteMap`      admin → sets `deleted_at`.
  *   - `adminRestoreMap`         admin → clears `deleted_at`.

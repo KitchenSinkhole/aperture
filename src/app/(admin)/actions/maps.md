@@ -1,6 +1,6 @@
 ## maps.ts (admin server actions)
 
-**Purpose:** Admin actions on `ap_map` rows — the operator's cross-tenant oversight surface at `/admin/maps`. Four operations: soft-delete (sets `deleted_at`), restore (clears `deleted_at`), purge-now (hard delete that skips the 30-day `map-purge` cron grace), and settings update (behavior toggles + auto-tagging config). All gated by `isAdmin` (global operator only) — corp Directors / owners manage their own maps in-place via `canManageMap`.
+**Purpose:** Admin actions on `ap_map` rows — the operator's cross-tenant oversight surface at `/admin/maps`. Four operations: soft-delete (sets `deleted_at`), restore (clears `deleted_at`), purge-now (hard delete that skips the 30-day `map-purge` cron grace), and settings update (behavior toggles + auto-tagging config). All gated by `isAdmin` (global operator only) — corp Directors / owners, and the corp titles they delegate to, manage their own maps in-place.
 **File:** `src/app/(admin)/actions/maps.ts`
 
 ---
@@ -35,4 +35,4 @@ Returns the synthesized `{ kind: 'map.purge', eventId, id }` payload (the row th
 - `apMap`, `apMapSystem`, `tagScheme` — `@/db/schema`.
 
 ### Notes
-- These are the operator's global override surfaces. Day-to-day map management (settings, webhooks, audit, delete) is done in-place by owners / corp Directors via `canManageMap`, not here.
+- These are the operator's global override surfaces. Day-to-day map management (settings, webhooks, audit, delete) is done in-place by owners / corp Directors and the corp titles they delegate to, each surface gated by its own `MapCapability`, not here.

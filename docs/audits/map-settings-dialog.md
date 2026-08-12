@@ -8,6 +8,27 @@
 
 ---
 
+## Resolution
+
+All ten findings were closed by `docs/plans/map-settings-audit-fixes.md`. Disposition per finding:
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | General tab editable by non-holders | Fixed — read-only branch when `settings_manage` is absent |
+| 2 | `settings` prop never refreshes | Fixed — `router.refresh()` on save in all three panels |
+| 3 | Delegated title-holders outlive managers on a soft-deleted map | Fixed — `webhooks.ts`/`mapShares.ts` route through `requireMapCapability` |
+| 4 | Delete button on `/maps` ignores `map_delete` | Fixed — `mapsWithCapability` gates the affordance |
+| 5 | Roles tab appears where it can never work | Fixed — gated on `settings.type === 'corp'` |
+| 6 | `trackAbyssalJumps` inert | **Implemented**, not removed — abyssal traversals fold as `scope='abyssal'` connections on maps with the flag set |
+| 7 | `logActivity` inert | **Removed**, column and all — `ap_map_event` is also the realtime transport, so a flag suppressing the write would break live updates |
+| 8 | `icon` never rendered | Dropped — field and column removed |
+| 9 | `scope` never enforced | Reworded as descriptive; column and create-time choice kept |
+| 10 | Documentation drift | Fixed — docblocks and companions renamed to the current gate names |
+
+Findings 6 and 7 read below as originally written (both framed as "resolve one way or the other" in Recommended Actions #1); the actual dispositions diverged per-finding rather than picking one fix for both, per the table above.
+
+---
+
 ## Summary of findings
 
 | # | Finding | Severity |

@@ -16,7 +16,7 @@ Online tracked pilots on this map, wherever they currently are (their system nee
 ---
 
 ### loadMapSettings(viewerCharacterId: bigint, mapId: bigint): Promise<MapSettings | null>
-Loads a map's editable name/scope/type + behaviour toggles for the settings dialog. Gated by `canViewMap` (mirrors `loadMapForView`); returns null when the map is missing, soft-deleted, or not viewable. Pre-fill only — the dialog's Save re-checks `map_update` server-side.
+Loads a map's editable name/scope/type + behaviour toggles for the settings dialog. Gated by `canViewMap` (mirrors `loadMapForView`); returns null when the map is missing, soft-deleted, or not viewable. Pre-fill only — the dialog's Save re-checks `settings_manage` server-side.
 
 ---
 

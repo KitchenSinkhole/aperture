@@ -18,7 +18,7 @@ Zod schema validating an import file. Shape: `{ version, map: { name, scope, typ
 ---
 
 ### buildMapExport(mapId: bigint): Promise<MapExportFile>
-Reads the map's metadata + three behaviour toggles, its visible `ap_map_system` rows (including `intel_notes`, which `loadMapForView` omits), all `ap_map_connection` rows, and the `ap_map_signature` rows in visible systems, into a `MapExportFile`. Omits timestamps and DB ids (beyond export-local references).
+Reads the map's metadata + three behaviour toggles, its visible `ap_map_system` rows (including `intel_notes`), all `ap_map_connection` rows, and the `ap_map_signature` rows in visible systems, into a `MapExportFile`. Omits timestamps and DB ids (beyond export-local references).
 
 **Throws:** `Map not found.` if the map is missing or soft-deleted (callers gate `map_export` first).
 **Returns:** the export document.

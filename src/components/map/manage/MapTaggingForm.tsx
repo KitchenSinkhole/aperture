@@ -28,7 +28,7 @@ const NO_HOME_LABEL = '— None —';
 
 /**
  * Auto-tagging config for the in-map Settings → Auto-tagging tab. Persists via
- * `updateMapSettingsAction` (gated by `canManageMap`); the Home picker is fed
+ * `updateMapSettingsAction` (gated by `settings_manage`); the Home picker is fed
  * the map's visible systems.
  */
 export function MapTaggingForm({

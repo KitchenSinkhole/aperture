@@ -289,7 +289,11 @@ export function MapCanvas({
   intel: Record<number, SystemIntelSummary>;
   structures: Record<number, StructureIntel[]>;
   settings: MapSettings;
-  /** Whether the viewer can manage this map (derived `canManageMap`) — reveals settings/webhooks/audit. */
+  /**
+   * Whether the viewer holds derived management authority (`canManageMap`) —
+   * reveals the manager-only Roles & Permissions tab in `MapSettingsDialog`.
+   * The other management surfaces reveal on `capabilities` instead.
+   */
   canManage: boolean;
   /**
    * The delegated map capabilities the viewer holds (`resolveMapCapabilities`).

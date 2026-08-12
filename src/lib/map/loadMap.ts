@@ -479,8 +479,8 @@ export async function loadMapForView(
  * Load a map's editable settings (name / scope / type + behaviour toggles)
  * for the settings dialog. Gated by `canViewMap` to mirror `loadMapForView`;
  * returns null when the map is missing, soft-deleted, or the viewer can't see
- * it. The dialog's Save still re-checks `map_update` server-side — this read
- * only pre-fills the form.
+ * it. The dialog's Save still re-checks `settings_manage` server-side — this
+ * read only pre-fills the form.
  */
 export async function loadMapSettings(
   viewerCharacterId: bigint,

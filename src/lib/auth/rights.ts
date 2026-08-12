@@ -165,9 +165,11 @@ export async function canViewMap(characterId: bigint, mapId: bigint): Promise<bo
  *     private owner, owning-corp Director, owning-alliance executor-corp
  *     Director).
  *
- * The `right` argument is otherwise retained for the future title-delegation
- * overlay (R4). `map_create` has no target map and must be checked via
- * `canCreateMap`.
+ * The `right` argument is otherwise retained for call-site symmetry; per-map
+ * feature delegation (title-holders granted a single director-gated feature)
+ * lives on the separate `MapCapability` vocabulary and routes through
+ * `canUseMapFeature/requireMapCapability`, not through `MapRight`.
+ * `map_create` has no target map and must be checked via `canCreateMap`.
  */
 export async function canMutateMap(
   characterId: bigint,
@@ -238,8 +240,11 @@ export async function executorCorpOf(allianceId: bigint): Promise<bigint | null>
 
 /**
  * Can the actor *manage* this map (settings, webhooks, audit, the full mutation
- * surface) under the derived-authority model? Binary — no per-right granularity
- * at the baseline (title-delegation is the future R4 overlay).
+ * surface) under the derived-authority model? Binary — a manager holds every
+ * capability implicitly, with no per-right granularity of its own. Per-map
+ * feature delegation to specific titles is the separate `MapCapability`
+ * overlay below (`canUseMapFeature`/`hasMapCapability`); this function is one
+ * of its two disjuncts, not superseded by it.
  *
  *   admin                                   → true (deployment operator)
  *   private  → owner_character_id == actor

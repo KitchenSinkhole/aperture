@@ -28,7 +28,7 @@ import type { MapCapability, MapEventPayload, MapSettings } from '@/types';
 /**
  * Map Settings dialog — the consolidated edit / settings / management /
  * import-export surface, launched from the `MapCanvas` toolbar. General
- * persists via `updateMapSettingsAction` (`map_update`). Each management tab is
+ * persists via `updateMapSettingsAction` (`settings_manage`). Each management tab is
  * revealed by the viewer's delegated capability (`capabilities`, resolved from
  * `resolveMapCapabilities`; a manager holds all): Behavior + Auto-tagging ←
  * `settings_manage`, Webhooks ← `webhooks_manage`, Share links ←
@@ -251,8 +251,9 @@ function GeneralPanel({
           <p className="text-sm">{settings.name}</p>
         </div>
         <p className="text-xs text-muted-foreground">
-          Scope (<span className="capitalize">{settings.scope}</span>) and visibility (
-          <span className="capitalize">{settings.type}</span>) are fixed when the map is created and
+          Scope (<span className="capitalize">{settings.scope}</span>) describes what kinds of
+          systems this map is meant to hold. Visibility (
+          <span className="capitalize">{settings.type}</span>) is fixed when the map is created and
           cannot be changed.
         </p>
       </div>
@@ -275,8 +276,9 @@ function GeneralPanel({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Scope (<span className="capitalize">{settings.scope}</span>) and visibility (
-        <span className="capitalize">{settings.type}</span>) are fixed when the map is created and
+        Scope (<span className="capitalize">{settings.scope}</span>) describes what kinds of
+        systems this map is meant to hold. Visibility (
+        <span className="capitalize">{settings.type}</span>) is fixed when the map is created and
         cannot be changed.
       </p>
 

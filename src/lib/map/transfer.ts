@@ -135,8 +135,8 @@ export type ImportResult = {
 /**
  * Read a map's current visible state into a `MapExportFile`. Throws if the map
  * does not exist or is soft-deleted (callers gate access via `requireMapMutate`
- * with `map_export` first). Exports `intel_notes` (which `loadMapForView`
- * omits) so an import round-trips the full per-system intel.
+ * with `map_export` first). Exports `intel_notes` so an import round-trips the
+ * full per-system intel.
  */
 export async function buildMapExport(mapId: bigint): Promise<MapExportFile> {
   const [map] = await db

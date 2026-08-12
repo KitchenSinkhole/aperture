@@ -45,7 +45,7 @@ const updateMapSettingsSchema = z.object({
   deleteExpiredConnections: z.boolean().optional(),
   deleteEolConnections: z.boolean().optional(),
   trackAbyssalJumps: z.boolean().optional(),
-  // Auto-tagging (gated by canManageMap, like the rest of the dialog).
+  // Auto-tagging (gated by settings_manage, like the rest of this action's fields).
   tagScheme: z.enum(tagScheme.enumValues).optional(),
   homeMapSystemId: z.string().regex(/^\d+$/, 'Invalid system id.').nullable().optional(),
   exemptHomeStaticFromTag: z.boolean().optional(),

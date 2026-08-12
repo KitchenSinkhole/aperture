@@ -103,9 +103,10 @@ export default async function AdminMapsPage() {
                     <td className="px-3 py-2 align-middle">
                       <div className="flex items-center justify-end gap-1">
                         {/*
-                          Per-map settings / webhooks / audit now live in-place on
-                          the map (open via the active map's name link), gated by
-                          `canManageMap`. This list keeps only operator actions.
+                          Per-map settings / webhooks / audit live in-place on the
+                          map (open via the active map's name link), each gated by
+                          its own `MapCapability`. This list keeps only operator
+                          actions.
                         */}
                         <MapActionsMenu map={m} canPurge={canPurge} />
                       </div>

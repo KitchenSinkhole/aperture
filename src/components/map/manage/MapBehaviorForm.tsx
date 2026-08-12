@@ -29,7 +29,7 @@ const TOGGLES: { key: ToggleKey; label: string; description: string }[] = [
 
 /**
  * Behavior toggles for the in-map Settings → Behavior tab. Persists via
- * `updateMapSettingsAction` (gated by `canManageMap`).
+ * `updateMapSettingsAction` (gated by `settings_manage`).
  */
 export function MapBehaviorForm({
   mapId,
