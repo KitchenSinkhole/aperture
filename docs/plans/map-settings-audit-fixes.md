@@ -212,7 +212,7 @@ RUN_DB_TESTS=1 npx vitest run tests/integration/map-import-export.test.ts tests/
 
 ## Manual verification
 
-_(worked by the user once, after the run — the plan is not complete until it passes)_
+**Worked by the user 2026-08-13 — all five checks pass. The plan is complete.**
 
 - **Stage 2** — As a plain corp member on a corp map: open Settings. The General tab shows the name as static text with no Save button; Behavior, Auto-tagging, Webhooks, Share links, Export, Import and Roles are all absent. On `/maps`, no trash icon appears on any card you cannot delete.
 - **Stage 2** — As a manager: toggle "Delete EOL connections" off, Save, close the dialog, reopen it. The checkbox stays off. Repeat for the tagging scheme and the map name.
