@@ -156,7 +156,7 @@ Everything needed already exists: abyssal systems are real `universe_system` row
 ## Stage 5 — Copy, docblocks, and the two missing tests
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — f97a388d
 **Goal:** Close Findings 9 and 10, and add the two tests whose absence let Finding 1 through.
 
 **References:** `src/lib/auth/rights.md`, `src/lib/map/transfer.md`, `src/db/schema/ap/enums.md`, `tests/integration/permissions.ts` and `title-delegation.ts` companions
