@@ -459,7 +459,8 @@ export async function resolveMapCapabilities(
  * so the executor corp resolves in the join instead of a per-map
  * `executorCorpOf` round trip), then one grant query over only the maps
  * ownership didn't already cover. Keep the ownership branch a literal mirror
- * of `canManageMap` — they must never disagree.
+ * of `canManageMap` — they must never disagree. Both passes exclude
+ * soft-deleted maps, so a title grant can't outlive its map's deletion.
  */
 export async function mapsWithCapability(
   characterId: bigint,
@@ -520,11 +521,13 @@ export async function mapsWithCapability(
     .selectDistinct({ mapId: apMapRoleAccess.mapId })
     .from(apMapRoleAccess)
     .innerJoin(apCharacterRole, eq(apCharacterRole.roleId, apMapRoleAccess.roleId))
+    .innerJoin(apMap, eq(apMap.id, apMapRoleAccess.mapId))
     .where(
       and(
         inArray(apMapRoleAccess.mapId, remaining),
         eq(apMapRoleAccess.capability, capability),
         eq(apCharacterRole.characterId, characterId),
+        isNull(apMap.deletedAt),
       ),
     );
 

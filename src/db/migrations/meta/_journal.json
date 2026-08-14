@@ -477,6 +477,13 @@
       "when": 1786483604754,
       "tag": "0068_map_drop_icon_log_activity",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1786700550925,
+      "tag": "0069_abyssal_tracking_opt_in",
+      "breakpoints": true
     }
   ]
 }

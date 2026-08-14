@@ -244,8 +244,7 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
         if (scope === 'abyssal') abyssalMapsSkipped = 0;
         for (const { mapId, trackAbyssalJumps } of trackedMaps) {
           // A map that hasn't opted in to `track_abyssal_jumps` sees nothing
-          // for an abyssal transition — the toggle default is on, but this is
-          // the enforcement point.
+          // for an abyssal transition.
           if (scope === 'abyssal' && !trackAbyssalJumps) {
             abyssalMapsSkipped = (abyssalMapsSkipped ?? 0) + 1;
             continue;

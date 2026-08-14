@@ -1,14 +1,9 @@
 ## maps.ts (admin server actions)
 
-**Purpose:** Admin actions on `ap_map` rows — the operator's cross-tenant oversight surface at `/admin/maps`. Four operations: soft-delete (sets `deleted_at`), restore (clears `deleted_at`), purge-now (hard delete that skips the 30-day `map-purge` cron grace), and settings update (behavior toggles + auto-tagging config). All gated by `isAdmin` (global operator only) — corp Directors / owners, and the corp titles they delegate to, manage their own maps in-place.
+**Purpose:** Admin actions on `ap_map` rows — the operator's cross-tenant oversight surface at `/admin/maps`. Three operations: soft-delete (sets `deleted_at`), restore (clears `deleted_at`), and purge-now (hard delete that skips the 30-day `map-purge` cron grace). All gated by `isAdmin` (global operator only) — corp Directors / owners, and the corp titles they delegate to, manage their own maps in-place, including settings.
 **File:** `src/app/(admin)/actions/maps.ts`
 
 ---
-
-### adminUpdateMapSettings(input: AdminUpdateMapSettingsInput): Promise<ActionResult<MapEventPayload>>
-Updates behavior toggles and/or auto-tagging config. All fields optional (only those present in the input are applied). Input: `{ mapId, deleteExpiredConnections?, deleteEolConnections?, trackAbyssalJumps?, tagScheme?, homeMapSystemId?, exemptHomeStaticFromTag? }`.
-
-Gates on `isAdmin`; resolves the map via `selectMap`. Refuses to act on a soft-deleted map. Commits a `map.update` event via `commitMapEvent`; toggle changes are echoed in the realtime payload, tagging fields are not (config propagates on next map load). Validates `homeMapSystemId` is a visible system on the map. After any tagging-config change, calls `applyHomeStaticExemption` (swallows failures — tagging must never fail the primary save). Revalidates `/admin/maps` and `/maps`.
 
 ### adminSoftDeleteMap(mapId: string): Promise<ActionResult<MapEventPayload>>
 Validates the id, gates on `isAdmin`, resolves the map via `selectMap`, then runs `commitMapEvent({ kind: 'map.delete' })` with a `mutate` that sets `deleted_at = now()` on the matching non-deleted row. Returns the same payload shape (`{ kind: 'map.delete', id, deletedAt }`) as the user-facing `deleteMapAction` so downstream subscribers don't need to discriminate by caller. Revalidates `/admin/maps` and `/maps`. Refuses to act on an already-soft-deleted map with a clear error.
@@ -31,8 +26,7 @@ Returns the synthesized `{ kind: 'map.purge', eventId, id }` payload (the row th
 ### Depends on
 - `auth` / `isAdmin` — `@/lib/auth/rights`.
 - `commitMapEvent` — `@/lib/map/mutations/core`.
-- `applyHomeStaticExemption` — `@/lib/tagging/exemption`.
-- `apMap`, `apMapSystem`, `tagScheme` — `@/db/schema`.
+- `apMap` — `@/db/schema`.
 
 ### Notes
 - These are the operator's global override surfaces. Day-to-day map management (settings, webhooks, audit, delete) is done in-place by owners / corp Directors and the corp titles they delegate to, each surface gated by its own `MapCapability`, not here.

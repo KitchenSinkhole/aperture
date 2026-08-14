@@ -170,9 +170,6 @@ export const apertureConfig = {
     { systemId: 30002053, name: 'Hek', proximityJumps: 5 },
   ],
 
-  /** Per-type ceilings for `ap_map.type`. */
-  MAX_MAPS_PER_SCOPE: { private: 3, corp: 1, alliance: 1 },
-
   /** Per-map system ceiling, enforced where `ap_map_system.visible = true`. */
   MAX_SYSTEMS_PER_MAP: 400,
 

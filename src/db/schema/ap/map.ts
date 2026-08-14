@@ -19,7 +19,7 @@ export const apMap = pgTable('ap_map', {
   name: text('name').notNull(),
   deleteExpiredConnections: boolean('delete_expired_connections').notNull().default(true),
   deleteEolConnections: boolean('delete_eol_connections').notNull().default(true),
-  trackAbyssalJumps: boolean('track_abyssal_jumps').notNull().default(true),
+  trackAbyssalJumps: boolean('track_abyssal_jumps').notNull().default(false),
   nextBookmarks: jsonb('next_bookmarks')
     .notNull()
     .default(sql`'[]'::jsonb`),

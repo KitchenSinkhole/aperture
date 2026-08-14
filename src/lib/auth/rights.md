@@ -83,7 +83,7 @@ The single feature gate every delegated call site calls: `canManageMap(...) || h
 The set of capabilities the character can exercise on the map. Managers get every `map_capability` value; everyone else gets the union their held titles grant (one query). Feeds the client capability reveal.
 
 #### mapsWithCapability(characterId, mapIds, capability): Promise<Set<bigint>>
-Batched `canUseMapFeature` for a card-list render — the subset of `mapIds` the character holds `capability` on, in three queries regardless of list size: the actor row, one ownership pass over every map (a literal mirror of `canManageMap`'s ownership switch, left-joined to `ap_alliance` so the executor corp resolves without a per-map round trip), then one grant query over only the maps ownership didn't already cover.
+Batched `canUseMapFeature` for a card-list render — the subset of `mapIds` the character holds `capability` on, in three queries regardless of list size: the actor row, one ownership pass over every map (a literal mirror of `canManageMap`'s ownership switch, left-joined to `ap_alliance` so the executor corp resolves without a per-map round trip), then one grant query over only the maps ownership didn't already cover. Both passes exclude soft-deleted maps, so a title grant can't outlive its map's deletion.
 
 #### requireMapCapability(session, mapId, capability): Promise<RightGuard>
 Tuple-shaped guard for a delegated feature endpoint / action: session (401) → view existence (404, does not leak) → `canUseMapFeature` (403). Same shape as `requireMapManage`, keyed on a specific capability.
