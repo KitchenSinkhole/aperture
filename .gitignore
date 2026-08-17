@@ -30,6 +30,7 @@ dist/
 # without ever publishing it.
 /src/lib/bookmarking/local.ts
 /src/lib/bookmarking/local.md
+/tests/unit/bookmarking-local.test.ts
 
 # Editor / OS
 .idea/
