@@ -79,14 +79,14 @@ describe('referenceScheme — full field coverage', () => {
     alias: 'HereAliasValue',
     tag: 'HereTagValue',
     status: 'friendly',
-    security: 'C4',
+    security: 'HereSecurityValue',
     trueSec: 0.42,
     effect: 'HereEffectValue',
     regionName: 'HereRegionName',
     constellationName: 'HereConstellationName',
     statics: [
-      { label: 'C5', typeId: 11111 },
-      { label: 'HS', typeId: 22222 },
+      { label: 'HereStaticLabelOne', typeId: 11111 },
+      { label: 'HereStaticLabelTwo', typeId: 22222 },
     ],
     tradeHub: { name: 'HereTradeHubName', jumps: 7 },
     // Not-read fields — distinctive too, so a leak would be caught.
@@ -106,12 +106,12 @@ describe('referenceScheme — full field coverage', () => {
     alias: 'CameFromAliasValue',
     tag: 'CameFromTagValue',
     status: 'hostile',
-    security: 'C2',
+    security: 'CameFromSecurityValue',
     trueSec: -0.15,
     effect: 'CameFromEffectValue',
     regionName: 'CameFromRegionName',
     constellationName: 'CameFromConstellationName',
-    statics: [{ label: 'C3', typeId: 33333 }],
+    statics: [{ label: 'CameFromStaticLabelOne', typeId: 33333 }],
     tradeHub: { name: 'CameFromTradeHubName', jumps: 3 },
     positionX: 333,
     positionY: 444,
@@ -191,63 +191,71 @@ describe('referenceScheme — full field coverage', () => {
 
   const combined = `${result!.here}\n${result!.cameFrom}`;
 
-  const expectedValues = [
+  // Every value is asserted as its exact `KEY=value` token (the pattern the
+  // HOPS=/HOME= assertions below use), so a value that happens to collide with
+  // another field's raw text (e.g. a signature's wormholeCode containing a
+  // security label as a substring) still can't produce a false pass — the key
+  // pins which field the value has to come from. `HOPS=`/`HOME=` are covered
+  // by their own dedicated tests below, so they aren't repeated here.
+  const expectedKeyedValues = [
     // here endpoint
-    'HereSystemName',
-    'HereAliasValue',
-    'HereTagValue',
-    'friendly',
-    'C4',
-    '0.42',
-    'HereEffectValue',
-    'HereRegionName',
-    'HereConstellationName',
-    'C5#11111',
-    'HS#22222',
-    'HereTradeHubName',
-    '7j',
+    'NAME=HereSystemName',
+    'ALIAS=HereAliasValue',
+    'TAG=HereTagValue',
+    'STATUS=friendly',
+    'SEC=HereSecurityValue',
+    'TRUESEC=0.42',
+    'EFFECT=HereEffectValue',
+    'REGION=HereRegionName',
+    'CONST=HereConstellationName',
+    'STATICS=HereStaticLabelOne+HereStaticLabelTwo',
+    'HUB=HereTradeHubName@7j',
     // cameFrom endpoint
-    'CameFromSystemName',
-    'CameFromAliasValue',
-    'CameFromTagValue',
-    'hostile',
-    'C2',
-    '-0.15',
-    'CameFromEffectValue',
-    'CameFromRegionName',
-    'CameFromConstellationName',
-    'C3#33333',
-    'CameFromTradeHubName',
-    '3j',
+    'NAME=CameFromSystemName',
+    'ALIAS=CameFromAliasValue',
+    'TAG=CameFromTagValue',
+    'STATUS=hostile',
+    'SEC=CameFromSecurityValue',
+    'TRUESEC=-0.15',
+    'EFFECT=CameFromEffectValue',
+    'REGION=CameFromRegionName',
+    'CONST=CameFromConstellationName',
+    'STATICS=CameFromStaticLabelOne',
+    'HUB=CameFromTradeHubName@3j',
     // connection
-    'jumpbridge',
-    'reduced',
-    'xl',
-    'critical',
-    '2026-08-01T03:00:00.000Z',
-    '2026-08-01T04:00:00.000Z',
+    'SCOPE=jumpbridge',
+    'MASS=reduced',
+    'JUMPCLASS=xl',
+    'EOL=critical',
+    'EOLAT=2026-08-01T03:00:00.000Z',
+    'CREATED=2026-08-01T04:00:00.000Z',
+    'STATIC=true',
+    'ROLLING=true',
+    'PRESERVE=true',
+    'SRCBUBBLE=true',
+    'TGTBUBBLE=true',
     // here signature
-    'HXY-111',
-    'H900',
-    'gas',
-    'anomaly',
-    'eol',
-    'HereSigNameValue',
-    'HereSigDescriptionValue',
-    '2026-08-03T00:00:00.000Z',
+    'SIGID=HXY-111',
+    'WHCODE=H900',
+    'GROUP=gas',
+    'CLASS=anomaly',
+    'SIGEOL=eol',
+    'SIGNAME=HereSigNameValue',
+    'DESC=HereSigDescriptionValue',
+    'EXPIRES=2026-08-03T00:00:00.000Z',
     // cameFrom signature
-    'CFZ-222',
-    'C247',
-    'data',
-    'signature',
-    'expired',
-    'CameFromSigNameValue',
-    'CameFromSigDescriptionValue',
-    '2026-08-04T00:00:00.000Z',
+    'SIGID=CFZ-222',
+    'WHCODE=C247',
+    'GROUP=data',
+    'CLASS=signature',
+    'SIGEOL=expired',
+    'SIGNAME=CameFromSigNameValue',
+    'DESC=CameFromSigDescriptionValue',
+    'EXPIRES=2026-08-04T00:00:00.000Z',
   ];
 
-  it.each(expectedValues)('emits distinctive value %j somewhere in the output', (value) => {
-    expect(combined).toContain(value);
+  it.each(expectedKeyedValues)('emits the keyed token %j somewhere in the output', (token) => {
+    expect(combined).toContain(token);
   });
 
   it('emits hop counts for both endpoints', () => {
@@ -272,6 +280,9 @@ describe('referenceScheme — full field coverage', () => {
       String(cameFromSig.typeId),
       String(here.systemId),
       String(cameFrom.systemId),
+      String(here.statics[0]!.typeId),
+      String(here.statics[1]!.typeId),
+      String(cameFrom.statics[0]!.typeId),
     ]) {
       expect(combined).not.toContain(leaked);
     }

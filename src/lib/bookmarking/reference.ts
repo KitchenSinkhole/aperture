@@ -2,7 +2,7 @@ import type { MapConnectionEdge, MapSignature, MapSystemNode } from '@/types';
 import type { BookmarkInput, BookmarkScheme } from './types';
 
 /** Renders a possibly-null scalar; null becomes `-`. */
-function fmt(value: string | number | boolean | null): string {
+function fmt(value: string | number | null): string {
   return value === null ? '-' : String(value);
 }
 
@@ -13,9 +13,7 @@ function renderEndpoint(
 ): string {
   const hop = hopsFromHome.get(node.id);
   const statics =
-    node.statics.length === 0
-      ? 'none'
-      : node.statics.map((s) => `${s.label}#${s.typeId}`).join('+');
+    node.statics.length === 0 ? 'none' : node.statics.map((s) => s.label).join('+');
   const tradeHub = node.tradeHub === null ? '-' : `${node.tradeHub.name}@${node.tradeHub.jumps}j`;
   return [
     `NAME=${fmt(node.name)}`,
