@@ -1,7 +1,11 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BookmarkModule, resolveBookmarkTransit } from '@/components/sidebar/BookmarkModule';
+import { BookmarkModule } from '@/components/sidebar/BookmarkModule';
+import {
+  BookmarkTransitBridge,
+  useBookmarkTransit,
+} from '@/components/map/BookmarkTransitBridge';
 import type { BookmarkInput, MapConnectionEdge, MapSignature, MapSystemNode } from '@/types';
 
 // Must be declared before the imports that depend on them — Vitest hoists vi.mock calls.
@@ -99,6 +103,31 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/**
+ * Stands in for `MapCanvas`: owns the transit state via `useBookmarkTransit`,
+ * wires the subscription through `BookmarkTransitBridge`, and feeds the panel.
+ * Re-rendering it with new props is exactly what a graph change does in the app.
+ */
+function Harness(props: {
+  systems: MapSystemNode[];
+  connections: MapConnectionEdge[];
+  signatures: MapSignature[];
+  homeMapSystemId: string | null;
+}) {
+  const { transit, onTraversal } = useBookmarkTransit({
+    systems: props.systems,
+    connections: props.connections,
+    homeMapSystemId: props.homeMapSystemId,
+    viewerCharacters,
+  });
+  return (
+    <>
+      <BookmarkTransitBridge onTraversal={onTraversal} />
+      <BookmarkModule transit={transit} signatures={props.signatures} />
+    </>
+  );
+}
+
 function render(props: {
   connections: MapConnectionEdge[];
   signatures?: MapSignature[];
@@ -107,12 +136,11 @@ function render(props: {
 }) {
   act(() => {
     root.render(
-      <BookmarkModule
+      <Harness
         systems={props.systems ?? systems}
         connections={props.connections}
         signatures={props.signatures ?? []}
         homeMapSystemId={props.homeMapSystemId ?? null}
-        viewerCharacters={viewerCharacters}
       />,
     );
   });
@@ -177,13 +205,10 @@ describe('BookmarkModule', () => {
     expect(namesMock).not.toHaveBeenCalled();
   });
 
-  // This test's discriminating power was verified by hand: with the
-  // component's `snapshot` hold removed (re-deriving `here`/`cameFrom`/
-  // `connections`/`hopsFromHome` live every render instead of freezing them),
-  // this test fails — the pair picks up "RENAMED", the halved hop count, and
-  // the grown connection count. See
-  // .superpowers/sdd/bookmarking-engine/stage-4-report.md and
-  // stage-4b-report.md for the falsification runs.
+  // Verified by mutation: with the transit hold bypassed (re-deriving
+  // `here`/`cameFrom`/`connections`/`hopsFromHome` from live props every render
+  // instead of freezing them), this test fails — the pair picks up "RENAMED",
+  // the halved hop count, and the grown connection count.
   it('keeps the displayed pair unchanged after a graph change that would alter a re-derivation', () => {
     const home = system('home', HOME, 'Home');
     const connHomeSrc = connection('conn-home-src', 'home', 'src', 'wh');
@@ -260,6 +285,28 @@ describe('BookmarkModule', () => {
     expect(container.querySelector('button[disabled]')).toBeNull();
   });
 
+  it('hints while either side of the hole is unscanned, and stops once both are bound', () => {
+    const cameFromSig = sig({ id: 'sig-from', mapSystemId: 'src', mapConnectionId: 'conn-wh' });
+    const hereSig = sig({ id: 'sig-here', mapSystemId: 'dst', mapConnectionId: 'conn-wh' });
+
+    // Neither side scanned — the usual state at the instant of transit.
+    render({ connections: [whConnection], signatures: [] });
+    fireJump();
+    expect(container.textContent).toContain('scan it in Aperture');
+    // A hint, not a disabled control: both copy buttons stay live.
+    expect(container.querySelectorAll('button')).toHaveLength(2);
+    expect(container.querySelector('button[disabled]')).toBeNull();
+
+    // One side bound is still incomplete.
+    render({ connections: [whConnection], signatures: [cameFromSig] });
+    expect(container.textContent).toContain('scan it in Aperture');
+
+    // Both sides bound — the hint goes away, the rows stay.
+    render({ connections: [whConnection], signatures: [cameFromSig, hereSig] });
+    expect(container.textContent).not.toContain('scan it in Aperture');
+    expect(container.querySelectorAll('button')).toHaveLength(2);
+  });
+
   it('copies the full untruncated name from each row copy button', async () => {
     render({ connections: [whConnection] });
     fireJump();
@@ -284,30 +331,3 @@ describe('BookmarkModule', () => {
   });
 });
 
-describe('resolveBookmarkTransit', () => {
-  it('resolves the wh connection between the two systems', () => {
-    const result = resolveBookmarkTransit({ fromSystemId: SOURCE, toSystemId: DEST }, systems, [whConnection]);
-    expect(result).toEqual({
-      kind: 'resolved',
-      here: systems[1],
-      cameFrom: systems[0],
-      connection: whConnection,
-    });
-  });
-
-  it('drops a gate jump (a stargate connection between the two systems)', () => {
-    const gate = connection('conn-gate', 'src', 'dst', 'stargate');
-    const result = resolveBookmarkTransit({ fromSystemId: SOURCE, toSystemId: DEST }, systems, [gate]);
-    expect(result).toEqual({ kind: 'drop' });
-  });
-
-  it('is pending when one of the endpoint systems is not yet on the map', () => {
-    const result = resolveBookmarkTransit({ fromSystemId: SOURCE, toSystemId: 999999 }, systems, []);
-    expect(result).toEqual({ kind: 'pending' });
-  });
-
-  it('is pending when both systems are on the map but no connection links them yet', () => {
-    const result = resolveBookmarkTransit({ fromSystemId: SOURCE, toSystemId: DEST }, systems, []);
-    expect(result).toEqual({ kind: 'pending' });
-  });
-});

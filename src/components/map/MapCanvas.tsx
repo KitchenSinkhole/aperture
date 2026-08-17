@@ -132,6 +132,7 @@ import { MapActiveCharProvider, useMapActiveChar } from './MapActiveCharContext'
 import { MapSignatureIndicatorProvider } from './MapSignatureIndicatorContext';
 import { SignaturePasteHotkey } from './SignaturePasteHotkey';
 import { TransitSignaturePrompt } from './TransitSignaturePrompt';
+import { BookmarkTransitBridge, useBookmarkTransit } from './BookmarkTransitBridge';
 import { MapTravelProvider, TravelBridge } from './MapTravelContext';
 import { MapUnderglowProvider } from './MapUnderglowContext';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
@@ -882,6 +883,18 @@ export function MapCanvas({
     setFlashSigId(sigId);
     flashTimer.current = setTimeout(() => setFlashSigId(null), 3000);
   }, []);
+
+  // The wormhole the viewer's own pilots most recently crossed, for the
+  // Bookmarks panel. Owned here (never unmounted) so a transit that happens
+  // while that panel is tabbed away or hidden is still captured; the traversal
+  // subscription itself is wired by `BookmarkTransitBridge` below, which sits
+  // inside `MapPresenceProvider`.
+  const { transit: bookmarkTransit, onTraversal: onBookmarkTraversal } = useBookmarkTransit({
+    systems: viewData.systems,
+    connections: viewData.connections,
+    homeMapSystemId: viewData.map.homeMapSystemId,
+    viewerCharacters,
+  });
 
   useMapSubscription(Number(data.map.id));
 
@@ -2147,13 +2160,7 @@ export function MapCanvas({
         return <TheraModule mapId={mapId} viewData={viewData} onBulkPaste={onBulkPaste} />;
       case 'bookmarks':
         return (
-          <BookmarkModule
-            systems={viewData.systems}
-            connections={viewData.connections}
-            signatures={viewData.signatures}
-            homeMapSystemId={viewData.map.homeMapSystemId}
-            viewerCharacters={viewerCharacters}
-          />
+          <BookmarkModule transit={bookmarkTransit} signatures={viewData.signatures} />
         );
     }
   };
@@ -2187,6 +2194,7 @@ export function MapCanvas({
           <TravelBridge systems={viewData.systems} connections={viewData.connections} />
         )}
         <MapUnderglowBridge systems={viewData.systems} mapId={data.map.id} />
+        <BookmarkTransitBridge onTraversal={onBookmarkTraversal} />
         <SignaturePasteHotkey
           mapId={mapId}
           selectedSystem={selectedSystem}
