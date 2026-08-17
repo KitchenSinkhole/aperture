@@ -6,4 +6,6 @@
 ---
 
 ### effectiveBookmarkScheme: BookmarkScheme
-`localOverride ?? referenceScheme`. `localOverride` comes from the `#bookmark-local` specifier, which resolves to a deployment's untracked `src/lib/bookmarking/local.ts` when that file is present, and to the tracked empty slot (`localNone.ts`) otherwise — so a clone with no override still builds and runs against `referenceScheme`. Consumers (e.g. Stage 4's panel) import only this export, never `reference.ts` or `local.ts` directly.
+`localOverride ?? referenceScheme`. `localOverride` comes from the `#bookmark-local` specifier, which resolves to a deployment's untracked `src/lib/bookmarking/local.ts` when that file is present, and to the tracked empty slot (`localNone.ts`) otherwise — so a clone without an override builds and runs against `referenceScheme`. Consumers (the Bookmarks panel) import only this export, never `reference.ts` or `local.ts` directly.
+
+`tsconfig.json` pins `#bookmark-local` to `localNone.ts` unconditionally, so `tsc` type-checks the empty slot rather than whatever the runtime alias resolves to. An override should annotate its default export as `BookmarkScheme` (`const scheme: BookmarkScheme = { … }`) to get its own file checked against the contract.

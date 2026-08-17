@@ -9,7 +9,7 @@ Reads, per endpoint (`here` and `cameFrom`): `name`, `alias`, `tag`, `status`, `
 
 `connections` itself is not dumped into the output beyond each endpoint's degree — the full list would drown every other field.
 
-Does not read `positionX`, `positionY`, `locked`, `lockedByCharacterId`, `lockedByName`, `rallyAt`, `intelNotes`, or any internal id (`id`/`systemId` on a system; `id`/`mapSystemId`/`mapConnectionId`/`typeId` on a signature) — those ids are used only to match rows to endpoints, never emitted. A signature's `typeId` is excluded in favour of its human-facing `wormholeCode`; a static's `typeId` is excluded the same way — only its `label` is emitted.
+Does not read `positionX`, `positionY`, `locked`, `lockedByCharacterId`, `lockedByName`, `rallyAt`, `intelNotes`, or any internal id (`id`/`systemId` on a system; `id`/`mapSystemId`/`mapConnectionId`/`typeId` on a signature) — those ids are used only to match rows to endpoints, never emitted. A signature's `typeId` is excluded in favour of its human-facing `wormholeCode`; a static's `typeId` is excluded the same way — only its `label` is emitted. A signature's `activityOverride` is excluded because the combat/exploration site-safety axis carries no meaning for a `wormhole`-group sig, and its `createdAt`/`updatedAt` row timestamps are excluded because the transit's timing is already carried by the connection's `createdAt` and the signature's `expiresAt`.
 
 A null `tag`/`alias`/`effect`/`trueSec`/`jumpMassClass`/`eolAt`/`tradeHub`, an empty `statics` array, an endpoint absent from `hopsFromHome`, a null `homeMapSystemId`, and zero, one, or two matched signature rows all render to a value rather than throwing.
 
