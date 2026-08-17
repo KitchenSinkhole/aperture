@@ -65,6 +65,7 @@ type Snapshot = {
   here: MapSystemNode;
   cameFrom: MapSystemNode;
   connection: MapConnectionEdge;
+  connections: MapConnectionEdge[];
   hopsFromHome: ReadonlyMap<string, number>;
   homeMapSystemId: string | null;
 };
@@ -143,6 +144,7 @@ export function BookmarkModule({
         here: resolved.here,
         cameFrom: resolved.cameFrom,
         connection: resolved.connection,
+        connections,
         hopsFromHome: hopsFromHome({ systems, connections, homeId: homeMapSystemId }),
         homeMapSystemId,
       });
@@ -176,6 +178,7 @@ export function BookmarkModule({
         here: resolved.here,
         cameFrom: resolved.cameFrom,
         connection: resolved.connection,
+        connections,
         hopsFromHome: hopsFromHome({ systems, connections, homeId: homeMapSystemId }),
         homeMapSystemId,
       });
@@ -213,6 +216,7 @@ export function BookmarkModule({
         here: snapshot.here,
         cameFrom: snapshot.cameFrom,
         connection: snapshot.connection,
+        connections: snapshot.connections,
         signatures: boundSignatures,
         hopsFromHome: snapshot.hopsFromHome,
         homeMapSystemId: snapshot.homeMapSystemId,

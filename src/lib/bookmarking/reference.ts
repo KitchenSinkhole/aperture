@@ -6,8 +6,13 @@ function fmt(value: string | number | null): string {
   return value === null ? '-' : String(value);
 }
 
+function degreeOf(node: MapSystemNode, connections: MapConnectionEdge[]): number {
+  return connections.filter((c) => c.source === node.id || c.target === node.id).length;
+}
+
 function renderEndpoint(
   node: MapSystemNode,
+  connections: MapConnectionEdge[],
   hopsFromHome: ReadonlyMap<string, number>,
   homeMapSystemId: string | null,
 ): string {
@@ -29,6 +34,7 @@ function renderEndpoint(
     `HUB=${tradeHub}`,
     `HOPS=${hop === undefined ? '-' : hop}`,
     `HOME=${node.id === homeMapSystemId}`,
+    `DEGREE=${degreeOf(node, connections)}`,
   ].join('|');
 }
 
@@ -68,12 +74,13 @@ function buildName(
   selfSig: MapSignature | undefined,
   otherSig: MapSignature | undefined,
   connection: MapConnectionEdge,
+  connections: MapConnectionEdge[],
   hopsFromHome: ReadonlyMap<string, number>,
   homeMapSystemId: string | null,
 ): string {
   return [
-    `HERE[${renderEndpoint(self, hopsFromHome, homeMapSystemId)}]`,
-    `OTHER[${renderEndpoint(other, hopsFromHome, homeMapSystemId)}]`,
+    `HERE[${renderEndpoint(self, connections, hopsFromHome, homeMapSystemId)}]`,
+    `OTHER[${renderEndpoint(other, connections, hopsFromHome, homeMapSystemId)}]`,
     `WH[${renderConnection(connection)}]`,
     `HERESIG[${renderSignature(selfSig)}]`,
     `OTHERSIG[${renderSignature(otherSig)}]`,
@@ -97,6 +104,7 @@ export const referenceScheme: BookmarkScheme = {
         hereSig,
         cameFromSig,
         input.connection,
+        input.connections,
         input.hopsFromHome,
         input.homeMapSystemId,
       ),
@@ -106,6 +114,7 @@ export const referenceScheme: BookmarkScheme = {
         cameFromSig,
         hereSig,
         input.connection,
+        input.connections,
         input.hopsFromHome,
         input.homeMapSystemId,
       ),

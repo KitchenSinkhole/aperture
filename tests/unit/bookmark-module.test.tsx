@@ -179,15 +179,17 @@ describe('BookmarkModule', () => {
 
   // This test's discriminating power was verified by hand: with the
   // component's `snapshot` hold removed (re-deriving `here`/`cameFrom`/
-  // `hopsFromHome` live every render instead of freezing them), this test
-  // fails — the pair picks up "RENAMED" and the halved hop count. See
-  // .superpowers/sdd/bookmarking-engine/stage-4-report.md for the falsification run.
+  // `connections`/`hopsFromHome` live every render instead of freezing them),
+  // this test fails — the pair picks up "RENAMED", the halved hop count, and
+  // the grown connection count. See
+  // .superpowers/sdd/bookmarking-engine/stage-4-report.md and
+  // stage-4b-report.md for the falsification runs.
   it('keeps the displayed pair unchanged after a graph change that would alter a re-derivation', () => {
     const home = system('home', HOME, 'Home');
     const connHomeSrc = connection('conn-home-src', 'home', 'src', 'wh');
     namesMock.mockImplementation((input: BookmarkInput) => ({
-      here: `${input.here.alias ?? input.here.name}::hops=${input.hopsFromHome.get(input.here.id) ?? 'none'}`,
-      cameFrom: `${input.cameFrom.alias ?? input.cameFrom.name}::hops=${input.hopsFromHome.get(input.cameFrom.id) ?? 'none'}`,
+      here: `${input.here.alias ?? input.here.name}::hops=${input.hopsFromHome.get(input.here.id) ?? 'none'}::conns=${input.connections.length}`,
+      cameFrom: `${input.cameFrom.alias ?? input.cameFrom.name}::hops=${input.hopsFromHome.get(input.cameFrom.id) ?? 'none'}::conns=${input.connections.length}`,
     }));
 
     render({
@@ -197,12 +199,12 @@ describe('BookmarkModule', () => {
     });
     fireJump();
     const before = container.textContent;
-    expect(before).toContain('J222222::hops=2'); // here, via home->src->dst
-    expect(before).toContain('J111111::hops=1'); // cameFrom, via home->src
+    expect(before).toContain('J222222::hops=2::conns=2'); // here, via home->src->dst
+    expect(before).toContain('J111111::hops=1::conns=2'); // cameFrom, via home->src
 
     // Rename the "here" system and add a home->dst shortcut that would halve
-    // its hop count — both would show up immediately if the pair were
-    // re-derived from live props instead of held.
+    // its hop count and grow the connection count — both would show up
+    // immediately if the pair were re-derived from live props instead of held.
     const dstRenamed = system('dst', DEST, 'RENAMED');
     const shortcut = connection('conn-shortcut', 'home', 'dst', 'wh');
     render({
@@ -213,6 +215,7 @@ describe('BookmarkModule', () => {
 
     expect(container.textContent).toBe(before);
     expect(container.textContent).not.toContain('RENAMED');
+    expect(container.textContent).not.toContain('conns=3');
   });
 
   it("refreshes the pair when a signature bound to this hole's connection changes", () => {

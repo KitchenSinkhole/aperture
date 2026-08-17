@@ -174,10 +174,16 @@ describe('referenceScheme — full field coverage', () => {
     [cameFrom.id, 6],
   ]);
 
+  // Extra connections incident only to `here`, giving the two endpoints
+  // different incident-connection counts (`here`: 3, `cameFrom`: 2).
+  const hereExtraConn1 = makeConnection({ id: 'conn-extra-here-1', source: here.id, target: 'elsewhere-1' });
+  const hereExtraConn2 = makeConnection({ id: 'conn-extra-here-2', source: 'elsewhere-2', target: here.id });
+
   const input: BookmarkInput = {
     here,
     cameFrom,
     connection,
+    connections: [connection, hereExtraConn1, hereExtraConn2],
     signatures: [hereSig, cameFromSig],
     hopsFromHome,
     homeMapSystemId: here.id,
@@ -192,11 +198,12 @@ describe('referenceScheme — full field coverage', () => {
   const combined = `${result!.here}\n${result!.cameFrom}`;
 
   // Every value is asserted as its exact `KEY=value` token (the pattern the
-  // HOPS=/HOME= assertions below use), so a value that happens to collide with
-  // another field's raw text (e.g. a signature's wormholeCode containing a
-  // security label as a substring) still can't produce a false pass — the key
-  // pins which field the value has to come from. `HOPS=`/`HOME=` are covered
-  // by their own dedicated tests below, so they aren't repeated here.
+  // HOPS=/HOME=/DEGREE= assertions below use), so a value that happens to
+  // collide with another field's raw text (e.g. a signature's wormholeCode
+  // containing a security label as a substring) still can't produce a false
+  // pass — the key pins which field the value has to come from.
+  // `HOPS=`/`HOME=`/`DEGREE=` are covered by their own dedicated tests below,
+  // so they aren't repeated here.
   const expectedKeyedValues = [
     // here endpoint
     'NAME=HereSystemName',
@@ -263,6 +270,11 @@ describe('referenceScheme — full field coverage', () => {
     expect(combined).toContain('HOPS=6');
   });
 
+  it('emits distinct incident-connection counts for both endpoints', () => {
+    expect(combined).toContain('DEGREE=3'); // here: connection + 2 extras
+    expect(combined).toContain('DEGREE=1'); // cameFrom: connection only
+  });
+
   it('marks the Home endpoint true and the other false', () => {
     expect(result!.here).toContain('HOME=true');
     // cameFrom is not Home in this fixture — assert false appears at least once.
@@ -312,6 +324,7 @@ describe('referenceScheme — sparse cases do not throw', () => {
       here: baseHere,
       cameFrom: baseCameFrom,
       connection: baseConnection,
+      connections: [baseConnection],
       signatures: [],
       hopsFromHome: new Map(),
       homeMapSystemId: null,
@@ -322,10 +335,12 @@ describe('referenceScheme — sparse cases do not throw', () => {
   });
 
   it('handles a null jumpMassClass and null eolAt on the connection', () => {
+    const conn = makeConnection({ jumpMassClass: null, eolAt: null });
     const input: BookmarkInput = {
       here: baseHere,
       cameFrom: baseCameFrom,
-      connection: makeConnection({ jumpMassClass: null, eolAt: null }),
+      connection: conn,
+      connections: [conn],
       signatures: [],
       hopsFromHome: new Map(),
       homeMapSystemId: null,
@@ -335,10 +350,12 @@ describe('referenceScheme — sparse cases do not throw', () => {
 
   it('handles a null tradeHub and an empty statics array', () => {
     const noHub = makeSystem({ id: 'no-hub', tradeHub: null, statics: [] });
+    const conn = makeConnection({ source: 'no-hub', target: 'sparse-camefrom' });
     const input: BookmarkInput = {
       here: noHub,
       cameFrom: baseCameFrom,
-      connection: makeConnection({ source: 'no-hub', target: 'sparse-camefrom' }),
+      connection: conn,
+      connections: [conn],
       signatures: [],
       hopsFromHome: new Map(),
       homeMapSystemId: null,
@@ -353,6 +370,7 @@ describe('referenceScheme — sparse cases do not throw', () => {
       here: baseHere,
       cameFrom: baseCameFrom,
       connection: baseConnection,
+      connections: [baseConnection],
       signatures: [],
       hopsFromHome: new Map(), // neither endpoint present
       homeMapSystemId: null,
@@ -367,6 +385,7 @@ describe('referenceScheme — sparse cases do not throw', () => {
       here: baseHere,
       cameFrom: baseCameFrom,
       connection: baseConnection,
+      connections: [baseConnection],
       signatures: [],
       hopsFromHome: new Map(),
       homeMapSystemId: null,
@@ -381,6 +400,7 @@ describe('referenceScheme — sparse cases do not throw', () => {
       here: baseHere,
       cameFrom: baseCameFrom,
       connection: baseConnection,
+      connections: [baseConnection],
       signatures: [],
       hopsFromHome: new Map(),
       homeMapSystemId: null,
@@ -396,6 +416,7 @@ describe('referenceScheme — sparse cases do not throw', () => {
       here: baseHere,
       cameFrom: baseCameFrom,
       connection: baseConnection,
+      connections: [baseConnection],
       signatures: [sig],
       hopsFromHome: new Map(),
       homeMapSystemId: null,
@@ -412,6 +433,7 @@ describe('referenceScheme — sparse cases do not throw', () => {
       here: baseHere,
       cameFrom: baseCameFrom,
       connection: baseConnection,
+      connections: [baseConnection],
       signatures: [hereSig, cameFromSig],
       hopsFromHome: new Map(),
       homeMapSystemId: null,

@@ -7,6 +7,13 @@ export interface BookmarkInput {
   /** The wormhole traversed. */
   connection: MapConnectionEdge;
   /**
+   * Every connection on the map, so a scheme can answer questions about the
+   * chain beyond the hole being crossed — whether some *other* system is the
+   * far end of a static touching Home, how many holes hang off an endpoint.
+   * Includes `connection` itself.
+   */
+  connections: MapConnectionEdge[];
+  /**
    * Signatures whose `mapConnectionId` is this connection — up to one per side,
    * in any order. Select by `mapSystemId`.
    */
