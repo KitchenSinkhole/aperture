@@ -34,6 +34,18 @@ Returns every system in `args.systems` with no path back to `args.homeId` over t
 
 ---
 
+### hopsFromHome(args): Map<string, number>
+BFS hop distance from `args.homeId` to every reachable system, over the undirected graph built from `args.systems` + `args.connections`.
+
+**Parameters:**
+- `args.systems` — visible systems (`{ id }`, `ap_map_system.id` as a string). Defines the node set.
+- `args.connections` — edges (`{ source, target }`); treated as undirected, scope-agnostic.
+- `args.homeId` — the Home system; the BFS root. `null` when no Home is set.
+
+**Returns:** Map of `ap_map_system.id` to hop count, with the Home itself at `0`. A system with no path back to Home is absent from the map. Empty when `homeId` is `null` or isn't in `systems`.
+
+---
+
 ### neighborsOf(connections, systemId): string[]
 Direct neighbours of `systemId`, deduplicated and order-stable by first appearance in `connections`. Powers the no-Home fallback submenu (pick which neighbour to keep).
 

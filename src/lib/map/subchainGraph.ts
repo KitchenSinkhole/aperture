@@ -123,6 +123,41 @@ export function computeDisconnected(args: {
 }
 
 /**
+ * BFS hop distance from `homeId` to every reachable system, over the same
+ * undirected, scope-agnostic graph as `computeDisconnected`.
+ *
+ * Returns an empty map when `homeId` is `null` or isn't in `args.systems`. A
+ * system with no path back to Home is absent from the map — never inserted
+ * with a sentinel value.
+ */
+export function hopsFromHome(args: {
+  systems: readonly SystemRef[];
+  connections: readonly ConnectionRef[];
+  homeId: string | null;
+}): Map<string, number> {
+  const { systems, connections, homeId } = args;
+  const out = new Map<string, number>();
+  if (homeId === null) return out;
+
+  const adjacency = buildAdjacency(systems, connections);
+  if (!adjacency.has(homeId)) return out;
+
+  out.set(homeId, 0);
+  const queue: string[] = [homeId];
+  let head = 0;
+  while (head < queue.length) {
+    const cur = queue[head++]!;
+    const dist = out.get(cur)!;
+    for (const nb of adjacency.get(cur) ?? []) {
+      if (out.has(nb)) continue;
+      out.set(nb, dist + 1);
+      queue.push(nb);
+    }
+  }
+  return out;
+}
+
+/**
  * Direct neighbours of `systemId` over the undirected graph. Powers the
  * no-Home fallback submenu, where the user picks which neighbour to keep.
  * Deduplicated and order-stable by first appearance in `connections`.

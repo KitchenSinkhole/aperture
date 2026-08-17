@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeDisconnected, computeSubchain, neighborsOf } from '@/lib/map/subchainGraph';
+import { computeDisconnected, computeSubchain, hopsFromHome, neighborsOf } from '@/lib/map/subchainGraph';
 
 /** Helper: build the system + connection refs from a compact edge list. */
 function graph(edges: Array<[string, string]>) {
@@ -153,6 +153,63 @@ describe('computeDisconnected', () => {
       ['X', 'Y'],
     ]);
     expect(computeDisconnected({ ...g, homeId: 'Home' }).has('Home')).toBe(false);
+  });
+});
+
+describe('hopsFromHome', () => {
+  it('maps Home itself to 0', () => {
+    const g = graph([['Home', 'R']]);
+    expect(hopsFromHome({ ...g, homeId: 'Home' }).get('Home')).toBe(0);
+  });
+
+  it('increases distance along a linear chain', () => {
+    const g = graph([
+      ['Home', 'R'],
+      ['R', 'N'],
+      ['N', 'A'],
+    ]);
+    const out = hopsFromHome({ ...g, homeId: 'Home' });
+    expect(out.get('Home')).toBe(0);
+    expect(out.get('R')).toBe(1);
+    expect(out.get('N')).toBe(2);
+    expect(out.get('A')).toBe(3);
+  });
+
+  it('ties two systems at the same distance around a loop', () => {
+    // Home — A — X and Home — B — X: both A and B are 1 hop, X is 2 hops
+    // via either branch.
+    const g = graph([
+      ['Home', 'A'],
+      ['Home', 'B'],
+      ['A', 'X'],
+      ['B', 'X'],
+    ]);
+    const out = hopsFromHome({ ...g, homeId: 'Home' });
+    expect(out.get('A')).toBe(1);
+    expect(out.get('B')).toBe(1);
+    expect(out.get('X')).toBe(2);
+  });
+
+  it('omits a system unreachable from Home', () => {
+    const g = graph([
+      ['Home', 'R'],
+      ['X', 'Y'],
+    ]);
+    const out = hopsFromHome({ ...g, homeId: 'Home' });
+    expect(out.has('X')).toBe(false);
+    expect(out.has('Y')).toBe(false);
+  });
+
+  it('returns an empty map when homeId is null', () => {
+    const g = graph([['Home', 'R']]);
+    const out = hopsFromHome({ ...g, homeId: null });
+    expect(out.size).toBe(0);
+  });
+
+  it('returns an empty map when homeId is not among systems', () => {
+    const g = graph([['R', 'N']]);
+    const out = hopsFromHome({ ...g, homeId: 'Home' });
+    expect(out.size).toBe(0);
   });
 });
 
