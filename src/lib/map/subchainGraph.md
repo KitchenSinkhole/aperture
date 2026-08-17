@@ -1,6 +1,6 @@
 ## subchainGraph.ts
 
-**Purpose:** Pure, client+server-shared graph traversal that resolves which systems make up a "subchain" hanging off a head system, used by the delete-subchain feature.
+**Purpose:** Pure, client+server-shared graph traversal over a map's systems and connections — the subchain hanging off a head system, the set cut off from Home, hop distance from Home, and a system's direct neighbours.
 **File:** `src/lib/map/subchainGraph.ts`
 
 No `server-only` import: the client uses it to preview/highlight the doomed set; the server re-runs it authoritatively before deleting.

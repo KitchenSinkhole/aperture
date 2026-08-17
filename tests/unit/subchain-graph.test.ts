@@ -190,6 +190,23 @@ describe('hopsFromHome', () => {
     expect(out.get('X')).toBe(2);
   });
 
+  it('takes the shorter of two unequal routes to the same system', () => {
+    // Home — A — B (2 hops) and Home — C — D — B (3 hops). B must come out at
+    // 2: a frontier expanded in insertion order reaches it through A first.
+    const g = graph([
+      ['Home', 'A'],
+      ['A', 'B'],
+      ['Home', 'C'],
+      ['C', 'D'],
+      ['D', 'B'],
+    ]);
+    const out = hopsFromHome({ ...g, homeId: 'Home' });
+    expect(out.get('A')).toBe(1);
+    expect(out.get('C')).toBe(1);
+    expect(out.get('D')).toBe(2);
+    expect(out.get('B')).toBe(2);
+  });
+
   it('omits a system unreachable from Home', () => {
     const g = graph([
       ['Home', 'R'],

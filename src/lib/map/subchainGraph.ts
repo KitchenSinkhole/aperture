@@ -1,7 +1,9 @@
 /**
- * Pure graph traversal for the "delete subchain" feature. No `server-only`
- * import — the same code runs on the client (to preview/highlight the doomed
- * set) and on the server (to recompute it authoritatively before deleting).
+ * Pure graph traversal over a map's systems and connections: the subchain
+ * hanging off a system, the set cut off from Home, hop distance from Home, and
+ * a system's direct neighbours. No `server-only` import — the same code runs on
+ * the client (to preview/highlight a doomed set, to answer distance questions
+ * for the UI) and on the server (to recompute a deletion authoritatively).
  *
  * A subchain is defined by a `head` (the system being deleted, plus its branch)
  * and an `anchor` (the keep-side root — the map's Home when one is set, else a
