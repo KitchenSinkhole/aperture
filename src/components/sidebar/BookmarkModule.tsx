@@ -49,7 +49,16 @@ export function resolveBookmarkTransit(
   return { kind: 'resolved', here: dest, cameFrom: source, connection: wh };
 }
 
-type PendingJump = { characterId: number; fromSystemId: number; toSystemId: number };
+type PendingJump = {
+  characterId: number;
+  fromSystemId: number;
+  toSystemId: number;
+  /** ms epoch the jump was observed; the entry is forgotten after `BUFFER_TTL_MS`. */
+  at: number;
+};
+
+/** How long a buffered jump waits for its `connection.create` before it's forgotten. */
+const BUFFER_TTL_MS = 3000;
 
 /** The transit a displayed pair is frozen against — everything but the live-refreshed bound signatures. */
 type Snapshot = {
@@ -141,7 +150,12 @@ export function BookmarkModule({
       return;
     }
     // A fresh own-pilot jump supersedes any earlier still-buffered one.
-    setPending({ characterId: t.characterId, fromSystemId: t.fromSystemId, toSystemId: t.toSystemId });
+    setPending({
+      characterId: t.characterId,
+      fromSystemId: t.fromSystemId,
+      toSystemId: t.toSystemId,
+      at: Date.now(),
+    });
   });
 
   // Retries a buffered jump against the live render props — the traversal
@@ -170,6 +184,22 @@ export function BookmarkModule({
       setPending(null);
     }
   }
+
+  // Forgets a jump whose fold never arrives within `BUFFER_TTL_MS` — bounds
+  // the wait so a very late `connection.create` can't surface names for a
+  // long-past transit. A jump that resolves (or drops) before the timer
+  // fires has already cleared `pending` via the render-time check above, so
+  // this timer only ever fires for one that's still genuinely stuck.
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(
+      () => {
+        setPending((prev) => (prev === pending ? null : prev));
+      },
+      Math.max(0, pending.at + BUFFER_TTL_MS - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [pending]);
 
   // Recomputed from the frozen snapshot on every render; unaffected by any
   // graph change except a signature bound to this hole's connection, since

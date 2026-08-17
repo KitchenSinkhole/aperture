@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BookmarkModule } from '@/components/sidebar/BookmarkModule';
+import { BookmarkModule, resolveBookmarkTransit } from '@/components/sidebar/BookmarkModule';
 import type { BookmarkInput, MapConnectionEdge, MapSignature, MapSystemNode } from '@/types';
 
 // Must be declared before the imports that depend on them — Vitest hoists vi.mock calls.
@@ -27,6 +27,7 @@ vi.mock('@/lib/bookmarking/scheme', () => ({
   effectiveBookmarkScheme: { names: (input: unknown) => namesMock(input) },
 }));
 
+const HOME = 1;
 const SOURCE = 100;
 const DEST = 200;
 
@@ -95,6 +96,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  vi.useRealTimers();
 });
 
 function render(props: {
@@ -160,16 +162,57 @@ describe('BookmarkModule', () => {
     expect(namesMock).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the displayed pair unchanged after an unrelated graph change', () => {
+  it('forgets a buffered jump that never folds within the 3s buffer', () => {
+    vi.useFakeTimers();
+    render({ connections: [] });
+    fireJump();
+    expect(container.textContent).toContain('Jump through a wormhole');
+
+    // The buffer TTL elapses with no fold — the jump is forgotten.
+    act(() => vi.advanceTimersByTime(3100));
+
+    // Even though the connection now lands, the forgotten jump never resolves.
     render({ connections: [whConnection] });
+    expect(container.textContent).toContain('Jump through a wormhole');
+    expect(namesMock).not.toHaveBeenCalled();
+  });
+
+  // This test's discriminating power was verified by hand: with the
+  // component's `snapshot` hold removed (re-deriving `here`/`cameFrom`/
+  // `hopsFromHome` live every render instead of freezing them), this test
+  // fails — the pair picks up "RENAMED" and the halved hop count. See
+  // .superpowers/sdd/bookmarking-engine/stage-4-report.md for the falsification run.
+  it('keeps the displayed pair unchanged after a graph change that would alter a re-derivation', () => {
+    const home = system('home', HOME, 'Home');
+    const connHomeSrc = connection('conn-home-src', 'home', 'src', 'wh');
+    namesMock.mockImplementation((input: BookmarkInput) => ({
+      here: `${input.here.alias ?? input.here.name}::hops=${input.hopsFromHome.get(input.here.id) ?? 'none'}`,
+      cameFrom: `${input.cameFrom.alias ?? input.cameFrom.name}::hops=${input.hopsFromHome.get(input.cameFrom.id) ?? 'none'}`,
+    }));
+
+    render({
+      connections: [connHomeSrc, whConnection],
+      systems: [home, ...systems],
+      homeMapSystemId: 'home',
+    });
     fireJump();
     const before = container.textContent;
+    expect(before).toContain('J222222::hops=2'); // here, via home->src->dst
+    expect(before).toContain('J111111::hops=1'); // cameFrom, via home->src
 
-    const extraSystem = system('extra', 300, 'J333333');
-    const unrelatedConn = connection('conn-unrelated', 'dst', 'extra', 'wh');
-    render({ connections: [whConnection, unrelatedConn], systems: [...systems, extraSystem] });
+    // Rename the "here" system and add a home->dst shortcut that would halve
+    // its hop count — both would show up immediately if the pair were
+    // re-derived from live props instead of held.
+    const dstRenamed = system('dst', DEST, 'RENAMED');
+    const shortcut = connection('conn-shortcut', 'home', 'dst', 'wh');
+    render({
+      connections: [connHomeSrc, whConnection, shortcut],
+      systems: [home, systems[0]!, dstRenamed],
+      homeMapSystemId: 'home',
+    });
 
     expect(container.textContent).toBe(before);
+    expect(container.textContent).not.toContain('RENAMED');
   });
 
   it("refreshes the pair when a signature bound to this hole's connection changes", () => {
@@ -183,6 +226,25 @@ describe('BookmarkModule', () => {
 
     expect(container.textContent).not.toBe(before);
     expect(container.textContent).toContain('sigs=1');
+  });
+
+  it('leaves the pair unchanged when a signature is bound to a different connection', () => {
+    render({ connections: [whConnection], signatures: [] });
+    fireJump();
+    const before = container.textContent;
+    expect(before).toContain('sigs=0');
+
+    const extraSystem = system('extra', 300, 'J333333');
+    const otherConn = connection('conn-other', 'dst', 'extra', 'wh');
+    const unrelatedSig = sig({ id: 'sig-2', mapSystemId: 'dst', mapConnectionId: 'conn-other' });
+    render({
+      connections: [whConnection, otherConn],
+      systems: [...systems, extraSystem],
+      signatures: [unrelatedSig],
+    });
+
+    expect(container.textContent).toBe(before);
+    expect(container.textContent).toContain('sigs=0');
   });
 
   it('shows a hint, not a disabled control, when the scheme returns null', () => {
@@ -216,5 +278,33 @@ describe('BookmarkModule', () => {
     // Full string also carried in the row's title (display clips via CSS, not the string itself).
     const titled = Array.from(container.querySelectorAll('[title]'));
     expect(titled.map((el) => el.getAttribute('title'))).toEqual([hereCopied, cameFromCopied]);
+  });
+});
+
+describe('resolveBookmarkTransit', () => {
+  it('resolves the wh connection between the two systems', () => {
+    const result = resolveBookmarkTransit({ fromSystemId: SOURCE, toSystemId: DEST }, systems, [whConnection]);
+    expect(result).toEqual({
+      kind: 'resolved',
+      here: systems[1],
+      cameFrom: systems[0],
+      connection: whConnection,
+    });
+  });
+
+  it('drops a gate jump (a stargate connection between the two systems)', () => {
+    const gate = connection('conn-gate', 'src', 'dst', 'stargate');
+    const result = resolveBookmarkTransit({ fromSystemId: SOURCE, toSystemId: DEST }, systems, [gate]);
+    expect(result).toEqual({ kind: 'drop' });
+  });
+
+  it('is pending when one of the endpoint systems is not yet on the map', () => {
+    const result = resolveBookmarkTransit({ fromSystemId: SOURCE, toSystemId: 999999 }, systems, []);
+    expect(result).toEqual({ kind: 'pending' });
+  });
+
+  it('is pending when both systems are on the map but no connection links them yet', () => {
+    const result = resolveBookmarkTransit({ fromSystemId: SOURCE, toSystemId: DEST }, systems, []);
+    expect(result).toEqual({ kind: 'pending' });
   });
 });
