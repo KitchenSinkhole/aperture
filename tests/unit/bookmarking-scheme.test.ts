@@ -12,4 +12,8 @@ describe('effectiveBookmarkScheme', () => {
       expect(effectiveBookmarkScheme).toBe(referenceScheme);
     },
   );
+
+  it.runIf(localOverride !== null)('resolves to the local override when present', () => {
+    expect(effectiveBookmarkScheme).toBe(localOverride);
+  });
 });
