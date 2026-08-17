@@ -712,7 +712,8 @@ export type PanelId =
   | 'systemGraph'
   | 'systemKillboard'
   | 'tags'
-  | 'thera';
+  | 'thera'
+  | 'bookmarks';
 
 /** Responsive breakpoint keys. Each holds an independent arrangement. */
 export type Breakpoint = 'lg' | 'md' | 'sm';

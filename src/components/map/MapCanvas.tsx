@@ -89,6 +89,7 @@ import { RoutePlannerModule } from '@/components/sidebar/RoutePlannerModule';
 import { KillStatsModule } from '@/components/sidebar/KillStatsModule';
 import { SystemGraphModule } from '@/components/sidebar/SystemGraphModule';
 import { SystemKillboardModule } from '@/components/sidebar/SystemKillboardModule';
+import { BookmarkModule } from '@/components/sidebar/BookmarkModule';
 import { TagsModule } from '@/components/sidebar/TagsModule';
 import { TheraModule } from '@/components/sidebar/TheraModule';
 import { IntelModule } from '@/components/sidebar/IntelModule';
@@ -2144,6 +2145,16 @@ export function MapCanvas({
         return <TagsModule viewData={viewData} selectedSystemId={selectedSystem?.id ?? null} />;
       case 'thera':
         return <TheraModule mapId={mapId} viewData={viewData} onBulkPaste={onBulkPaste} />;
+      case 'bookmarks':
+        return (
+          <BookmarkModule
+            systems={viewData.systems}
+            connections={viewData.connections}
+            signatures={viewData.signatures}
+            homeMapSystemId={viewData.map.homeMapSystemId}
+            viewerCharacters={viewerCharacters}
+          />
+        );
     }
   };
 
