@@ -877,6 +877,13 @@ export function MapCanvas({
       if (envelope.task !== 'mapUpdate') return;
       const loadResult = mapUpdateLoadSchema.safeParse(envelope.load);
       if (!loadResult.success || !loadResult.data.data) return;
+      // Belt-and-suspenders: the SharedWorker already routes map-scoped
+      // envelopes only to subscribed ports, but a foreign mapId reaching this
+      // handler (a worker routing regression) must not corrupt this canvas.
+      // Checked against the load's mapId, which the schema makes mandatory —
+      // the envelope-level tag is optional, so a producer that stopped setting
+      // it would leave a guard on it passing everything.
+      if (loadResult.data.mapId !== Number(data.map.id)) return;
       const payload = loadResult.data.data;
       if (appliedEventIds.current.has(payload.eventId)) return;
       appliedEventIds.current.add(payload.eventId);
@@ -896,7 +903,7 @@ export function MapCanvas({
       } else if (payload.kind === 'share.revoked') {
         setLiveShares((prev) => prev.filter((s) => s.id !== payload.shareId));
       }
-    }, [hydrateAddedSystems]),
+    }, [hydrateAddedSystems, data.map.id]),
   );
 
   // ---- On-error resync failsafe ------------------------------------------
@@ -2137,7 +2144,7 @@ export function MapCanvas({
   };
 
   return (
-    <MapPresenceProvider initial={data.presence}>
+    <MapPresenceProvider initial={data.presence} mapId={data.map.id}>
       <MapActiveCharProvider viewerCharacters={viewerCharacters} mainCharacterId={mainCharacterId}>
       <MapTravelProvider>
         <MapUnderglowProvider>
@@ -2148,7 +2155,7 @@ export function MapCanvas({
         {travelAnimation && (
           <TravelBridge systems={viewData.systems} connections={viewData.connections} />
         )}
-        <MapUnderglowBridge systems={viewData.systems} />
+        <MapUnderglowBridge systems={viewData.systems} mapId={data.map.id} />
         <SignaturePasteHotkey
           mapId={mapId}
           selectedSystem={selectedSystem}

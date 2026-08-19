@@ -24,6 +24,8 @@ Intel charted in Aperture (scanned signatures, connection chains, pilot presence
 - **P1 (Stages 3 to 9):** the deployment-global intel tables (`ap_structure`, `ap_system_note`) have no owner at all. Every authenticated user can read every row and destroy any row by enumerable id. Also a true authorization leak, and the larger blast radius of the two, but it needs a schema change rather than a guard.
 - **P2 (Stages 10 to 12):** cross-tab realtime bleed inside one authorized browser. Display/local-state corruption only; server authorization is not bypassed and a reload clears it.
 
+**Execution state:** P0 and P2 shipped together ahead of P1, since neither depends on the intel-table schema change and P2 was the reported bug. P1 (Stages 3 to 9) is the whole remaining block; the per-stage `Status` lines are authoritative.
+
 **Precondition:** the P1 stages assume PR #242 (global system notes) is merged to `dev` first. It creates `ap_system_note` / `ap_system_note_event` and migration `0068`. If it lands after this plan starts, the P1 block must be re-scoped to structures only (Stages 3 to 5, 8, 9) and the note stages (6 to 7) re-planned.
 
 ---
@@ -38,15 +40,17 @@ The read side already defends this. `GET /api/map/[mapId]/systems/[systemId]/sig
 - `createConnection` (`connections.ts`) inserts `sourceMapSystemId` / `targetMapSystemId` unchecked. Lower blast radius (the new row is stamped with the caller's own `map_id`, so it does not render on the victim's map), but it pollutes the caller's map with cross-map references and acts as a global id existence oracle.
 - `pasteSignatures` (`bulkSignatures.ts`) reaches `createSignature` for its add branch, so it inherits the injection; its update/delete branches route through the guarded helpers and already abort on a foreign child.
 
-The fix is one shared check reused by the create paths: **does this child belong to the authorized map**, not "is this person allowed on this map" (that already runs).
+Two update paths carry the same shape of hole. `updateSignature` joins through `apMapSystem.mapId` to guard the sig's own row, but applies a body-supplied `mapConnectionId` unchecked — so an authorized editor on map A can link one of its sigs to a connection on map B, leaking B's far endpoint back through the `signature.update` payload's `leadsToMapSystemId` and exposing the sig to that connection's `ON DELETE CASCADE`. `pasteSignatures` reads the target system's signatures before any tenancy check, relying on a downstream helper to throw; with `updateExisting` off, an incoming code already present on a foreign system short-circuits the loop so no helper runs and the call returns `ok`, making the ok/reject split an existence oracle for signature codes on any system of any map.
+
+The fix is one shared check reused by every path that takes a child id from the request body: **does this child belong to the authorized map**, not "is this person allowed on this map" (that already runs).
 
 ---
 
-## Stage 1 — Tenancy-binding assertion on the create paths
+## Stage 1 — Tenancy-binding assertion on the write paths
 
 **Mode:** Execute
-**Status:** todo
-**Goal:** A create mutation can only attach a child to systems/connections that live on the same map the caller is authorized on. Naming a foreign `ap_map_system.id` / `ap_map_connection.id` is rejected and rolls the transaction back.
+**Status:** done — 0e5b9195, 7b641b60
+**Goal:** A create or update mutation can only attach a child to systems/connections that live on the same map the caller is authorized on. Naming a foreign `ap_map_system.id` / `ap_map_connection.id` is rejected and rolls the transaction back.
 **References:** `src/lib/map/mutations/core.md`, `signatures.md`, `connections.md`, `bulkSignatures.md`
 **Touches:** new `src/lib/map/mutations/tenancy.ts` (+ `.md`); `src/lib/map/mutations/signatures.ts` (+ `.md`); `src/lib/map/mutations/connections.ts` (+ `.md`).
 
@@ -57,13 +61,14 @@ The fix is one shared check reused by the create paths: **does this child belong
   - Import `Tx` from `./core`.
 - `createSignature.mutate`: before the insert, `await assertSystemOnMap(tx, input.mapSystemId, input.mapId)`; when `input.mapConnectionId != null`, also `await assertConnectionOnMap(tx, input.mapConnectionId, input.mapId)`.
 - `createConnection.mutate`: before the insert, `await assertSystemOnMap(tx, input.sourceMapSystemId, input.mapId)` and the same for `input.targetMapSystemId`. Asserting both against `input.mapId` also guarantees the edge cannot span two maps, so no separate equality check is needed. This also closes the `createConnection` existence oracle.
-- Bulk paste inherits the fix through `createSignature`; no change to `bulkSignatures.ts`.
+- `updateSignature.mutate`: when the patch supplies a non-null `mapConnectionId`, `await assertConnectionOnMap(tx, patch.mapConnectionId, input.mapId)`. The existing join through `apMapSystem.mapId` guards the sig's own row but not the connection the patch points at, and a foreign edge leaks its far endpoint back through the `signature.update` payload's `leadsToMapSystemId` while exposing the sig to that connection's `ON DELETE CASCADE`.
+- `pasteSignatures`: `await assertSystemOnMap(tx, input.mapSystemId, input.mapId)` as the first statement in the transaction, before the existing-signature read. Relying on a downstream helper to throw is not sufficient — with `updateExisting` off, an incoming code already present on a foreign system short-circuits the loop so no helper runs and the call returns `ok`, making the ok/reject split an existence oracle for signature codes on any system of any map.
 - Error handling is already in place: a throw inside `mutate` rolls back the standalone transaction and surfaces as `{ ok: false, error }`, which the routes map to HTTP 400. In joined-tx callers the throw aborts the outer batch, which is the desired atomic behaviour.
 - `addSystemWithStargateLinks` calls `createConnection` with neighbour ids it selected `WHERE map_id = input.mapId`, so the new asserts are satisfied (redundant but harmless).
-- Companion updates: state the create-path invariant in present tense (e.g. `signatures.md` header note becomes "ownership is validated in create/update/delete"); document the two new `tenancy.ts` exports.
+- Companion updates: state the tenancy invariant in present tense (e.g. `signatures.md` header note becomes "ownership is validated in create/update/delete"); document the two new `tenancy.ts` exports.
 
 **Done when:**
-- Both asserts run inside `createSignature.mutate` / `createConnection.mutate` before their inserts (the behavioural gate — cross-tenant creates rejected, same-map creates unchanged — is Stage 2's test suite).
+- Both asserts run inside `createSignature.mutate` / `createConnection.mutate` before their inserts (the behavioural gate — cross-tenant writes rejected, same-map writes unchanged — is Stage 2's test suite).
 - `pnpm lint && pnpm typecheck && pnpm build` green.
 
 ---
@@ -71,14 +76,14 @@ The fix is one shared check reused by the create paths: **does this child belong
 ## Stage 2 — Cross-tenant write regression tests
 
 **Mode:** Execute
-**Status:** todo
-**Goal:** Lock the Stage 1 invariant so a future create path cannot silently reintroduce the gap.
+**Status:** done — 4808d4c6, 7b641b60
+**Goal:** Lock the Stage 1 invariant so a future write path cannot silently reintroduce the gap.
 **References:** `src/lib/map/mutations/tenancy.md` (written by Stage 1), `tests/unit/route-rights-coverage.test.ts`
 **Touches:** new spec under `tests/integration/` (+ a note in `tests/unit/route-rights-coverage.test.ts` pointing at it).
 
 **Spec:**
 - Add a DB-backed integration test (guarded by `RUN_DB_TESTS`, snapshot/restore around any shared-state rows per the suite convention) that, for each create path (`createSignature`, `createConnection`, and the bulk-add branch of `pasteSignatures`), builds two maps and asserts a create naming the other map's child is rejected and writes nothing, while a same-map create succeeds.
-- Also cover the same-map success paths that reach `createConnection` indirectly, guarding against false rejection: `addSystemWithStargateLinks` still auto-links neighbours, and the connection restore path still recreates its edge.
+- Cover the update paths on the same shape: `updateSignature` patching in a foreign `mapConnectionId` is rejected, and `pasteSignatures` against a foreign `mapSystemId` is rejected rather than returning `ok` on a code collision.
 - Add a short comment explaining why a pure static grep cannot guard this: the authz guard is present and correct on every route, so the only reliable signal is the behavioural attempt-and-reject.
 - Suite caveats to respect: `RUN_DB_TESTS` runs against the non-pristine dev DB, so snapshot and restore any rows the test mutates; triage failures in isolation because the full suite is parallel-flaky.
 
@@ -276,9 +281,9 @@ This is display/local-state corruption only: mutations go through per-map API ro
 ## Stage 10 — Tag every realtime envelope with its source map
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 241125a3
 **Goal:** Every map-scoped envelope crossing the wire carries an envelope-level `mapId`; control-plane frames (`healthCheck`, connection `status`) carry none.
-**References:** `src/lib/realtime/bus.md`, `protocol.ts`, `wsServer.md`
+**References:** `src/lib/realtime/protocol.md`, `bus.md`, `wsServer.md`; `tests/unit/realtime-delivery.md`
 **Touches:** `src/lib/realtime/protocol.ts` (+ `.md` if the contract description changes), `src/lib/realtime/bus.ts` (+ `bus.md`).
 
 **Spec:**
@@ -298,9 +303,9 @@ This is display/local-state corruption only: mutations go through per-map API ro
 ## Stage 11 — Route per-port in the SharedWorker
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 198cb20d
 **Goal:** The worker delivers a map-scoped envelope only to the tabs subscribed to that map; control-plane frames still reach all tabs.
-**References:** `src/lib/realtime/sharedWorker.md`, `protocol.md` (as updated by Stage 10)
+**References:** `src/lib/realtime/sharedWorker.md`, `protocol.md` (as updated by Stage 10), `useRealtime.md`; `tests/unit/realtime-delivery.md`, `realtime-reconnect.md`
 **Touches:** `src/lib/realtime/sharedWorker.ts` (+ `sharedWorker.md`).
 
 **Spec:**
@@ -316,37 +321,40 @@ This is display/local-state corruption only: mutations go through per-map API ro
 
 **Note (pre-existing, out of scope):** a tab that closes without unsubscribing leaves its port lingering in the sets, keeping that map subscribed on the server. This leak already exists with the refcount; posting to a dead port is a harmless no-op. Port-close cleanup is later hardening; do not expand scope here.
 
-**Done when:** `pnpm lint && pnpm typecheck && pnpm build` green and the existing realtime tests pass. (The two-tab isolation, heartbeat fan-out, and single-tab checks need a browser and are batched in Manual verification.)
+**Done when:** `tests/unit/realtime-delivery.test.tsx` extended so a `mapId`-tagged envelope reaches only a matching subscriber and a control-plane frame reaches all ports. `pnpm lint && pnpm typecheck && pnpm build` green. (The two-tab isolation, heartbeat fan-out, and single-tab checks need a browser and are batched in Manual verification.)
 
 ---
 
 ## Stage 12 — Client defense-in-depth
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 27267011, d9a18ee7
 **Goal:** Belt-and-suspenders guard so a future routing regression cannot silently corrupt a canvas.
-**References:** `src/components/map/MapCanvas.md`, `src/lib/realtime/protocol.md`
-**Touches:** `src/components/map/MapCanvas.tsx` (+ `.md`) and any other map-scoped consumer whose envelope now carries `mapId`.
+**References:** `src/components/map/MapCanvas.md`, `MapUnderglowBridge.md`, `MapPresenceContext.md`; `src/components/sidebar/ConnectionMassLog.md`; `src/lib/realtime/protocol.md`
+**Touches:** `src/components/map/MapCanvas.tsx` (+ `.md`) and every other map-scoped consumer whose envelope now carries `mapId`.
 
 **Spec:**
 - In the `MapCanvas` realtime handler, after the `task` check, drop envelopes whose `mapId` is present and not equal to `data.map.id`. In normal operation the guard is a no-op — Stage 11 already prevents foreign delivery.
-- `MapUnderglowBridge` / `ConnectionMassLog` may add the same guard.
-- `MapPresenceContext` cannot be guarded this way from `load` alone (the `characterUpdate` load has no `mapId`); it relies entirely on Stage 11 routing. Note this in its companion rather than adding a broken guard.
+- `MapUnderglowBridge`, `ConnectionMassLog` and `MapPresenceContext` take the same guard. All four compare the **envelope-level** `mapId` from Stage 10, which every map-scoped task carries, so a consumer whose `load` has no `mapId` of its own (presence) is guardable on the same terms as one whose load does.
 
-**Done when:** the mismatched-`mapId` drop is in place in the `MapCanvas` handler and `pnpm typecheck && pnpm build` stay green.
+**Done when:** the mismatched-`mapId` drop is in place in every map-scoped consumer and `pnpm typecheck && pnpm build` stay green.
 
 ---
 
 ## Manual verification
 
-_(worked by the user once, after the run — the plan is not complete until it passes)_
+_(worked by the user once, after the run — the plan is not complete until it passes. Everything a machine can check lives in a stage's **Done when**, not here. `PASSED` marks a check already worked; the rest belong to stages that have not run.)_
 
-- **Stage 1** — one cross-tenant create attempt through the running app (a signature naming another map's system id) is rejected with no row written. Stage 2's tests cover the helper-level reject/success matrix; this confirms the route wiring end to end.
+- **Stage 1** `PASSED` — one cross-tenant create attempt through the running app (a signature naming another map's system id) is rejected with no row written. Stage 2's tests cover the helper-level reject/success matrix; this confirms the route wiring end to end.
+- **Stage 1** `PASSED` — the one create path that reaches `createConnection` indirectly still works on a same-map operation: stargate auto-link when adding a system (`addSystemWithStargateLinks`). Stage 2's tests cover the direct create paths but not this one, and a false rejection here would look like a broken map rather than a security error.
 - **Stage 3** — after the backfill, confirm the existing deployment's members still see every structure and note they saw before the migration. A row going missing means the backfill picked the wrong owner entity.
 - **Stage 5** — the structures panel still populates on both the server-rendered map page and the live `system-data` backfill.
 - **Stage 7** — the map-node note pill counts only notes you can see: a system carrying nothing but another org's notes shows no pill.
 - **Stage 8** — two characters in different corps, each on their own corp map, both looking at the same system: confirm each sees only their own corp's structures and notes, that the scope chips name the right entity, and that the add dialog names the right audience before submit.
-- **Stage 11** — reproduce the original report: two corp maps side by side in two windows, scan/add/move systems on map A, confirm map B stays clean (systems, connections, presence roster, kill/ping underglow). Confirm the degraded banner still clears on the `healthCheck` heartbeat in both tabs, and that a single tab on a single map behaves as before.
+- **Stage 11** `PASSED` — reproduce the original report. Two corp maps side by side in two windows; scan, add and move systems on map A; map B stays clean across systems, connections, presence roster, and kill/ping underglow. No "System not found" toast on the secondary map, no phantom nodes, nothing to clean up on reload.
+- **Stage 11** `PASSED` — the degraded banner still clears on the `healthCheck` heartbeat in **both** tabs. This is the one that catches an over-tight fix: routing map-scoped envelopes per-port must not also strand the control-plane fan-out.
+- **Stage 11** `PASSED` — a single tab on a single map behaves exactly as before.
+- **Stage 12** `PASSED` — the guard is invisible in normal operation. Nothing disappears from a canvas that should be there, and the presence roster still fills on the map you have open.
 
 ---
 
@@ -369,3 +377,16 @@ These surfaced during the audit but are not part of this plan; each needs its ow
 _(appended by executing sessions — non-obvious findings only)_
 
 - **Swept and found sound during planning; do not re-audit without a reason.** `ap_map_webhook` is map-scoped with an FK cascade and `ap_webhook_channel` is an enum, not a shared registry (the URL host is the open question, above — the tenancy is not). `ap_integration_token.corporation_id` is already the enforced tenant boundary for every integration route. `ap_character_role` is written only by `syncCharacterAuthz` from ESI titles, so there is no self-assignment escalation path onto another map's role grant. `ap_system_stats` is per `(system, hour)` public universe data. `listViewableMaps` filters server-side via `viewableMapPredicate`; `listAdminMaps` is unscoped but global-admin-only by design. The audit route takes its map id from the guard result (`{ mapId: guard.mapId }`) rather than the URL param, which is the idiom Stage 1 is adding elsewhere.
+- **Plan reconciliation.** The P0 and P2 blocks were executed against an earlier revision of this file that had not yet been expanded with the P1 intel-scoping block, and which numbered the realtime stages 3 to 5. The two revisions were reconciled onto this numbering before merge; the recorded shas are the live post-rebase ones. The five recorded Status shas on the executed revision were pre-rebase and pointed at commits unreachable from the branch.
+- **Stage 1** `PASSED` — `restoreConnection.ts` does not call `createConnection`; it re-confirms the dormant row via its own direct `commitMapEvent` call (`kind: 'connection.create'`, reusing the event kind but not the helper). It is therefore untouched by the Stage 1 asserts and needs no manual check.
+- **Stage 1** `PASSED` — `pasteSignatures`' add branch never sets `mapConnectionId` on the `CreateSignatureInput` it builds (the field is simply omitted, so it's `undefined`, not `null`). The spec's `input.mapConnectionId != null` guard (loose inequality) treats `undefined` the same as `null` and correctly skips `assertConnectionOnMap` in that case — a strict `!== null` check would NOT have.
+- **Stage 1** `PASSED` — the update-path holes (`updateSignature`'s unchecked `mapConnectionId`, and `pasteSignatures` reading a foreign system's sigs before any tenancy check) were found only after Stage 2's suite existed, and landed as one commit carrying both the asserts and their regression tests. The `pasteSignatures` one is subtle: with `updateExisting` off, an incoming code already present on the foreign system short-circuits the loop so no downstream helper ever runs, and the call returns `ok` — relying on a helper to throw is not a tenancy check.
+- **Stage 2** — verified the spec's regression value directly: with `assertSystemOnMap` temporarily stubbed to a no-op, exactly the 3 create rejection cases fail (`createSignature`, `createConnection`, `pasteSignatures` add branch) while the 3 same-map acceptance cases still pass, as expected. Restored and reran green before finishing.
+- **Stage 2** — used universe fixture id range `98046xxx` (region/constellation/category/group/type/systems); grepped `tests/integration/*.test.ts` first to confirm the range wasn't already claimed (existing suites occupy 98040xxx through 98045xxx).
+- **Stage 10** — `wsServer.ts`'s `send()` does `JSON.stringify(message)` verbatim with no reshaping, confirming the spec's assumption; it needed no change and its companion needed no edit. The connect-time and heartbeat `healthCheck` frames it builds directly are unaffected and stay `mapId`-less by construction.
+- **Stage 10** — `mapAccess`, `mapConnectionAccess`, `mapDeleted`, `logData` are still forward-declared/unproduced (only `publicUpdate` is built directly in `wsServer.ts`, outside `bus.dispatch()`); none are emitted by `bus.ts`, so the spec's four task-tagged branches plus the `mapUpdate` fall-through are the complete set of `bus.dispatch()` outputs and all now carry envelope-level `mapId`.
+- **Stage 10** — `tests/integration/realtime-transport.test.ts` had no companion `.md`; created one per the standing instruction while extending the file with two assertions. The `healthCheck` test had to construct the `WebSocket` directly and attach the `message` listener before `open()`'s promise resolves — the server's `connection` handler sends `healthCheck` immediately, and it can race the `open()` test helper's own `'open'` listener, causing an intermittent `no message within 500ms` timeout when the listener was attached after `await open(...)` returned.
+- **Stage 11** `PASSED` — `tests/unit/realtime-delivery.test.tsx`'s existing harness (`FakeSharedWorker`/`FakePort`) only exercises `useRealtime.tsx`'s client-side provider — the SharedWorker itself is stubbed out entirely, so it can't observe the worker's internal per-port routing. Proving the routing logic required a second, independent describe block in the same file that imports `sharedWorker.ts` directly (`vi.resetModules()` + a fresh dynamic `import()` per test) against a faked `self` (captures the `connect` listener the module registers at import time) and a faked `WebSocket` (its constructed instance is recovered from a `static instances: FakeWebSocket[]` list, not via `this`-aliasing in the constructor — the repo's `@typescript-eslint/no-this-alias` flags even a plain `outerVar = this;` assignment expression, not just declarations). `noUncheckedIndexedAccess` is on, so post-`toHaveLength(1)` array indexing needs a `!` — TS doesn't narrow array length from a vitest matcher.
+- **Stage 12** `PASSED` — `MapUnderglowBridge` had no `mapId` prop before this stage (only `systems`), so guarding it required adding one, threaded from `MapCanvas` as `data.map.id`. `MapPresenceContext` needed the same new prop. `ConnectionMassLog` already took `mapId: string` for its own fetch/GET scoping, so its guard was a drop-in addition.
+- **Stage 12** `PASSED` — `systemNotificationLoadSchema`'s per-kind body (`killmail`/`ping`) carries its own `mapId` field, independent of the Stage 10 envelope-level one. `MapUnderglowBridge`'s guard checks the envelope-level field (before the `safeParse`) for consistency with the other consumers rather than the load's own field, but either would work there.
+- **Stage 12** `PASSED` — `AppUpdateBanner` (the only other raw `envelope.task` consumer found via a repo-wide grep) filters on `task === 'healthCheck'`, a control-plane frame with no `mapId` by construction — correctly out of scope for this stage.
