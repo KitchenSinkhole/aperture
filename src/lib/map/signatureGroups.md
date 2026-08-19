@@ -13,14 +13,23 @@ Safe to import from both server-only and client modules — exports only static 
 Exactly one entry per group key, in the order shown in the UI dropdown — so the catalog can drive group dropdowns/chips directly without de-duping. Each entry carries:
 - `key` — the `SignatureGroupKey` enum value (`'combat'`, `'relic'`, `'data'`, `'gas'`, `'wormhole'`, `'ore'`, `'ghost'`).
 - `label` — UI label (e.g. `'Combat'`).
-- `scannerNames` — the literal strings EVE emits in the Group column of the probe-scanner paste. A group may have several aliases: `combat` covers `'Combat Site'`, `'Factional Warfare Site - Combat Site'`, and `'Homefront Operation Site - Combat Site'`.
+- `scannerNames` — the literal strings EVE emits in the Group column of the probe-scanner paste. A group may have several aliases: `combat` covers `'Combat Site'`, `'Factional Warfare Site - Combat Site'`, `'Homefront Operation Site - Combat Site'` and `'Insurgency Site - Combat Site'`.
 
 ---
 
 ### `signatureGroupKeyFromScannerName(scannerName: string | null | undefined): SignatureGroupKey | null`
-Resolve a scanner-emitted Group cell to a `SignatureGroupKey`. Case-insensitive direct match first; falls back to a startsWith match so an unexpected suffix doesn't silently null out the group. Returns `null` when the cell is empty or doesn't match any known group.
+Resolve a scanner-emitted Group cell to a `SignatureGroupKey`. Case-insensitive exact match first, then a substring fallback, so a qualifier EVE prepends (`'Insurgency Site - Combat Site'`) or a suffix it appends (`'Combat Site (Lookout)'`) classifies without its own catalog entry. Returns `null` when the cell is empty or doesn't match any known group.
+
+Only for the Group cell: the substring fallback would swallow real site names, since the Drifter combat sites are named `'Unstable Wormhole'`, `'Caged Wormhole'` and the like.
 
 Used by `signatureReader.resolveSignatureRows` to classify each pasted row.
+
+---
+
+### `isScannerGroupName(value: string | null | undefined): boolean`
+True when the cell is exactly one of the catalog's `scannerNames`, case-insensitively (leading/trailing whitespace ignored). Matching is exact so site names that embed a group word survive.
+
+Used by `signatureReader` to null out a Name cell in which EVE has repeated the Group string at low scan strength.
 
 ---
 
