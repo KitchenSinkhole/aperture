@@ -26,8 +26,8 @@ import { universeStargateEdge } from '@/db/schema';
  * docked arrival in a non-gate-adjacent system is a teleport-to-station, not a
  * traversal. Gated to k-space destinations because clones can only live there.
  *
- * `abyssal` covers any transition where either endpoint is an abyssal system
- * (`universe_system.security = 'A'`). Abyssals are reached only through
+ * `abyssal` covers any remaining transition where either endpoint is an abyssal
+ * system (`universe_system.security = 'A'`). Abyssals are reached only through
  * single-use filaments, so the link can never be re-traversed by anyone else.
  * The caller (`locationCommit.ts`) folds it as a `scope='abyssal'` connection
  * on maps with `ap_map.track_abyssal_jumps` set, skipping the mass-log and
@@ -71,12 +71,15 @@ export async function classifyJump(args: ClassifyJumpArgs): Promise<JumpClass> {
   );
   const row = probe.rows[0];
   if (row?.adjacent) return 'gate';
-  // Either endpoint abyssal = single-use filament trace, never a chain edge.
-  if (row?.abyssal) return 'abyssal';
-  // Docked arrival in k-space = teleport-to-clone, never a wormhole traversal.
+  // Docked arrival in k-space = teleport-to-clone, never a traversal. Ordered
+  // ahead of the abyssal branch: dying in the abyss lands the pod in its
+  // medical clone's k-space station, which is a teleport out of an abyssal
+  // endpoint, not a filament trace worth folding onto the map.
   if (args.arrivedDocked && row?.to_security != null && KSPACE_LABELS.has(row.to_security)) {
     return 'teleport';
   }
+  // Either endpoint abyssal = single-use filament trace, never a chain edge.
+  if (row?.abyssal) return 'abyssal';
   return 'wormhole';
 }
 

@@ -6,14 +6,16 @@
 ---
 
 ### type JumpClass
-`'gate' | 'wormhole' | 'teleport' | 'abyssal'`. Aperture treats every non-gate, in-space transition as a wormhole unless it matches a more specific class. `teleport` is a non-gate transition where the pilot arrives **docked** in k-space — pod self-destruct ("pod express"), getting podded by hostiles, or a jump clone. `abyssal` is any transition where **either** endpoint is an abyssal system (`security = 'A'`); abyssals are entered only via single-use filaments, so the link is never a re-traversable chain edge. Rarer in-space cases (cyno, jump bridge) are not modelled here and still fall through to `wormhole`.
+`'gate' | 'wormhole' | 'teleport' | 'abyssal'`. Aperture treats every non-gate, in-space transition as a wormhole unless it matches a more specific class. `teleport` is a non-gate transition where the pilot arrives **docked** in k-space — pod self-destruct ("pod express"), getting podded by hostiles, or a jump clone. `abyssal` is any remaining transition where **either** endpoint is an abyssal system (`security = 'A'`); abyssals are entered only via single-use filaments, so the link is never a re-traversable chain edge. Rarer in-space cases (cyno, jump bridge) are not modelled here and still fall through to `wormhole`.
 
 ### classifyJump({ fromSystemId, toSystemId, arrivedDocked }): Promise<JumpClass>
 Single SQL probe that returns the `universe_stargate_edge` bidirectional adjacency `EXISTS` (defensive against a future SDE ingest that stops mirroring each gate pair), an `EXISTS` over either endpoint having `universe_system.security = 'A'` (abyssal), **and** the destination's `universe_system.security` label — all in one round-trip.
 
+Branches are evaluated in order:
+
 - gate-adjacent → `'gate'`.
+- not adjacent, `arrivedDocked`, and destination is k-space (`security ∈ {H, L, 0.0}`) → `'teleport'`. You can never exit a wormhole or an abyssal pocket already docked, so a docked arrival in a non-gate-adjacent system is a teleport-to-station, never a traversal. Gated to k-space because medical/jump clones can only live there. Takes precedence over `'abyssal'` so a pod death in the abyss resolves to the clone teleport rather than a foldable filament trace.
 - either endpoint abyssal → `'abyssal'`. The caller (`locationCommit.ts`) folds it as a `scope='abyssal'` connection only on maps with `ap_map.track_abyssal_jumps` set.
-- not adjacent, `arrivedDocked`, and destination is k-space (`security ∈ {H, L, 0.0}`) → `'teleport'`. You can never exit a wormhole already docked, so a docked arrival in a non-gate-adjacent system is a teleport-to-station, never a traversal. Gated to k-space because medical/jump clones can only live there.
 - otherwise → `'wormhole'`.
 
 `arrivedDocked` is derived by the caller from `station_id`/`structure_id` on the `getCharacterLocation` payload (present only when docked).
