@@ -352,6 +352,13 @@ export type RouteHop = {
   connectionId: number | null;
   onMap: boolean;
   tag: string | null;
+  /**
+   * The in-game sig code in the *previous* hop's system for the connection
+   * traversed to reach this one — the hole you leave through. Null for
+   * origin/gate/eve_scout hops and for connections with no sig recorded on the
+   * departure side.
+   */
+  viaSigId: string | null;
 };
 
 /** A computed route from the origin to one destination. `jumps = hops.length - 1`. */
@@ -361,6 +368,63 @@ export type RoutePlan = {
   reachable: boolean;
   jumps: number;
   hops: RouteHop[];
+};
+
+/**
+ * One piece of a rendered route instruction. `system` and `sig` are called out
+ * so the UI can tint a system by its map colour and set a sig code in mono,
+ * while the clipboard form just concatenates every `text`.
+ */
+export type RouteInstructionToken =
+  | { kind: 'text'; text: string }
+  | { kind: 'system'; text: string; point: RouteSegmentPoint }
+  | { kind: 'sig'; text: string };
+
+/** Which kind of space a system sits in, for route segmentation. */
+export type RouteSpaceKind = 'kspace' | 'jspace' | 'pochven' | 'abyssal' | 'unknown';
+
+/** One end of a route segment, resolved for display. */
+export type RouteSegmentPoint = {
+  hopIndex: number;
+  systemId: number;
+  /** The map tag when set, else the system name — how a pilot refers to it. */
+  label: string;
+  name: string;
+  security: string | null;
+  securityStatus: number | null;
+  space: RouteSpaceKind;
+};
+
+/**
+ * A run of route hops that reads as one navigational instruction — a gate burn,
+ * a chain traversal, a wormhole entry/exit. `fromHopIndex`/`toHopIndex` are
+ * inclusive indices into `RoutePlan.hops`; consecutive segments share a
+ * boundary index, and together they tile the whole hop list.
+ */
+export type RouteSegment = {
+  kind:
+    | 'origin_only'
+    | 'gate_run'
+    | 'chain_run'
+    | 'wh_jump'
+    | 'wh_transit'
+    | 'jumpbridge'
+    | 'eve_scout'
+    | 'eve_scout_transit';
+  fromHopIndex: number;
+  toHopIndex: number;
+  from: RouteSegmentPoint;
+  to: RouteSegmentPoint;
+  /** Hop count spanned (`toHopIndex - fromHopIndex`). */
+  jumps: number;
+  /** `wh_transit` / `eve_scout_transit` only — the system passed through. */
+  through: RouteSegmentPoint | null;
+  /** Sig departed through at `from`. */
+  entrySigId: string | null;
+  /** `wh_transit` only — sig departed `through` by. */
+  exitSigId: string | null;
+  /** `wh_jump` only — the crossing's direction relative to J-space. */
+  direction: 'enter' | 'exit' | 'lateral' | null;
 };
 
 /** A saved destination joined to its solar-system display fields, for the panel. */

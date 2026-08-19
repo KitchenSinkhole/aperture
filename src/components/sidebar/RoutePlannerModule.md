@@ -14,7 +14,7 @@
 | connections | MapConnectionEdge[] | yes | The map's live connections; drives recompute when the chain changes. |
 
 ### Renders
-A `Card` ("Routes") with: a **controls row** with a **From** label and two toggle chips ("Active character" / "Selected system"), **Safety** select, and **Min ship** select — in a `@container` grid that stacks (1 col) when the card is narrow and spreads to one row (3 cols) at `@md`; optional **fallback prompts** when the chosen source has no system (character mode, no located chars → system search field; system mode, no selected system → "Select a system on the map"); an Avoid-reduced / Avoid-critical / Avoid-EOL / EVE-Scout toggle-chip box; and the destination list — each row a name + `Nj` jump count, a remove (✕), and a breadcrumb of per-hop **markers** — **circles** for wormhole (J-space) systems (class `C#` or `J######` name), **squares** for K-space (fill = system colour — K-space by its fine-grained security-status gradient, wormhole/Pochven/Abyssal by class colour. Each marker shows the system's `[tag]` (when set) + name + via label in a hover/focus `Tooltip` (base-ui). An inline "Add destination…" typeahead at the bottom.
+A `Card` ("Routes") with: a **controls row** with a **From** label and two toggle chips ("Active character" / "Selected system"), **Safety** select, and **Min ship** select — in a `@container` grid that stacks (1 col) when the card is narrow and spreads to one row (3 cols) at `@md`; optional **fallback prompts** when the chosen source has no system (character mode, no located chars → system search field; system mode, no selected system → "Select a system on the map"); an Avoid-reduced / Avoid-critical / Avoid-EOL / EVE-Scout toggle-chip box; and the destination list — each row a name + `Nj` jump count, a remove (✕), a breadcrumb of per-hop **markers** — **circles** for wormhole (J-space) systems, **squares** for everything else (fill = system colour — K-space by its fine-grained security-status gradient, wormhole/Pochven/Abyssal by class colour) — and below it a **step disclosure** (`N steps`, chevron) that expands into a numbered list of navigational instructions for the route, alongside a **Copy** button. Each marker shows the system's `[tag]` (when set) + name + via label in a hover/focus `Tooltip` (base-ui). An inline "Add destination…" typeahead at the bottom.
 
 ### Behaviour & Interactions
 - **Route source persistence** — choice between "Active character" and "Selected system" is persisted to `localStorage` under key `aperture:routes:source`; survives tab refresh.
@@ -22,6 +22,8 @@ A `Card` ("Routes") with: a **controls row** with a **From** label and two toggl
 - **System mode source** — uses the `selectedSystemId` prop (the map's primary selection, updated every render when the user clicks a system).
 - **Recompute** — debounced (300ms) `POST /api/map/[mapId]/route-plan` whenever the source, prefs, destinations, or a connection signature (`id:scope:mass:eol:jumpMass`) changes; out-of-order responses are dropped via a seq ref; results stored locally.
 - **Persistence** — prefs changes optimistically update local state and fire `setRoutePrefsAction` in a transition; destination add/remove optimistically update the local list and call `addRouteDestinationAction` / `removeRouteDestinationAction`.
+- **Instruction steps** — `RouteInstructions` derives segments from the plan via `segmentRoute` (memoized per plan) and renders each segment's `routeSegmentTokens` as an `<ol>` line, tinting system tokens with `systemSecurityColor` (the map's own colouring) and setting sig-code tokens in mono. The disclosure is collapsed by default and tracked per destination id, so expanded state survives a route recompute. Nothing renders when the plan is absent, computing, or unreachable — `RouteBreadcrumb` already carries that messaging.
+- **Copy** — writes `formatRouteInstructions(segments)` to the clipboard as plain text (a `Route X -> Y` header plus one numbered step per line) and reports via a `sonner` toast.
 - **External additions** — subscribes to `subscribeRouteDestinations`; a destination saved by the map context-menu "Add to routes" item is folded into the local list (deduped by `systemId`) so it appears without a reload.
 - `SystemSearchField` (inline) reuses `searchSystemsOnServer` (the map `system-search` endpoint) for both the manual-source fallback and add-destination typeaheads. Its result list (`SearchResults`) is **portalled to `document.body`** and pinned under the input via the input's `getBoundingClientRect()` (re-measured on capture-phase scroll + resize) — the enclosing `Card` is `overflow-hidden`, which would otherwise clip an absolutely-positioned dropdown at the card edge.
 
@@ -32,6 +34,7 @@ A `Card` ("Routes") with: a **controls row** with a **From** label and two toggl
 - `useMapActiveChar()` — reads `activeCharSystemId` (the active character's current location from presence data)
 - `searchSystemsOnServer` — system typeahead search for the manual-source fallback and add-destination fields
 - `systemSecurityColor` — marker/name tint (K-space security-status gradient, else class colour)
+- `segmentRoute` / `routeSegmentTokens` / `formatRouteInstructions` / `routeSpaceKind` (`@/lib/map/routeSegments`) — route→instruction segmentation, and the J-space test behind the circle/square marker shape
 
 ### Local State
 - `routeSource: 'character' | 'system'` — toggled between active character and selected system; persisted to localStorage
@@ -39,3 +42,4 @@ A `Card` ("Routes") with: a **controls row** with a **From** label and two toggl
 - `manualSource: SystemSearchResult | null` — fallback manual system pick when character mode has no located character
 - `plans: RoutePlan[]`, `computing: boolean` — computed routes from source to each destination
 - `computeSeq: number` (ref) — sequence counter for deduping old async responses
+- `expandedSteps: ReadonlySet<number>` — destination ids whose instruction list is expanded
