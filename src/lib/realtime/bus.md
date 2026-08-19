@@ -24,7 +24,7 @@ Total active map subscriptions across all channels. Lets the health probe (`src/
 
 ### Notes
 - Uses its **own `pg.Client`** (not the pooled `db`) because LISTEN occupies a connection for its lifetime.
-- On notification, parses the payload as JSON (non-JSON → `{}`), derives `mapId` from the channel name, and emits one of two envelopes. Every emitted message carries that same `mapId` at the envelope's top level (not just nested in `load`), so a fan-out consumer can route on source map without inspecting `load`:
+- On notification, parses the payload as JSON (non-JSON → `{}`), derives `mapId` from the channel name, and emits one of five envelopes. Every emitted message carries that same `mapId` at the envelope's top level (not just nested in `load`), so a fan-out consumer can route on source map without inspecting `load`:
   - **`{ task: 'mapUpdate', load: { mapId, kind?, data }, mapId }`** — default path. `data` is a **trusted passthrough** of the trigger payload — a `MapEventPayload` built and validated by `commitMapEvent`; the bus re-wraps it without re-parsing (clients revalidate on receipt). `kind` is lifted from the payload when present.
   - **`{ task: 'characterUpdate', load, mapId }`** — when the pg_notify payload has a top-level `task: 'characterUpdate'` (location-poll broadcast). The bus validates the `load` against `characterUpdateLoadSchema` and drops malformed envelopes silently.
   - **`{ task: 'characterLogout', load, mapId }`** — when the pg_notify payload has a top-level `task: 'characterLogout'` (access-revocation broadcast, `src/lib/realtime/characterLogout.ts`). The bus validates the `load` against `characterLogoutLoadSchema` and drops malformed envelopes silently. Clients drop the named pilots from the presence roster.
