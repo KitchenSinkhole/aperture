@@ -875,12 +875,15 @@ export function MapCanvas({
   useRealtimeEvents(
     useCallback((envelope: Envelope) => {
       if (envelope.task !== 'mapUpdate') return;
+      const loadResult = mapUpdateLoadSchema.safeParse(envelope.load);
+      if (!loadResult.success || !loadResult.data.data) return;
       // Belt-and-suspenders: the SharedWorker already routes map-scoped
       // envelopes only to subscribed ports, but a foreign mapId reaching this
       // handler (a worker routing regression) must not corrupt this canvas.
-      if (envelope.mapId != null && envelope.mapId !== Number(data.map.id)) return;
-      const loadResult = mapUpdateLoadSchema.safeParse(envelope.load);
-      if (!loadResult.success || !loadResult.data.data) return;
+      // Checked against the load's mapId, which the schema makes mandatory —
+      // the envelope-level tag is optional, so a producer that stopped setting
+      // it would leave a guard on it passing everything.
+      if (loadResult.data.mapId !== Number(data.map.id)) return;
       const payload = loadResult.data.data;
       if (appliedEventIds.current.has(payload.eventId)) return;
       appliedEventIds.current.add(payload.eventId);
