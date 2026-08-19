@@ -39,7 +39,6 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 
 **Map limits & display**
 - `ROUTE_HUBS` — trade hubs the route module reports jump distance to (EVE system IDs).
-- `MAX_MAPS_PER_SCOPE` — per-scope ceilings for `ap_map.scope`.
 - `MAX_SYSTEMS_PER_MAP` — applied where `ap_map_system.visible = true`.
 
 **Public map share**

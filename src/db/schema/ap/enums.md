@@ -12,7 +12,7 @@
 `pgEnum('authz_level', ['member', 'admin'])` — in-app authority level on `ap_character`; gates the `/admin` operator console. `admin` (global deployment operator) is reachable only via an explicit `ap_access_grant` (`capability='admin'`). Corp/alliance map authority is NOT a tier here — it is the derived `ap_character.is_director` bit consumed by `canManageMap` / `canCreateMap`. The `manager` tier was removed in migration 0041.
 
 ### mapScope
-`pgEnum('map_scope', ['wh', 'k_space', 'none', 'all'])` — which kinds of systems a map may hold. On `ap_map`.
+`pgEnum('map_scope', ['wh', 'k_space', 'none', 'all'])` — descriptive label for what kinds of systems a map is meant to hold; not server-enforced. On `ap_map`.
 
 ### mapType
 `pgEnum('map_type', ['private', 'corp', 'alliance'])` — map ownership/visibility class. On `ap_map`.
@@ -45,7 +45,7 @@
 `pgEnum('ap_webhook_event', ['history', 'rally'])` — which class of map events a webhook subscribes to. `history` mirrors every `ap_map_event` insert on the map; `rally` fires only when a `system.updated` event carries a non-null `rallyAt` (rally set, not cleared).
 
 ### mapRight
-`pgEnum('map_right', ['map_create', 'map_update', 'map_delete', 'map_import', 'map_export', 'map_share'])` — the map-management rights vocabulary, reserved for the future title-delegation overlay (R4). No table stores these (the `ap_corporation_right` matrix was retired in 0041); at the baseline the mutate guards take a `MapRight` argument but ignore it (authority is the binary `canManageMap`).
+`pgEnum('map_right', ['map_create', 'map_update', 'map_delete', 'map_import', 'map_export', 'map_share'])` — the map-management rights vocabulary. No table stores these (the `ap_corporation_right` matrix was retired in 0041); the `canMutateMap` guards take a `MapRight` argument but only distinguish `map_update` (view-gated) from everything else (binary `canManageMap`) — no per-right granularity of its own. Per-map feature delegation to specific titles is the separate, shipped `MapCapability` vocabulary (`mapCapability` below).
 
 ### mapCapability
 `pgEnum('map_capability', ['view', 'audit_view', 'settings_manage', 'webhooks_manage', 'map_import', 'map_export', 'map_delete', 'share_manage'])` — the per-map delegatable feature surface on `ap_map_role_access.capability` (added migration 0056; `share_manage` migration 0061). Each value names one director-gated feature a corp title can be granted on a single map. `view` is the role→map view overlay (any feature grant implies view); the rest map one-to-one onto the director features (audit log, settings, webhooks, import, export, delete, public share links). Distinct from `map_right`, which mixes in non-delegatable, non-per-map values and lacks the `audit_view`/`settings_manage`/`webhooks_manage`/`share_manage` verbs. Directors/owners/admins hold every capability implicitly (`canManageMap`), so a grant only ever adds a title.

@@ -15,7 +15,7 @@ export const characterStatus = pgEnum('character_status', ['active', 'kicked', '
  */
 export const authzLevel = pgEnum('authz_level', ['member', 'admin']);
 
-/** What kinds of systems a map is allowed to hold. */
+/** Descriptive label for what kinds of systems a map is meant to hold. */
 export const mapScope = pgEnum('map_scope', ['wh', 'k_space', 'none', 'all']);
 
 /** Map ownership/visibility class. */
@@ -88,10 +88,12 @@ export const apWebhookChannel = pgEnum('ap_webhook_channel', ['discord']);
 export const apWebhookEvent = pgEnum('ap_webhook_event', ['history', 'rally']);
 
 /**
- * The map-management rights vocabulary. Reserved as the granular delegation
- * vocabulary for the future title-delegation overlay (R4); at the baseline the
- * mutate guards take a `MapRight` argument but ignore it (authority is the
- * binary `canManageMap`). No table stores these today — the old
+ * The map-management rights vocabulary. The `canMutateMap` guards take a
+ * `MapRight` argument but only distinguish `map_update` (view-gated content
+ * editing) from everything else (binary `canManageMap`) — this vocabulary
+ * carries no per-right granularity of its own. Per-map feature delegation to
+ * specific titles (R4) is a separate, shipped vocabulary (`MapCapability`,
+ * `src/lib/auth/rights.ts`). No table stores `MapRight` values today — the old
  * `ap_corporation_right` matrix was retired in 0041.
  */
 export const mapRight = pgEnum('map_right', [

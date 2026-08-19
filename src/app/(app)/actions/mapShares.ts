@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from '@/db/client';
 import { apMapShare } from '@/db/schema';
 import { sharePresenceMode } from '@/db/schema/ap/enums';
-import { canUseMapFeature } from '@/lib/auth/rights';
+import { requireMapCapability } from '@/lib/auth/rights';
 import { commitMapEvent } from '@/lib/map/mutations/core';
 import { generateShareToken, listMapShares, revokeShareToken } from '@/lib/map/share';
 import { requireSession } from '@/lib/session';
@@ -14,8 +14,10 @@ import type { MapShareListItem } from '@/types';
 /**
  * Server Actions behind the in-map Settings → Share links tab: mint, list, and
  * revoke the public `/live/<token>` links for one map. Every action gates on
- * `canUseMapFeature(characterId, mapId, 'share_manage')` — a manager implicitly,
- * or a corp title delegated the capability.
+ * `requireMapCapability(session, mapId, 'share_manage')` — a manager implicitly,
+ * or a corp title delegated the capability. The guard resolves the map row
+ * first, so a soft-deleted map is inaccessible to a delegated title-holder the
+ * same as it is to a Director.
  *
  * A share's redaction profile is fixed at mint. Changing what a link exposes
  * means revoking it and issuing a new one, so a URL already in circulation can
@@ -41,8 +43,8 @@ type ActionResult<T = void> =
 
 async function gate(mapId: bigint): Promise<bigint | null> {
   const session = await requireSession();
-  const characterId = BigInt(session.characterId);
-  return (await canUseMapFeature(characterId, mapId, 'share_manage')) ? characterId : null;
+  const guard = await requireMapCapability(session, mapId, 'share_manage');
+  return guard.ok ? guard.characterId : null;
 }
 
 /**

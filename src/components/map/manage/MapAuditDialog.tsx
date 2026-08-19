@@ -11,8 +11,9 @@ import { MapAuditBrowser } from './MapAuditBrowser';
 
 /**
  * Wider dialog hosting the in-map audit console. Launched from the `MapCanvas`
- * toolbar "Audit log" button (rendered only for `canManageMap` holders). The
- * feed itself is gated server-side by `GET /api/map/[mapId]/audit`.
+ * toolbar "Audit log" button (rendered only for holders of the `audit_view`
+ * capability). The feed itself is gated server-side by `GET
+ * /api/map/[mapId]/audit`.
  */
 export function MapAuditDialog({
   open,

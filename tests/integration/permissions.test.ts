@@ -12,6 +12,7 @@ import {
   apMapRoleAccess,
   apRole,
   apUser,
+  mapCapability,
 } from '@/db/schema';
 import {
   canCreateMap,
@@ -21,12 +22,25 @@ import {
   canViewMap,
   hasMapCapability,
   isAdmin,
+  mapsWithCapability,
   requireMapCapability,
   resolveMapCapabilities,
 } from '@/lib/auth/rights';
 import type { MapCapability } from '@/types';
 import { listViewableMaps } from '@/lib/map/loadMap';
 import { characterCleanup } from '@/lib/jobs/tasks/characterCleanup';
+
+// The mocked session's acting character, for the one test that drives a
+// Server Action (`updateMapSettingsAction`) rather than calling `rights.ts`
+// directly. Every other test in this file exercises `rights.ts` with an
+// explicit characterId/session argument and does not go through this mock.
+const h = vi.hoisted(() => ({ actingCharacterId: '0' }));
+vi.mock('@/lib/session', () => ({
+  requireSession: async () => ({ characterId: h.actingCharacterId, userId: 0 }),
+}));
+
+// Imported after the mock so the action binds the mocked `requireSession`.
+const { updateMapSettingsAction } = await import('@/app/(app)/actions/map');
 
 /**
  * Permissions acceptance gate.
@@ -274,12 +288,14 @@ describe.skipIf(!run)('Stage 15 — permissions (real Postgres)', () => {
     expect(await canManageMap(ROLE_HOLDER_ID, roleScopedMapId)).toBe(false);
   });
 
-  it('canManageMap gates the in-place settings / webhooks / audit surfaces', async () => {
-    // The map Settings management tabs, `GET /api/map/[id]/webhooks` + its
-    // actions, and `GET /api/map/[id]/audit` all gate on `canManageMap`. The
-    // private owner, the owning-corp Director, the executor-corp Director (for
-    // the alliance map), and admin can manage; plain members with view access
-    // cannot.
+  it('canManageMap resolves derived management authority', async () => {
+    // A manager holds every `MapCapability` implicitly, so this truth table is
+    // the base of the capability model; the in-place surfaces gate on their own
+    // capability (`settings_manage`, `webhooks_manage`, `audit_view`), with the
+    // Roles & Permissions tab the one that reveals on `canManageMap` directly.
+    // The private owner, the owning-corp Director, the executor-corp Director
+    // (for the alliance map), and admin can manage; plain members with view
+    // access cannot.
     expect(await canManageMap(OWNER_ID, privateMapId)).toBe(true);
     expect(await canManageMap(CORP_A_DIRECTOR_ID, corpMapId)).toBe(true);
     expect(await canManageMap(CORP_A_DIRECTOR_ID, allianceMapId)).toBe(true);
@@ -323,15 +339,41 @@ describe.skipIf(!run)('Stage 15 — permissions (real Postgres)', () => {
   });
 
   it('resolveMapCapabilities: manager gets all, holder gets the union of grants', async () => {
+    // Counted off the enum, not a literal: a manager holds every capability by
+    // definition, so adding a value to `map_capability` must not need a test edit.
     const managerCaps = await resolveMapCapabilities(CORP_A_DIRECTOR_ID, corpMapId);
-    expect(managerCaps.size).toBe(7);
+    expect(managerCaps.size).toBe(mapCapability.enumValues.length);
     expect(managerCaps.has('map_delete')).toBe(true);
+    expect(managerCaps.has('share_manage')).toBe(true);
 
     const holderCaps = await resolveMapCapabilities(ROLE_HOLDER_ID, corpMapId);
     expect([...holderCaps].sort()).toEqual(['audit_view']);
 
     const nonHolderCaps = await resolveMapCapabilities(CORP_A_MEMBER_ID, corpMapId);
     expect(nonHolderCaps.size).toBe(0);
+  });
+
+  it('mapsWithCapability agrees with per-id canUseMapFeature across private/corp/alliance/role-grant maps', async () => {
+    const allMapIds = [privateMapId, corpMapId, allianceMapId, roleScopedMapId];
+    const actors = [
+      ADMIN_ID,
+      OWNER_ID,
+      CORP_A_MEMBER_ID,
+      CORP_A_DIRECTOR_ID,
+      CORP_B_MEMBER_ID,
+      ALLIANCE_X_PILOT_ID,
+      ROLE_HOLDER_ID,
+    ];
+    const capabilities: MapCapability[] = ['view', 'audit_view', 'settings_manage', 'map_delete'];
+
+    for (const actorId of actors) {
+      for (const capability of capabilities) {
+        const batched = await mapsWithCapability(actorId, allMapIds, capability);
+        for (const mapId of allMapIds) {
+          expect(batched.has(mapId)).toBe(await canUseMapFeature(actorId, mapId, capability));
+        }
+      }
+    }
   });
 
   // ─── requireMapCapability guard (the gate every delegated route/action uses) ──
@@ -397,6 +439,18 @@ describe.skipIf(!run)('Stage 15 — permissions (real Postgres)', () => {
       ok: false,
       status: 401,
     });
+  });
+
+  it('updateMapSettingsAction: a plain corp member who can view the map cannot save the General tab', async () => {
+    // Regression for Finding 1 (map-settings-audit-fixes): the General tab
+    // used to render unconditionally even though only `settings_manage`
+    // holders can actually save it.
+    actAs(CORP_A_MEMBER_ID);
+    const result = await updateMapSettingsAction({
+      mapId: corpMapId.toString(),
+      name: 'Renamed By Member',
+    });
+    expect(result).toMatchObject({ ok: false, error: 'Forbidden.' });
   });
 
   it('admin manages every map for every right', async () => {
@@ -506,6 +560,11 @@ interface CharOverrides {
 /** Minimal session stand-in for the `requireMap*` tuple guards. */
 function sess(characterId: bigint) {
   return { characterId: characterId.toString(), userId: 0 } as never;
+}
+
+/** Sets the mocked `requireSession`'s acting character for the Server Action test. */
+function actAs(id: bigint) {
+  h.actingCharacterId = id.toString();
 }
 
 function mkChar(id: bigint, name: string, overrides: CharOverrides = {}) {

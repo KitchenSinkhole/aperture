@@ -37,18 +37,15 @@ const createMapSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.').max(100),
   scope: z.enum(mapScope.enumValues),
   type: z.enum(mapType.enumValues),
-  icon: z.string().trim().max(100).nullish(),
 });
 
 const updateMapSettingsSchema = z.object({
   mapId: z.string().regex(/^\d+$/, 'Invalid map id.'),
   name: z.string().trim().min(1).max(100).optional(),
-  icon: z.string().trim().max(100).nullish(),
   deleteExpiredConnections: z.boolean().optional(),
   deleteEolConnections: z.boolean().optional(),
   trackAbyssalJumps: z.boolean().optional(),
-  logActivity: z.boolean().optional(),
-  // Auto-tagging (gated by canManageMap, like the rest of the dialog).
+  // Auto-tagging (gated by settings_manage, like the rest of this action's fields).
   tagScheme: z.enum(tagScheme.enumValues).optional(),
   homeMapSystemId: z.string().regex(/^\d+$/, 'Invalid system id.').nullable().optional(),
   exemptHomeStaticFromTag: z.boolean().optional(),
@@ -66,7 +63,7 @@ export async function createMapAction(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid input.' };
   }
-  const { name, scope, type, icon } = parsed.data;
+  const { name, scope, type } = parsed.data;
 
   const characterId = BigInt(session.characterId);
   if (!(await canCreateMap(characterId, type))) {
@@ -123,12 +120,11 @@ export async function createMapAction(
         name,
         scope,
         type,
-        icon: icon ?? null,
         ownerCharacterId,
         ownerCorporationId,
         ownerAllianceId,
       });
-      return { id: mapId.toString(), name, scope, type, icon: icon ?? null };
+      return { id: mapId.toString(), name, scope, type };
     },
   });
 
@@ -167,7 +163,7 @@ export async function deleteMapAction(mapId: string): Promise<ActionResult<MapEv
   return result;
 }
 
-/** Update a map's name / icon / behavior flags. Emits `map.update` with only the changed fields. */
+/** Update a map's name / behavior flags. Emits `map.update` with only the changed fields. */
 export async function updateMapSettingsAction(
   input: UpdateMapSettingsInput,
 ): Promise<ActionResult<MapEventPayload>> {
@@ -203,14 +199,12 @@ export async function updateMapSettingsAction(
       // payload — auto-tagging config propagates on next map load, not realtime.
       const out: MapEventPatch<'map.update'> = { id: id.toString() };
       if ('name' in patch) set.name = out.name = patch.name;
-      if ('icon' in patch) set.icon = out.icon = patch.icon ?? null;
       if ('deleteExpiredConnections' in patch)
         set.deleteExpiredConnections = out.deleteExpiredConnections = patch.deleteExpiredConnections;
       if ('deleteEolConnections' in patch)
         set.deleteEolConnections = out.deleteEolConnections = patch.deleteEolConnections;
       if ('trackAbyssalJumps' in patch)
         set.trackAbyssalJumps = out.trackAbyssalJumps = patch.trackAbyssalJumps;
-      if ('logActivity' in patch) set.logActivity = out.logActivity = patch.logActivity;
       if ('tagScheme' in patch) set.tagScheme = patch.tagScheme;
       if ('exemptHomeStaticFromTag' in patch)
         set.exemptHomeStaticFromTag = patch.exemptHomeStaticFromTag;

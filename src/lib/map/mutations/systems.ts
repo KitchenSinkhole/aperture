@@ -172,8 +172,8 @@ export function removeSystem(input: RemoveSystemInput): Promise<ActionResult<Map
       // restore once the sig is re-pasted — Stage 4), hidden from the view via
       // `loadMapForView`'s `confirmed_at IS NOT NULL` filter. The single
       // `system.removed` broadcast already prunes every incident connection on
-      // each client regardless of scope, so live + reload now agree. Non-`wh`
-      // links stay confirmed and re-link structurally via
+      // each client regardless of scope, so live + reload now agree. `stargate`
+      // and `jumpbridge` links stay confirmed and re-link structurally via
       // `addSystemWithStargateLinks` on re-add.
       await tx
         .update(apMapConnection)
@@ -182,6 +182,25 @@ export function removeSystem(input: RemoveSystemInput): Promise<ActionResult<Map
           and(
             eq(apMapConnection.mapId, input.mapId),
             eq(apMapConnection.scope, 'wh'),
+            or(
+              eq(apMapConnection.sourceMapSystemId, input.mapSystemId),
+              eq(apMapConnection.targetMapSystemId, input.mapSystemId),
+            ),
+          ),
+        );
+
+      // Abyssal traces are hard-deleted instead. A filament is single-use, so
+      // the link can never be re-traversed and nothing will ever re-confirm it;
+      // left dormant it would resurface the moment that system id is re-added,
+      // and left confirmed it would resurface immediately. Deleting the node is
+      // the only cleanup lever an operator has over a folded filament trace, so
+      // it has to actually remove the edge.
+      await tx
+        .delete(apMapConnection)
+        .where(
+          and(
+            eq(apMapConnection.mapId, input.mapId),
+            eq(apMapConnection.scope, 'abyssal'),
             or(
               eq(apMapConnection.sourceMapSystemId, input.mapSystemId),
               eq(apMapConnection.targetMapSystemId, input.mapSystemId),

@@ -8,7 +8,7 @@
 | Prop | Type | Required | Description |
 |---|---|---|---|
 | mapId | string | yes | Target map |
-| initialValues | Record<'deleteExpiredConnections'\|'deleteEolConnections'\|'trackAbyssalJumps'\|'logActivity', boolean> | yes | Current toggle state |
+| initialValues | Record<'deleteExpiredConnections'\|'deleteEolConnections'\|'trackAbyssalJumps', boolean> | yes | Current toggle state |
 
 ### Behaviour & Interactions
-- Submits all four toggles via `updateMapSettingsAction` (gated by `canManageMap`); toasts success/error.
+- Submits all three toggles via `updateMapSettingsAction` (gated by `settings_manage`); toasts success/error, and calls `router.refresh()` on success so the reopened dialog reflects the saved values.
