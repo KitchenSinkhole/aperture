@@ -41,6 +41,7 @@ import {
 import { subscribeRouteDestinations } from '@/lib/map/routeDestinationBus';
 import type {
   MapConnectionEdge,
+  MapSignature,
   RouteInstructionToken,
   RouteDestinationView,
   RouteHop,
@@ -110,12 +111,14 @@ export function RoutePlannerModule({
   initialPrefs,
   initialDestinations,
   connections,
+  signatures,
 }: {
   mapId: string;
   selectedSystemId: number | null;
   initialPrefs: RoutePrefs;
   initialDestinations: RouteDestinationView[];
   connections: MapConnectionEdge[];
+  signatures: MapSignature[];
 }) {
   const { activeCharSystemId } = useMapActiveChar();
 
@@ -153,6 +156,18 @@ export function RoutePlannerModule({
         .join('|'),
     [connections],
   );
+  // Only connection-bound sigs matter: they are what `RouteHop.viaSigId` names,
+  // so scanning or correcting one has to re-plan. Sorted because the array order
+  // is not stable across events.
+  const signaturesKey = useMemo(
+    () =>
+      signatures
+        .filter((s) => s.mapConnectionId != null)
+        .map((s) => `${s.mapConnectionId}:${s.mapSystemId}:${s.sigId}`)
+        .sort()
+        .join('|'),
+    [signatures],
+  );
   const destKey = useMemo(() => destinations.map((d) => d.systemId).join(','), [destinations]);
   const prefsKey = useMemo(() => JSON.stringify(prefs), [prefs]);
 
@@ -182,9 +197,10 @@ export function RoutePlannerModule({
       setComputing(false);
     }, noWork ? 0 : COMPUTE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-    // `connectionsKey`/`destKey`/`prefsKey` stand in for the array/object deps.
+    // `connectionsKey`/`destKey`/`prefsKey`/`signaturesKey` stand in for the
+    // array/object deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapId, sourceSystemId, destKey, prefsKey, connectionsKey]);
+  }, [mapId, sourceSystemId, destKey, prefsKey, connectionsKey, signaturesKey]);
 
   const updatePrefs = useCallback(
     (patch: Partial<RoutePrefs>) => {

@@ -2083,6 +2083,7 @@ export function MapCanvas({
             initialPrefs={routePrefs}
             initialDestinations={routeDestinations}
             connections={viewData.connections}
+            signatures={viewData.signatures}
           />
         );
       case 'intel':
