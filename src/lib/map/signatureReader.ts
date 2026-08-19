@@ -4,7 +4,7 @@ import { db } from '@/db/client';
 import { universeWormhole } from '@/db/schema';
 import type { SignatureGroupKey } from '@/types';
 import type { ParsedSigRow } from './signatureParser';
-import { signatureGroupKeyFromScannerName } from './signatureGroups';
+import { isScannerGroupName, signatureGroupKeyFromScannerName } from './signatureGroups';
 
 /**
  * Signature paste resolver — server-only `(groupName, name)` → `(groupKey, typeId)`
@@ -78,7 +78,8 @@ function filterLowStrengthName(name: string | null, groupName: string | null): s
   if (trimmed.length === 0) return null;
   if (groupName && trimmed.toLowerCase() === groupName.trim().toLowerCase()) return null;
   // Block the static scanner labels too — covers "Combat Site" appearing in
-  // the Name cell at low strength.
-  if (signatureGroupKeyFromScannerName(trimmed)) return null;
+  // the Name cell at low strength. Exact match only: the Drifter combat sites
+  // are named "Unstable Wormhole", "Caged Wormhole" and the like.
+  if (isScannerGroupName(trimmed)) return null;
   return trimmed;
 }
