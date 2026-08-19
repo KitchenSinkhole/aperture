@@ -50,6 +50,7 @@ const C3 = 98030003; // a C3 wormhole system (security label 'C3')
 const HS = 98030004; // a high-sec system (security label 'H')
 const KS1 = 98030005; // a K-space system gate-linked to KS2
 const KS2 = 98030006; // a K-space system gate-linked to KS1
+const ABY = 98030007; // an abyssal system (security label 'A')
 const CATEGORY = 98030001;
 const GROUP = 98030001;
 // Wormhole catalog rows:
@@ -73,6 +74,7 @@ describe.skipIf(!run)('system & connection mutations (real Postgres)', () => {
       { id: HS, constellationId: CONSTELLATION, name: 'Mut HS', security: 'H' },
       { id: KS1, constellationId: CONSTELLATION, name: 'Mut KS1', security: 'H' },
       { id: KS2, constellationId: CONSTELLATION, name: 'Mut KS2', security: 'H' },
+      { id: ABY, constellationId: CONSTELLATION, name: 'Mut Abyss', security: 'A' },
     ]);
     // KS1 ↔ KS2 share an in-game stargate (SDE mirrors both directions).
     await db.insert(universeStargateEdge).values([
@@ -366,6 +368,60 @@ describe.skipIf(!run)('system & connection mutations (real Postgres)', () => {
       .where(and(eq(apMapConnection.mapId, mapId), eq(apMapConnection.scope, 'stargate')));
     expect(after).toHaveLength(1);
   });
+
+  it('removeSystem hard-deletes incident abyssal links but only dormants wh ones', async () => {
+    const hubId = await mapSystemId(HS);
+    const abyRes = await addSystem({ mapId, systemId: ABY, characterId: null });
+    expect(abyRes.ok).toBe(true);
+    const abyId = await mapSystemId(ABY);
+
+    const trace = await createConnection({
+      mapId,
+      characterId: null,
+      sourceMapSystemId: hubId,
+      targetMapSystemId: abyId,
+      scope: 'abyssal',
+    });
+    expect(trace.ok).toBe(true);
+
+    // A wh link off the same hub is the control: it must survive as dormant.
+    const holeId = await mapSystemId(C3);
+    const hole = await createConnection({
+      mapId,
+      characterId: null,
+      sourceMapSystemId: hubId,
+      targetMapSystemId: holeId,
+      scope: 'wh',
+    });
+    expect(hole.ok).toBe(true);
+
+    const removed = await removeSystem({ mapId, mapSystemId: abyId, characterId: null });
+    expect(removed.ok).toBe(true);
+
+    // The trace is gone outright — nothing can re-traverse a spent filament, so
+    // re-adding ABY later must not resurface the old edge.
+    const traces = await db
+      .select({ id: apMapConnection.id })
+      .from(apMapConnection)
+      .where(and(eq(apMapConnection.mapId, mapId), eq(apMapConnection.scope, 'abyssal')));
+    expect(traces).toHaveLength(0);
+
+    const readded = await addSystem({ mapId, systemId: ABY, characterId: null });
+    expect(readded.ok).toBe(true);
+    const afterReadd = await db
+      .select({ id: apMapConnection.id })
+      .from(apMapConnection)
+      .where(and(eq(apMapConnection.mapId, mapId), eq(apMapConnection.scope, 'abyssal')));
+    expect(afterReadd).toHaveLength(0);
+
+    // The wh control is untouched by the abyssal delete and still restorable.
+    const holes = await db
+      .select({ confirmedAt: apMapConnection.confirmedAt })
+      .from(apMapConnection)
+      .where(and(eq(apMapConnection.mapId, mapId), eq(apMapConnection.scope, 'wh')));
+    expect(holes).toHaveLength(1);
+    expect(holes[0]!.confirmedAt).not.toBeNull();
+  });
 });
 
 async function eventCount(): Promise<number> {
@@ -396,7 +452,7 @@ async function cleanup() {
   await db
     .delete(universeStargateEdge)
     .where(inArray(universeStargateEdge.fromSystemId, [KS1, KS2]));
-  await db.delete(universeSystem).where(inArray(universeSystem.id, [C3, HS, KS1, KS2]));
+  await db.delete(universeSystem).where(inArray(universeSystem.id, [C3, HS, KS1, KS2, ABY]));
   await db.delete(universeConstellation).where(eq(universeConstellation.id, CONSTELLATION));
   await db.delete(universeRegion).where(eq(universeRegion.id, REGION));
 }

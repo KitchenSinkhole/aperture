@@ -326,7 +326,7 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
 
   // ─── expired-connections ──────────────────────────────────────────────────
 
-  it('expiredConnections deletes only WH-scope connections older than 48h on opted-in maps', async () => {
+  it('expiredConnections deletes WH + abyssal connections older than 48h on opted-in maps', async () => {
     const [oldWh] = await db
       .insert(apMapConnection)
       .values({
@@ -337,6 +337,19 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         createdAt: sql`now() - interval '49 hours'`,
       })
       .returning({ id: apMapConnection.id });
+    // A spent filament trace ages out the same way — nothing else ever removes
+    // one, so without the reap a map that folds abyssal runs grows forever.
+    const [oldAbyssal] = await db
+      .insert(apMapConnection)
+      .values({
+        mapId: activeMapId,
+        sourceMapSystemId: mapSystemA,
+        targetMapSystemId: mapSystemB,
+        scope: 'abyssal',
+        createdAt: sql`now() - interval '49 hours'`,
+      })
+      .returning({ id: apMapConnection.id });
+    // Structural links never expire on age alone — the control.
     const [oldGate] = await db
       .insert(apMapConnection)
       .values({
@@ -363,12 +376,14 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
     const survivors = await db
       .select({ id: apMapConnection.id })
       .from(apMapConnection)
-      .where(inArray(apMapConnection.id, [oldWh!.id, oldGate!.id, optOutOldWh!.id]));
+      .where(
+        inArray(apMapConnection.id, [oldWh!.id, oldAbyssal!.id, oldGate!.id, optOutOldWh!.id]),
+      );
     expect(new Set(survivors.map((r) => r.id))).toEqual(new Set([oldGate!.id, optOutOldWh!.id]));
 
     const runRow = await lastJobRun('expired-connections');
     expect(runRow!.success).toBe(true);
-    expect(runRow!.notes).toMatchObject({ deleted: 1, failed: 0 });
+    expect(runRow!.notes).toMatchObject({ deleted: 2, failed: 0 });
 
     await db
       .delete(apMapConnection)
