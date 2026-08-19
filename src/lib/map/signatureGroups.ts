@@ -27,6 +27,7 @@ export const SIGNATURE_GROUP_CATALOG: readonly SignatureGroupOption[] = [
       'Combat Site',
       'Factional Warfare Site - Combat Site',
       'Homefront Operation Site - Combat Site',
+      'Insurgency Site - Combat Site',
     ],
   },
   { key: 'relic',    label: 'Relic',    scannerNames: ['Relic Site'] },

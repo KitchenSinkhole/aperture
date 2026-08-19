@@ -13,7 +13,7 @@ Safe to import from both server-only and client modules — exports only static 
 Exactly one entry per group key, in the order shown in the UI dropdown — so the catalog can drive group dropdowns/chips directly without de-duping. Each entry carries:
 - `key` — the `SignatureGroupKey` enum value (`'combat'`, `'relic'`, `'data'`, `'gas'`, `'wormhole'`, `'ore'`, `'ghost'`).
 - `label` — UI label (e.g. `'Combat'`).
-- `scannerNames` — the literal strings EVE emits in the Group column of the probe-scanner paste. A group may have several aliases: `combat` covers `'Combat Site'`, `'Factional Warfare Site - Combat Site'`, and `'Homefront Operation Site - Combat Site'`.
+- `scannerNames` — the literal strings EVE emits in the Group column of the probe-scanner paste. A group may have several aliases: `combat` covers `'Combat Site'`, `'Factional Warfare Site - Combat Site'`, `'Homefront Operation Site - Combat Site'` and `'Insurgency Site - Combat Site'`.
 
 ---
 

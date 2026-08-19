@@ -14,12 +14,15 @@ describe('signatureGroupKeyFromScannerName', () => {
     }
   });
 
-  it('maps Combat aliases (Factional Warfare, Homefront) to combat', () => {
+  it('maps Combat aliases (Factional Warfare, Homefront, Insurgency) to combat', () => {
     expect(
       signatureGroupKeyFromScannerName('Factional Warfare Site - Combat Site'),
     ).toBe('combat');
     expect(
       signatureGroupKeyFromScannerName('Homefront Operation Site - Combat Site'),
+    ).toBe('combat');
+    expect(
+      signatureGroupKeyFromScannerName('Insurgency Site - Combat Site'),
     ).toBe('combat');
   });
 
