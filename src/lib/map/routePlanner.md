@@ -36,7 +36,7 @@ The public EVE-Scout Thera/Turnur connections (via `loadTheraConnections`) as `e
 ### planRoutes(args): Promise<RoutePlan[]>
 End-to-end orchestrator: cached gate graph + this map's overlay (+ EVE-Scout when `prefs.includeEveScout`) → `planRoutesOnGraph` → `enrichPlans` (batch-resolves system name/security label/raw security status from `universe_system`, plus each hop's `tag` from the map's visible `ap_map_system` rows loaded by `loadMapSystems`). Wall-clock duration (including failures, via `try/finally`) is observed into `route_plan_duration_ms` (`recordRoutePlan`).
 
-Enrichment also resolves each hop's `viaSigId` — the connection-bound `ap_map_signature.sig_id` on the **departure** side, i.e. keyed by the connection plus the *previous* hop's system. A wormhole carries up to two sigs (one per end), so the side matters: this is the hole the pilot warps to, not the one they land next to.
+Enrichment also resolves each hop's `viaSigId` — the connection-bound `ap_map_signature.sig_id` on the **departure** side, i.e. keyed by the connection plus the *previous* hop's system. A wormhole carries up to two sigs (one per end), so the side matters: this is the hole the pilot warps to, not the one they land next to. Only `via: 'wh'` hops carry one; a jumpbridge is an `ap_map_connection` too and a sig row may name it, but it is not a hole anyone warps to a sig for.
 
 **Parameters:** `{ mapId: bigint; sourceSystemId: number; destinationSystemIds: number[]; prefs: RoutePrefs }`.
 **Returns:** `RoutePlan[]` (`{ destinationSystemId, destinationName, reachable, jumps, hops: RouteHop[] }`), one per requested destination, in input order.

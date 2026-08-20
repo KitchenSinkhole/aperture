@@ -42,6 +42,7 @@ import { subscribeRouteDestinations } from '@/lib/map/routeDestinationBus';
 import type {
   MapConnectionEdge,
   MapSignature,
+  MapSystemNode,
   RouteInstructionToken,
   RouteDestinationView,
   RouteHop,
@@ -110,6 +111,7 @@ export function RoutePlannerModule({
   selectedSystemId,
   initialPrefs,
   initialDestinations,
+  systems,
   connections,
   signatures,
 }: {
@@ -117,6 +119,7 @@ export function RoutePlannerModule({
   selectedSystemId: number | null;
   initialPrefs: RoutePrefs;
   initialDestinations: RouteDestinationView[];
+  systems: MapSystemNode[];
   connections: MapConnectionEdge[];
   signatures: MapSignature[];
 }) {
@@ -168,6 +171,18 @@ export function RoutePlannerModule({
         .join('|'),
     [signatures],
   );
+  // `RouteHop.tag` is baked into the server plan and is what every instruction
+  // line calls a system, so a rename has to re-plan. Untagged systems are left
+  // out, which still moves the key when a tag is cleared.
+  const tagsKey = useMemo(
+    () =>
+      systems
+        .filter((s) => s.tag)
+        .map((s) => `${s.systemId}:${s.tag}`)
+        .sort()
+        .join('|'),
+    [systems],
+  );
   const destKey = useMemo(() => destinations.map((d) => d.systemId).join(','), [destinations]);
   const prefsKey = useMemo(() => JSON.stringify(prefs), [prefs]);
 
@@ -197,10 +212,10 @@ export function RoutePlannerModule({
       setComputing(false);
     }, noWork ? 0 : COMPUTE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-    // `connectionsKey`/`destKey`/`prefsKey`/`signaturesKey` stand in for the
-    // array/object deps.
+    // `connectionsKey`/`destKey`/`prefsKey`/`signaturesKey`/`tagsKey` stand in
+    // for the array/object deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapId, sourceSystemId, destKey, prefsKey, connectionsKey, signaturesKey]);
+  }, [mapId, sourceSystemId, destKey, prefsKey, connectionsKey, signaturesKey, tagsKey]);
 
   const updatePrefs = useCallback(
     (patch: Partial<RoutePrefs>) => {
@@ -377,7 +392,7 @@ export function RoutePlannerModule({
                 dest={dest}
                 plan={planBySystem.get(dest.systemId)}
                 computing={computing}
-                hasSource={sourceSystemId != null}
+                sourceSystemId={sourceSystemId}
                 expanded={expandedSteps.has(dest.id)}
                 onToggle={() => toggleSteps(dest.id)}
                 onRemove={() => removeDestination(dest.id)}
@@ -433,7 +448,7 @@ function DestinationRow({
   dest,
   plan,
   computing,
-  hasSource,
+  sourceSystemId,
   expanded,
   onToggle,
   onRemove,
@@ -441,12 +456,17 @@ function DestinationRow({
   dest: RouteDestinationView;
   plan: RoutePlan | undefined;
   computing: boolean;
-  hasSource: boolean;
+  sourceSystemId: number | null;
   expanded: boolean;
   onToggle: () => void;
   onRemove: () => void;
 }) {
   const segments = useMemo(() => (plan ? segmentRoute(plan) : []), [plan]);
+
+  // A plan outlives the source it was computed from — the recompute is debounced
+  // and round-trips — so a pilot who has just jumped would otherwise copy
+  // directions starting from the system they left.
+  const stale = computing || (plan != null && plan.hops[0]?.systemId !== sourceSystemId);
 
   const copy = () => {
     void navigator.clipboard.writeText(formatRouteInstructions(segments)).then(
@@ -483,8 +503,10 @@ function DestinationRow({
               <button
                 type="button"
                 onClick={copy}
+                disabled={stale}
+                title={stale ? 'Recomputing from the current system…' : undefined}
                 aria-label={`Copy directions to ${dest.name}`}
-                className="flex items-center gap-0.5 text-muted-foreground hover:text-foreground"
+                className="flex items-center gap-0.5 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-muted-foreground"
               >
                 <Copy className="size-3" />
                 Copy
@@ -501,7 +523,7 @@ function DestinationRow({
           <X className="size-3.5" />
         </button>
       </div>
-      <RouteBreadcrumb plan={plan} computing={computing} hasSource={hasSource} />
+      <RouteBreadcrumb plan={plan} computing={computing} hasSource={sourceSystemId != null} />
       {expanded && segments.length > 0 && (
         <ol className="flex list-decimal flex-col gap-1 pl-5 text-xs leading-snug text-muted-foreground marker:font-mono">
           {segments.map((seg) => (

@@ -353,9 +353,9 @@ export type RouteHop = {
   onMap: boolean;
   tag: string | null;
   /**
-   * The in-game sig code in the *previous* hop's system for the connection
-   * traversed to reach this one — the hole you leave through. Null for
-   * origin/gate/eve_scout hops and for connections with no sig recorded on the
+   * The in-game sig code in the *previous* hop's system for the wormhole
+   * traversed to reach this one — the hole you leave through. Null on every
+   * hop that isn't `via: 'wh'`, and on wormholes with no sig recorded on the
    * departure side.
    */
   viaSigId: string | null;

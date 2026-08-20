@@ -374,7 +374,7 @@ async function enrichPlans(
         securityStatus: info.get(hop.systemId)?.securityStatus ?? null,
         tag: tags.get(hop.systemId) ?? null,
         viaSigId:
-          prev && hop.connectionId != null
+          prev && hop.via === 'wh' && hop.connectionId != null
             ? (sigs.get(`${hop.connectionId}:${prev.systemId}`) ?? null)
             : null,
       };

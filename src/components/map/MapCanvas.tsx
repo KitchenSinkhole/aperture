@@ -2082,6 +2082,7 @@ export function MapCanvas({
             selectedSystemId={selectedSystem?.systemId ?? null}
             initialPrefs={routePrefs}
             initialDestinations={routeDestinations}
+            systems={viewData.systems}
             connections={viewData.connections}
             signatures={viewData.signatures}
           />
