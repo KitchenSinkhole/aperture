@@ -69,6 +69,38 @@ describe.skipIf(!run)('withInstrumentation (real Postgres)', () => {
     expect(row!.notes).toBeNull();
   });
 
+  it('records the driver diagnosis ahead of the wrapper that buried it', async () => {
+    // Shaped like what Drizzle hands up: the wrapper's own message is the whole
+    // failed statement plus every bound parameter, and the only actionable text
+    // is on the pg error underneath it.
+    const driver = Object.assign(
+      new Error('insert or update on table "universe_incursion" violates foreign key constraint'),
+      {
+        code: '23503',
+        constraint: 'universe_incursion_constellation_id_universe_constellation_id_f',
+        detail: 'Key (constellation_id)=(20000382) is not present in table "universe_constellation".',
+      },
+    );
+    const wrapper = new Error(`Failed query: insert into "universe_incursion" ... ${'$'.repeat(5000)}`, {
+      cause: driver,
+    });
+    const task = withInstrumentation<unknown>('smoke-cause-chain', async () => {
+      throw wrapper;
+    });
+
+    await expect(task(null, FAKE_HELPERS)).rejects.toThrow(wrapper);
+
+    const row = await lastRunFor('smoke-cause-chain');
+    expect(row!.errorText).toContain('violates foreign key constraint');
+    expect(row!.errorText).toContain('SQLSTATE 23503');
+    expect(row!.errorText).toContain('constraint universe_incursion_constellation_id');
+    expect(row!.errorText).toContain('is not present in table "universe_constellation"');
+    // The cap truncates the wrapper's SQL dump, never the diagnosis.
+    expect(row!.errorText!.indexOf('violates foreign key constraint')).toBeLessThan(
+      row!.errorText!.indexOf('Failed query'),
+    );
+  });
+
   it('truncates oversize notes into a marker rather than dropping the row', async () => {
     const big = 'x'.repeat(apertureConfig.JOB_INSTRUMENTATION_NOTES_MAX_BYTES + 1000);
     const task = withInstrumentation<unknown>('smoke-oversize-notes', async () => ({ big }));

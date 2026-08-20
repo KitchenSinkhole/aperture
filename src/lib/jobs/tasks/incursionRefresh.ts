@@ -43,5 +43,8 @@ export const incursionRefresh: JobModule = {
   name: NAME,
   // ESI caches `/incursions/` for ~5 minutes.
   cron: '*/5 * * * *',
+  // A full-replace of the current ESI snapshot: the next tick supersedes a
+  // failed run entirely, so retrying past it is only ever duplicate work.
+  maxAttempts: 1,
   run: withInstrumentation(NAME, refresh),
 };

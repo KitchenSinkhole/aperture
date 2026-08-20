@@ -22,7 +22,7 @@ Mutation splits into two authority tiers keyed on the `MapRight`:
 1. **`map_update` — content editing → view authority.** The live charting surface (add/move/remove systems, paste signatures, draw/edit/collapse connections, subchain delete, thera sync, disconnected cleanup) is open to **every viewer**. Anyone who can see the map — by ownership, corp/alliance membership, **or the role overlay** — can edit its content. Collaborative wormhole mapping is the product; read-only members would defeat it.
 2. **All other rights (`map_delete`, `map_import`, `map_export`, `map_share`) — management → `canManageMap`.** Map configuration & lifecycle stay with admin, the private map's owner, the owning corp's Director, or the owning alliance's executor-corp Director. The corp-right matrix no longer participates.
 
-Map **settings** edits (name/icon/behaviour flags/tagging) are a management surface too — gated by the `settings_manage` capability (`requireMapCapability`), **not** the view-level `map_update` right. See the per-title feature delegation section below.
+Map **settings** edits (name/behaviour flags/tagging) are a management surface too — gated by the `settings_manage` capability (`requireMapCapability`), **not** the view-level `map_update` right. See the per-title feature delegation section below.
 
 **Unowned maps** (all three owner columns NULL) are admin-only. Defensive default that surfaces rows needing repair.
 
@@ -47,7 +47,7 @@ Map-**management** authority is a pure function of EVE state + ownership (`canMa
 The alliance's executor corporation from the `ap_alliance` cache (`syncCharacterAuthz` keeps it fresh). `null` when the alliance is unknown or has no executor.
 
 #### canManageMap(characterId, mapId): Promise<boolean>
-Binary "can the actor manage this map" (full mutation surface + settings/webhooks/audit; no per-right granularity at baseline). Admin → true. `private` → `owner_character_id == actor`. `corp` → `actor.is_director && owner_corporation_id == actor.corporation_id`. `alliance` → `actor.is_director && owner_alliance_id == actor.alliance_id && actor.corporation_id == executorCorpOf(owner_alliance_id)`. All-NULL owner / missing / inactive → false.
+Binary "can the actor manage this map" (full mutation surface + settings/webhooks/audit; a manager holds every capability implicitly, with no per-right granularity of its own — see the per-title delegation overlay below for the granular path). Admin → true. `private` → `owner_character_id == actor`. `corp` → `actor.is_director && owner_corporation_id == actor.corporation_id`. `alliance` → `actor.is_director && owner_alliance_id == actor.alliance_id && actor.corporation_id == executorCorpOf(owner_alliance_id)`. All-NULL owner / missing / inactive → false.
 
 ### isAdmin(session): Promise<boolean>
 Cheap session-level admin probe (`authz_level='admin'` AND `status='active'`) — does not touch any map table. The gate for the entire `/admin` operator console and all moderation actions.
@@ -81,6 +81,9 @@ The single feature gate every delegated call site calls: `canManageMap(...) || h
 
 #### resolveMapCapabilities(characterId, mapId): Promise<Set<MapCapability>>
 The set of capabilities the character can exercise on the map. Managers get every `map_capability` value; everyone else gets the union their held titles grant (one query). Feeds the client capability reveal.
+
+#### mapsWithCapability(characterId, mapIds, capability): Promise<Set<bigint>>
+Batched `canUseMapFeature` for a card-list render — the subset of `mapIds` the character holds `capability` on, in three queries regardless of list size: the actor row, one ownership pass over every map (a literal mirror of `canManageMap`'s ownership switch, left-joined to `ap_alliance` so the executor corp resolves without a per-map round trip), then one grant query over only the maps ownership didn't already cover. Both passes exclude soft-deleted maps, so a title grant can't outlive its map's deletion.
 
 #### requireMapCapability(session, mapId, capability): Promise<RightGuard>
 Tuple-shaped guard for a delegated feature endpoint / action: session (401) → view existence (404, does not leak) → `canUseMapFeature` (403). Same shape as `requireMapManage`, keyed on a specific capability.

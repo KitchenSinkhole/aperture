@@ -6,7 +6,7 @@
 ---
 
 ### sdeRefresh: JobModule
-Registered task `'sde-refresh'`, cron `'15 12 * * *'` (12:15 UTC — shortly after the ~11:29 UTC window CCP publishes builds in, outside the `CCP_SSO_DOWNTIME` back-off), on the `SDE_QUEUE` ([[queues]]) so the cron and a manually enqueued ingest are mutually exclusive. Payload-less, so it also falls into `onDemandJobModules()` for a manual `/setup` trigger.
+Registered task `'sde-refresh'`, cron `'15 12 * * *'` (12:15 UTC — shortly after the ~11:29 UTC window CCP publishes builds in, outside the `CCP_SSO_DOWNTIME` back-off), on the `SDE_QUEUE` ([[queues]]) so the cron and a manually enqueued ingest are mutually exclusive. `maxAttempts: 2` — the daily tick is the real retry, and a grinding ~100MB ingest holds the shared queue against `sde-ingest` and `csv-ingest`. Payload-less, so it also falls into `onDemandJobModules()` for a manual `/setup` trigger.
 
 Each run:
 1. Reads `ap_sde_state.current_build`; if the row is absent, seeds it with the pinned `SDE_BUILD`/`SDE_RELEASE_DATE` (a deployment upgrading in place without a prior ingest through this codebase).

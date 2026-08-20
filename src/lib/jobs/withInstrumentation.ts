@@ -112,8 +112,48 @@ export function withInstrumentation<TPayload>(
   };
 }
 
+/**
+ * Postgres diagnostics `node-postgres` hangs off its error objects. Not
+ * declared by the driver's types, so they are read defensively.
+ */
+interface PgErrorFields {
+  code?: unknown;
+  detail?: unknown;
+  constraint?: unknown;
+}
+
+function describeOne(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const pg = err as Error & PgErrorFields;
+  const diagnostics = [
+    typeof pg.code === 'string' ? `SQLSTATE ${pg.code}` : null,
+    typeof pg.constraint === 'string' ? `constraint ${pg.constraint}` : null,
+    typeof pg.detail === 'string' ? pg.detail : null,
+  ].filter((part): part is string => part !== null);
+  return diagnostics.length > 0 ? `${err.message} (${diagnostics.join('; ')})` : err.message;
+}
+
+/**
+ * Renders an error innermost-cause-first. A driver error wrapped by Drizzle
+ * carries the diagnosis (constraint name, SQLSTATE, DETAIL) on `cause` while
+ * the wrapper's own `message` is the entire failed statement plus every bound
+ * parameter, so ordering the chain this way keeps the length cap from
+ * truncating away the only part worth reading.
+ */
+function describeError(err: unknown): string {
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  while (current !== undefined && current !== null && !seen.has(current)) {
+    seen.add(current);
+    parts.push(describeOne(current));
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return parts.reverse().join(' <- ');
+}
+
 function capError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
+  const message = describeError(err);
   const max = apertureConfig.JOB_INSTRUMENTATION_ERROR_MAX_LENGTH;
   return message.length > max ? message.slice(0, max) : message;
 }

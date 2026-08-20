@@ -19,8 +19,11 @@ and a cumulative total. Loading / failed / empty states are inline text.
 - **Read-only.** The log is server-derived from the location-poll; there is no add/delete control.
 - Lazy `GET`s `/api/map/{mapId}/connections/{id}/mass-log` on mount and whenever `connection.id`
   changes (the parent also remounts via `key={connection.id}`).
-- Registers a `useRealtimeEvents` listener; on a `connectionMassLog` envelope whose `connectionId`
-  matches the open connection, it **refetches** the list. A monotonic `reqSeq` ref makes the latest
+- Registers a `useRealtimeEvents` listener; drops a `connectionMassLog` envelope whose validated
+  load names a different map (defense-in-depth against a SharedWorker routing regression — the
+  worker itself already scopes delivery to subscribed ports; the load's `mapId` is mandatory, so
+  unlike the optional envelope-level tag it cannot be absent and silently pass), then on one whose
+  `connectionId` matches the open connection, it **refetches** the list. A monotonic `reqSeq` ref makes the latest
   refetch win, so a burst of jump events (each delivered exactly once, no `lastEvent` coalescing)
   can't land an older response after a newer one.
 - Mass is shown in kilotonnes (1 kt = 1e6 kg), matching `JumpInfoDialog`.

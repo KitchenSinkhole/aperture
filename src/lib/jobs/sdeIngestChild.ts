@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { totalmem } from 'node:os';
 import { join } from 'node:path';
 import type { IngestResult } from '@/lib/sde/ingest';
 
@@ -11,16 +12,36 @@ import type { IngestResult } from '@/lib/sde/ingest';
  * tasks.
  */
 
-const CHILD_POOL_MAX = 2;
+/** One connection is pinned for the run's advisory lock; the rest serve the ingest, which issues one statement at a time. */
+const CHILD_POOL_MAX = 3;
 const STDERR_TAIL_LINES = 20;
 /**
- * Ceiling on a whole ingest — download, ~100MB YAML parse, bulk upserts,
+ * Ceiling on a whole ingest — download, ~100MB JSONL parse, bulk upserts,
  * deletion sync. Generous enough that a slow box finishes inside it, finite so
  * a wedged child can never hold one of the four worker slots indefinitely.
  */
 const CHILD_TIMEOUT_MS = 30 * 60_000;
 /** Grace between SIGTERM and SIGKILL for a child that has stopped responding. */
 const CHILD_SIGKILL_GRACE_MS = 10_000;
+/**
+ * Ceiling on the child's V8 old space. `parseSdeArchive` streams each SDE
+ * entry straight out of the archive and decodes it one JSONL record at a
+ * time, so the parse's peak footprint is the derived row arrays plus one
+ * decoded record — never a whole-file document graph, a whole-archive
+ * buffer, or a whole-decompressed-entry buffer. A regression back to
+ * whole-file parsing would blow this ceiling and abort the child with
+ * SIGABRT (exit 134) instead of silently reappearing. Capped both absolutely
+ * and as a share of physical memory so that raising the ceiling can never
+ * trade a contained V8 abort for a host OOM kill that takes the whole
+ * process tree with it.
+ */
+const CHILD_MAX_OLD_SPACE_MB = 512;
+const CHILD_MAX_OLD_SPACE_SHARE = 0.6;
+
+function childMaxOldSpaceMb(): number {
+  const share = Math.floor((totalmem() / 1024 / 1024) * CHILD_MAX_OLD_SPACE_SHARE);
+  return Math.min(CHILD_MAX_OLD_SPACE_MB, share);
+}
 
 export interface SdeIngestOverride {
   build: number;
@@ -49,10 +70,11 @@ export function runSdeIngestChild(override?: SdeIngestOverride): Promise<IngestR
       env.SDE_INGEST_BUILD = String(override.build);
       env.SDE_INGEST_RELEASE_DATE = override.releaseDate;
     }
-    const child = spawn(process.execPath, [tsxCli, scriptPath], {
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      process.execPath,
+      [`--max-old-space-size=${childMaxOldSpaceMb()}`, tsxCli, scriptPath],
+      { env, stdio: ['ignore', 'pipe', 'pipe'] },
+    );
 
     let stdout = '';
     let stderrLines: string[] = [];

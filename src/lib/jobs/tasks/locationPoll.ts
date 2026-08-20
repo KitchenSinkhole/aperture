@@ -29,7 +29,7 @@ import { getMapViewerUserIds } from '@/lib/realtime/mapViewers';
 import { shipMass } from '@/lib/eve/shipMass';
 import { resolveShipClass } from '@/lib/eve/shipClass';
 import { recordLocationPoll } from '@/lib/metrics/registry';
-import { foldWormholeJumpOntoMap } from '../locationCommit';
+import { foldJumpOntoMap } from '../locationCommit';
 import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
 import type { LocationPollOutcome } from '@/types';
@@ -94,6 +94,13 @@ interface PollNotes {
   esiOutage?: 'breaker-open' | 'downtime' | 'http-401';
   jumpClass?: JumpClass | null;
   folds?: FoldSummary[];
+  /**
+   * Number of tracked maps skipped on an abyssal tick because
+   * `track_abyssal_jumps` is off. Only set on abyssal ticks — without it,
+   * `folds: []` can't distinguish "tracked on no maps" from "every map has
+   * the flag off".
+   */
+  abyssalMapsSkipped?: number;
 }
 
 async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<PollNotes> {
@@ -165,7 +172,7 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
       const reenqueuedInMs = apertureConfig.LOCATION_POLL_OFFLINE_MS;
       await reenqueue(helpers, payload, reenqueuedInMs);
       await broadcastCharacterUpdate({
-        trackedMapIds: await loadActiveTrackedMaps(characterId),
+        trackedMapIds: (await loadActiveTrackedMaps(characterId)).map((m) => m.mapId),
         characterId,
         characterName: character.name,
         userId: character.userId,
@@ -208,7 +215,8 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
     // the ESI round-trip would then fold onto — and re-broadcast the pilot's
     // breadcrumb to — a map they just left, resurrecting them on the roster with
     // no further tick to correct it.
-    const trackedMapIds = await loadActiveTrackedMaps(characterId);
+    const trackedMaps = await loadActiveTrackedMaps(characterId);
+    const trackedMapIds = trackedMaps.map((m) => m.mapId);
 
     // Step 7 — classify + fan-out. First poll (`previousSystemId === null`)
     // and same-system ticks both short-circuit. Gate jumps and `teleport`
@@ -216,6 +224,7 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
     // are observed-only: location is already persisted, so we just don't fold.
     let jumpClass: JumpClass | null = null;
     let folds: FoldSummary[] | undefined;
+    let abyssalMapsSkipped: number | undefined;
     if (
       character.lastSystemId !== null &&
       location.solar_system_id !== character.lastSystemId
@@ -225,13 +234,21 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
         toSystemId: location.solar_system_id,
         arrivedDocked: location.station_id != null || location.structure_id != null,
       });
-      if (jumpClass === 'wormhole') {
+      if (jumpClass === 'wormhole' || jumpClass === 'abyssal') {
+        const scope: 'wh' | 'abyssal' = jumpClass === 'wormhole' ? 'wh' : 'abyssal';
         // Resolve the jumping ship's mass once (same ship across every tracked
-        // map) for the per-connection mass-log. Null when the type is unknown —
-        // `logConnectionJump` skips logging that jump.
-        const jumpMass = await shipMass(ship.ship_type_id);
+        // map) for the per-connection mass-log. Only meaningful for `wh` —
+        // a filament has no mass budget and can't collapse.
+        const jumpMass = scope === 'wh' ? await shipMass(ship.ship_type_id) : null;
         folds = [];
-        for (const mapId of trackedMapIds) {
+        if (scope === 'abyssal') abyssalMapsSkipped = 0;
+        for (const { mapId, trackAbyssalJumps } of trackedMaps) {
+          // A map that hasn't opted in to `track_abyssal_jumps` sees nothing
+          // for an abyssal transition.
+          if (scope === 'abyssal' && !trackAbyssalJumps) {
+            abyssalMapsSkipped = (abyssalMapsSkipped ?? 0) + 1;
+            continue;
+          }
           // A jump may add a system not already on the map only when the moving
           // pilot's account currently has *this* map open in a live tab. The WS
           // viewer roster is in-process (`server.ts` runs the worker beside the
@@ -239,16 +256,18 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
           // movement only between systems already placed — so a pilot
           // day-tripping with Aperture closed doesn't pollute a dormant map.
           const addNewSystems = getMapViewerUserIds(mapId).includes(character.userId);
-          const result = await foldWormholeJumpOntoMap({
+          const result = await foldJumpOntoMap({
             mapId,
             characterId,
             fromSystemId: character.lastSystemId,
             toSystemId: location.solar_system_id,
             addNewSystems,
+            scope,
           });
           // No connection means the jump was suppressed (map closed, endpoint
-          // off-map) — nothing to log a jump's mass against.
-          if (result.connectionId !== null) {
+          // off-map) — nothing to log a jump's mass against. Abyssal jumps never
+          // log mass regardless — a filament has no mass budget and can't collapse.
+          if (result.connectionId !== null && scope === 'wh') {
             await logConnectionJump({
               mapId,
               connectionId: result.connectionId,
@@ -293,6 +312,7 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
       reenqueuedInMs,
       jumpClass,
       ...(folds ? { folds } : {}),
+      ...(abyssalMapsSkipped !== undefined ? { abyssalMapsSkipped } : {}),
     };
   } catch (err) {
     if (err instanceof EsiTokenError) {
@@ -353,15 +373,20 @@ async function instrumentedPoll(
   return notes;
 }
 
-async function loadActiveTrackedMaps(characterId: bigint): Promise<bigint[]> {
+interface TrackedMap {
+  mapId: bigint;
+  trackAbyssalJumps: boolean;
+}
+
+async function loadActiveTrackedMaps(characterId: bigint): Promise<TrackedMap[]> {
   const rows = await db
-    .select({ mapId: apMap.id })
+    .select({ mapId: apMap.id, trackAbyssalJumps: apMap.trackAbyssalJumps })
     .from(apMapCharacterTracking)
     .innerJoin(apMap, eq(apMap.id, apMapCharacterTracking.mapId))
     .where(
       and(eq(apMapCharacterTracking.characterId, characterId), isNull(apMap.deletedAt)),
     );
-  return rows.map((r) => r.mapId);
+  return rows;
 }
 
 interface BroadcastArgs {

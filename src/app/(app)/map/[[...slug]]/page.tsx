@@ -9,6 +9,7 @@ import { loadRouteConfig } from '@/lib/map/routeConfig';
 import { statsForSystems } from '@/lib/map/stats';
 import { intelForSystems } from '@/lib/map/intel';
 import { structuresForSystems } from '@/lib/structures/read';
+import { requireIntelTenant } from '@/lib/structures/guard';
 import {
   getAccountCharacters,
   getConnectionTravelAnimation,
@@ -64,10 +65,11 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     canManage,
     capabilities,
     liveShares,
+    intelTenant,
   ] = await Promise.all([
     statsForSystems(systemIds),
     intelForSystems(systemIds),
-    structuresForSystems(systemIds),
+    structuresForSystems(mapId, systemIds, BigInt(session.characterId)),
     loadMapSettings(BigInt(session.characterId), mapId),
     getConnectionTravelAnimation(session.userId),
     getSignatureIndicatorPrefs(session.userId),
@@ -78,6 +80,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     canManageMap(BigInt(session.characterId), mapId),
     resolveMapCapabilities(BigInt(session.characterId), mapId),
     loadLiveShareBadges(mapId),
+    requireIntelTenant(mapId, BigInt(session.characterId)),
   ]);
 
   // Active characters drive both the CTRL+V paste location check (ids) and the
@@ -101,6 +104,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
         stats={stats}
         intel={intel}
         structures={structures}
+        structureIntelEnabled={intelTenant.ok}
         settings={settings}
         canManage={canManage}
         capabilities={[...capabilities]}

@@ -90,5 +90,9 @@ export const sdeRefresh: JobModule = {
   name: NAME,
   cron: '15 12 * * *',
   queue: SDE_QUEUE,
+  // A build CCP published is still there tomorrow, so the daily tick is the
+  // retry. Grinding a failing ~100MB ingest for hours holds the shared SDE
+  // queue against `sde-ingest` and `csv-ingest` for no gain.
+  maxAttempts: 2,
   run: withInstrumentation(NAME, refresh),
 };

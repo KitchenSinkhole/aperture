@@ -14,7 +14,7 @@ Best-effort delete of the `ap_setup` cookie.
 ### setupRunMigrations(): Promise<ActionResult<{ applied: number; tags: string[] }>>
 Gated. Diffs `src/db/migrations/meta/_journal.json` against `drizzle.__drizzle_migrations` to compute pending entries, then invokes `migrate()` from `drizzle-orm/node-postgres/migrator`. Idempotent — re-running with no pending work returns `{ applied: 0, tags: [] }`. Returns the list of applied tags by their journal `tag` (e.g. `'0014_admin_event_kinds'`).
 
-Every enqueue below passes the task's registered queue (`jobQueueFor`, `src/lib/jobs/registry.ts`) as `add_job`'s `queue_name`, so an on-demand run is serialized against the same jobs its cron is — the three static-data tasks share one queue and never overlap.
+Every enqueue below passes the task's registered queue (`jobQueueFor`, `src/lib/jobs/registry.ts`) as `add_job`'s `queue_name`, so an on-demand run is serialized against the same jobs its cron is — the three static-data tasks share one queue and never overlap. Each also passes the task's registered retry budget (`jobMaxAttemptsFor`) as `max_attempts`, so a console-triggered run does not silently revert to graphile-worker's default of 25; a task without one passes `NULL`, which is that default.
 
 ### setupRunSdeIngest(): Promise<ActionResult<{ jobId: string }>>
 Gated. Enqueues the `sde-ingest` graphile-worker task via `graphile_worker.add_job` — a re-run of the whole ingest pipeline against the build the database already holds. Returns the queued job id as a base-10 string.

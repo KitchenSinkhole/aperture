@@ -43,6 +43,14 @@ export interface JobModule {
    * strictly one at a time. Omit for tasks that may run concurrently.
    */
   queue?: string;
+  /**
+   * Retry budget for one enqueued run. Omit to take graphile-worker's default
+   * of 25. A run whose work the next cron tick fully supersedes wants a small
+   * budget: retries on the default backoff outlive the data they were
+   * computing, and a persistent failure accumulates one live retry chain per
+   * tick until thousands of doomed jobs are queued behind a single root cause.
+   */
+  maxAttempts?: number;
   /** Instrumented handler — typically the return value of `withInstrumentation(name, raw)`. */
   run: Task;
 }
@@ -117,7 +125,11 @@ export function buildCronItems(extra: readonly JobModule[] = []): CronItem[] {
       task: m.name,
       match: m.cron,
       identifier: m.name,
-      ...(m.queue ? { options: { backfillPeriod: 0, queueName: m.queue } } : {}),
+      options: {
+        backfillPeriod: 0,
+        ...(m.queue ? { queueName: m.queue } : {}),
+        ...(m.maxAttempts === undefined ? {} : { maxAttempts: m.maxAttempts }),
+      },
     });
   }
   return out;
@@ -130,4 +142,14 @@ export function buildCronItems(extra: readonly JobModule[] = []): CronItem[] {
  */
 export function jobQueueFor(taskName: string): string | null {
   return modules.find((m) => m.name === taskName)?.queue ?? null;
+}
+
+/**
+ * The retry budget a task is registered with, or `null` to take
+ * graphile-worker's default. Callers enqueuing by task name (the `/setup`
+ * console) resolve it here so an on-demand run gets the same budget as its
+ * cron rather than silently reverting to 25.
+ */
+export function jobMaxAttemptsFor(taskName: string): number | null {
+  return modules.find((m) => m.name === taskName)?.maxAttempts ?? null;
 }

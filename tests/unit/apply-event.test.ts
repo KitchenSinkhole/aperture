@@ -295,7 +295,7 @@ describe('applyEvent — map.update', () => {
       kind: 'map.update',
       eventId: 15,
       id: '1',
-      logActivity: true,
+      deleteExpiredConnections: true,
     });
     expect(next.map.name).toBe('Test Map');
     expect(next).toBe(state);
@@ -391,7 +391,7 @@ describe('applyEvent — signature.delete', () => {
 
 describe('applyEvent — no-op events', () => {
   const noopKinds = [
-    { kind: 'map.create' as const, eventId: 30, id: '2', name: 'New Map', scope: 'wh' as const, type: 'private' as const, icon: null },
+    { kind: 'map.create' as const, eventId: 30, id: '2', name: 'New Map', scope: 'wh' as const, type: 'private' as const },
     { kind: 'map.delete' as const, eventId: 31, id: '1' },
   ];
 

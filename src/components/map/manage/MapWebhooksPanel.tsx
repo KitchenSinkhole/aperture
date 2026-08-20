@@ -42,7 +42,7 @@ function maskUrl(url: string): string {
 
 /**
  * Webhooks editor for the in-map Settings → Webhooks tab. Fetches the list from
- * `/api/map/[mapId]/webhooks` (gated by `canManageMap`) and refetches after
+ * `/api/map/[mapId]/webhooks` (gated by `webhooks_manage`) and refetches after
  * every create / edit / delete / test / reset.
  */
 export function MapWebhooksPanel({ mapId }: { mapId: string }) {

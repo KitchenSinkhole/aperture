@@ -1,7 +1,9 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import AdmZip from 'adm-zip';
 import { getTableName } from 'drizzle-orm';
-import { stringify } from 'yaml';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { DELETION_SPECS, findShrunkenTables, parseSdeArchive } from '@/lib/sde/ingest';
 import { SdeFormatError } from '@/lib/sde/decoders';
 
@@ -25,32 +27,54 @@ const STARGATES = {
   40000002: { solarSystemID: 30000002, destination: { solarSystemID: 30000001 } },
 };
 
-/** Builds a minimal valid SDE archive, with any entry overridable for a negative case. */
-function buildArchive(overrides: Record<string, unknown> = {}): AdmZip {
+/** Renders a `{ id: entry }` map as `.jsonl` lines, each carrying its id as `_key` — the shape a real SDE JSONL file has. */
+function toJsonl(map: Record<string, unknown>): string {
+  return Object.entries(map)
+    .map(([key, value]) => JSON.stringify({ _key: Number(key), ...(value as Record<string, unknown>) }))
+    .join('\n');
+}
+
+const tmpDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tmpDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+/**
+ * Builds a minimal valid SDE archive on disk, with any entry overridable for
+ * a negative case. A string override is written verbatim, letting a case
+ * supply a single malformed or non-object line. Returns the zip's path —
+ * `parseSdeArchive` streams entries out of a file, not an in-memory handle.
+ */
+async function buildArchive(overrides: Record<string, unknown> = {}): Promise<string> {
   const zip = new AdmZip();
   const entries: Record<string, unknown> = {
-    'categories.yaml': CATEGORY,
-    'groups.yaml': GROUP,
-    'dogmaAttributes.yaml': DOGMA_ATTRIBUTE,
-    'types.yaml': TYPES,
-    'typeDogma.yaml': TYPE_DOGMA,
-    'mapRegions.yaml': REGIONS,
-    'mapConstellations.yaml': CONSTELLATIONS,
-    'mapSolarSystems.yaml': SYSTEMS,
-    'mapStargates.yaml': STARGATES,
+    'categories.jsonl': CATEGORY,
+    'groups.jsonl': GROUP,
+    'dogmaAttributes.jsonl': DOGMA_ATTRIBUTE,
+    'types.jsonl': TYPES,
+    'typeDogma.jsonl': TYPE_DOGMA,
+    'mapRegions.jsonl': REGIONS,
+    'mapConstellations.jsonl': CONSTELLATIONS,
+    'mapSolarSystems.jsonl': SYSTEMS,
+    'mapStargates.jsonl': STARGATES,
     ...overrides,
   };
   for (const [name, value] of Object.entries(entries)) {
     if (value === undefined) continue; // allows a caller to omit an entry entirely
-    const content = typeof value === 'string' ? value : stringify(value);
+    const content = typeof value === 'string' ? value : toJsonl(value as Record<string, unknown>);
     zip.addFile(name, Buffer.from(content, 'utf-8'));
   }
-  return zip;
+  const dir = await mkdtemp(join(tmpdir(), 'sde-fixture-'));
+  tmpDirs.push(dir);
+  const zipPath = join(dir, 'sde.zip');
+  await zip.writeZipPromise(zipPath);
+  return zipPath;
 }
 
 describe('parseSdeArchive', () => {
-  it('parses a minimal valid archive into rows with no DB access', () => {
-    const parsed = parseSdeArchive(buildArchive());
+  it('parses a minimal valid archive into rows with no DB access', async () => {
+    const parsed = await parseSdeArchive(await buildArchive());
 
     expect(parsed.categories).toHaveLength(1);
     expect(parsed.groups).toHaveLength(1);
@@ -66,47 +90,58 @@ describe('parseSdeArchive', () => {
     expect(parsed.systemNameToId.get('Alpha')).toBe(30000001);
   });
 
-  it('throws SdeFormatError naming the file on a truncated (structurally invalid) YAML file', () => {
-    // Valid YAML, wrong shape: a flow-sequence where the file must be a keyed map.
+  it('throws SdeFormatError naming the file on a malformed (invalid JSON) line', async () => {
     try {
-      parseSdeArchive(buildArchive({ 'mapStargates.yaml': '[1, 2, 3]' }));
+      await parseSdeArchive(await buildArchive({ 'categories.jsonl': '{not valid json' }));
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(SdeFormatError);
-      expect((err as SdeFormatError).file).toBe('mapStargates.yaml');
+      expect((err as SdeFormatError).file).toBe('categories.jsonl');
     }
   });
 
-  it('throws SdeFormatError naming the file, entry, and field path when a required key is renamed', () => {
-    const renamed = {
-      40000001: { solar_system_id: 30000001, destination: { solarSystemID: 30000002 } },
-    };
+  it('throws SdeFormatError naming the file when a line is not a JSON object', async () => {
     try {
-      parseSdeArchive(buildArchive({ 'mapStargates.yaml': renamed }));
+      await parseSdeArchive(await buildArchive({ 'mapStargates.jsonl': '[1, 2, 3]' }));
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toBeInstanceOf(SdeFormatError);
+      expect((err as SdeFormatError).file).toBe('mapStargates.jsonl');
+    }
+  });
+
+  it('throws SdeFormatError naming the file when a line has no "_key"', async () => {
+    try {
+      await parseSdeArchive(await buildArchive({ 'categories.jsonl': JSON.stringify({ name: 'oops' }) }));
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toBeInstanceOf(SdeFormatError);
+      expect((err as SdeFormatError).file).toBe('categories.jsonl');
+    }
+  });
+
+  it('throws SdeFormatError naming the file, entry, and field path when a required key is renamed', async () => {
+    const renamed = JSON.stringify({
+      _key: 40000001,
+      solar_system_id: 30000001,
+      destination: { solarSystemID: 30000002 },
+    });
+    try {
+      await parseSdeArchive(await buildArchive({ 'mapStargates.jsonl': renamed }));
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(SdeFormatError);
       const e = err as SdeFormatError;
-      expect(e.file).toBe('mapStargates.yaml');
+      expect(e.file).toBe('mapStargates.jsonl');
       expect(e.entryKey).toBe('40000001');
       expect(e.message).toContain('solarSystemID');
     }
   });
 
-  it('throws when a zip entry is missing entirely', () => {
-    expect(() =>
-      parseSdeArchive(buildArchive({ 'mapConstellations.yaml': undefined })),
-    ).toThrow(SdeFormatError);
-  });
-
-  it('throws when a file is a list rather than a map keyed by id', () => {
-    try {
-      parseSdeArchive(buildArchive({ 'categories.yaml': [{ name: 'oops' }] }));
-      expect.unreachable();
-    } catch (err) {
-      expect(err).toBeInstanceOf(SdeFormatError);
-      expect((err as SdeFormatError).file).toBe('categories.yaml');
-    }
+  it('throws when a zip entry is missing entirely', async () => {
+    await expect(parseSdeArchive(await buildArchive({ 'mapConstellations.jsonl': undefined }))).rejects.toThrow(
+      SdeFormatError,
+    );
   });
 });
 

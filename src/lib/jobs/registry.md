@@ -11,6 +11,7 @@ What each task file under `src/lib/jobs/tasks/` exports.
 - `name` - graphile-worker task identifier; globally unique.
 - `cron` - optional 5-field cron expression. Omit for tasks scheduled by `addJob` rather than cron.
 - `queue` - optional named graphile-worker queue ([[queues]]). Jobs sharing a queue run strictly one at a time. Omit for tasks that may run concurrently.
+- `maxAttempts` - optional retry budget for one enqueued run. Omit to take graphile-worker's default of 25.
 - `run` - the graphile-worker `Task` handler. Should be wrapped in `withInstrumentation(name, raw)` so every invocation lands in `ap_job_run`.
 
 ### jobModules(): readonly JobModule[]
@@ -23,7 +24,7 @@ The subset the `/setup` ops console may enqueue with an empty payload — `modul
 Builds the graphile-worker `TaskList` map (`{ [name]: run }`) from the registry. Throws on duplicate task names.
 
 ### buildCronItems(extra?): CronItem[]
-Builds graphile-worker cron items for modules whose `cron` is set. The identifier is the task name for stable de-duplication. A module with a `queue` gets `options.queueName` so its cron-scheduled job lands under the same mutual exclusion as an on-demand enqueue.
+Builds graphile-worker cron items for modules whose `cron` is set. The identifier is the task name for stable de-duplication. A module with a `queue` gets `options.queueName` so its cron-scheduled job lands under the same mutual exclusion as an on-demand enqueue, and one with a `maxAttempts` gets `options.maxAttempts`. Backfill is off for every item.
 
 ### jobQueueFor(taskName: string): string | null
 The named queue the task is registered under, or `null` when it has none. Callers enqueuing by name (the `/setup` console) resolve the queue here rather than hard-coding it.
@@ -32,6 +33,14 @@ The named queue the task is registered under, or `null` when it has none. Caller
 - `taskName` — graphile-worker task identifier.
 
 **Returns:** The queue name to pass as `add_job`'s `queue_name`.
+
+### jobMaxAttemptsFor(taskName: string): number | null
+The retry budget the task is registered with, or `null` when it has none. Callers enqueuing by name (the `/setup` console) resolve it here so an on-demand run gets the same budget as the task's cron.
+
+**Parameters:**
+- `taskName` — graphile-worker task identifier.
+
+**Returns:** The value to pass as `add_job`'s `max_attempts`; `null` leaves graphile-worker's default of 25 in place.
 
 ### Notes
 - No `taskDirectory` - explicit imports keep wiring greppable and TypeScript-checked.

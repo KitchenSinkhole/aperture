@@ -16,7 +16,7 @@ Low-level map-existence check — verifies a map exists and is not soft-deleted 
 ---
 
 ### requireMapMutate(rawMapId, session, right): Promise<MapAccessGuard>
-Combined session + parse + view + right check for write endpoints — every mutation under `/api/map/**` runs this before touching the DB. Discriminated result: `{ ok: true, mapId, characterId }` or `{ ok: false, status: 400|401|403|404, error }`. The 404 case covers both "map does not exist" and "you cannot see this map" so existence is not leaked. Note the right tiers (see `rights.md`): `'map_update'` resolves to **view** authority (content editing is open to every viewer), so those routes never 403; the management rights (`'map_import'`, `'map_export'`) resolve to `canManageMap` and do.
+Combined session + parse + view + right check for write endpoints — every mutation under `/api/map/**` runs this before touching the DB. Discriminated result: `{ ok: true, mapId, characterId }` or `{ ok: false, status: 400|401|403|404, error }`. The 404 case covers both "map does not exist" and "you cannot see this map" so existence is not leaked. Every call site passes `'map_update'`, which resolves to **view** authority (content editing is open to every viewer), so those routes never 403; the management rights it also accepts (see `rights.md`) resolve to `canManageMap` and would. The director-gated feature routes use `requireMapCapability` instead.
 
 ### requireMapView(rawMapId, session): Promise<MapAccessGuard>
 View-only variant for read endpoints. Same shape; never returns 403 (view either passes → 200 or fails → 404).

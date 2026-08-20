@@ -15,7 +15,7 @@ export const characterStatus = pgEnum('character_status', ['active', 'kicked', '
  */
 export const authzLevel = pgEnum('authz_level', ['member', 'admin']);
 
-/** What kinds of systems a map is allowed to hold. */
+/** Descriptive label for what kinds of systems a map is meant to hold. */
 export const mapScope = pgEnum('map_scope', ['wh', 'k_space', 'none', 'all']);
 
 /** Map ownership/visibility class. */
@@ -88,10 +88,12 @@ export const apWebhookChannel = pgEnum('ap_webhook_channel', ['discord']);
 export const apWebhookEvent = pgEnum('ap_webhook_event', ['history', 'rally']);
 
 /**
- * The map-management rights vocabulary. Reserved as the granular delegation
- * vocabulary for the future title-delegation overlay (R4); at the baseline the
- * mutate guards take a `MapRight` argument but ignore it (authority is the
- * binary `canManageMap`). No table stores these today — the old
+ * The map-management rights vocabulary. The `canMutateMap` guards take a
+ * `MapRight` argument but only distinguish `map_update` (view-gated content
+ * editing) from everything else (binary `canManageMap`) — this vocabulary
+ * carries no per-right granularity of its own. Per-map feature delegation to
+ * specific titles (R4) is a separate, shipped vocabulary (`MapCapability`,
+ * `src/lib/auth/rights.ts`). No table stores `MapRight` values today — the old
  * `ap_corporation_right` matrix was retired in 0041.
  */
 export const mapRight = pgEnum('map_right', [
@@ -184,13 +186,28 @@ export const roleSource = pgEnum('role_source', ['builtin', 'corp_title', 'exter
 
 /**
  * The mutation recorded in `ap_structure_event` — the append-only
- * accountability log for manual structure intel. Structures are deployment-global
- * and editable by any authenticated user, so every create/update/delete is
+ * accountability log for manual structure intel. A structure is editable by
+ * people other than its creator, so every create/update/delete is
  * stamped with the acting character to identify griefers. (Structures have no
  * `map_id` and therefore cannot live in `ap_map_event`; this is their dedicated,
  * single-source history.)
  */
 export const structureEventKind = pgEnum('structure_event_kind', ['create', 'update', 'delete']);
+
+/**
+ * Who may see a row of manual intel (`ap_structure.scope`). The row takes its
+ * scope from the map it was written on, never from the writer's own affiliation:
+ * a `private` map yields `private` (the writing character only), a `corp` map
+ * `corp` (members of that corporation), an `alliance` map `alliance` (members of
+ * that alliance). Visibility then follows the *viewer*, not whichever map they
+ * currently have open, so a member sees every row their affiliation admits at
+ * once. Access revokes itself on a membership change, since the filter matches
+ * the viewer's current `ap_character.corporation_id` / `alliance_id`.
+ *
+ * Deliberately not a reuse of `map_type` despite the identical spelling: a
+ * future map type must not silently widen intel visibility.
+ */
+export const intelScope = pgEnum('intel_scope', ['private', 'corp', 'alliance']);
 
 /**
  * The auto-tagging scheme a map runs (`ap_map.tag_scheme`).

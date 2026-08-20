@@ -14,7 +14,7 @@ Every route in this tree obeys these invariants:
 
 4. **Session + rights guard.** Every mutation route calls `requireMapMutate(rawMapId, session, '<right>')` from `utils.ts` (which chains session check + bigint parse + `requireMapRight` from `@/lib/auth/rights`). Read endpoints (e.g. the signature paste resolver) call `requireMapView`. The tuple result is mapped straight into a 401/403/404 response. Existence is never leaked: missing maps and non-viewable maps both return 404. (The WH-type catalog is **not** here — it's static, system-independent reference data served by the global `GET /api/wormhole-types`, session-gated only.)
 
-5. **Per-map rights enforcement.** Every mutation route passes a `MapRight` to `requireMapMutate`. The content-editing routes (systems, connections, signatures, subchain, thera, disconnected) all pass `'map_update'`, which resolves to **view authority** — every viewer can chart, since collaborative mapping is the product. Management routes (import/export pass `'map_import'` / `'map_export'`) resolve to the binary `canManageMap` (admin, private owner, owning-corp Director, or owning-alliance executor-corp Director). Map-settings edits use `requireMapManage` from the Server Action, not these routes. There is no controller path that bypasses these checks; the static-analysis test in `tests/unit/route-rights-coverage.test.ts` blocks regressions.
+5. **Per-map rights enforcement.** Two gates, split by what the route does. The content-editing routes (systems, connections, notes, signatures, subchain, thera, disconnected) pass `'map_update'` to `requireMapMutate`, which resolves to **view authority** — every viewer can chart, since collaborative mapping is the product. The director-gated feature routes (audit, webhooks, import, export) call `requireMapCapability` with the matching `MapCapability` (`'audit_view'`, `'webhooks_manage'`, `'map_import'`, `'map_export'`): a manager passes implicitly, and a corp title granted that capability in `ap_map_role_access` passes too. Map-settings edits are a Server Action, not a route here. There is no controller path that bypasses these checks; the static-analysis test in `tests/unit/route-rights-coverage.test.ts` blocks regressions.
 
 ## Routes
 
@@ -47,7 +47,7 @@ After each mutation the `tg_map_event_notify` Postgres trigger fires `pg_notify(
 
 ## Shared helpers
 
-- `src/app/api/map/utils.ts` — `parseBigInt`, `guardMap`, `requireMapMutate`, `requireMapView`.
+- `src/app/api/map/utils.ts` — `parseBigInt`, `guardMap`, `requireMapMutate`, `requireMapView`, `requireMapCapability`.
 - `src/lib/auth/rights.ts` — the underlying `canViewMap` / `canMutateMap` / `requireMapRight` helpers.
 - `src/lib/map/mutations/` — one file per entity: `core.ts`, `systems.ts`, `connections.ts`, `signatures.ts`.
 - `src/lib/map/wormholeTypes.ts` — `wormholeTypesForSystem`, `staticMatchForConnection`.

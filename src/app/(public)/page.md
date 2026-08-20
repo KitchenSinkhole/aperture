@@ -4,7 +4,7 @@
 **File:** `src/app/(public)/page.tsx`
 
 ### Renders
-A centered hero (logo image, title + blurb) with the `LoginButton`. Logo is served from `/public/aperture logo.png`.
+A centered hero (logo image, title + blurb) with the `LoginButton`, and a bottom-pinned footer link to `/privacy`. Logo is served from `/public/aperture logo.png`.
 
 ### Behaviour & Interactions
 - Server component: `getSession()`; if a character is active, `redirect('/maps')`.

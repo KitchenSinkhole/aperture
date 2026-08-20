@@ -42,12 +42,33 @@ const TYPE_OPTIONS: { value: MapType; label: string }[] = [
 const SCOPE_LABELS = Object.fromEntries(SCOPE_OPTIONS.map((o) => [o.value, o.label]));
 const TYPE_LABELS = Object.fromEntries(TYPE_OPTIONS.map((o) => [o.value, o.label]));
 
-export function CreateMapDialog() {
+// Why the option is unavailable, mirroring `canCreateMap`. Rendered inline on
+// the item rather than as a tooltip: a disabled option is pointer-events-none,
+// so nothing hover-triggered would ever fire on it.
+const TYPE_REQUIREMENT: Record<Exclude<MapType, 'private'>, string> = {
+  corp: 'Directors only',
+  alliance: 'Executor-corp Directors only',
+};
+
+export function CreateMapDialog({
+  canCreateCorp,
+  canCreateAlliance,
+}: {
+  canCreateCorp: boolean;
+  canCreateAlliance: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [scope, setScope] = useState<Scope>('wh');
   const [type, setType] = useState<MapType>('private');
   const [pending, startTransition] = useTransition();
+
+  const allowed: Record<MapType, boolean> = {
+    private: true,
+    corp: canCreateCorp,
+    alliance: canCreateAlliance,
+  };
+  const restricted = TYPE_OPTIONS.filter((o) => !allowed[o.value]);
 
   function reset() {
     setName('');
@@ -137,14 +158,31 @@ export function CreateMapDialog() {
                 </SelectTrigger>
                 <SelectContent>
                   {TYPE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
+                    <SelectItem key={o.value} value={o.value} disabled={!allowed[o.value]}>
+                      <span className="flex w-full items-baseline justify-between gap-3">
+                        {o.label}
+                        {!allowed[o.value] && o.value !== 'private' && (
+                          <span className="text-xs text-muted-foreground">
+                            {TYPE_REQUIREMENT[o.value]}
+                          </span>
+                        )}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
+
+          {restricted.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {restricted.length === TYPE_OPTIONS.length - 1
+                ? 'Corporation maps can only be created by a corporation Director, and alliance maps by a Director of the alliance executor corporation.'
+                : restricted[0]!.value === 'corp'
+                  ? 'Corporation maps can only be created by a corporation Director.'
+                  : 'Alliance maps can only be created by a Director of the alliance executor corporation.'}
+            </p>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>

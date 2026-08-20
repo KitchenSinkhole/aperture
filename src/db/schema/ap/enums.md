@@ -12,7 +12,7 @@
 `pgEnum('authz_level', ['member', 'admin'])` — in-app authority level on `ap_character`; gates the `/admin` operator console. `admin` (global deployment operator) is reachable only via an explicit `ap_access_grant` (`capability='admin'`). Corp/alliance map authority is NOT a tier here — it is the derived `ap_character.is_director` bit consumed by `canManageMap` / `canCreateMap`. The `manager` tier was removed in migration 0041.
 
 ### mapScope
-`pgEnum('map_scope', ['wh', 'k_space', 'none', 'all'])` — which kinds of systems a map may hold. On `ap_map`.
+`pgEnum('map_scope', ['wh', 'k_space', 'none', 'all'])` — descriptive label for what kinds of systems a map is meant to hold; not server-enforced. On `ap_map`.
 
 ### mapType
 `pgEnum('map_type', ['private', 'corp', 'alliance'])` — map ownership/visibility class. On `ap_map`.
@@ -45,7 +45,7 @@
 `pgEnum('ap_webhook_event', ['history', 'rally'])` — which class of map events a webhook subscribes to. `history` mirrors every `ap_map_event` insert on the map; `rally` fires only when a `system.updated` event carries a non-null `rallyAt` (rally set, not cleared).
 
 ### mapRight
-`pgEnum('map_right', ['map_create', 'map_update', 'map_delete', 'map_import', 'map_export', 'map_share'])` — the map-management rights vocabulary, reserved for the future title-delegation overlay (R4). No table stores these (the `ap_corporation_right` matrix was retired in 0041); at the baseline the mutate guards take a `MapRight` argument but ignore it (authority is the binary `canManageMap`).
+`pgEnum('map_right', ['map_create', 'map_update', 'map_delete', 'map_import', 'map_export', 'map_share'])` — the map-management rights vocabulary. No table stores these (the `ap_corporation_right` matrix was retired in 0041); the `canMutateMap` guards take a `MapRight` argument but only distinguish `map_update` (view-gated) from everything else (binary `canManageMap`) — no per-right granularity of its own. Per-map feature delegation to specific titles is the separate, shipped `MapCapability` vocabulary (`mapCapability` below).
 
 ### mapCapability
 `pgEnum('map_capability', ['view', 'audit_view', 'settings_manage', 'webhooks_manage', 'map_import', 'map_export', 'map_delete', 'share_manage'])` — the per-map delegatable feature surface on `ap_map_role_access.capability` (added migration 0056; `share_manage` migration 0061). Each value names one director-gated feature a corp title can be granted on a single map. `view` is the role→map view overlay (any feature grant implies view); the rest map one-to-one onto the director features (audit log, settings, webhooks, import, export, delete, public share links). Distinct from `map_right`, which mixes in non-delegatable, non-per-map values and lacks the `audit_view`/`settings_manage`/`webhooks_manage`/`share_manage` verbs. Directors/owners/admins hold every capability implicitly (`canManageMap`), so a grant only ever adds a title.
@@ -64,6 +64,9 @@
 
 ### structureEventKind
 `pgEnum('structure_event_kind', ['create', 'update', 'delete'])` — the mutation recorded in `ap_structure_event`, the append-only accountability log for manual structure intel.
+
+### intelScope
+`pgEnum('intel_scope', ['private', 'corp', 'alliance'])` — who may see a row of manual intel, on `ap_structure.scope` and `ap_structure_event.scope` (migration 0070). A row takes its scope from the map it was written on, never from the writer's own affiliation: a `private` map yields `private` (the writing character only), a `corp` map `corp` (members of that corporation), an `alliance` map `alliance` (members of that alliance). Visibility then follows the *viewer* rather than whichever map they have open, so a member sees every row their affiliation admits at once; and because the filter matches the viewer's current `ap_character.corporation_id` / `alliance_id`, access revokes itself when membership changes. Deliberately not a reuse of `map_type` despite the identical spelling — a future map type must not silently widen intel visibility.
 
 ### tagScheme
 `pgEnum('tag_scheme', ['none', 'abc', '0121'])` — the auto-tagging scheme a map runs (`ap_map.tag_scheme`, default `none`). `abc` = per-WH-class sequential letters; `0121` = positional chain numbering off the Home system. Adding a third scheme is additive (one `ALTER TYPE … ADD VALUE` + a strategy module + a `registry.ts` line).

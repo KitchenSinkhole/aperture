@@ -6,7 +6,7 @@
 ---
 
 ### sdeIngest: JobModule
-Registered task `'sde-ingest'` on the `SDE_QUEUE` ([[queues]]). No cron — enqueued only via the setup wizard's `setupRunSdeIngest()` Server Action. The CLI path (`pnpm sde:bootstrap`) bypasses graphile-worker and calls `runIngest()` directly, in-process, on the pinned build.
+Registered task `'sde-ingest'` on the `SDE_QUEUE` ([[queues]]), `maxAttempts: 2` — an operator-triggered run is one an operator is watching, so past a single retry for a flaky download the failure belongs in `/setup` rather than in a grinding retry chain. No cron — enqueued only via the setup wizard's `setupRunSdeIngest()` Server Action. The CLI path (`pnpm sde:bootstrap`) bypasses graphile-worker and calls `runIngest()` directly, in-process, on the pinned build.
 
 Each run:
 1. Resolves the build from `ap_sde_state.current_build`/`current_release_date`, falling back to the pinned `SDE_BUILD`/`SDE_RELEASE_DATE` when the row is absent (a fresh database bootstrapping). Which build the ops console re-runs is decided here and passed as an explicit override, so `runIngest()` with no override keeps meaning "the pin".

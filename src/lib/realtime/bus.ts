@@ -200,19 +200,35 @@ class RealtimeBus {
     if (taskTag === 'characterUpdate') {
       const parsed = characterUpdateLoadSchema.safeParse((data as { load?: unknown }).load);
       if (!parsed.success) return; // malformed envelope; drop silently
-      message = { task: 'characterUpdate', load: parsed.data as CharacterUpdateLoad };
+      message = {
+        task: 'characterUpdate',
+        load: parsed.data as CharacterUpdateLoad,
+        mapId: Number(mapId),
+      };
     } else if (taskTag === 'characterLogout') {
       const parsed = characterLogoutLoadSchema.safeParse((data as { load?: unknown }).load);
       if (!parsed.success) return; // malformed envelope; drop silently
-      message = { task: 'characterLogout', load: parsed.data as CharacterLogoutLoad };
+      message = {
+        task: 'characterLogout',
+        load: parsed.data as CharacterLogoutLoad,
+        mapId: Number(mapId),
+      };
     } else if (taskTag === 'systemNotification') {
       const parsed = systemNotificationLoadSchema.safeParse((data as { load?: unknown }).load);
       if (!parsed.success) return; // malformed envelope; drop silently
-      message = { task: 'systemNotification', load: parsed.data as SystemNotificationLoad };
+      message = {
+        task: 'systemNotification',
+        load: parsed.data as SystemNotificationLoad,
+        mapId: Number(mapId),
+      };
     } else if (taskTag === 'connectionMassLog') {
       const parsed = connectionMassLogLoadSchema.safeParse((data as { load?: unknown }).load);
       if (!parsed.success) return; // malformed envelope; drop silently
-      message = { task: 'connectionMassLog', load: parsed.data as ConnectionMassLogLoad };
+      message = {
+        task: 'connectionMassLog',
+        load: parsed.data as ConnectionMassLogLoad,
+        mapId: Number(mapId),
+      };
     } else {
       const kind =
         data && typeof data === 'object' && typeof (data as { kind?: unknown }).kind === 'string'
@@ -224,6 +240,7 @@ class RealtimeBus {
       message = {
         task: 'mapUpdate',
         load: { mapId: Number(mapId), kind, data: data as MapEventPayload | undefined },
+        mapId: Number(mapId),
       };
     }
 

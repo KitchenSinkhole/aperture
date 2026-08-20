@@ -2,28 +2,23 @@
 
 import { revalidatePath } from 'next/cache';
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
-import type { InferInsertModel } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db/client';
-import { apMap, apMapSystem, tagScheme } from '@/db/schema';
+import { apMap } from '@/db/schema';
 import { auth } from '@/lib/auth';
 import { isAdmin } from '@/lib/auth/rights';
 import { commitMapEvent, type ActionResult } from '@/lib/map/mutations/core';
-import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
-import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
-import { logger } from '@/lib/log/logger';
+import type { MapEventPayload } from '@/lib/realtime/protocol';
 
 /**
  * Admin map actions — the `/admin` operator's cross-tenant oversight surface,
- * gated `isAdmin` (global operator only). Corp Directors / owners manage their
- * own maps in-place via `canManageMap`, not here.
+ * gated `isAdmin` (global operator only). Corp Directors / owners, and the corp
+ * titles they delegate to, manage their own maps in-place, not here.
  *
  *   - `adminSoftDeleteMap`      admin → sets `deleted_at`.
  *   - `adminRestoreMap`         admin → clears `deleted_at`.
  *   - `adminPurgeMap`           admin → hard-deletes (skips the 30-day
  *                               `map-purge` cron grace).
- *   - `adminUpdateMapSettings`  admin → updates behavior toggles and
- *                               auto-tagging config (map.update event).
  *
  * No per-map scoping — admin reaches every map.
  */
@@ -120,111 +115,6 @@ export async function adminRestoreMap(
       return { id: row.id.toString() };
     },
   });
-
-  if (result.ok) {
-    revalidatePath('/admin/maps');
-    revalidatePath('/maps');
-  }
-  return result;
-}
-
-const adminMapSettingsSchema = z.object({
-  mapId: z.string().regex(/^\d+$/, 'Invalid map id.'),
-  deleteExpiredConnections: z.boolean().optional(),
-  deleteEolConnections: z.boolean().optional(),
-  trackAbyssalJumps: z.boolean().optional(),
-  logActivity: z.boolean().optional(),
-  tagScheme: z.enum(tagScheme.enumValues).optional(),
-  homeMapSystemId: z.string().regex(/^\d+$/).nullable().optional(),
-  exemptHomeStaticFromTag: z.boolean().optional(),
-});
-
-export type AdminUpdateMapSettingsInput = z.input<typeof adminMapSettingsSchema>;
-
-/**
- * Update a map's behavior toggles and/or auto-tagging config from the admin
- * panel. Gated by `isAdmin`. Emits `map.update` (same event kind as the
- * user-facing `updateMapSettingsAction`). Reconciles the ABC home-static
- * exemption after any tagging-config change.
- */
-export async function adminUpdateMapSettings(
-  input: AdminUpdateMapSettingsInput,
-): Promise<ActionResult<MapEventPayload>> {
-  const parsed = adminMapSettingsSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid input.' };
-  }
-  const { mapId: rawId, ...patch } = parsed.data;
-  const id = BigInt(rawId);
-
-  const session = await auth();
-  if (!(await isAdmin(session))) {
-    return { ok: false, error: 'Forbidden.' };
-  }
-
-  const target = await selectMap(id);
-  if (target === null) return { ok: false, error: 'Map not found.' };
-  if (target.deletedAt !== null) return { ok: false, error: 'Map is soft-deleted.' };
-
-  const characterId = session?.characterId ? BigInt(session.characterId) : null;
-  const touchesTagging =
-    'tagScheme' in patch || 'homeMapSystemId' in patch || 'exemptHomeStaticFromTag' in patch;
-
-  const result = await commitMapEvent({
-    mapId: id,
-    characterId,
-    kind: 'map.update',
-    mutate: async (tx) => {
-      const set: Partial<InferInsertModel<typeof apMap>> = { updatedAt: new Date() };
-      const out: MapEventPatch<'map.update'> = { id: id.toString() };
-
-      if ('deleteExpiredConnections' in patch)
-        set.deleteExpiredConnections = out.deleteExpiredConnections = patch.deleteExpiredConnections;
-      if ('deleteEolConnections' in patch)
-        set.deleteEolConnections = out.deleteEolConnections = patch.deleteEolConnections;
-      if ('trackAbyssalJumps' in patch)
-        set.trackAbyssalJumps = out.trackAbyssalJumps = patch.trackAbyssalJumps;
-      if ('logActivity' in patch) set.logActivity = out.logActivity = patch.logActivity;
-      if ('tagScheme' in patch) set.tagScheme = patch.tagScheme;
-      if ('exemptHomeStaticFromTag' in patch)
-        set.exemptHomeStaticFromTag = patch.exemptHomeStaticFromTag;
-      if ('homeMapSystemId' in patch) {
-        if (patch.homeMapSystemId != null) {
-          const homeId = BigInt(patch.homeMapSystemId);
-          const [home] = await tx
-            .select({ id: apMapSystem.id })
-            .from(apMapSystem)
-            .where(
-              and(
-                eq(apMapSystem.id, homeId),
-                eq(apMapSystem.mapId, id),
-                eq(apMapSystem.visible, true),
-              ),
-            );
-          if (!home) throw new Error('Home system is not on this map.');
-          set.homeMapSystemId = homeId;
-        } else {
-          set.homeMapSystemId = null;
-        }
-      }
-
-      const [row] = await tx
-        .update(apMap)
-        .set(set)
-        .where(and(eq(apMap.id, id), isNull(apMap.deletedAt)))
-        .returning({ id: apMap.id });
-      if (!row) throw new Error('Map not found or deleted.');
-      return out;
-    },
-  });
-
-  if (result.ok && touchesTagging) {
-    try {
-      await applyHomeStaticExemption(id, characterId);
-    } catch (err) {
-      logger.warn('home-static exemption reconcile failed', { mapId: id.toString(), err });
-    }
-  }
 
   if (result.ok) {
     revalidatePath('/admin/maps');

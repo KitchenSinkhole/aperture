@@ -11,7 +11,7 @@ import type { JobModule } from '../registry';
  * graphile-worker wrapper around an on-demand re-ingest of the build the
  * database already holds, so the setup wizard can re-run the pipeline without
  * shelling into the container. Runs via `runSdeIngestChild`
- * (`../sdeIngestChild.ts`), which isolates the ~100MB YAML parse and bulk
+ * (`../sdeIngestChild.ts`), which isolates the ~100MB JSONL parse and bulk
  * upserts in a child process so they don't starve WS heartbeats or contend
  * with the app's `pg.Pool`.
  */
@@ -47,5 +47,9 @@ async function ingest() {
 export const sdeIngest: JobModule = {
   name: NAME,
   queue: SDE_QUEUE,
+  // An operator-triggered run that fails is a run the operator is watching:
+  // one retry covers a flaky download, and anything past that should surface
+  // in `/setup` as a failure to act on rather than grind for hours.
+  maxAttempts: 2,
   run: withInstrumentation(NAME, ingest),
 };

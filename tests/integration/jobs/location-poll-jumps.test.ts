@@ -58,6 +58,9 @@ async function systemPos(mapId: bigint, systemId: number): Promise<{ x: number; 
  *  - Teleport (docked arrival in k-space: pod self-destruct / jump clone) writes
  *    nothing — `jumpClass: 'teleport'`, no fold. A docked arrival in a w-space
  *    system is still a real wormhole (the teleport branch is k-space-gated).
+ *  - Abyssal filament (either endpoint `security = 'A'`, in space) folds a
+ *    `scope='abyssal'` connection only onto maps with `track_abyssal_jumps`;
+ *    a docked k-space arrival out of an abyssal system is a teleport instead.
  *  - Re-running the same wormhole jump is idempotent: no new events.
  *  - Soft-deleted maps are excluded from the fan-out.
  *
@@ -72,6 +75,7 @@ const CONSTELLATION = 98120001;
 const SYS_A = 98120001; // K-space (Jita-like)
 const SYS_B = 98120002; // K-space, gate-adjacent to SYS_A
 const SYS_C = 98120003; // WH-like; NOT gate-adjacent to anything
+const SYS_D = 98120004; // Abyssal (security 'A'); NOT gate-adjacent to anything
 
 interface CapturedJob {
   identifier: string;
@@ -165,6 +169,7 @@ describe.skipIf(!run)('Stage 12.2 location-poll jump classification + fan-out (r
       { id: SYS_A, constellationId: CONSTELLATION, name: 'Jumps A', security: 'H' },
       { id: SYS_B, constellationId: CONSTELLATION, name: 'Jumps B', security: 'H' },
       { id: SYS_C, constellationId: CONSTELLATION, name: 'J133003', security: 'C3' },
+      { id: SYS_D, constellationId: CONSTELLATION, name: 'Jumps Abyss', security: 'A' },
     ]);
     // Bidirectional gate pair A↔B; no edges touching C.
     await db.insert(universeStargateEdge).values([
@@ -229,8 +234,11 @@ describe.skipIf(!run)('Stage 12.2 location-poll jump classification + fan-out (r
       .update(apCharacter)
       .set({ lastSystemId: null, lastShipTypeId: null, lastOnline: null, lastLocationAt: null })
       .where(eq(apCharacter.id, CHAR_ID));
-    // Unsoft-delete in case a previous test toggled it.
-    await db.update(apMap).set({ deletedAt: null }).where(inArray(apMap.id, [mapA, mapB]));
+    // Unsoft-delete / un-opt-in in case a previous test toggled either.
+    await db
+      .update(apMap)
+      .set({ deletedAt: null, trackAbyssalJumps: false })
+      .where(inArray(apMap.id, [mapA, mapB]));
     // Re-seed tracking rows in case a previous test removed them.
     await db
       .insert(apMapCharacterTracking)
@@ -354,6 +362,55 @@ describe.skipIf(!run)('Stage 12.2 location-poll jump classification + fan-out (r
 
     const notes = await lastJobNotes();
     expect(notes!.jumpClass).toBe('wormhole');
+  });
+
+  it('filament entry (A→D, in space) folds an abyssal connection only on opted-in maps', async () => {
+    // Non-gate-adjacent A→D with D abyssal: the pilot is in space, so this is a
+    // real filament activation. Only mapA has opted in via track_abyssal_jumps.
+    await db.update(apMap).set({ trackAbyssalJumps: true }).where(eq(apMap.id, mapA));
+    await db.update(apCharacter).set({ lastSystemId: SYS_A }).where(eq(apCharacter.id, CHAR_ID));
+    mockEsi({ online: true, systemId: SYS_D });
+    const { helpers } = makeHelpers();
+
+    await locationPoll.run({ characterId: CHAR_ID.toString() }, helpers);
+
+    expect(await eventKinds(mapA)).toEqual(['system.added', 'system.added', 'connection.create']);
+    expect(await eventCount(mapB)).toBe(0);
+
+    const [conn] = await db
+      .select({ scope: apMapConnection.scope })
+      .from(apMapConnection)
+      .where(eq(apMapConnection.mapId, mapA));
+    expect(conn!.scope).toBe('abyssal');
+
+    const notes = await lastJobNotes();
+    expect(notes).toMatchObject({ jumpClass: 'abyssal', abyssalMapsSkipped: 1 });
+  });
+
+  it('pod death in the abyss (D→A, arrived docked in k-space) classifies as teleport, not abyssal', async () => {
+    // Losing ship + pod in an abyssal pocket lands the clone in a k-space
+    // station. The abyssal endpoint must not outrank the docked-arrival guard,
+    // or the fold would draw an edge to a system the pilot never traversed.
+    await db
+      .update(apMap)
+      .set({ trackAbyssalJumps: true })
+      .where(inArray(apMap.id, [mapA, mapB]));
+    await db.update(apCharacter).set({ lastSystemId: SYS_D }).where(eq(apCharacter.id, CHAR_ID));
+    mockEsi({ online: true, systemId: SYS_A, stationId: 60000001 });
+    const { helpers } = makeHelpers();
+
+    await locationPoll.run({ characterId: CHAR_ID.toString() }, helpers);
+
+    expect(await eventCount(mapA)).toBe(0);
+    expect(await eventCount(mapB)).toBe(0);
+
+    const notes = await lastJobNotes();
+    expect(notes).toMatchObject({
+      jumpClass: 'teleport',
+      previousSystemId: SYS_D,
+      currentSystemId: SYS_A,
+    });
+    expect(notes!.folds).toBeUndefined();
   });
 
   it('re-adding a previously-hidden system re-places it off the new parent, not at its stale coords', async () => {
@@ -481,9 +538,11 @@ async function cleanup() {
   await db
     .delete(universeStargateEdge)
     .where(
-      inArray(universeStargateEdge.fromSystemId, [SYS_A, SYS_B, SYS_C]),
+      inArray(universeStargateEdge.fromSystemId, [SYS_A, SYS_B, SYS_C, SYS_D]),
     );
-  await db.delete(universeSystem).where(inArray(universeSystem.id, [SYS_A, SYS_B, SYS_C]));
+  await db
+    .delete(universeSystem)
+    .where(inArray(universeSystem.id, [SYS_A, SYS_B, SYS_C, SYS_D]));
   await db.delete(universeConstellation).where(eq(universeConstellation.id, CONSTELLATION));
   await db.delete(universeRegion).where(eq(universeRegion.id, REGION));
 }

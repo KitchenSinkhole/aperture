@@ -9,6 +9,8 @@ import type { CorpSearchResult, StructureIntel, UpwellStructureType } from '@/ty
  */
 
 export type CreateStructureBody = {
+  /** The map the row is written on — the server derives the row's scope from it. */
+  mapId: string;
   systemId: number;
   name: string;
   structureTypeId: number;

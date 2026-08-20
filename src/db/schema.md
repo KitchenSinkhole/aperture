@@ -40,6 +40,14 @@ Row types are inferred and re-exported from `src/types/index.ts`.
 | `universeSystemStatic` | `universe_system_static` | `system_id` → system **CASCADE**, `type_id` → type **CASCADE**, PK `(system_id, type_id)`. Per-system WH statics (anoik.is /systems) |
 | `universeWormhole` | `universe_wormhole` | `type_id` PK → type **CASCADE**, `name`, `source_classes` (text[]; set of spawn classes, null = unspecified), `target_class` (class label; null = unknown), `target_system_id` → system **RESTRICT** (fixed-destination holes, e.g. J377 → Turnur; null for normal holes). Hand-maintained WH-type routing catalog |
 
+## `universe/sde_stage.ts`
+
+Per-table detail in the companion `.md` beside the schema file.
+
+| Table (`const`) | DB name | Key columns / FKs |
+|---|---|---|
+| `universeSdeStage` | `universe_sde_stage` | **UNLOGGED** (migration 0067). `run_id` uuid, `table_name` text, `id_a`/`id_b` int (`id_b` null for single-PK tables), no PK, index `(run_id, table_name, id_a, id_b)`. Ingest scratch: the new build's key set, staged during the write phase and read by `syncSdeDeletions`'s anti-joins |
+
 ## `universe/sovereignty.ts`, `universe/incursion.ts`, `universe/entityName.ts` (mutable ESI caches)
 
 Per-table detail in the companion `.md` beside each schema file. Live beside the static `universe_*` tables but are ESI-fed and refreshed by cron jobs.

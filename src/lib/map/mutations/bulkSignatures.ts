@@ -8,6 +8,7 @@ import type { SignatureClassKind, SignatureGroupKey } from '@/types';
 import type { ActionResult } from './core';
 import { createSignature, updateSignature, deleteSignature } from './signatures';
 import { deleteConnection } from './connections';
+import { assertSystemOnMap } from './tenancy';
 
 /**
  * Bulk signature-paste orchestrator. Diffs incoming resolved rows
@@ -58,6 +59,8 @@ export async function pasteSignatures(
 ): Promise<ActionResult<BulkPasteResult>> {
   try {
     const result = await db.transaction(async (tx) => {
+      await assertSystemOnMap(tx, input.mapSystemId, input.mapId);
+
       const existing = await tx
         .select({
           id: apMapSignature.id,

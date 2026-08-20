@@ -2,6 +2,7 @@ export * from './universe/geography';
 export * from './universe/items';
 export * from './universe/dogma';
 export * from './universe/statics';
+export * from './universe/sde_stage';
 export * from './universe/views';
 export * from './universe/sovereignty';
 export * from './universe/corporation';
