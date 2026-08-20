@@ -2108,6 +2108,7 @@ export function MapCanvas({
           <StructureModule
             system={selectedSystem}
             structures={selectedSystem ? (structures[selectedSystem.systemId] ?? []) : []}
+            mapType={viewData.map.type}
             onCreate={onStructureCreate}
             onPatch={onStructurePatch}
             onDelete={onStructureDelete}
