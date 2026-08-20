@@ -164,7 +164,7 @@ Scoping the reads also closes the `system-data` enumeration oracle for these two
 ## Stage 4 — Scope-derived structure writes
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 4a21e013
 **Goal:** Every structure write is gated by the row's scope: a create derives it from a map the caller can view, an edit or delete admits only callers it admits.
 **References:** `src/lib/structures/mutations.md`, `guard.md`, `src/lib/auth/rights.md`, `src/app/api/map/README.md`
 **Touches:** `src/lib/structures/guard.ts` (+ `.md`), `mutations.ts` (+ `.md`), `src/app/api/structures/route.ts` (+ `.md`), `src/app/api/structures/[structureId]/route.ts` (+ `.md`), `src/lib/structures/client.ts` (+ `.md`), `src/components/map/MapCanvas.tsx` (+ `.md`).
