@@ -12,7 +12,7 @@ Each audit event also carries the row's tenancy (`scope` + the `scope_*` triple)
 ### createStructure(input: CreateStructureInput): Promise<ApStructure>
 Inserts the structure + a `create` audit event (payload = the new row snapshot). Returns the new row. Throws on FK violation (bad `systemId`/`structureTypeId`) — the route maps that to 400.
 
-The new row is scoped `private` to `characterId`. The helper is not given the map the row was written on, so it writes the narrowest scope that exists rather than a shared one — an unwired create cannot over-share.
+The row's tenancy comes in on `input.scope` and is written verbatim; the caller derives it from the map via `intelScopeForMap` (`./guard`), so this helper never infers a scope.
 
 ### updateStructure(input: UpdateStructureInput): Promise<ApStructure | null>
 Patches only the keys present in `patch`; always bumps `updated_at`. Writes an `update` audit event (payload = the patch). Returns the updated row, or `null` if the id does not exist (no event written → route returns 404).
@@ -21,7 +21,7 @@ Patches only the keys present in `patch`; always bumps `updated_at`. Writes an `
 Hard-deletes the row + a `delete` audit event holding the full pre-delete snapshot (so the intel is recoverable). Returns the deleted row, or `null` if missing (→ 404).
 
 ### Input types
-- `CreateStructureInput` — `{ systemId, name, structureTypeId, ownerCorporationId?, ownerName?, notes?, characterId }`
+- `CreateStructureInput` — `{ systemId, name, structureTypeId, ownerCorporationId?, ownerName?, notes?, characterId, scope: IntelScopeOwner }`
 - `UpdateStructurePatch` — `{ name?, structureTypeId?, ownerCorporationId?, ownerName?, notes? }`
 - `UpdateStructureInput` — `{ structureId, patch, characterId }`
 - `DeleteStructureInput` — `{ structureId, characterId }`

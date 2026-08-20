@@ -3,6 +3,7 @@ import { eq, type InferInsertModel } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apStructure, apStructureEvent } from '@/db/schema';
 import { upsertCorporations } from './corporations';
+import type { IntelScopeOwner } from './guard';
 import type { ApStructure } from '@/types';
 
 /**
@@ -26,6 +27,8 @@ export type CreateStructureInput = {
   ownerName?: string | null;
   notes?: string | null;
   characterId: bigint | null;
+  /** Who may see the row, derived by the caller from the map it was written on. */
+  scope: IntelScopeOwner;
 };
 
 export type UpdateStructurePatch = {
@@ -71,7 +74,7 @@ async function resolveOwnerCorporationId(
  * event table holds the full pre-delete snapshot, so it has to carry the scope
  * itself — on a delete the parent row it would otherwise be read from is gone.
  */
-function scopeOf(row: ApStructure) {
+function scopeOf(row: ApStructure): IntelScopeOwner {
   return {
     scope: row.scope,
     scopeCharacterId: row.scopeCharacterId,
@@ -111,12 +114,7 @@ export async function createStructure(input: CreateStructureInput): Promise<ApSt
         ownerCorporationId,
         notes: input.notes ?? null,
         createdByCharacterId: input.characterId,
-        // Tenancy is meant to come from the map the row is written on, which
-        // this helper is not yet told about. Until it is, a new row takes the
-        // narrowest scope that exists — visible to its writer alone — so an
-        // unwired create can never over-share.
-        scope: 'private',
-        scopeCharacterId: input.characterId,
+        ...input.scope,
       })
       .returning();
     await tx.insert(apStructureEvent).values({

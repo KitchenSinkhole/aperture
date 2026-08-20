@@ -1863,14 +1863,14 @@ export function MapCanvas({
     async (values: StructureFormValues) => {
       if (!selectedSystem) return;
       const systemId = selectedSystem.systemId;
-      const result = await createStructureOnServer({ systemId, ...values });
+      const result = await createStructureOnServer({ mapId, systemId, ...values });
       if (!result.ok) return;
       setStructures((prev) => ({
         ...prev,
         [systemId]: [...(prev[systemId] ?? []), result.data].sort(sortByName),
       }));
     },
-    [selectedSystem],
+    [mapId, selectedSystem],
   );
 
   const onStructurePatch = useCallback(async (structureId: string, values: StructureFormValues) => {

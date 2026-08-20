@@ -2,23 +2,26 @@ import 'server-only';
 import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
-import { requireStructureMutate } from '@/lib/structures/guard';
+import { intelScopeForMap } from '@/lib/structures/guard';
 import { createStructure } from '@/lib/structures/mutations';
 import { withTypeName } from '@/lib/structures/read';
+import { requireMapView } from '../map/utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * POST /api/structures — create a manual structure-intel row.
  *
- * Structure intel is deployment-global (no `map_id`), so this is a plain REST
- * resource: it does NOT emit a map event and any authenticated user may write.
- * The create is recorded in `ap_structure_event` (inside the mutation) for
- * accountability. See `src/lib/structures/*`.
+ * A structure row carries no `map_id` and emits no map event — it surfaces on
+ * every map showing its system — but it is not deployment-global: the `mapId` in
+ * the body is what the row's `scope` triple is derived from, so the caller must
+ * be able to view that map. The create is recorded in `ap_structure_event`
+ * (inside the mutation) for accountability. See `src/lib/structures/*`.
  */
 
 export const runtime = 'nodejs';
 
 const createStructureBodySchema = z.object({
+  mapId: z.string().regex(/^\d+$/),
   systemId: z.number().int().positive(),
   name: z.string().min(1).max(100),
   structureTypeId: z.number().int().positive(),
@@ -29,9 +32,8 @@ const createStructureBodySchema = z.object({
 
 export const POST = withApiMetrics('/api/structures', async function POST(request: NextRequest) {
   const session = await getSession();
-  const guard = requireStructureMutate(session);
-  if (!guard.ok) {
-    return Response.json({ ok: false, error: guard.error }, { status: guard.status });
+  if (!session?.characterId) {
+    return Response.json({ ok: false, error: 'You must be signed in.' }, { status: 401 });
   }
 
   let body: unknown;
@@ -48,9 +50,19 @@ export const POST = withApiMetrics('/api/structures', async function POST(reques
       { status: 400 },
     );
   }
+  const { mapId, ...values } = parsed.data;
+
+  const guard = await requireMapView(mapId, session);
+  if (!guard.ok) {
+    return Response.json({ ok: false, error: guard.error }, { status: guard.status });
+  }
+  const scope = await intelScopeForMap(guard.mapId);
+  if (!scope) {
+    return Response.json({ ok: false, error: 'Map not found.' }, { status: 404 });
+  }
 
   try {
-    const row = await createStructure({ ...parsed.data, characterId: guard.characterId });
+    const row = await createStructure({ ...values, characterId: guard.characterId, scope });
     const data = await withTypeName(row);
     return Response.json({ ok: true, data });
   } catch {
