@@ -51,6 +51,13 @@ const updateMapSettingsSchema = z.object({
   exemptHomeStaticFromTag: z.boolean().optional(),
 });
 
+/** Denial copy per map type, naming the requirement `canCreateMap` enforces. */
+const CREATE_DENIED: Record<(typeof mapType.enumValues)[number], string> = {
+  private: 'You do not have permission to create maps.',
+  corp: 'Only a corporation Director can create a corporation map.',
+  alliance: 'Only a Director of the alliance executor corporation can create an alliance map.',
+};
+
 export type CreateMapInput = z.input<typeof createMapSchema>;
 export type UpdateMapSettingsInput = z.input<typeof updateMapSettingsSchema>;
 
@@ -67,7 +74,7 @@ export async function createMapAction(
 
   const characterId = BigInt(session.characterId);
   if (!(await canCreateMap(characterId, type))) {
-    return { ok: false, error: 'You do not have permission to create maps.' };
+    return { ok: false, error: CREATE_DENIED[type] };
   }
 
   // Resolve the owner FK for the chosen scope. For corp/alliance the actor's

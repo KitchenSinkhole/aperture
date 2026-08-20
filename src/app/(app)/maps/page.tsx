@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getActiveCharacter, requireSession } from '@/lib/session';
 import { listViewableMaps } from '@/lib/map/loadMap';
-import { mapsWithCapability } from '@/lib/auth/rights';
+import { canCreateMap, mapsWithCapability } from '@/lib/auth/rights';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreateMapDialog } from '@/components/maps/CreateMapDialog';
 import { DeleteMapButton } from '@/components/maps/DeleteMapButton';
@@ -9,9 +9,11 @@ import { DeleteMapButton } from '@/components/maps/DeleteMapButton';
 export default async function MapsPage() {
   const session = await requireSession();
   const viewerCharacterId = BigInt(session.characterId);
-  const [active, maps] = await Promise.all([
+  const [active, maps, canCreateCorp, canCreateAlliance] = await Promise.all([
     getActiveCharacter(),
     listViewableMaps(viewerCharacterId),
+    canCreateMap(viewerCharacterId, 'corp'),
+    canCreateMap(viewerCharacterId, 'alliance'),
   ]);
   const deletable = await mapsWithCapability(
     viewerCharacterId,
@@ -26,7 +28,7 @@ export default async function MapsPage() {
           <h1 className="font-heading text-2xl font-semibold tracking-tight">Maps</h1>
           {active && <p className="text-sm text-muted-foreground">Signed in as {active.name}.</p>}
         </div>
-        <CreateMapDialog />
+        <CreateMapDialog canCreateCorp={canCreateCorp} canCreateAlliance={canCreateAlliance} />
       </div>
 
       {maps.length === 0 ? (
