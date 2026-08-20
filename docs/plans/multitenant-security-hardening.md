@@ -188,7 +188,7 @@ Scoping the reads also closes the `system-data` enumeration oracle for these two
 ## Stage 5 — Scope-aware structure reads
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 2a8807cc
 **Goal:** A structure row is readable only by characters its scope admits.
 **References:** `src/lib/structures/read.md`, `src/lib/auth/rights.md`
 **Touches:** `src/lib/structures/read.ts` (+ `.md`) and the two `structuresForSystems` callers (`src/app/(app)/map/[[...slug]]/page.tsx`, `src/app/api/map/[mapId]/system-data/route.ts`) (+ companions).
