@@ -21,8 +21,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { fetchStructureTypes, searchCorporationsOnServer } from '@/lib/structures/client';
+import { IntelScopeChip, intelScopeAudience } from './IntelScopeChip';
 import { ccpImageUrl } from '@/lib/integrations/links';
-import type { CorpSearchResult, StructureIntel, UpwellStructureType } from '@/types';
+import type { CorpSearchResult, MapType, StructureIntel, UpwellStructureType } from '@/types';
 
 export type StructureFormValues = {
   name: string;
@@ -39,6 +40,13 @@ type OwnerSelection = { id: number | null; name: string };
 const CORP_SEARCH_DEBOUNCE_MS = 250;
 const CORP_SEARCH_MIN_CHARS = 3;
 
+/** What a new row's audience will be, said in terms of the map it lands on. */
+const NEW_SCOPE_AUDIENCE: Record<MapType, string> = {
+  private: 'Saved on a private map, so only that map’s owner will see it.',
+  corp: 'Saved on a corp map, so that corporation’s members will see it.',
+  alliance: 'Saved on an alliance map, so that alliance’s members will see it.',
+};
+
 /**
  * Create/edit dialog for a manual structure. `initial` present ⇒ edit mode.
  * Loads the Upwell type catalog (cached) the first time it opens.
@@ -47,16 +55,23 @@ export function StructureFormDialog({
   open,
   onOpenChange,
   systemName,
+  mapType,
   initial,
   onSubmit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   systemName: string;
+  /** The open map's type; a new row's scope is derived from it server-side. */
+  mapType: MapType;
   initial?: StructureIntel;
   onSubmit: (values: StructureFormValues) => void;
 }) {
   const [types, setTypes] = useState<UpwellStructureType[]>([]);
+
+  // An edit keeps the row's own scope, which need not be the open map's.
+  const scope = initial ? initial.scope : mapType;
+  const audience = initial ? intelScopeAudience(initial.scope) : NEW_SCOPE_AUDIENCE[mapType];
 
   useEffect(() => {
     if (!open || types.length > 0) return;
@@ -76,6 +91,13 @@ export function StructureFormDialog({
           <DialogTitle>{initial ? 'Edit structure' : 'Add structure'}</DialogTitle>
           <DialogDescription>Manual intel for {systemName}.</DialogDescription>
         </DialogHeader>
+
+        {/* Audience before submit: the failure mode is writing staging intel
+            believing it is private. Scope is derived, never picked. */}
+        <p className="flex items-start gap-2 rounded border border-border bg-muted/40 p-2 text-xs text-muted-foreground">
+          <IntelScopeChip scope={scope} className="mt-0.5" />
+          <span>{audience}</span>
+        </p>
 
         {/* The dialog popup unmounts on close, so StructureForm remounts on each
             open and its useState initializers reset the fields from `initial`.

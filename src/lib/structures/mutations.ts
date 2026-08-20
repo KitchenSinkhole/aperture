@@ -3,18 +3,20 @@ import { eq, type InferInsertModel } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apStructure, apStructureEvent } from '@/db/schema';
 import { upsertCorporations } from './corporations';
+import type { IntelScopeOwner } from './guard';
 import type { ApStructure } from '@/types';
 
 /**
- * Structure-intel mutations. Structures are deployment-global manual intel with
- * no `map_id`, so they do NOT go through `commitMapEvent` / `ap_map_event` and
- * emit no realtime event — they are a plain REST resource.
+ * Structure-intel mutations. Structures are manual intel with no `map_id`, so
+ * they do NOT go through `commitMapEvent` / `ap_map_event` and emit no realtime
+ * event — they are a plain REST resource.
  *
  * Every mutation writes the `ap_structure` row AND one `ap_structure_event`
  * audit row in the same transaction, stamped with the acting character, so that
- * — since any authenticated user may edit any structure — griefers remain
- * identifiable. Deletes are hard deletes; the audit row carries the full
- * pre-delete snapshot so the intel stays recoverable.
+ * — since a structure is editable by people other than its creator — griefers
+ * remain identifiable. The audit row also carries the row's tenancy denormalized, since
+ * a `delete` event outlives the row it describes. Deletes are hard deletes; the
+ * audit row carries the full pre-delete snapshot so the intel stays recoverable.
  */
 
 export type CreateStructureInput = {
@@ -25,6 +27,8 @@ export type CreateStructureInput = {
   ownerName?: string | null;
   notes?: string | null;
   characterId: bigint | null;
+  /** Who may see the row, derived by the caller from the map it was written on. */
+  scope: IntelScopeOwner;
 };
 
 export type UpdateStructurePatch = {
@@ -65,6 +69,20 @@ async function resolveOwnerCorporationId(
   return null;
 }
 
+/**
+ * The row's tenancy, for denormalizing onto its `ap_structure_event` row. The
+ * event table holds the full pre-delete snapshot, so it has to carry the scope
+ * itself — on a delete the parent row it would otherwise be read from is gone.
+ */
+function scopeOf(row: ApStructure): IntelScopeOwner {
+  return {
+    scope: row.scope,
+    scopeCharacterId: row.scopeCharacterId,
+    scopeCorporationId: row.scopeCorporationId,
+    scopeAllianceId: row.scopeAllianceId,
+  };
+}
+
 /** Plain JSON snapshot of a structure row for the audit `payload` (no bigints/Dates). */
 function snapshot(row: ApStructure) {
   return {
@@ -96,6 +114,7 @@ export async function createStructure(input: CreateStructureInput): Promise<ApSt
         ownerCorporationId,
         notes: input.notes ?? null,
         createdByCharacterId: input.characterId,
+        ...input.scope,
       })
       .returning();
     await tx.insert(apStructureEvent).values({
@@ -104,6 +123,7 @@ export async function createStructure(input: CreateStructureInput): Promise<ApSt
       characterId: input.characterId,
       kind: 'create',
       payload: snapshot(row!),
+      ...scopeOf(row!),
     });
     return row!;
   });
@@ -143,6 +163,7 @@ export async function updateStructure(input: UpdateStructureInput): Promise<ApSt
       characterId: input.characterId,
       kind: 'update',
       payload: patch,
+      ...scopeOf(row),
     });
     return row;
   });
@@ -166,6 +187,7 @@ export function deleteStructure(input: DeleteStructureInput): Promise<ApStructur
       characterId: input.characterId,
       kind: 'delete',
       payload: snapshot(row),
+      ...scopeOf(row),
     });
     return row;
   });
