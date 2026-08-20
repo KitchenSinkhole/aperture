@@ -1,7 +1,22 @@
 ## guard.ts
 
-**Purpose:** Authorization + tenancy chokepoint for structure intel — derives the scope a new row takes, and gates edits/deletes on the scope an existing row carries.
+**Purpose:** Authorization + tenancy chokepoint for structure intel — derives the scope a new row takes, gates edits/deletes on the scope an existing row carries, and owns the admission rule the read side filters by.
 **File:** `src/lib/structures/guard.ts`
+
+---
+
+### resolveIntelViewer(characterId: bigint): Promise<IntelViewer | null>
+The viewer facts every scope decision keys on, read from `ap_character`.
+
+**Returns:** `IntelViewer`, or `null` when the character is missing or not `active` — a non-actor admits nothing and is admitted by nothing.
+
+### scopeAdmits(row: IntelScopeOwner, viewer: IntelViewer): boolean
+Does the row's scope admit the viewer? `private` matches `scope_character_id`, `corp` the viewer's `corporation_id`, `alliance` their `alliance_id`; a NULL `scope_*` column matches nobody. Admin is **not** handled here — callers short-circuit on `viewer.isAdmin` first.
+
+This is the admission rule of record. `structureVisibleTo` is the same rule as SQL, and the two are kept in this one file so they cannot drift apart.
+
+### structureVisibleTo(viewer: IntelViewer): SQL
+`scopeAdmits` as a Drizzle predicate over `ap_structure`, so a read filters in the database rather than after it. An admin matches every row. Backed by the `ap_structure_scope_idx` index.
 
 ---
 
@@ -21,3 +36,4 @@ Vandalism inside a scope stays possible by design: everyone who can see a row ca
 
 ### Types
 - `IntelScopeOwner` — `{ scope: IntelScope; scopeCharacterId: bigint | null; scopeCorporationId: bigint | null; scopeAllianceId: bigint | null }`. Exactly one id is populated, matching `scope`, per `ap_structure`'s CHECK.
+- `IntelViewer` — `{ characterId: bigint; corporationId: bigint | null; allianceId: bigint | null; isAdmin: boolean }`. `isAdmin` is `authz_level='admin'`, which admits every row as in `canViewMap`.

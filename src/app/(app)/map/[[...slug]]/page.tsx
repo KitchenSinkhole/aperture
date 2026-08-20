@@ -67,7 +67,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
   ] = await Promise.all([
     statsForSystems(systemIds),
     intelForSystems(systemIds),
-    structuresForSystems(systemIds),
+    structuresForSystems(systemIds, BigInt(session.characterId)),
     loadMapSettings(BigInt(session.characterId), mapId),
     getConnectionTravelAnimation(session.userId),
     getSignatureIndicatorPrefs(session.userId),

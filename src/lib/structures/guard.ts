@@ -1,12 +1,12 @@
 import 'server-only';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type { Session } from 'next-auth';
 import { db } from '@/db/client';
 import { apCharacter, apMap, apStructure } from '@/db/schema';
 import type { IntelScope } from '@/types';
 
 /**
- * Authorization + tenancy chokepoint for structure intel. Two concerns, both
+ * Authorization + tenancy chokepoint for structure intel. Three concerns, all
  * keyed on the row's `scope` triple rather than on "is there a session":
  *
  *  - `intelScopeForMap` derives the tenancy a new row takes, from the map it is
@@ -14,6 +14,9 @@ import type { IntelScope } from '@/types';
  *    NPC corp from ever becoming a scope.
  *  - `requireStructureMutate` admits an edit/delete only from a caller the
  *    existing row's scope admits.
+ *  - `scopeAdmits` / `structureVisibleTo` are the same admission rule in its two
+ *    forms — a row-at-a-time predicate for the write gate, and a SQL filter for
+ *    the read side. They live together so they cannot drift apart.
  *
  * A caller outside a row's scope gets 404, not 403: `ap_structure.id` is a
  * `bigserial`, so a 403 would confirm the row exists and hand back an id oracle.
@@ -30,9 +33,41 @@ export type IntelScopeOwner = {
   scopeAllianceId: bigint | null;
 };
 
+/** The viewer facts every scope decision keys on. */
+export type IntelViewer = {
+  characterId: bigint;
+  corporationId: bigint | null;
+  allianceId: bigint | null;
+  /** `authz_level='admin'` — admits every row, as in `canViewMap`. */
+  isAdmin: boolean;
+};
+
 export type StructureGuard =
   | { ok: true; characterId: bigint }
   | { ok: false; status: 401 | 404; error: string };
+
+/**
+ * The viewer facts for a character, or `null` when the character is missing or
+ * not `active` — a non-actor admits nothing and is admitted by nothing.
+ */
+export async function resolveIntelViewer(characterId: bigint): Promise<IntelViewer | null> {
+  const [actor] = await db
+    .select({
+      authzLevel: apCharacter.authzLevel,
+      status: apCharacter.status,
+      corporationId: apCharacter.corporationId,
+      allianceId: apCharacter.allianceId,
+    })
+    .from(apCharacter)
+    .where(eq(apCharacter.id, characterId));
+  if (!actor || actor.status !== 'active') return null;
+  return {
+    characterId,
+    corporationId: actor.corporationId,
+    allianceId: actor.allianceId,
+    isAdmin: actor.authzLevel === 'admin',
+  };
+}
 
 /**
  * The tenancy an intel row written on this map takes. Returns `null` for a
@@ -65,27 +100,54 @@ export async function intelScopeForMap(mapId: bigint): Promise<IntelScopeOwner |
   }
 }
 
-/** Does this row's scope admit the actor? Mirrors `canViewMap`'s owner-match switch. */
-function scopeAdmits(
-  row: IntelScopeOwner,
-  characterId: bigint,
-  corporationId: bigint | null,
-  allianceId: bigint | null,
-): boolean {
+/**
+ * Does this row's scope admit the viewer? Mirrors `canViewMap`'s owner-match
+ * switch. Admin is *not* handled here — callers short-circuit on it first.
+ *
+ * This is the admission rule of record; `structureVisibleTo` is the same rule
+ * expressed as SQL, and the two must stay branch for branch identical.
+ */
+export function scopeAdmits(row: IntelScopeOwner, viewer: IntelViewer): boolean {
   switch (row.scope) {
     case 'private':
-      return row.scopeCharacterId !== null && row.scopeCharacterId === characterId;
+      return row.scopeCharacterId !== null && row.scopeCharacterId === viewer.characterId;
     case 'corp':
       return (
         row.scopeCorporationId !== null &&
-        corporationId !== null &&
-        row.scopeCorporationId === corporationId
+        viewer.corporationId !== null &&
+        row.scopeCorporationId === viewer.corporationId
       );
     case 'alliance':
       return (
-        row.scopeAllianceId !== null && allianceId !== null && row.scopeAllianceId === allianceId
+        row.scopeAllianceId !== null &&
+        viewer.allianceId !== null &&
+        row.scopeAllianceId === viewer.allianceId
       );
   }
+}
+
+/**
+ * `scopeAdmits` as a SQL predicate over `ap_structure`, for filtering a read in
+ * the database rather than after it. An admin matches every row; otherwise a row
+ * matches only on its own branch, and a NULL `scope_*` column never equals an
+ * id, so the erased-owner `private` row falls out for every non-admin.
+ */
+export function structureVisibleTo(viewer: IntelViewer): SQL {
+  if (viewer.isAdmin) return sql`true`;
+  const branches: SQL[] = [
+    and(eq(apStructure.scope, 'private'), eq(apStructure.scopeCharacterId, viewer.characterId))!,
+  ];
+  if (viewer.corporationId !== null) {
+    branches.push(
+      and(eq(apStructure.scope, 'corp'), eq(apStructure.scopeCorporationId, viewer.corporationId))!,
+    );
+  }
+  if (viewer.allianceId !== null) {
+    branches.push(
+      and(eq(apStructure.scope, 'alliance'), eq(apStructure.scopeAllianceId, viewer.allianceId))!,
+    );
+  }
+  return or(...branches)!;
 }
 
 /**
@@ -108,17 +170,9 @@ export async function requireStructureMutate(
   const characterId = BigInt(session.characterId);
   const notFound = { ok: false, status: 404, error: 'Structure not found.' } as const;
 
-  const [actor] = await db
-    .select({
-      authzLevel: apCharacter.authzLevel,
-      status: apCharacter.status,
-      corporationId: apCharacter.corporationId,
-      allianceId: apCharacter.allianceId,
-    })
-    .from(apCharacter)
-    .where(eq(apCharacter.id, characterId));
-  if (!actor || actor.status !== 'active') return notFound;
-  if (actor.authzLevel === 'admin') return { ok: true, characterId };
+  const viewer = await resolveIntelViewer(characterId);
+  if (!viewer) return notFound;
+  if (viewer.isAdmin) return { ok: true, characterId };
 
   const [row] = await db
     .select({
@@ -130,6 +184,6 @@ export async function requireStructureMutate(
     .from(apStructure)
     .where(eq(apStructure.id, structureId));
   if (!row) return notFound;
-  if (!scopeAdmits(row, characterId, actor.corporationId, actor.allianceId)) return notFound;
+  if (!scopeAdmits(row, viewer)) return notFound;
   return { ok: true, characterId };
 }

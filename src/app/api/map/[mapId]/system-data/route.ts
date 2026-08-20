@@ -15,7 +15,12 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
  * backfill systems added live (paste, tracked-pilot jump, manual add) so their
  * decorators and sidebar modules fill in without a page reload.
  *
- * Access: view-only — anyone who can see the map may read it.
+ * Access: view-only — anyone who can see the map may read it. The `systems`
+ * param is not checked against the map's own systems, so structure intel is
+ * additionally filtered to the rows the guarded character's scope admits: a
+ * sweep of arbitrary system ids returns only structures the caller could
+ * already see. Sov/FW/incursion intel and activity stats are public universe
+ * data and carry no such filter.
  */
 
 export const runtime = 'nodejs';
@@ -58,7 +63,7 @@ export const GET = withApiMetrics('/api/map/:mapId/system-data', async function 
   const [intel, stats, structures] = await Promise.all([
     intelForSystems(systemIds),
     statsForSystems(systemIds),
-    structuresForSystems(systemIds),
+    structuresForSystems(systemIds, guard.characterId),
   ]);
 
   return Response.json({ ok: true, data: { intel, stats, structures } });
