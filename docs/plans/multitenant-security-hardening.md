@@ -21,12 +21,12 @@ Intel charted in Aperture (scanned signatures, connection chains, pilot presence
 ## Priority ordering
 
 - **P0 (Stages 1 to 2):** server-side cross-tenant write on map children. An authenticated user can inject rows onto a map they cannot see. This is a true authorization leak.
-- **P1 (Stages 3 to 9):** the deployment-global intel tables (`ap_structure`, `ap_system_note`) have no owner at all. Every authenticated user can read every row and destroy any row by enumerable id. Also a true authorization leak, and the larger blast radius of the two, but it needs a schema change rather than a guard.
+- **P1 (Stages 3 to 5, 8, 9):** the deployment-global intel tables have no owner at all. Every authenticated user can read every row and destroy any row by enumerable id. Also a true authorization leak, and the larger blast radius of the two, but it needs a schema change rather than a guard. `ap_structure` is scoped by the stages here; `ap_system_note` arrives with PR #242 and is scoped there.
 - **P2 (Stages 10 to 12):** cross-tab realtime bleed inside one authorized browser. Display/local-state corruption only; server authorization is not bypassed and a reload clears it.
 
-**Execution state:** P0 and P2 shipped together ahead of P1, since neither depends on the intel-table schema change and P2 was the reported bug. P1 (Stages 3 to 9) is the whole remaining block; the per-stage `Status` lines are authoritative.
+**Execution state:** P0 and P2 shipped together ahead of P1, since neither depends on the intel-table schema change and P2 was the reported bug. The remaining block is Stages 3 to 5, 8 and 9; the per-stage `Status` lines are authoritative.
 
-**Precondition:** the P1 stages assume PR #242 (global system notes) is merged to `dev` first. It creates `ap_system_note` / `ap_system_note_event` and migration `0068`. If it lands after this plan starts, the P1 block must be re-scoped to structures only (Stages 3 to 5, 8, 9) and the note stages (6 to 7) re-planned.
+**Ordering against PR #242 (global system notes):** this plan lands on `dev` ahead of it. Stage 3 establishes the `intel_scope` enum and the `scope_*` column shape; #242 then creates `ap_system_note` / `ap_system_note_event` already carrying them, so the note table is never born unscoped and no follow-up migration is needed to retrofit tenancy onto accumulated rows. #242's migration numbers on top of this plan's. Stages 6 and 7 are retired into **Handoff to PR #242** at the foot of this file, which carries the full note-side spec.
 
 ---
 
@@ -91,12 +91,14 @@ The fix is one shared check reused by every path that takes a child id from the 
 
 ---
 
-## The P1 defect (Stages 3 to 9)
+## The P1 defect (Stages 3 to 5, 8, 9)
 
-`ap_structure` and `ap_system_note` are **deployment-global**: neither carries a `map_id` or any owner column. The write gate on both is "is there a session" (`requireStructureMutate`, `src/lib/structures/guard.ts`), and both primary keys are `bigserial`. So on an FFA instance any logged-in stranger can:
+`ap_structure` is **deployment-global**: it carries no `map_id` and nothing identifying who may see it. (Its `owner_corporation_id` names the citadel's in-game owner, not a tenant.) Its write gate is "is there a session" (`requireStructureMutate`, `src/lib/structures/guard.ts`) and its primary key is `bigserial`. So on an FFA instance any logged-in stranger can:
 
-- read every structure sighting and every system note in the deployment;
+- read every structure sighting in the deployment;
 - rewrite or delete any of them by counting ids from 1.
+
+`ap_system_note` has the identical shape and takes the identical fix; it arrives with PR #242 and is scoped there.
 
 Reads amplify through `GET /api/map/[mapId]/system-data?systems=…`, which guards `requireMapView` on the map but never checks the requested systems are actually on it. 256 arbitrary system ids per request dumps the deployment's structure intel in roughly twenty calls, with no need to add a single system to a map.
 
@@ -123,7 +125,9 @@ Revocation is therefore exactly as fresh as `ap_character.alliance_id`, which `s
 
 Scoping the reads also closes the `system-data` enumeration oracle for these two tables, since a sweep returns only rows the caller was already entitled to. The unchecked `systems` param itself stays as-is: what remains behind it is sov/FW/incursion intel and activity stats, which are public or near-public universe data. Accepted, not fixed here.
 
-**Checkpoint caveat for the block:** Stage 3's `NOT NULL` scope columns break the structure/note create paths at runtime until Stages 4 and 6 wire them (the build stays green throughout). Acceptable on dev; run Stages 3 to 7 as one contiguous block rather than leaving the plan parked between them.
+**Column naming — `scope_*`, not `owner_*`.** `ap_structure.owner_corporation_id` is already taken, and means something else entirely: the EVE corporation that owns the citadel, FK → `universe_corporation`. Reusing the `ap_map` triple's spelling here would collide on that column and conflate "who owns the structure in space" with "who may see the row". Both intel tables therefore carry `scope_character_id` / `scope_corporation_id` / `scope_alliance_id`, pairing with the `scope` column. The semantics are `ap_map`'s exactly; only the prefix differs.
+
+**Checkpoint caveat for the block:** Stage 3's `NOT NULL` scope columns break the structure create path at runtime until Stage 4 wires it (the build stays green throughout). Acceptable on dev; run Stages 3 to 5 as one contiguous block rather than leaving the plan parked between them.
 
 ---
 
@@ -131,27 +135,27 @@ Scoping the reads also closes the `system-data` enumeration oracle for these two
 
 **Mode:** Execute
 **Status:** todo
-**Goal:** `ap_structure` and `ap_system_note` carry an owner entity mirroring `ap_map`, with every existing row backfilled so it keeps exactly the visibility it has today.
+**Goal:** `ap_structure` carries an owner entity mirroring `ap_map`, with every existing row backfilled so it keeps exactly the visibility it has today, and the `intel_scope` enum is in place for PR #242 to build `ap_system_note` against.
 **References:** `src/db/schema/ap/map.md` (owner-triple precedent), `src/db/schema/ap/structure.md`, `src/db/schema/ap/instance.md`, `src/db/schema/ap/enums.md`
-**Touches:** `src/db/schema/ap/enums.ts` (+ `.md`), `src/db/schema/ap/structure.ts` (+ `.md`), `src/db/schema/ap/system_note.ts` (+ `.md`, path as landed by #242), `src/db/migrations/0069_intel_scope.sql` + hand-written `.rollback.sql`.
+**Touches:** `src/db/schema/ap/enums.ts` (+ `.md`), `src/db/schema/ap/structure.ts` (+ `.md`), the `ap_structure_event` schema module (+ `.md`), `src/db/migrations/0070_intel_scope.sql` + hand-written `.rollback.sql`.
 
 **Spec:**
 - New `pgEnum('intel_scope', ['private', 'corp', 'alliance'])`. Deliberately **not** a reuse of `map_type`: a future map type must not silently widen intel visibility.
-- Both tables gain `scope intel_scope NOT NULL` plus the owner triple, matching `ap_map`'s column semantics exactly:
-  - `owner_character_id` → FK `ap_character.id` `ON DELETE SET NULL`.
-  - `owner_corporation_id`, `owner_alliance_id` → bare `bigint` (as on `ap_map`; `ap_corporation` / `ap_alliance` are not FK targets app-wide).
-  - CHECK constraint: exactly one owner column non-null, and the populated one matches `scope`.
-- A row with all three owner columns NULL (character erased on a `private` row) is **admin-only**, the same defensive default `canViewMap` applies to unowned maps. State the invariant in the schema companions.
+- `ap_structure` gains `scope intel_scope NOT NULL` plus the scope triple, matching `ap_map`'s owner-column semantics exactly under the `scope_*` prefix (see **Column naming** above — `owner_corporation_id` is already the citadel's in-game owner and must not be touched):
+  - `scope_character_id` → FK `ap_character.id` `ON DELETE SET NULL`.
+  - `scope_corporation_id`, `scope_alliance_id` → bare `bigint` (as on `ap_map`; `ap_corporation` / `ap_alliance` are not FK targets app-wide).
+  - CHECK constraint: exactly one `scope_*` column non-null, and the populated one matches `scope`.
+- A row with all three `scope_*` columns NULL (character erased on a `private` row) is **admin-only**, the same defensive default `canViewMap` applies to unowned maps. State the invariant in the schema companion.
 - Add an index supporting the per-viewer visibility filter alongside the existing `system_id` index.
-- **`ap_structure_event` / `ap_system_note_event` carry the same `scope` + owner triple, denormalized at write time.** The audit rows hold the full pre-delete snapshot in `payload`, so an unscoped read of the event table returns the exact intel the parent-table filter withholds. They cannot derive scope from the parent because on a delete the parent is gone, which is precisely the case the snapshot exists for. Both tables are write-only today (no read path exists), so this costs one column set now and is unfixable-in-place later once rows accumulate without it.
-- **Backfill:** every pre-existing row takes the deployment's own owner from `ap_instance_owner` (`principal_kind` → `scope`, `principal_id` → the matching owner column). This preserves today's effective visibility: everyone inside the owning entity keeps seeing everything they see now. If `ap_instance_owner` holds exactly one row, use it; if it holds several, prefer the `alliance` row; if it is empty, **fail the migration loudly** rather than guessing an owner.
+- **`ap_structure_event` carries the same `scope` + scope triple, denormalized at write time.** The audit rows hold the full pre-delete snapshot in `payload`, so an unscoped read of the event table returns the exact intel the parent-table filter withholds. It cannot derive scope from the parent because on a delete the parent is gone, which is precisely the case the snapshot exists for. The table is write-only today (no read path exists), so this costs one column set now and is unfixable-in-place later once rows accumulate without it.
+- **Backfill:** every pre-existing row takes the deployment's own owner from `ap_instance_owner`, mapping `principal_kind` → `scope` explicitly (`'corporation'` → `'corp'`, `'alliance'` → `'alliance'`; the two enums do not share spellings, so this is a `CASE`, not a cast) and `principal_id` → the matching `scope_*` column. This preserves today's effective visibility: everyone inside the owning entity keeps seeing everything they see now. If `ap_instance_owner` holds exactly one row, use it; if it holds several, prefer the `alliance` row; if it is empty, **fail the migration loudly** rather than guessing an owner.
 - Generate with `drizzle-kit generate`, then hand-write the `.rollback.sql` (drop columns, then the enum).
-- Migration number assumes #242's `0068` is merged. Renumber on top of whatever `dev`'s chain actually ends at.
+- `dev`'s chain ends at `0069_abyssal_tracking_opt_in`. Confirm that still holds at execution time and renumber if it moved.
 
 **Done when:**
-- `pnpm db:migrate` applies cleanly against a dev DB that already has #242's `0068`.
-- Every pre-existing `ap_structure` / `ap_system_note` row has exactly one owner column populated and a matching `scope`.
-- The CHECK rejects an insert with zero or with two owner columns set.
+- `pnpm db:migrate` applies cleanly against a dev DB at `dev`'s current head.
+- Every pre-existing `ap_structure` row has exactly one `scope_*` column populated and a matching `scope`.
+- The CHECK rejects an insert with zero or with two `scope_*` columns set.
 - The rollback file cleanly reverses the migration.
 - `pnpm lint && pnpm typecheck && pnpm build` green.
 
@@ -166,14 +170,15 @@ Scoping the reads also closes the `system-data` enumeration oracle for these two
 **Touches:** `src/lib/structures/guard.ts` (+ `.md`), `mutations.ts` (+ `.md`), `src/app/api/structures/route.ts` (+ `.md`), `src/app/api/structures/[structureId]/route.ts` (+ `.md`).
 
 **Spec:**
-- `POST /api/structures` body gains `mapId`. The route guards `requireMapView(mapId, session)` and derives `scope` + owner from that map's `type` and owner columns, populating Stage 3's columns on the insert. A create naming a map the caller cannot view is rejected.
-- `requireStructureMutate` becomes row-scoped: PATCH/DELETE load the target row first and admit only a caller its scope admits (`private` matching `owner_character_id`, `corp` matching the caller's `corporation_id`, `alliance` matching the caller's `alliance_id`; `authz_level='admin'` passes everything, consistent with `canViewMap`). This replaces the any-authenticated-session check.
+- `POST /api/structures` body gains `mapId`. The route guards `requireMapView(mapId, session)` and derives `scope` + the scope triple from that map's `type` and its own `owner_*` columns, populating Stage 3's `scope_*` columns on the insert. A create naming a map the caller cannot view is rejected.
+- `requireStructureMutate` becomes row-scoped: PATCH/DELETE load the target row first and admit only a caller its scope admits (`private` matching `scope_character_id`, `corp` matching the caller's `corporation_id`, `alliance` matching the caller's `alliance_id`; `authz_level='admin'` passes everything, consistent with `canViewMap`). This replaces the any-authenticated-session check.
 - A mutation on a row outside the caller's scope returns **404, not 403** — a 403 confirms the row exists and reintroduces the id oracle.
-- `ap_structure_event` writes keep the same transaction and the same pre-delete snapshot, and additionally stamp the row's `scope` + owner (Stage 3). Any future read of the event table — a recovery UI, an admin audit view — must filter on it. There is no read path today; do not add one here.
+- The row's existing `owner_corporation_id` (the citadel's in-game owner) is untouched by this stage and stays freely editable by anyone the scope admits. Do not conflate it with `scope_corporation_id`.
+- `ap_structure_event` writes keep the same transaction and the same pre-delete snapshot, and additionally stamp the row's `scope` + scope triple (Stage 3). Any future read of the event table — a recovery UI, an admin audit view — must filter on it. There is no read path today; do not add one here.
 - Vandalism *inside* a scope stays possible by design. Everyone who can see a row can correct it, because the corp that first logged a structure is usually not the corp that later finds it unanchored, and a creator-only write gate would rot the data. The audit log remains the accountability mechanism there.
 
 **Done when:**
-- A structure create through the mutation helper against the dev DB inserts a row satisfying Stage 3's CHECK (exactly one owner column, matching `scope`). The full behavioural matrix (cross-scope 404, non-viewable `mapId` rejected, same-scope CRUD unchanged) is locked by Stage 9's tests.
+- A structure create through the mutation helper against the dev DB inserts a row satisfying Stage 3's CHECK (exactly one `scope_*` column, matching `scope`). The full behavioural matrix (cross-scope 404, non-viewable `mapId` rejected, same-scope CRUD unchanged) is locked by Stage 9's tests.
 - `pnpm lint && pnpm typecheck && pnpm build` green.
 
 ---
@@ -187,8 +192,9 @@ Scoping the reads also closes the `system-data` enumeration oracle for these two
 **Touches:** `src/lib/structures/read.ts` (+ `.md`) and the two `structuresForSystems` callers (`src/app/(app)/map/[[...slug]]/page.tsx`, `src/app/api/map/[mapId]/system-data/route.ts`) (+ companions).
 
 **Spec:**
-- `structuresForSystems` takes the viewer alongside the system ids — a required parameter, so the type checker forces every caller through the filter — and filters to rows the viewer admits: `private` matching `owner_character_id`, `corp` matching the viewer's `corporation_id`, `alliance` matching the viewer's `alliance_id`. `authz_level='admin'` sees all, consistent with `canViewMap`.
+- `structuresForSystems` takes the viewer alongside the system ids — a required parameter, so the type checker forces every caller through the filter — and filters to rows the viewer admits: `private` matching `scope_character_id`, `corp` matching the viewer's `corporation_id`, `alliance` matching the viewer's `alliance_id`. `authz_level='admin'` sees all, consistent with `canViewMap`.
 - Both callers thread the session's viewer through; this closes the `system-data` sweep for structures (a 256-id request returns only admitted rows).
+- `src/app/api/map/[mapId]/system-data/route.ts` is also touched by PR #242, which adds a `systemNotesForSystems` call to the same `Promise.all`. Whichever lands second resolves a one-line conflict there.
 
 **Done when:**
 - The viewer parameter is required on `structuresForSystems`, so `pnpm typecheck` fails on any caller not passing it. The behavioural filter (org B never sees org A's rows, including via the `system-data` sweep) is locked by Stage 9's tests.
@@ -196,41 +202,11 @@ Scoping the reads also closes the `system-data` enumeration oracle for these two
 
 ---
 
-## Stage 6 — Scope-derived system-note writes
+## Stages 6 and 7 — system-note writes and reads
 
-**Mode:** Execute
-**Status:** todo
-**Goal:** Every system-note write is gated by the row's scope, mirroring Stage 4.
-**References:** the note mutation / route companions as landed by #242, plus `src/lib/structures/guard.md` and `mutations.md` for the Stage 4 shape to mirror.
-**Touches:** the `ap_system_note` mutation module and write routes as merged by #242 (+ companions). Confirm the exact paths against merged `dev` before starting.
+**Status:** retired — owned by PR #242
 
-**Spec:**
-- Mirror Stage 4 exactly: `mapId` on create with a `requireMapView` guard deriving `scope` + owner (populating Stage 3's columns), row-scoped mutate guard, 404 on cross-scope PATCH/DELETE.
-- Per-note lock behaviour (409 on a locked row) is unchanged and composes with the scope check: scope is evaluated first, so a locked row outside the caller's scope 404s rather than 409ing.
-- `ap_system_note_event` writes stamp the row's `scope` + owner the same way, with the same rule: no read path today, and any added later filters on it.
-
-**Done when:**
-- A note create through the mutation helper against the dev DB inserts a row satisfying Stage 3's CHECK. The behavioural matrix (cross-scope 404, locked in-scope row still 409s, same-scope CRUD unchanged) is locked by Stage 9's tests.
-- `pnpm lint && pnpm typecheck && pnpm build` green.
-
----
-
-## Stage 7 — Scope-aware system-note reads
-
-**Mode:** Execute
-**Status:** todo
-**Goal:** A system note is readable only by characters its scope admits, including through the deployment-wide notes browser.
-**References:** the note read module / browser route companions as landed by #242, plus `src/lib/structures/read.md` for the Stage 5 shape to mirror.
-**Touches:** the `ap_system_note` read module, the notes-browser route, and the map-node indicator data source as merged by #242 (+ companions). Confirm the exact paths against merged `dev` before starting.
-
-**Spec:**
-- Mirror Stage 5: the read module takes a required viewer and filters to admitted rows; `authz_level='admin'` sees all.
-- The **notes browser** search is the sharpest read surface (deployment-wide ILIKE over every note body, no map indirection at all) and must apply the viewer filter before the 50-row cap, not after — filtering after the cap would silently return short pages.
-- The map-node note indicator pill counts only notes the viewer can see, so a system carrying nothing but other orgs' notes shows no pill.
-
-**Done when:**
-- The viewer parameter is required on the note read module, so `pnpm typecheck` fails on any caller not passing it. The behavioural filter, including the filter-before-cap property of the browser search, is locked by Stage 9's tests.
-- `pnpm lint && pnpm typecheck && pnpm build` green.
+Scoping `ap_system_note` is the same work as Stages 4 and 5, against a table this plan never sees. It belongs with the PR that creates the table, so it does not ship unscoped for a release and then get retrofitted. The full spec is at **Handoff to PR #242** below; the stage numbering is left in place so the Status shas and Notes above stay readable.
 
 ---
 
@@ -238,14 +214,15 @@ Scoping the reads also closes the `system-data` enumeration oracle for these two
 
 **Mode:** Execute
 **Status:** todo
-**Goal:** A viewer can tell at a glance who else can see each row, and who will see a new one before they submit it.
-**References:** the structures panel and system-notes panel companions, `src/db/schema/ap/enums.md` (`intel_scope`)
-**Touches:** the structures sidebar panel component, the system-notes panel and its add/edit dialog (+ companions).
+**Goal:** A viewer can tell at a glance who else can see each structure, and who will see a new one before they submit it.
+**References:** the structures panel companion, `src/db/schema/ap/enums.md` (`intel_scope`)
+**Touches:** the structures sidebar panel component and its add/edit dialog (+ companions).
 
 **Spec:**
-- Each row renders its scope (private / corp / alliance, naming the entity where one applies).
+- Each row renders its scope (private / corp / alliance, naming the entity where one applies). Keep it visually distinct from the citadel's in-game owner corp, which the same row already displays — two "corp" facts side by side is the confusion this stage exists to prevent.
 - The add/edit dialog names the audience the row will land in, derived from the current map, **before** submit. The failure mode being designed against is a user writing staging intel believing it is private.
 - No scope picker: scope is derived from the map, not chosen. A row cannot be moved between scopes from this UI.
+- PR #242 applies the same treatment to the system-notes panel and dialog; whatever chip component this stage lands is the one it reuses.
 
 **Done when:** `pnpm typecheck && pnpm build` green. (The visual checks — chips render, dialog names the audience — are batched in Manual verification.)
 
@@ -256,17 +233,18 @@ Scoping the reads also closes the `system-data` enumeration oracle for these two
 **Mode:** Execute
 **Status:** todo
 **Goal:** Lock the P1 invariants so a future read path or create route cannot silently reintroduce global visibility.
-**References:** the Stage 2 spec (same shape and suite conventions), `src/lib/structures/read.md`, the note read companion
-**Touches:** new spec(s) under `tests/integration/`.
+**References:** the Stage 2 spec (same shape and suite conventions), `src/lib/structures/read.md`
+**Touches:** new spec under `tests/integration/`.
 
 **Spec:**
 - DB-backed, `RUN_DB_TESTS`-guarded, snapshot/restore per the suite convention.
-- Build two orgs and, for both `ap_structure` and `ap_system_note`, assert: a read as org B omits org A's rows; a PATCH/DELETE of org A's row as org B 404s and writes nothing; a create naming a non-viewable map is rejected; same-scope CRUD succeeds.
-- Cover the notes browser search specifically, including that a capped result page contains only admitted rows.
+- Build two orgs and, for `ap_structure`, assert: a read as org B omits org A's rows; a PATCH/DELETE of org A's row as org B 404s and writes nothing; a create naming a non-viewable map is rejected; same-scope CRUD succeeds.
 - Cover the `system-data` sweep: 256 arbitrary system ids as org B returns none of org A's rows.
-- Suite caveats: the dev DB is non-pristine, so snapshot and restore; triage failures in isolation because the full suite is parallel-flaky.
+- Cover the unowned-row default: a `private` row whose `scope_character_id` went NULL on character erasure is invisible to everyone but an admin.
+- Suite caveats: the dev DB is non-pristine, so snapshot and restore; triage failures in isolation because the full suite is parallel-flaky. Claim a fresh universe fixture id range and grep `tests/integration/*.test.ts` first — 98040xxx through 98046xxx are taken.
+- PR #242 mirrors this spec for `ap_system_note`, plus the notes-browser filter-before-cap assertion. Leave the file structured so a note-side describe block drops in beside the structure one.
 
-**Done when:** each assertion fails if the corresponding Stage 4–7 guard or filter is removed. `RUN_DB_TESTS=1 pnpm test <spec>` green.
+**Done when:** each assertion fails if the corresponding Stage 4 or 5 guard or filter is removed. `RUN_DB_TESTS=1 pnpm test <spec>` green.
 
 ---
 
@@ -347,14 +325,41 @@ _(worked by the user once, after the run — the plan is not complete until it p
 
 - **Stage 1** `PASSED` — one cross-tenant create attempt through the running app (a signature naming another map's system id) is rejected with no row written. Stage 2's tests cover the helper-level reject/success matrix; this confirms the route wiring end to end.
 - **Stage 1** `PASSED` — the one create path that reaches `createConnection` indirectly still works on a same-map operation: stargate auto-link when adding a system (`addSystemWithStargateLinks`). Stage 2's tests cover the direct create paths but not this one, and a false rejection here would look like a broken map rather than a security error.
-- **Stage 3** — after the backfill, confirm the existing deployment's members still see every structure and note they saw before the migration. A row going missing means the backfill picked the wrong owner entity.
+- **Stage 3** — after the backfill, confirm the existing deployment's members still see every structure they saw before the migration. A row going missing means the backfill picked the wrong owner entity.
 - **Stage 5** — the structures panel still populates on both the server-rendered map page and the live `system-data` backfill.
-- **Stage 7** — the map-node note pill counts only notes you can see: a system carrying nothing but another org's notes shows no pill.
-- **Stage 8** — two characters in different corps, each on their own corp map, both looking at the same system: confirm each sees only their own corp's structures and notes, that the scope chips name the right entity, and that the add dialog names the right audience before submit.
+- **Stage 8** — two characters in different corps, each on their own corp map, both looking at the same system: confirm each sees only their own corp's structures, that the scope chips name the right entity, that the citadel's in-game owner corp is still shown and still distinguishable from the scope chip, and that the add dialog names the right audience before submit.
 - **Stage 11** `PASSED` — reproduce the original report. Two corp maps side by side in two windows; scan, add and move systems on map A; map B stays clean across systems, connections, presence roster, and kill/ping underglow. No "System not found" toast on the secondary map, no phantom nodes, nothing to clean up on reload.
 - **Stage 11** `PASSED` — the degraded banner still clears on the `healthCheck` heartbeat in **both** tabs. This is the one that catches an over-tight fix: routing map-scoped envelopes per-port must not also strand the control-plane fan-out.
 - **Stage 11** `PASSED` — a single tab on a single map behaves exactly as before.
 - **Stage 12** `PASSED` — the guard is invisible in normal operation. Nothing disappears from a canvas that should be there, and the presence roster still fills on the map you have open.
+
+---
+
+## Handoff to PR #242
+
+`ap_system_note` is the second half of the P1 fix, and it is cheaper to build scoped than to retrofit. This section is the whole spec; nothing else in this plan needs reading to work it.
+
+**Why it lands second.** `dev` is already past #242's `0068_system_note` (dev's `0068` is `0068_map_drop_icon_log_activity` and its head is `0069_abyssal_tracking_opt_in`), so the branch has to renumber and regenerate its snapshot regardless. Doing that on top of Stage 3 costs nothing extra and gets the `intel_scope` enum for free.
+
+**Schema** — mirror Stage 3 on both `ap_system_note` and `ap_system_note_event`:
+- `scope intel_scope NOT NULL` (the enum exists; do not redeclare it), plus `scope_character_id` (FK `ap_character.id` `ON DELETE SET NULL`), `scope_corporation_id`, `scope_alliance_id` (bare `bigint`).
+- CHECK: exactly one `scope_*` column non-null and matching `scope`.
+- All three NULL is **admin-only visibility**, not public.
+- The event table carries the columns denormalized at write time. It holds the full pre-delete snapshot, so an unscoped read of it returns exactly the intel the parent filter withholds, and it cannot derive scope from a parent row that a delete has already removed.
+- Index supporting the per-viewer filter, alongside the `system_id` index.
+- If any rows already exist on a deployment, backfill from `ap_instance_owner` the way Stage 3's structure backfill does.
+
+**Writes** — `POST` body gains `mapId`; the route guards `requireMapView(mapId, session)` and derives `scope` + the scope triple from that map's `type` and `owner_*` columns. The mutate guard becomes row-scoped: PATCH/DELETE load the row and admit only a caller its scope admits (`private` → `scope_character_id`, `corp` → the caller's `corporation_id`, `alliance` → their `alliance_id`; `authz_level='admin'` passes everything). Cross-scope returns **404, not 403** — a 403 confirms the row exists and reinstates the id oracle that `bigserial` ids make trivial to walk. The per-note lock composes with this: scope is evaluated **first**, so a locked row outside the caller's scope 404s rather than 409ing.
+
+**Reads** — the read module takes a **required** viewer parameter, so the type checker forces every caller through the filter. Two surfaces need particular care:
+- The **notes browser** is the sharpest read surface in the feature: a deployment-wide unanchored `ILIKE '%term%'` over every note body with no map indirection at all. Apply the viewer filter **before** the 50-row cap. Filtering after it silently returns short pages, and the bug is invisible in testing until someone else's data is in the table.
+- The **map-node note pill** counts only admitted notes, so a system carrying nothing but another org's notes shows no pill. A pill that appears for invisible notes is itself an existence oracle.
+
+**UI** — each note renders its scope, and the add/edit dialog names the audience **before** submit. The failure mode is a user writing staging intel believing it is private. No scope picker: scope derives from the map. Stage 8 lands a scope chip for structures; reuse it.
+
+**Tests** — mirror Stage 9 for notes: two orgs, read omits the other's rows, cross-scope PATCH/DELETE 404s and writes nothing, create against a non-viewable map is rejected, same-scope CRUD unchanged, locked in-scope row still 409s. Add the one assertion structures do not need: a **capped** browser result page contains only admitted rows.
+
+**Also worth confirming while in there** (from *Further hardening*, not blocking): that notes stay out of `PublicMapViewData`, and that if a `showNotes` redaction flag is ever added it carries the scope check rather than the map's share settings alone.
 
 ---
 
@@ -390,3 +395,4 @@ _(appended by executing sessions — non-obvious findings only)_
 - **Stage 12** `PASSED` — `MapUnderglowBridge` had no `mapId` prop before this stage (only `systems`), so guarding it required adding one, threaded from `MapCanvas` as `data.map.id`. `MapPresenceContext` needed the same new prop. `ConnectionMassLog` already took `mapId: string` for its own fetch/GET scoping, so its guard was a drop-in addition.
 - **Stage 12** `PASSED` — `systemNotificationLoadSchema`'s per-kind body (`killmail`/`ping`) carries its own `mapId` field, independent of the Stage 10 envelope-level one. `MapUnderglowBridge`'s guard checks the envelope-level field (before the `safeParse`) for consistency with the other consumers rather than the load's own field, but either would work there.
 - **Stage 12** `PASSED` — `AppUpdateBanner` (the only other raw `envelope.task` consumer found via a repo-wide grep) filters on `task === 'healthCheck'`, a control-plane frame with no `mapId` by construction — correctly out of scope for this stage.
+- **Stage 3 (planning)** — the P1 block was re-scoped to structures only, ahead of PR #242 rather than behind it, and the tenancy columns renamed `owner_*` → `scope_*`. Two findings drove it. First, `ap_structure.owner_corporation_id` already exists and means the citadel's in-game owner corp (FK → `universe_corporation`), so copying `ap_map`'s triple verbatim would have collided on that column during Stage 3's migration. Second, `dev` had already advanced past #242's `0068_system_note` (dev's `0068` is `0068_map_drop_icon_log_activity`, head `0069_abyssal_tracking_opt_in`), leaving the PR `CONFLICTING` on `meta/_journal.json` and `meta/0068_snapshot.json` — so the renumber this ordering implies was already forced on it, and the original "#242 lands first" precondition was unsatisfiable as written.
