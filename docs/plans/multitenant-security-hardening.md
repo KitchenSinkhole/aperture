@@ -134,7 +134,7 @@ Scoping the reads also closes the `system-data` enumeration oracle for these two
 ## Stage 3 — Owner columns on the intel tables
 
 **Mode:** Execute
-**Status:** done — 105cc9cb
+**Status:** done — 838e9754
 **Goal:** `ap_structure` carries an owner entity mirroring `ap_map`, with every existing row backfilled so it keeps exactly the visibility it has today, and the `intel_scope` enum is in place for PR #242 to build `ap_system_note` against.
 **References:** `src/db/schema/ap/map.md` (owner-triple precedent), `src/db/schema/ap/structure.md`, `src/db/schema/ap/instance.md`, `src/db/schema/ap/enums.md`
 **Touches:** `src/db/schema/ap/enums.ts` (+ `.md`), `src/db/schema/ap/structure.ts` (+ `.md`), the `ap_structure_event` schema module (+ `.md`), `src/db/migrations/0070_intel_scope.sql` + hand-written `.rollback.sql`.
