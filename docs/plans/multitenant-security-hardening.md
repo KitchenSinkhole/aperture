@@ -216,7 +216,7 @@ Scoping `ap_system_note` is the same work as Stages 4 and 5, against a table thi
 ## Stage 8 — Surface the scope in the UI
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 82da2a75
 **Goal:** A viewer can tell at a glance who else can see each structure, and who will see a new one before they submit it.
 **References:** the structures panel companion, `src/db/schema/ap/enums.md` (`intel_scope`)
 **Touches:** the structures sidebar panel component and its add/edit dialog (+ companions).
