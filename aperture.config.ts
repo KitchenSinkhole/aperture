@@ -505,12 +505,12 @@ export const apertureConfig = {
 
   /**
    * Outbound links the spectator view's promo bar offers a logged-out visitor.
-   * The instance itself is always the deployment root, so only the project's
-   * source needs naming here.
+   * The instance itself is always the deployment root, so it is not named here.
    */
   PUBLIC_LINKS: {
     repo: 'https://github.com/KitchenSinkhole/aperture',
     discord: 'https://discord.gg/zHCR856J5f',
+    website: 'https://aperturemap.com',
   },
 
   /** WebSocket upgrade path for token-authed public spectator sockets, structurally separate from `WS_PATH`. */
