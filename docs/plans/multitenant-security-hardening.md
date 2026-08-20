@@ -236,7 +236,7 @@ Scoping `ap_system_note` is the same work as Stages 4 and 5, against a table thi
 ## Stage 9 — Cross-scope regression tests
 
 **Mode:** Execute
-**Status:** todo
+**Status:** done — d40f2270
 **Goal:** Lock the P1 invariants so a future read path or create route cannot silently reintroduce global visibility.
 **References:** the Stage 2 spec (same shape and suite conventions), `src/lib/structures/read.md`
 **Touches:** new spec under `tests/integration/` (+ its companion `.md`).
