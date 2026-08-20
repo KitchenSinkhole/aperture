@@ -15,10 +15,10 @@ Also carries the row's tenancy: `scope` (`IntelScope` — who may see it) and `s
 
 ---
 
-### structuresForSystems(systemIds: number[], viewerCharacterId: bigint): Promise<Record<number, StructureIntel[]>>
-Structure intel for the given universe systems, keyed by `system_id`, filtered to the rows the viewer's scope admits (`structureVisibleTo` from `guard.ts`, applied in SQL). One batched query joins `universe_type` (type name), `universe_corporation` (resolved owner name), and `ap_character` (creator name). Empty input → `{}`; a viewer who is missing or not `active` → `{}`; systems with no admitted structures are absent.
+### structuresForSystems(mapId: bigint, systemIds: number[], viewerCharacterId: bigint): Promise<Record<number, StructureIntel[]>>
+Structure intel for the given universe systems as seen on `mapId`, keyed by `system_id`, filtered to the rows the viewer's scope admits (`structureVisibleTo` from `guard.ts`, applied in SQL). One batched query joins `universe_type` (type name), `universe_corporation` (resolved owner name), and `ap_character` (creator name). Empty input → `{}`; a viewer `requireIntelTenant` refuses on this map → `{}`, including any rows of their own that the systems carry; systems with no admitted structures are absent.
 
-**The viewer is required, not optional.** `ap_structure` rows carry no `map_id`, so this filter is the only thing between a caller and the deployment's whole structure log — a required parameter makes the type checker reject any caller that would reach the table unfiltered.
+**Both the map and the viewer are required, not optional.** `ap_structure` rows carry no `map_id`, so these two filters are the only thing between a caller and the deployment's whole structure log — required parameters make the type checker reject any caller that would reach the table unfiltered.
 
 **No realtime:** this is a load-time snapshot. Structures are system-scoped (not map-scoped) and have no realtime channel, so another user's additions appear only on the next page load.
 

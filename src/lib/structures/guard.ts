@@ -12,6 +12,9 @@ import type { IntelScope } from '@/types';
  *  - `intelScopeForMap` derives the tenancy a new row takes, from the map it is
  *    written on. Never from the writer's own affiliation — that is what keeps an
  *    NPC corp from ever becoming a scope.
+ *  - `requireIntelTenant` is the map-level gate: structure intel is a feature of
+ *    the map's owning entity, so a guest — a character admitted to the map by a
+ *    role grant from outside that entity — gets no intel surface on it at all.
  *  - `requireStructureMutate` admits an edit/delete only from a caller the
  *    existing row's scope admits.
  *  - `scopeAdmits` / `structureVisibleTo` are the same admission rule in its two
@@ -45,6 +48,10 @@ export type IntelViewer = {
 export type StructureGuard =
   | { ok: true; characterId: bigint }
   | { ok: false; status: 401 | 404; error: string };
+
+export type IntelTenantGuard =
+  | { ok: true; viewer: IntelViewer; scope: IntelScopeOwner | null }
+  | { ok: false; status: 403; error: string };
 
 /**
  * The viewer facts for a character, or `null` when the character is missing or
@@ -148,6 +155,40 @@ export function structureVisibleTo(viewer: IntelViewer): SQL {
     );
   }
   return or(...branches)!;
+}
+
+/**
+ * Map-level gate for the whole structure-intel surface. Structure intel belongs
+ * to the entity that owns the map, so it is available only to a caller that
+ * entity admits — plus an admin, as everywhere else.
+ *
+ * A guest (a character `hasRoleAccess` lets onto a map from outside its owning
+ * entity) is refused: the map's own rows are not in a scope that admits them,
+ * and showing them their own corp's rows instead would overlay one organisation's
+ * intel on another's chain. So they get no intel on this map at all — no read,
+ * no create.
+ *
+ * **Returns:** `{ ok: true, viewer, scope }`, where `scope` is the tenancy a new
+ * row on this map would take and is null only for an admin on an unowned or
+ * soft-deleted map (a create must still refuse that). Otherwise `403` — the
+ * caller can see the map, so there is no existence to hide.
+ */
+export async function requireIntelTenant(
+  mapId: bigint,
+  characterId: bigint,
+): Promise<IntelTenantGuard> {
+  const refused = {
+    ok: false,
+    status: 403,
+    error: 'Structure intel is limited to the corporation or alliance that owns this map.',
+  } as const;
+
+  const viewer = await resolveIntelViewer(characterId);
+  if (!viewer) return refused;
+  const scope = await intelScopeForMap(mapId);
+  if (viewer.isAdmin) return { ok: true, viewer, scope };
+  if (!scope || !scopeAdmits(scope, viewer)) return refused;
+  return { ok: true, viewer, scope };
 }
 
 /**

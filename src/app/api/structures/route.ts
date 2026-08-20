@@ -2,7 +2,7 @@ import 'server-only';
 import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
-import { intelScopeForMap } from '@/lib/structures/guard';
+import { requireIntelTenant } from '@/lib/structures/guard';
 import { createStructure } from '@/lib/structures/mutations';
 import { withTypeName } from '@/lib/structures/read';
 import { requireMapView } from '../map/utils';
@@ -14,7 +14,9 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
  * A structure row carries no `map_id` and emits no map event — it surfaces on
  * every map showing its system — but it is not deployment-global: the `mapId` in
  * the body is what the row's `scope` triple is derived from, so the caller must
- * be able to view that map. The create is recorded in `ap_structure_event`
+ * be able to view that map *and* belong to the entity that owns it. A guest
+ * admitted by a role grant is refused with 403 rather than allowed to write a row
+ * they could never read back. The create is recorded in `ap_structure_event`
  * (inside the mutation) for accountability. See `src/lib/structures/*`.
  */
 
@@ -56,13 +58,20 @@ export const POST = withApiMetrics('/api/structures', async function POST(reques
   if (!guard.ok) {
     return Response.json({ ok: false, error: guard.error }, { status: guard.status });
   }
-  const scope = await intelScopeForMap(guard.mapId);
-  if (!scope) {
+  const tenant = await requireIntelTenant(guard.mapId, guard.characterId);
+  if (!tenant.ok) {
+    return Response.json({ ok: false, error: tenant.error }, { status: tenant.status });
+  }
+  if (!tenant.scope) {
     return Response.json({ ok: false, error: 'Map not found.' }, { status: 404 });
   }
 
   try {
-    const row = await createStructure({ ...values, characterId: guard.characterId, scope });
+    const row = await createStructure({
+      ...values,
+      characterId: guard.characterId,
+      scope: tenant.scope,
+    });
     const data = await withTypeName(row);
     return Response.json({ ok: true, data });
   } catch {

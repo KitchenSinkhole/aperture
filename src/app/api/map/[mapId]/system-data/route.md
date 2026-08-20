@@ -13,7 +13,7 @@ Returns `{ ok: true, data: { intel, stats, structures } }` for the requested EVE
 
 **Access:** view-only (`requireMapView`). Existence is not leaked: missing / non-viewable maps return 404.
 
-**Scoping:** `systems` is not checked against the map's own systems, so structure intel is filtered per viewer — `structuresForSystems` takes the guard's `characterId` and returns only rows that character's scope admits. A sweep of 256 arbitrary system ids therefore yields nothing the caller could not already see. `intel` and `stats` are public universe data and carry no such filter.
+**Scoping:** `systems` is not checked against the map's own systems, so structure intel is filtered per viewer — `structuresForSystems` takes the guard's `mapId` and `characterId`, and returns only rows that character's scope admits, or nothing at all when the character is outside the map's owning entity. A sweep of 256 arbitrary system ids therefore yields nothing the caller could not already see. `intel` and `stats` are public universe data and carry no such filter.
 
 **Query:** `systems` is a comma-separated list of positive ints; deduped, capped at 256. Empty / all-invalid → 400.
 

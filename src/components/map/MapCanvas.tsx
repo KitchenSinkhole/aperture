@@ -271,6 +271,7 @@ export function MapCanvas({
   stats: initialStats,
   intel: initialIntel,
   structures: initialStructures,
+  structureIntelEnabled,
   settings,
   canManage,
   capabilities,
@@ -288,6 +289,13 @@ export function MapCanvas({
   stats: Record<number, SystemStatsSummary>;
   intel: Record<number, SystemIntelSummary>;
   structures: Record<number, StructureIntel[]>;
+  /**
+   * Whether the viewer belongs to the entity that owns this map. False for a
+   * guest admitted by a role grant, whose Structures panel is inert — structure
+   * intel is scoped to the owning entity, so a guest can neither read nor write
+   * any of it here.
+   */
+  structureIntelEnabled: boolean;
   settings: MapSettings;
   /**
    * Whether the viewer holds derived management authority (`canManageMap`) —
@@ -2107,6 +2115,7 @@ export function MapCanvas({
         return (
           <StructureModule
             system={selectedSystem}
+            enabled={structureIntelEnabled}
             structures={selectedSystem ? (structures[selectedSystem.systemId] ?? []) : []}
             mapType={viewData.map.type}
             onCreate={onStructureCreate}

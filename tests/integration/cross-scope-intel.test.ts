@@ -6,7 +6,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db, pool } from '@/db/client';
 import {
   apCharacter,
+  apCharacterRole,
   apMap,
+  apMapRoleAccess,
+  apRole,
   apStructure,
   apStructureEvent,
   apUser,
@@ -20,6 +23,7 @@ import {
 import { requireMapView } from '@/app/api/map/utils';
 import {
   intelScopeForMap,
+  requireIntelTenant,
   requireStructureMutate,
   resolveIntelViewer,
   scopeAdmits,
@@ -37,8 +41,9 @@ import type { ApStructure } from '@/types';
 /**
  * Regression guard for the P1 intel-scoping invariants on `ap_structure`
  * (Stages 4 and 5): a row is readable and mutable only by characters its
- * `scope` triple admits, and a new row takes its scope from a map the writer
- * can view.
+ * `scope` triple admits, a new row takes its scope from the map it is written
+ * on, and the whole surface is closed on a map whose owning entity does not
+ * include the caller.
  *
  * A static grep cannot guard this, for the same reason it could not guard the
  * Stage 1 tenancy asserts (see `cross-tenant-writes.test.ts`): the session gate
@@ -80,12 +85,16 @@ const B_MEMBER = 99060103n;
 const ADMIN_ID = 99060104n;
 /** Org-A affiliation but `status='kicked'` — a non-actor. */
 const KICKED_ID = 99060105n;
+/** Org B, holding a role grant on org A's map — a guest, not a tenant. */
+const GUEST_ID = 99060106n;
 /** Never inserted. */
 const ABSENT_ID = 99060199n;
 
-const CHARACTER_IDS = [A_MEMBER, A_PEER, B_MEMBER, ADMIN_ID, KICKED_ID];
+const CHARACTER_IDS = [A_MEMBER, A_PEER, B_MEMBER, ADMIN_ID, KICKED_ID, GUEST_ID];
 
 let userId = 0;
+let guestRoleId = 0n;
+const GUEST_ROLE_NAME = 'Cross-Scope Guest Role';
 
 let mapACorp = 0n;
 let mapAAlliance = 0n;
@@ -140,6 +149,7 @@ describe.skipIf(!run)('cross-scope intel isolation — ap_structure (real Postgr
         allianceId: ALLIANCE_A,
         status: 'kicked',
       }),
+      mkChar(GUEST_ID, 'Org B Guest', { corporationId: CORP_B, allianceId: ALLIANCE_B }),
     ]);
 
     const maps = await db
@@ -176,6 +186,19 @@ describe.skipIf(!run)('cross-scope intel isolation — ap_structure (real Postgr
     mapBCorp = mapId('Cross-Scope B Corp');
     mapUnowned = mapId('Cross-Scope Unowned');
     mapDeleted = mapId('Cross-Scope Deleted');
+
+    // The guest's view access on org A's map: a role grant is the app's only
+    // cross-organisation access path, so it is the shape the tenancy gate must
+    // refuse intel to.
+    const [role] = await db
+      .insert(apRole)
+      .values({ source: 'builtin', name: GUEST_ROLE_NAME })
+      .returning({ id: apRole.id });
+    guestRoleId = role!.id;
+    await db.insert(apCharacterRole).values({ characterId: GUEST_ID, roleId: guestRoleId });
+    await db
+      .insert(apMapRoleAccess)
+      .values({ mapId: mapACorp, roleId: guestRoleId, capability: 'view' });
 
     structACorp = (await seed(A_MEMBER, mapACorp, SYSTEM_ONE, 'A Corp Astrahus')).id;
     structAAlliance = (await seed(A_MEMBER, mapAAlliance, SYSTEM_ONE, 'A Alliance Fortizar')).id;
@@ -388,21 +411,21 @@ describe.skipIf(!run)('cross-scope intel isolation — ap_structure (real Postgr
 
   describe('read filter', () => {
     it('returns every row the viewer scope admits and nothing else', async () => {
-      const asA = await structuresForSystems([SYSTEM_ONE, SYSTEM_TWO], A_MEMBER);
+      const asA = await structuresForSystems(mapACorp, [SYSTEM_ONE, SYSTEM_TWO], A_MEMBER);
       expect(idsIn(asA)).toEqual(
         new Set([structACorp, structAAlliance, structAPrivate].map(String)),
       );
 
       // A corp mate sees the corp and alliance rows but not the private one.
-      const asPeer = await structuresForSystems([SYSTEM_ONE, SYSTEM_TWO], A_PEER);
+      const asPeer = await structuresForSystems(mapACorp, [SYSTEM_ONE, SYSTEM_TWO], A_PEER);
       expect(idsIn(asPeer)).toEqual(new Set([structACorp, structAAlliance].map(String)));
 
-      const asB = await structuresForSystems([SYSTEM_ONE, SYSTEM_TWO], B_MEMBER);
+      const asB = await structuresForSystems(mapBCorp, [SYSTEM_ONE, SYSTEM_TWO], B_MEMBER);
       expect(idsIn(asB)).toEqual(new Set([structBCorp].map(String)));
     });
 
     it('surfaces the scope on the row so the UI can render it', async () => {
-      const asA = await structuresForSystems([SYSTEM_ONE], A_MEMBER);
+      const asA = await structuresForSystems(mapACorp, [SYSTEM_ONE], A_MEMBER);
       const corpRow = asA[SYSTEM_ONE]!.find((r) => r.id === structACorp.toString())!;
       expect(corpRow.scope).toBe('corp');
       expect(corpRow.scopeEntityId).toBe(Number(CORP_A));
@@ -410,15 +433,19 @@ describe.skipIf(!run)('cross-scope intel isolation — ap_structure (real Postgr
 
     it('hides the erased-owner row from everyone but an admin', async () => {
       const orphan = structOrphan.toString();
-      expect(idsIn(await structuresForSystems([SYSTEM_TWO], A_MEMBER)).has(orphan)).toBe(false);
-      expect(idsIn(await structuresForSystems([SYSTEM_TWO], B_MEMBER)).has(orphan)).toBe(false);
-      const asAdmin = idsIn(await structuresForSystems([SYSTEM_ONE, SYSTEM_TWO], ADMIN_ID));
+      expect(idsIn(await structuresForSystems(mapACorp, [SYSTEM_TWO], A_MEMBER)).has(orphan)).toBe(
+        false,
+      );
+      expect(idsIn(await structuresForSystems(mapBCorp, [SYSTEM_TWO], B_MEMBER)).has(orphan)).toBe(
+        false,
+      );
+      const asAdmin = idsIn(await structuresForSystems(mapACorp, [SYSTEM_ONE, SYSTEM_TWO], ADMIN_ID));
       for (const id of fixtureStructureIds()) expect(asAdmin.has(id.toString())).toBe(true);
     });
 
     it('reads nothing for a missing or non-active character', async () => {
-      expect(await structuresForSystems([SYSTEM_ONE, SYSTEM_TWO], KICKED_ID)).toEqual({});
-      expect(await structuresForSystems([SYSTEM_ONE, SYSTEM_TWO], ABSENT_ID)).toEqual({});
+      expect(await structuresForSystems(mapACorp, [SYSTEM_ONE, SYSTEM_TWO], KICKED_ID)).toEqual({});
+      expect(await structuresForSystems(mapACorp, [SYSTEM_ONE, SYSTEM_TWO], ABSENT_ID)).toEqual({});
     });
 
     // The `system-data` route guards the map but not the requested system ids,
@@ -431,11 +458,54 @@ describe.skipIf(!run)('cross-scope intel isolation — ap_structure (real Postgr
       ];
       expect(sweep).toHaveLength(256);
 
-      const seen = idsIn(await structuresForSystems(sweep, B_MEMBER));
+      const seen = idsIn(await structuresForSystems(mapBCorp, sweep, B_MEMBER));
       expect(seen.has(structBCorp.toString())).toBe(true);
       for (const id of [structACorp, structAAlliance, structAPrivate, structOrphan]) {
         expect(seen.has(id.toString())).toBe(false);
       }
+    });
+  });
+
+  // ─── guests — view access without tenancy ─────────────────────────────────
+
+  // `ap_map_role_access` admits a character to a map from outside the entity
+  // that owns it. Structure intel is not part of what that grant conveys: the
+  // map's own rows are in a scope the guest is not in, and serving them their
+  // own organisation's rows instead would overlay one corp's intel on another's
+  // chain. So the whole surface is closed on that map, in both directions.
+  describe('guest with a role grant on a map another organisation owns', () => {
+    it('can view the map — the grant is real, and tenancy is the separate gate', async () => {
+      const guard = await requireMapView(mapACorp.toString(), asSession(GUEST_ID));
+      expect(guard.ok).toBe(true);
+    });
+
+    it('is refused by the tenancy gate on that map, and admitted on its own', async () => {
+      const onHostMap = await requireIntelTenant(mapACorp, GUEST_ID);
+      expect(onHostMap.ok).toBe(false);
+      expect(onHostMap.ok === false && onHostMap.status).toBe(403);
+
+      const onOwnMap = await requireIntelTenant(mapBCorp, GUEST_ID);
+      expect(onOwnMap.ok).toBe(true);
+      expect(onOwnMap.ok === true && onOwnMap.scope).toMatchObject({
+        scope: 'corp',
+        scopeCorporationId: CORP_B,
+      });
+    });
+
+    it('reads no structures at all on the host map, not even its own corp rows', async () => {
+      expect(await structuresForSystems(mapACorp, [SYSTEM_ONE, SYSTEM_TWO], GUEST_ID)).toEqual({});
+
+      // The same rows are still there for them on a map their corp owns, so the
+      // empty result above is the map gate and not a broken viewer.
+      const onOwnMap = idsIn(await structuresForSystems(mapBCorp, [SYSTEM_ONE], GUEST_ID));
+      expect(onOwnMap).toEqual(new Set([structBCorp.toString()]));
+    });
+
+    it('cannot create a row on the host map, and writes nothing trying', async () => {
+      const before = await structureCount(SYSTEM_ONE);
+      const result = await createAsRoute(GUEST_ID, mapACorp, SYSTEM_ONE, 'Guest Fortizar');
+      expect(result.status).toBe(403);
+      expect(await structureCount(SYSTEM_ONE)).toBe(before);
     });
   });
 
@@ -503,14 +573,15 @@ async function createAsRoute(
 ): Promise<{ status: number; row?: ApStructure }> {
   const guard = await requireMapView(mapId.toString(), asSession(actor));
   if (!guard.ok) return { status: guard.status };
-  const scope = await intelScopeForMap(guard.mapId);
-  if (!scope) return { status: 404 };
+  const tenant = await requireIntelTenant(guard.mapId, guard.characterId);
+  if (!tenant.ok) return { status: tenant.status };
+  if (!tenant.scope) return { status: 404 };
   const row = await createStructure({
     systemId,
     name,
     structureTypeId: TYPE_ID,
     characterId: guard.characterId,
-    scope,
+    scope: tenant.scope,
   });
   return { status: 200, row };
 }
@@ -650,6 +721,8 @@ async function cleanup() {
       'Cross-Scope Deleted',
     ]),
   );
+  // Cascades to `ap_character_role` and `ap_map_role_access`.
+  await db.delete(apRole).where(eq(apRole.name, GUEST_ROLE_NAME));
   await db.delete(apCharacter).where(inArray(apCharacter.id, CHARACTER_IDS));
   if (userId) {
     await db.delete(apUser).where(eq(apUser.id, userId));
@@ -662,6 +735,7 @@ async function cleanup() {
   await db.delete(universeConstellation).where(eq(universeConstellation.id, CONSTELLATION));
   await db.delete(universeRegion).where(eq(universeRegion.id, REGION));
 
+  guestRoleId = 0n;
   mapACorp = 0n;
   mapAAlliance = 0n;
   mapAPrivate = 0n;

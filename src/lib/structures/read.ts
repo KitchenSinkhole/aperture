@@ -10,7 +10,7 @@ import {
   universeType,
 } from '@/db/schema';
 import type { ApStructure, IntelScope } from '@/types';
-import { resolveIntelViewer, structureVisibleTo } from './guard';
+import { requireIntelTenant, structureVisibleTo } from './guard';
 
 /** A structure-intel row shaped for the sidebar (ids as strings, type name resolved). */
 export type StructureIntel = {
@@ -57,27 +57,33 @@ function scopeEntityIdOf(row: {
 export type UpwellStructureType = { typeId: number; name: string; groupName: string };
 
 /**
- * Structure intel for the given universe systems, keyed by `system_id`, filtered
- * to the rows `viewerCharacterId`'s scope admits. One batched query joins
- * `universe_type` for the type name and `ap_character` for the creator name.
- * Systems with no admitted structures are absent from the record.
+ * Structure intel for the given universe systems as seen on `mapId`, keyed by
+ * `system_id`, filtered to the rows `viewerCharacterId`'s scope admits. One
+ * batched query joins `universe_type` for the type name and `ap_character` for
+ * the creator name. Systems with no admitted structures are absent from the
+ * record.
  *
- * The viewer is required rather than optional so no caller can reach the table
- * unfiltered: `ap_structure` rows carry no `map_id`, so this filter is the only
- * thing standing between a 256-system `system-data` sweep and the deployment's
- * whole structure log.
+ * Empty for a viewer `requireIntelTenant` refuses — a guest on someone else's
+ * map sees no intel there, including their own organisation's rows.
+ *
+ * Map and viewer are both required rather than optional so no caller can reach
+ * the table unfiltered: `ap_structure` rows carry no `map_id`, so these filters
+ * are the only thing standing between a 256-system `system-data` sweep and the
+ * deployment's whole structure log.
  *
  * NOTE: structure intel has no realtime channel (it is system-scoped, not
  * map-scoped — see `ap_structure`). This snapshot is load-time only: a structure
  * another user adds appears here on the next page load, not live.
  */
 export async function structuresForSystems(
+  mapId: bigint,
   systemIds: number[],
   viewerCharacterId: bigint,
 ): Promise<Record<number, StructureIntel[]>> {
   if (systemIds.length === 0) return {};
-  const viewer = await resolveIntelViewer(viewerCharacterId);
-  if (!viewer) return {};
+  const tenant = await requireIntelTenant(mapId, viewerCharacterId);
+  if (!tenant.ok) return {};
+  const viewer = tenant.viewer;
 
   const rows = await db
     .select({

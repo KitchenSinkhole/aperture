@@ -8,6 +8,7 @@
 | Prop | Type | Required | Description |
 |---|---|---|---|
 | system | MapSystemNode \| null | yes | Selected system; null shows the empty state |
+| enabled | boolean | yes | Whether the viewer belongs to the map's owning entity; false makes the module inert |
 | structures | StructureIntel[] | yes | Structures for the selected system (sliced by the parent) |
 | mapType | MapType | yes | The open map's type; the dialog names the audience a new row will land in |
 | onCreate | (values: StructureFormValues) => void | yes | Add a structure (parent supplies the systemId) |
@@ -15,10 +16,13 @@
 | onDelete | (structureId: string) => void | yes | Delete a structure |
 
 ### Renders
-A `Card` with a right-aligned "Add" button (only when a system is selected) and a list of structure rows (name + scope chip, type, owner, notes, "added by"), each with edit/delete icon buttons. The panel name ("Structures") comes from the surrounding `MapPanelGroup` chrome — no in-card title. The owner line shows the corp's CCP logo (`ccpImageUrl`) when `ownerCorporationId` is set.
+When `enabled` is false, a `Card` holding one muted line saying structure intel belongs to the map's owning corporation or alliance — no list, no "Add", no dialog.
+
+Otherwise a `Card` with a right-aligned "Add" button (only when a system is selected) and a list of structure rows (name + scope chip, type, owner, notes, "added by"), each with edit/delete icon buttons. The panel name ("Structures") comes from the surrounding `MapPanelGroup` chrome — no in-card title. The owner line shows the corp's CCP logo (`ccpImageUrl`) when `ownerCorporationId` is set.
 
 ### Behaviour & Interactions
 - Empty states: "Select a system…" (no system) / "No structures recorded." (none).
+- `enabled: false` is the guest case (view access on a map owned by another entity). The server serves such a viewer no structures and refuses their creates, so the module offers no affordance that would fail.
 - "Add" / edit open the shared `StructureFormDialog` (edit passes `initial`).
 - Each row carries an `IntelScopeChip` for its own `scope`. The list can mix tiers: visibility follows the viewer rather than the open map, so a member sees their corp's, their alliance's and their own private rows together. The chip sits on the name line, away from the owner corp's logo line, because the two are unrelated facts that both mention a corporation.
 - **Not realtime-synced** — another user's structure edits appear on the next page load (a structure row carries no `map_id`).
