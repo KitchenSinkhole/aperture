@@ -1,7 +1,13 @@
 import 'server-only';
-import { aliasedTable, and, eq, inArray } from 'drizzle-orm';
+import { aliasedTable, and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { apMapConnection, apMapSystem, universeStargateEdge, universeSystem } from '@/db/schema';
+import {
+  apMapConnection,
+  apMapSignature,
+  apMapSystem,
+  universeStargateEdge,
+  universeSystem,
+} from '@/db/schema';
 import { loadTheraConnections } from './thera';
 import { recordRoutePlan } from '@/lib/metrics/registry';
 import type { RouteHop, RoutePlan, RoutePrefs, WhJumpMass } from '@/types';
@@ -148,6 +154,26 @@ async function loadMapSystems(mapId: bigint): Promise<{ ids: Set<number>; tags: 
   return { ids, tags };
 }
 
+/**
+ * The map's connection-bound signatures keyed `${connectionId}:${systemId}` —
+ * the sig code on that side of that connection. A wormhole carries up to two
+ * sigs, one per end; the key pins which end.
+ */
+async function loadConnectionSigs(mapId: bigint): Promise<Map<string, string>> {
+  const rows = await db
+    .select({
+      connectionId: apMapSignature.mapConnectionId,
+      systemId: apMapSystem.systemId,
+      sigId: apMapSignature.sigId,
+    })
+    .from(apMapSignature)
+    .innerJoin(apMapSystem, eq(apMapSignature.mapSystemId, apMapSystem.id))
+    .where(and(eq(apMapSystem.mapId, mapId), isNotNull(apMapSignature.mapConnectionId)));
+  const sigs = new Map<string, string>();
+  for (const r of rows) sigs.set(`${r.connectionId}:${r.systemId}`, r.sigId);
+  return sigs;
+}
+
 const SHIP_RANK: Record<WhJumpMass, number> = { s: 0, m: 1, l: 2, xl: 3 };
 
 /** True if a wormhole is large enough and not in an avoided mass/EOL state. */
@@ -177,7 +203,7 @@ function safetyPenalty(systemId: number, trueSec: Map<number, number>, prefs: Ro
   return band === 'high' ? 50 : 0; // less_safe
 }
 
-type RawHop = Omit<RouteHop, 'name' | 'security' | 'securityStatus' | 'tag'>;
+type RawHop = Omit<RouteHop, 'name' | 'security' | 'securityStatus' | 'tag' | 'viaSigId'>;
 type RawRoutePlan = {
   destinationSystemId: number;
   reachable: boolean;
@@ -282,10 +308,11 @@ export async function planRoutes(args: {
   try {
     const { mapId, sourceSystemId, destinationSystemIds, prefs } = args;
     const { adjacency, trueSec } = await getGateGraph();
-    const [whEdges, scoutEdges, mapSystems] = await Promise.all([
+    const [whEdges, scoutEdges, mapSystems, sigs] = await Promise.all([
       loadMapWormholeEdges(mapId),
       prefs.includeEveScout ? loadEveScoutEdges() : Promise.resolve<RouteOverlayEdge[]>([]),
       loadMapSystems(mapId),
+      loadConnectionSigs(mapId),
     ]);
     const raw = planRoutesOnGraph({
       adjacency,
@@ -296,14 +323,18 @@ export async function planRoutes(args: {
       destinationSystemIds,
       prefs,
     });
-    return await enrichPlans(raw, mapSystems.tags);
+    return await enrichPlans(raw, mapSystems.tags, sigs);
   } finally {
     recordRoutePlan(performance.now() - start);
   }
 }
 
 /** Batch-resolve name/security for every system in every path and fold into RoutePlans. */
-async function enrichPlans(raw: RawRoutePlan[], tags: Map<number, string>): Promise<RoutePlan[]> {
+async function enrichPlans(
+  raw: RawRoutePlan[],
+  tags: Map<number, string>,
+  sigs: Map<string, string>,
+): Promise<RoutePlan[]> {
   const ids = new Set<number>();
   for (const plan of raw) {
     ids.add(plan.destinationSystemId);
@@ -333,13 +364,21 @@ async function enrichPlans(raw: RawRoutePlan[], tags: Map<number, string>): Prom
     destinationName: nameOf(plan.destinationSystemId),
     reachable: plan.reachable,
     jumps: plan.jumps,
-    hops: plan.hops.map((hop) => ({
-      ...hop,
-      name: nameOf(hop.systemId),
-      security: info.get(hop.systemId)?.security ?? null,
-      securityStatus: info.get(hop.systemId)?.securityStatus ?? null,
-      tag: tags.get(hop.systemId) ?? null,
-    })),
+    hops: plan.hops.map((hop, i) => {
+      // The sig flown through sits in the *departure* system, i.e. the previous hop.
+      const prev = i > 0 ? plan.hops[i - 1] : undefined;
+      return {
+        ...hop,
+        name: nameOf(hop.systemId),
+        security: info.get(hop.systemId)?.security ?? null,
+        securityStatus: info.get(hop.systemId)?.securityStatus ?? null,
+        tag: tags.get(hop.systemId) ?? null,
+        viaSigId:
+          prev && hop.via === 'wh' && hop.connectionId != null
+            ? (sigs.get(`${hop.connectionId}:${prev.systemId}`) ?? null)
+            : null,
+      };
+    }),
   }));
 }
 

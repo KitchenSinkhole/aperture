@@ -11,7 +11,8 @@ import {
   useTransition,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, Plus, Search, X } from 'lucide-react';
+import { ChevronRight, Copy, Loader2, Plus, Search, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { Tooltip } from '@base-ui/react/tooltip';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { systemSecurityColor } from '@/components/map/styling';
+import {
+  formatRouteInstructions,
+  routeSegmentTokens,
+  routeSpaceKind,
+  segmentRoute,
+} from '@/lib/map/routeSegments';
 import { searchSystemsOnServer } from '@/lib/map/client';
 import { requestJson } from '@/lib/http/fetchJson';
 import { useMapActiveChar } from '@/components/map/MapActiveCharContext';
@@ -34,6 +41,9 @@ import {
 import { subscribeRouteDestinations } from '@/lib/map/routeDestinationBus';
 import type {
   MapConnectionEdge,
+  MapSignature,
+  MapSystemNode,
+  RouteInstructionToken,
   RouteDestinationView,
   RouteHop,
   RoutePlan,
@@ -101,13 +111,17 @@ export function RoutePlannerModule({
   selectedSystemId,
   initialPrefs,
   initialDestinations,
+  systems,
   connections,
+  signatures,
 }: {
   mapId: string;
   selectedSystemId: number | null;
   initialPrefs: RoutePrefs;
   initialDestinations: RouteDestinationView[];
+  systems: MapSystemNode[];
   connections: MapConnectionEdge[];
+  signatures: MapSignature[];
 }) {
   const { activeCharSystemId } = useMapActiveChar();
 
@@ -119,6 +133,7 @@ export function RoutePlannerModule({
   const [manualSource, setManualSource] = useState<SystemSearchResult | null>(null);
   const [plans, setPlans] = useState<RoutePlan[]>([]);
   const [computing, setComputing] = useState(false);
+  const [expandedSteps, setExpandedSteps] = useState<ReadonlySet<number>>(() => new Set());
   const [, startPrefs] = useTransition();
 
   const routeSource = useSyncExternalStore(
@@ -143,6 +158,30 @@ export function RoutePlannerModule({
         .map((c) => `${c.id}:${c.scope}:${c.massStatus}:${c.eolStage}:${c.jumpMassClass ?? ''}`)
         .join('|'),
     [connections],
+  );
+  // Only connection-bound sigs matter: they are what `RouteHop.viaSigId` names,
+  // so scanning or correcting one has to re-plan. Sorted because the array order
+  // is not stable across events.
+  const signaturesKey = useMemo(
+    () =>
+      signatures
+        .filter((s) => s.mapConnectionId != null)
+        .map((s) => `${s.mapConnectionId}:${s.mapSystemId}:${s.sigId}`)
+        .sort()
+        .join('|'),
+    [signatures],
+  );
+  // `RouteHop.tag` is baked into the server plan and is what every instruction
+  // line calls a system, so a rename has to re-plan. Untagged systems are left
+  // out, which still moves the key when a tag is cleared.
+  const tagsKey = useMemo(
+    () =>
+      systems
+        .filter((s) => s.tag)
+        .map((s) => `${s.systemId}:${s.tag}`)
+        .sort()
+        .join('|'),
+    [systems],
   );
   const destKey = useMemo(() => destinations.map((d) => d.systemId).join(','), [destinations]);
   const prefsKey = useMemo(() => JSON.stringify(prefs), [prefs]);
@@ -173,9 +212,10 @@ export function RoutePlannerModule({
       setComputing(false);
     }, noWork ? 0 : COMPUTE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-    // `connectionsKey`/`destKey`/`prefsKey` stand in for the array/object deps.
+    // `connectionsKey`/`destKey`/`prefsKey`/`signaturesKey`/`tagsKey` stand in
+    // for the array/object deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapId, sourceSystemId, destKey, prefsKey, connectionsKey]);
+  }, [mapId, sourceSystemId, destKey, prefsKey, connectionsKey, signaturesKey, tagsKey]);
 
   const updatePrefs = useCallback(
     (patch: Partial<RoutePrefs>) => {
@@ -200,6 +240,14 @@ export function RoutePlannerModule({
   const removeDestination = useCallback(async (id: number) => {
     setDestinations((prev) => prev.filter((d) => d.id !== id));
     await removeRouteDestinationAction(id);
+  }, []);
+
+  const toggleSteps = useCallback((id: number) => {
+    setExpandedSteps((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   }, []);
 
   // Fold destinations added elsewhere (the map context-menu "Add to routes" item
@@ -338,34 +386,18 @@ export function RoutePlannerModule({
           {destinations.length === 0 ? (
             <p className="text-muted-foreground">Add a destination to plan a route.</p>
           ) : (
-            destinations.map((dest) => {
-              const plan = planBySystem.get(dest.systemId);
-              return (
-                <div key={dest.id} className="flex flex-col gap-1 rounded-md border border-border/60 p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 font-medium">
-                      <span style={{ color: systemSecurityColor(dest.security, dest.securityStatus) }}>{dest.name}</span>
-                      {plan?.reachable ? (
-                        <span className="font-mono text-muted-foreground">{plan.jumps}j</span>
-                      ) : null}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeDestination(dest.id)}
-                      className="text-muted-foreground hover:text-destructive"
-                      aria-label={`Remove ${dest.name}`}
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </div>
-                  <RouteBreadcrumb
-                    plan={plan}
-                    computing={computing}
-                    hasSource={sourceSystemId != null}
-                  />
-                </div>
-              );
-            })
+            destinations.map((dest) => (
+              <DestinationRow
+                key={dest.id}
+                dest={dest}
+                plan={planBySystem.get(dest.systemId)}
+                computing={computing}
+                sourceSystemId={sourceSystemId}
+                expanded={expandedSteps.has(dest.id)}
+                onToggle={() => toggleSteps(dest.id)}
+                onRemove={() => removeDestination(dest.id)}
+              />
+            ))
           )}
 
           <SystemSearchField
@@ -408,6 +440,118 @@ function RouteBreadcrumb({
   );
 }
 
+/**
+ * One saved destination: name + jump count + step controls on the header row,
+ * the hop breadcrumb below it, and the expanded instruction list under that.
+ */
+function DestinationRow({
+  dest,
+  plan,
+  computing,
+  sourceSystemId,
+  expanded,
+  onToggle,
+  onRemove,
+}: {
+  dest: RouteDestinationView;
+  plan: RoutePlan | undefined;
+  computing: boolean;
+  sourceSystemId: number | null;
+  expanded: boolean;
+  onToggle: () => void;
+  onRemove: () => void;
+}) {
+  const segments = useMemo(() => (plan ? segmentRoute(plan) : []), [plan]);
+
+  // A plan outlives the source it was computed from — the recompute is debounced
+  // and round-trips — so a pilot who has just jumped would otherwise copy
+  // directions starting from the system they left.
+  const stale = computing || (plan != null && plan.hops[0]?.systemId !== sourceSystemId);
+
+  const copy = () => {
+    void navigator.clipboard.writeText(formatRouteInstructions(segments)).then(
+      () => toast.success('Directions copied'),
+      () => toast.error('Could not copy directions'),
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-border/60 p-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-medium">
+          <span className="flex items-center gap-1.5">
+            <span style={{ color: systemSecurityColor(dest.security, dest.securityStatus) }}>
+              {dest.name}
+            </span>
+            {plan?.reachable ? (
+              <span className="font-mono text-muted-foreground">{plan.jumps}j</span>
+            ) : null}
+          </span>
+          {segments.length > 0 && (
+            <span className="flex items-center gap-2 font-normal">
+              <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={expanded}
+                className="flex items-center gap-0.5 text-muted-foreground hover:text-foreground"
+              >
+                <ChevronRight
+                  className={`size-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+                />
+                {segments.length} {segments.length === 1 ? 'step' : 'steps'}
+              </button>
+              <button
+                type="button"
+                onClick={copy}
+                disabled={stale}
+                title={stale ? 'Recomputing from the current system…' : undefined}
+                aria-label={`Copy directions to ${dest.name}`}
+                className="flex items-center gap-0.5 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-muted-foreground"
+              >
+                <Copy className="size-3" />
+                Copy
+              </button>
+            </span>
+          )}
+        </span>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="shrink-0 text-muted-foreground hover:text-destructive"
+          aria-label={`Remove ${dest.name}`}
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
+      <RouteBreadcrumb plan={plan} computing={computing} hasSource={sourceSystemId != null} />
+      {expanded && segments.length > 0 && (
+        <ol className="flex list-decimal flex-col gap-1 pl-5 text-xs leading-snug text-muted-foreground marker:font-mono">
+          {segments.map((seg) => (
+            <li key={seg.fromHopIndex}>
+              {routeSegmentTokens(seg).map((tok, i) => (
+                <InstructionToken key={i} token={tok} />
+              ))}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/** One instruction fragment: systems tinted as on the map, sig codes in mono. */
+function InstructionToken({ token }: { token: RouteInstructionToken }) {
+  if (token.kind === 'system') {
+    return (
+      <span style={{ color: systemSecurityColor(token.point.security, token.point.securityStatus) }}>
+        {token.text}
+      </span>
+    );
+  }
+  if (token.kind === 'sig') return <span className="font-mono">{token.text}</span>;
+  return <>{token.text}</>;
+}
+
 const VIA_LABELS: Record<RouteHop['via'], string> = {
   origin: 'Start',
   gate: 'via gate',
@@ -416,17 +560,12 @@ const VIA_LABELS: Record<RouteHop['via'], string> = {
   eve_scout: 'via EVE-Scout',
 };
 
-/** A hop is wormhole (J-)space if its class is C# or its name is the `J######` form. */
-function isWormholeHop(hop: RouteHop): boolean {
-  return /^C\d+$/.test(hop.security ?? '') || /^J\d{6}$/.test(hop.name);
-}
-
 /**
  * One route hop as a small security-coloured marker; system name on hover.
  * Wormhole (J-space) systems render as circles, K-space systems as squares.
  */
 function HopSquare({ hop }: { hop: RouteHop }) {
-  const isWormhole = isWormholeHop(hop);
+  const isWormhole = routeSpaceKind(hop.security, hop.name) === 'jspace';
   return (
     <Tooltip.Root>
       <Tooltip.Trigger
