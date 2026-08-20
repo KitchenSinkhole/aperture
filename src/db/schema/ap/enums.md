@@ -65,6 +65,9 @@
 ### structureEventKind
 `pgEnum('structure_event_kind', ['create', 'update', 'delete'])` — the mutation recorded in `ap_structure_event`, the append-only accountability log for manual structure intel.
 
+### intelScope
+`pgEnum('intel_scope', ['private', 'corp', 'alliance'])` — who may see a row of manual intel, on `ap_structure.scope` and `ap_structure_event.scope` (migration 0070). A row takes its scope from the map it was written on, never from the writer's own affiliation: a `private` map yields `private` (the writing character only), a `corp` map `corp` (members of that corporation), an `alliance` map `alliance` (members of that alliance). Visibility then follows the *viewer* rather than whichever map they have open, so a member sees every row their affiliation admits at once; and because the filter matches the viewer's current `ap_character.corporation_id` / `alliance_id`, access revokes itself when membership changes. Deliberately not a reuse of `map_type` despite the identical spelling — a future map type must not silently widen intel visibility.
+
 ### tagScheme
 `pgEnum('tag_scheme', ['none', 'abc', '0121'])` — the auto-tagging scheme a map runs (`ap_map.tag_scheme`, default `none`). `abc` = per-WH-class sequential letters; `0121` = positional chain numbering off the Home system. Adding a third scheme is additive (one `ALTER TYPE … ADD VALUE` + a strategy module + a `registry.ts` line).
 

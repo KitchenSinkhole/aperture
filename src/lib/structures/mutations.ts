@@ -6,15 +6,16 @@ import { upsertCorporations } from './corporations';
 import type { ApStructure } from '@/types';
 
 /**
- * Structure-intel mutations. Structures are deployment-global manual intel with
- * no `map_id`, so they do NOT go through `commitMapEvent` / `ap_map_event` and
- * emit no realtime event — they are a plain REST resource.
+ * Structure-intel mutations. Structures are manual intel with no `map_id`, so
+ * they do NOT go through `commitMapEvent` / `ap_map_event` and emit no realtime
+ * event — they are a plain REST resource.
  *
  * Every mutation writes the `ap_structure` row AND one `ap_structure_event`
  * audit row in the same transaction, stamped with the acting character, so that
- * — since any authenticated user may edit any structure — griefers remain
- * identifiable. Deletes are hard deletes; the audit row carries the full
- * pre-delete snapshot so the intel stays recoverable.
+ * — since a structure is editable by people other than its creator — griefers
+ * remain identifiable. The audit row also carries the row's tenancy denormalized, since
+ * a `delete` event outlives the row it describes. Deletes are hard deletes; the
+ * audit row carries the full pre-delete snapshot so the intel stays recoverable.
  */
 
 export type CreateStructureInput = {
@@ -65,6 +66,20 @@ async function resolveOwnerCorporationId(
   return null;
 }
 
+/**
+ * The row's tenancy, for denormalizing onto its `ap_structure_event` row. The
+ * event table holds the full pre-delete snapshot, so it has to carry the scope
+ * itself — on a delete the parent row it would otherwise be read from is gone.
+ */
+function scopeOf(row: ApStructure) {
+  return {
+    scope: row.scope,
+    scopeCharacterId: row.scopeCharacterId,
+    scopeCorporationId: row.scopeCorporationId,
+    scopeAllianceId: row.scopeAllianceId,
+  };
+}
+
 /** Plain JSON snapshot of a structure row for the audit `payload` (no bigints/Dates). */
 function snapshot(row: ApStructure) {
   return {
@@ -96,6 +111,12 @@ export async function createStructure(input: CreateStructureInput): Promise<ApSt
         ownerCorporationId,
         notes: input.notes ?? null,
         createdByCharacterId: input.characterId,
+        // Tenancy is meant to come from the map the row is written on, which
+        // this helper is not yet told about. Until it is, a new row takes the
+        // narrowest scope that exists — visible to its writer alone — so an
+        // unwired create can never over-share.
+        scope: 'private',
+        scopeCharacterId: input.characterId,
       })
       .returning();
     await tx.insert(apStructureEvent).values({
@@ -104,6 +125,7 @@ export async function createStructure(input: CreateStructureInput): Promise<ApSt
       characterId: input.characterId,
       kind: 'create',
       payload: snapshot(row!),
+      ...scopeOf(row!),
     });
     return row!;
   });
@@ -143,6 +165,7 @@ export async function updateStructure(input: UpdateStructureInput): Promise<ApSt
       characterId: input.characterId,
       kind: 'update',
       payload: patch,
+      ...scopeOf(row),
     });
     return row;
   });
@@ -166,6 +189,7 @@ export function deleteStructure(input: DeleteStructureInput): Promise<ApStructur
       characterId: input.characterId,
       kind: 'delete',
       payload: snapshot(row),
+      ...scopeOf(row),
     });
     return row;
   });
