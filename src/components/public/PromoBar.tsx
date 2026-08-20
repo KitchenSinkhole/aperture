@@ -1,5 +1,4 @@
 import Image from 'next/image';
-import Link from 'next/link';
 import { apertureConfig } from '../../../aperture.config';
 
 // The one piece of the page that is about Aperture rather than the chain. Slim,
@@ -40,12 +39,14 @@ export function PromoBar({ mapName, shareLabel }: { mapName: string; shareLabel:
         >
           Source
         </a>
-        <Link
-          href="/"
+        <a
+          href={apertureConfig.PUBLIC_LINKS.website}
+          target="_blank"
+          rel="noreferrer noopener"
           className="rounded-sm border border-spec-line bg-spec-rail px-3 py-1.5 text-sm text-spec-text transition-colors hover:bg-spec-line"
         >
-          Open Aperture
-        </Link>
+          What is Aperture?
+        </a>
       </nav>
     </header>
   );
