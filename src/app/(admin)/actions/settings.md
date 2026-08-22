@@ -5,6 +5,11 @@
 
 ---
 
+### adminSetSystemNoteCategories({ categories }): Promise<ActionResult>
+Sets the system-note category vocabulary (`ap_instance.system_note_categories`). Zod-validates against `systemNoteCategoriesSchema` (1–12 unique `{ key, color }` entries, palette colours). Gated to **global admins only** via `isAdmin`. Removing a key never rewrites note rows — stored legacy keys render as neutral chips. Revalidates `/admin/settings`.
+
+---
+
 ### adminSetStaleSignatureThreshold({ minutes }): Promise<ActionResult>
 Sets the instance-wide default stale-signature threshold (`ap_instance.stale_signature_threshold_minutes`). Zod-validates `minutes` as an integer in `[1, 10080]` (one week). Gated to **global admins only** via `isAdmin`. Per-account overrides, capped at this value, live on `ap_user` (`setSignatureIndicatorPrefsAction`). Revalidates `/admin/settings`.
 

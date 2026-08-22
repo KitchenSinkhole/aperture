@@ -38,6 +38,8 @@ import type {
   SignatureIndicatorPrefs,
   SigSearchFilters,
   StructureIntel,
+  SystemNote,
+  SystemNoteCategoryDef,
 } from '@/types';
 import type { SystemStatsSummary } from '@/lib/map/stats';
 import type { SystemIntelSummary } from '@/lib/map/intel';
@@ -82,6 +84,12 @@ import {
   deleteStructureOnServer,
   updateStructureOnServer,
 } from '@/lib/structures/client';
+import {
+  createSystemNoteOnServer,
+  deleteSystemNoteOnServer,
+  updateSystemNoteOnServer,
+  type UpdateSystemNoteBody,
+} from '@/lib/system-notes/client';
 import { mapUpdateLoadSchema, type Envelope } from '@/lib/realtime/protocol';
 import { useMapSubscription, useRealtimeEvents, useReconnectResync } from '@/lib/realtime/useRealtime';
 import { RoutePlannerModule } from '@/components/sidebar/RoutePlannerModule';
@@ -93,6 +101,10 @@ import { TheraModule } from '@/components/sidebar/TheraModule';
 import { IntelModule } from '@/components/sidebar/IntelModule';
 import { StructureModule } from '@/components/sidebar/StructureModule';
 import type { StructureFormValues } from '@/components/sidebar/StructureFormDialog';
+import {
+  SystemNotesModule,
+  type SystemNoteFormValues,
+} from '@/components/sidebar/SystemNotesModule';
 import { InspectorModule, type SelectionRef } from '@/components/sidebar/InspectorModule';
 import {
   SignatureModule,
@@ -271,6 +283,8 @@ export function MapCanvas({
   stats: initialStats,
   intel: initialIntel,
   structures: initialStructures,
+  systemNotes: initialSystemNotes,
+  noteCategories,
   structureIntelEnabled,
   settings,
   canManage,
@@ -289,11 +303,14 @@ export function MapCanvas({
   stats: Record<number, SystemStatsSummary>;
   intel: Record<number, SystemIntelSummary>;
   structures: Record<number, StructureIntel[]>;
+  systemNotes: Record<number, SystemNote[]>;
+  /** The deployment's system-note category vocabulary (`ap_instance.system_note_categories`). */
+  noteCategories: SystemNoteCategoryDef[];
   /**
    * Whether the viewer belongs to the entity that owns this map. False for a
-   * guest admitted by a role grant, whose Structures panel is inert — structure
-   * intel is scoped to the owning entity, so a guest can neither read nor write
-   * any of it here.
+   * guest admitted by a role grant, whose Structures and System Notes panels are
+   * inert — manual intel is scoped to the owning entity, so a guest can neither
+   * read nor write any of it here.
    */
   structureIntelEnabled: boolean;
   settings: MapSettings;
@@ -396,13 +413,15 @@ export function MapCanvas({
   // reconciler would fight the click handlers and loop. Box drag is the only
   // selection source we must adopt from xyflow.
   const boxSelecting = useRef(false);
-  // Read-side per-system data (intel / activity stats / structure intel) is
-  // server-rendered for the systems present at page load, then held as state so
-  // systems added live can be backfilled (see the effect below) without a reload.
-  // Structure intel is also updated in place by our own CRUD callbacks.
+  // Read-side per-system data (intel / activity stats / structure intel /
+  // global system notes) is server-rendered for the systems present at page
+  // load, then held as state so systems added live can be backfilled (see the
+  // effect below) without a reload. Structure intel and system notes are also
+  // updated in place by our own CRUD callbacks.
   const [intel, setIntel] = useState(initialIntel);
   const [stats, setStats] = useState(initialStats);
   const [structures, setStructures] = useState(initialStructures);
+  const [systemNotes, setSystemNotes] = useState(initialSystemNotes);
 
   // EVE solar-system ids whose read-side data has been loaded or is in flight.
   // Seeded from the load-time intel (one entry per initially-rendered system).
@@ -429,6 +448,7 @@ export function MapCanvas({
       setIntel((prev) => ({ ...prev, ...result.data.intel }));
       setStats((prev) => ({ ...prev, ...result.data.stats }));
       setStructures((prev) => ({ ...prev, ...result.data.structures }));
+      setSystemNotes((prev) => ({ ...prev, ...result.data.systemNotes }));
     });
   }, [viewData.systems, data.map.id]);
 
@@ -475,6 +495,7 @@ export function MapCanvas({
         isHome: s.id === data.map.homeMapSystemId,
         inFactionWarfare: intel[s.systemId]?.factionWar != null,
         hasIncursion: intel[s.systemId]?.incursion != null,
+        hasNotes: (systemNotes[s.systemId] ?? []).length > 0,
       },
       selected: false,
       draggable: !s.locked,
@@ -1752,6 +1773,7 @@ export function MapCanvas({
     // multi-select set), so a note selection change must trigger a re-sync.
     selected: SelectionRef | null;
     intel: Record<number, SystemIntelSummary>;
+    systemNotes: Record<number, SystemNote[]>;
   } | null>(null);
   if (
     !lastSync ||
@@ -1761,9 +1783,18 @@ export function MapCanvas({
     lastSync.selected !== selected ||
     // `intel` is replaced by reference when a live-added system's data backfills;
     // re-sync so its decorators (sov/FW/incursion) appear without a systems change.
-    lastSync.intel !== intel
+    lastSync.intel !== intel ||
+    // Same for `systemNotes` — the node's notes indicator tracks CRUD + backfill.
+    lastSync.systemNotes !== systemNotes
   ) {
-    setLastSync({ systems: viewData.systems, notes: viewData.notes, selectedSystemIds, selected, intel });
+    setLastSync({
+      systems: viewData.systems,
+      notes: viewData.notes,
+      selectedSystemIds,
+      selected,
+      intel,
+      systemNotes,
+    });
     setNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]));
       return [
@@ -1783,6 +1814,7 @@ export function MapCanvas({
               isHome: s.id === viewData.map.homeMapSystemId,
               inFactionWarfare: intel[s.systemId]?.factionWar != null,
               hasIncursion: intel[s.systemId]?.incursion != null,
+              hasNotes: (systemNotes[s.systemId] ?? []).length > 0,
             },
             selected: selectedSystemIds.has(s.id),
             draggable: !s.locked,
@@ -1902,6 +1934,77 @@ export function MapCanvas({
       setStructures((prev) => ({
         ...prev,
         [systemId]: (prev[systemId] ?? []).filter((s) => s.id !== structureId),
+      }));
+    },
+    [selectedSystem],
+  );
+
+  // ---- Global system-note callbacks ---------------------------------------
+  //
+  // Same plain-REST shape as structures. Lists stay newest-first, matching the
+  // read-side order.
+  const sortNewestFirst = (a: SystemNote, b: SystemNote) =>
+    b.createdAt.localeCompare(a.createdAt);
+
+  const onSystemNoteCreate = useCallback(
+    async (values: SystemNoteFormValues) => {
+      if (!selectedSystem) return;
+      const systemId = selectedSystem.systemId;
+      const result = await createSystemNoteOnServer({ mapId, systemId, ...values });
+      if (!result.ok) return;
+      setSystemNotes((prev) => ({
+        ...prev,
+        [systemId]: [result.data, ...(prev[systemId] ?? [])].sort(sortNewestFirst),
+      }));
+    },
+    [mapId, selectedSystem],
+  );
+
+  const onSystemNotePatch = useCallback(async (noteId: string, patch: UpdateSystemNoteBody) => {
+    const result = await updateSystemNoteOnServer({ noteId, patch });
+    if (!result.ok) return;
+    const updated = result.data;
+    setSystemNotes((prev) => ({
+      ...prev,
+      [updated.systemId]: (prev[updated.systemId] ?? []).map((n) =>
+        n.id === noteId ? updated : n,
+      ),
+    }));
+  }, []);
+
+  // Jump target for the notes browser: focus the system if it's on this map.
+  const onJumpToSystem = useCallback(
+    (systemId: number) => {
+      const target = viewData.systems.find((s) => s.systemId === systemId);
+      if (!target) {
+        toast.info('That system is not on this map.');
+        return;
+      }
+      setSelected({ kind: 'system', id: target.id });
+      setSelectedSystemIds(new Set([target.id]));
+      const inst = flowInstance.current;
+      const node = inst?.getNode(target.id);
+      if (inst && node) {
+        const w = node.measured?.width ?? node.width ?? 0;
+        const h = node.measured?.height ?? node.height ?? 0;
+        inst.setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+          zoom: inst.getZoom(),
+          duration: 0,
+        });
+      }
+    },
+    [viewData.systems],
+  );
+
+  const onSystemNoteDelete = useCallback(
+    async (noteId: string) => {
+      if (!selectedSystem) return;
+      const systemId = selectedSystem.systemId;
+      const result = await deleteSystemNoteOnServer({ noteId });
+      if (!result.ok) return;
+      setSystemNotes((prev) => ({
+        ...prev,
+        [systemId]: (prev[systemId] ?? []).filter((n) => n.id !== noteId),
       }));
     },
     [selectedSystem],
@@ -2123,6 +2226,20 @@ export function MapCanvas({
             onCreate={onStructureCreate}
             onPatch={onStructurePatch}
             onDelete={onStructureDelete}
+          />
+        );
+      case 'systemNotes':
+        return (
+          <SystemNotesModule
+            system={selectedSystem}
+            notes={selectedSystem ? (systemNotes[selectedSystem.systemId] ?? []) : []}
+            categories={noteCategories}
+            enabled={structureIntelEnabled}
+            mapType={viewData.map.type}
+            onCreate={onSystemNoteCreate}
+            onPatch={onSystemNotePatch}
+            onDelete={onSystemNoteDelete}
+            onJumpToSystem={onJumpToSystem}
           />
         );
       case 'killStats':

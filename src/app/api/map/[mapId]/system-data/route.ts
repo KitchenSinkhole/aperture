@@ -4,13 +4,14 @@ import { getSession } from '@/lib/session';
 import { intelForSystems } from '@/lib/map/intel';
 import { statsForSystems } from '@/lib/map/stats';
 import { structuresForSystems } from '@/lib/structures/read';
+import { systemNotesForSystems } from '@/lib/system-notes/read';
 import { requireMapView } from '../../utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * GET /api/map/[mapId]/system-data?systems=<id>,<id>,...
  * Batched read-side per-system data (sov / FW / incursion intel + 24h activity
- * stats + structure intel) keyed by EVE solar-system id. The map page
+ * stats + structure intel + global system notes) keyed by EVE solar-system id. The map page
  * server-renders this for the systems present at load; the client calls here to
  * backfill systems added live (paste, tracked-pilot jump, manual add) so their
  * decorators and sidebar modules fill in without a page reload.
@@ -60,11 +61,12 @@ export const GET = withApiMetrics('/api/map/:mapId/system-data', async function 
     );
   }
 
-  const [intel, stats, structures] = await Promise.all([
+  const [intel, stats, structures, systemNotes] = await Promise.all([
     intelForSystems(systemIds),
     statsForSystems(systemIds),
     structuresForSystems(guard.mapId, systemIds, guard.characterId),
+    systemNotesForSystems(guard.mapId, systemIds, guard.characterId),
   ]);
 
-  return Response.json({ ok: true, data: { intel, stats, structures } });
+  return Response.json({ ok: true, data: { intel, stats, structures, systemNotes } });
 });

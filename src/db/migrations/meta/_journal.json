@@ -491,6 +491,13 @@
       "when": 1787213420021,
       "tag": "0070_intel_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1787362644340,
+      "tag": "0071_system_note",
+      "breakpoints": true
     }
   ]
 }

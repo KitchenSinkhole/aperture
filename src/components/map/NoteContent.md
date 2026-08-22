@@ -1,6 +1,6 @@
 ## NoteContent
 
-**Purpose:** Renders a map note's markdown `content` — GitHub-flavoured markdown plus `[color]…[/color]` text tags.
+**Purpose:** Renders a note's markdown `content` — GitHub-flavoured markdown plus `[color]…[/color]` text tags — for map notes and global system notes.
 **File:** `src/components/map/NoteContent.tsx`
 
 ### Props
@@ -15,7 +15,7 @@
 
 ### Behaviour & Interactions
 - Colour tags (`[red]…[/red]`, etc.) render via `remarkColorTags` using the fixed `NOTE_TEXT_COLORS` palette — no raw HTML, so user content can't inject markup/CSS.
-- Used by `MapNoteNode` (the on-canvas snippet, line-clamped, and the full hover tooltip) and `InspectorModule`'s `NoteInspector` (the live preview under the content editor).
+- Used by `MapNoteNode` (the on-canvas snippet, line-clamped, and the full hover tooltip), `InspectorModule`'s `NoteInspector` (the live preview under the content editor), `SystemNotesModule` (note bodies), and `SystemNotesBrowserDialog` (result previews).
 
 ### Depends On
 - `react-markdown`, `remark-gfm`

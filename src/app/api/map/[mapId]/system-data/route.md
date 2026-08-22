@@ -1,14 +1,16 @@
 ## system-data/route.ts
 
-**Purpose:** Read-only JSON route returning batched read-side per-system data (intel + activity stats + structure intel) for live-fetching systems added after page load.
+**Purpose:** Read-only JSON route returning batched read-side per-system data (intel + activity stats + structure intel + global system notes) for live-fetching systems added after page load.
 **File:** `src/app/api/map/[mapId]/system-data/route.ts`
 
 ---
 
 ### GET /api/map/[mapId]/system-data?systems=<id>,<id>,...
-Returns `{ ok: true, data: { intel, stats, structures } }` for the requested EVE solar-system ids:
+Returns `{ ok: true, data: { intel, stats, structures, systemNotes } }` for the requested EVE solar-system ids:
 - `intel` — `Record<number, SystemIntelSummary>` (sov / FW / incursion / EVE-Scout / links); one entry per requested id.
 - `stats` — `Record<number, SystemStatsSummary>` (rolling 24h activity); sparse — absent for systems with no rows.
+- `structures` — `Record<number, StructureIntel[]>`; sparse — absent for systems with no structures.
+- `systemNotes` — `Record<number, SystemNote[]>` (global system notes), filtered like structures to the rows the guarded character's scope admits (empty entirely for a guest on this map); sparse — absent for systems with no admitted notes.
 - `structures` — `Record<number, StructureIntel[]>`; sparse — absent for systems with no structures the caller may see.
 
 **Access:** view-only (`requireMapView`). Existence is not leaked: missing / non-viewable maps return 404.

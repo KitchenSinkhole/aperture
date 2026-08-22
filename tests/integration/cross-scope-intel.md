@@ -21,6 +21,9 @@ Universe ids `98047xxx`; org / character ids `99060xxx`. Two organisations (corp
 - The `system-data` sweep — 256 system ids as org B returns none of org A's rows.
 - `scopeAdmits` / `structureVisibleTo` agreement over the fixture set, asserted as `viewer.isAdmin || scopeAdmits(row, viewer)`. `scopeAdmits` carries no admin branch by design — both callers short-circuit on admin before reaching it — so a raw row-for-row comparison would diverge for an admin viewer, and adding admin to `scopeAdmits` to close that gap would widen the write gate.
 
+### The `ap_system_note` block
+A second describe mirrors the structure block for global system notes (recreating the same org shapes after the first block's cleanup): map-derived scope stamped on row + create event, row-scoped mutate gate (404 outside the scope, before the lock's 409), cross-scope PATCH/DELETE leave rows and audit untouched, guest tenancy refusal on read and create, same-scope CRUD, and the two browser assertions — a category-chip search hit stays scope-filtered, and a **capped** page contains only admitted rows (org B floods past `NOTE_SEARCH_LIMIT`, org A's buried matches must all surface: the viewer filter runs before the cap). `pool.end()` lives in a file-level `afterAll` so both blocks share the connection pool.
+
 ### Running
 Requires containerised Postgres with migrations applied:
 ```
