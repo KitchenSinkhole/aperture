@@ -615,6 +615,11 @@ export type { CreateStructureBody, UpdateStructureBody } from '@/lib/structures/
 export type { ParsedSigRow } from '@/lib/map/signatureParser';
 export type { ResolvedSigRow } from '@/lib/map/signatureReader';
 
+// D-Scan paste parser (src/lib/map/dscanParser.ts) + the ship-type catalog a
+// paste is read against (src/lib/eve/shipTypes.ts).
+export type { ParsedDscanRow } from '@/lib/map/dscanParser';
+export type { ShipTypeGroupRow } from '@/lib/eve/shipTypes';
+
 // Scanner-level signature group catalog (src/lib/map/signatureGroups.ts).
 export type { SignatureGroupOption } from '@/lib/map/signatureGroups';
 

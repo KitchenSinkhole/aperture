@@ -11,7 +11,7 @@ Re-exports the ESI decoded-response types.
 
 Re-exports `RealtimeStatus`.
 
-Re-exports map-event payloads, mutation result/input types, signature parser/resolver types, and wormhole-catalog lookup results.
+Re-exports map-event payloads, mutation result/input types, signature parser/resolver types, `ParsedDscanRow` (the D-Scan paste parser row, `src/lib/map/dscanParser.ts`), `ShipTypeGroupRow` (the ship type id → group catalog a paste is read against, `src/lib/eve/shipTypes.ts`), and wormhole-catalog lookup results.
 
 Re-exports `UniverseSovereigntyMap` / `UniverseFactionWarSystem`, ESI sov/FW decoded-response types, and read-side integration summaries (`SystemIntelSummary`, `SovereigntyIntel`, `FactionWarIntel`, `RecentKillSummary`, `EveScoutConnectionSummary`, `ChangelogRelease`). Also re-exports `SystemStatsSummary` (rolling 24h activity totals, `src/lib/map/stats.ts`).
 

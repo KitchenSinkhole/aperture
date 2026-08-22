@@ -43,10 +43,10 @@ const SEED_CHAR_IDS = [
 
 const FAKE_CHARACTERS: { id: bigint; name: string; shipName: string; shipTypeId: number }[] = [
   { id: 2_000_000_001n, name: 'Aura Veloxi',    shipName: 'Ghost Protocol', shipTypeId: 29984 }, // Tengu
-  { id: 2_000_000_002n, name: 'Kira Solstice',  shipName: 'Silent Running', shipTypeId: 35683 }, // Stratios
+  { id: 2_000_000_002n, name: 'Kira Solstice',  shipName: 'Silent Running', shipTypeId: 33470 }, // Stratios
   { id: 2_000_000_003n, name: 'Dren Ashveil',   shipName: 'Pale Rider',     shipTypeId: 29990 }, // Loki
-  { id: 2_000_000_004n, name: 'Mira Coldfront', shipName: 'Widow Maker',    shipTypeId: 28659 }, // Legion
-  { id: 2_000_000_005n, name: 'Zeph Orryn',     shipName: 'Quantum Drift',  shipTypeId: 28661 }, // Proteus
+  { id: 2_000_000_004n, name: 'Mira Coldfront', shipName: 'Widow Maker',    shipTypeId: 29986 }, // Legion
+  { id: 2_000_000_005n, name: 'Zeph Orryn',     shipName: 'Quantum Drift',  shipTypeId: 29988 }, // Proteus
 ];
 
 async function main(systemName: string) {
