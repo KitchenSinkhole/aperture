@@ -10,6 +10,7 @@ import {
   Clock,
   Home,
   Lock,
+  NotebookPen,
   Radiation,
   Signal,
   Swords,
@@ -52,6 +53,8 @@ export type SystemNodeData = MapSystemNode & {
   inFactionWarfare?: boolean;
   /** Derived in `MapCanvas` from the load-time intel: this system is part of an active incursion. */
   hasIncursion?: boolean;
+  /** Derived in `MapCanvas` from the global system notes: this system has at least one note. */
+  hasNotes?: boolean;
 };
 
 function securityLabel(node: MapSystemNode): string {
@@ -148,6 +151,7 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
       <IntelIndicators
         inFactionWarfare={!!data.inFactionWarfare}
         hasIncursion={!!data.hasIncursion}
+        hasNotes={!!data.hasNotes}
       />
       {/* Each handle carries a unique id so xyflow resolves the actual grabbed /
           hovered handle. Without an id, `getHandle` falls back to `handles[0]`
@@ -355,11 +359,13 @@ function SignatureIndicators({
 function IntelIndicators({
   inFactionWarfare,
   hasIncursion,
+  hasNotes,
 }: {
   inFactionWarfare: boolean;
   hasIncursion: boolean;
+  hasNotes: boolean;
 }) {
-  if (!inFactionWarfare && !hasIncursion) return null;
+  if (!inFactionWarfare && !hasIncursion && !hasNotes) return null;
   return (
     <div className="nodrag nopan pointer-events-none absolute -right-2 -bottom-2 flex items-center gap-1">
       {inFactionWarfare && (
@@ -373,6 +379,11 @@ function IntelIndicators({
       {hasIncursion && (
         <IndicatorPill className="text-red-400 ring-red-400/40" label="Active incursion">
           <Radiation className="size-2.5" aria-hidden />
+        </IndicatorPill>
+      )}
+      {hasNotes && (
+        <IndicatorPill className="text-cyan-400 ring-cyan-400/40" label="Global system notes">
+          <NotebookPen className="size-2.5" aria-hidden />
         </IndicatorPill>
       )}
     </div>

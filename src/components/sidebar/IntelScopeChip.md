@@ -18,7 +18,7 @@ An inline bordered pill: a per-tier lucide icon (lock / users / flag) plus the t
 - Word-and-icon styling keeps it distinct from the citadel's in-game owner corp, which structure rows render as a CCP logo plus a name.
 
 ### Emits / Calls
-- `intelScopeAudience(scope)` — exported alongside the component; returns the audience sentence for callers that want the prose without the pill (the structure dialog's pre-submit line).
+- `intelScopeAudience(scope)` — exported alongside the component; returns the audience sentence for callers that want the prose without the pill (the structure and system-note dialogs' pre-submit lines).
 
 ### Depends On
 - `IntelScope` (`src/types`) — the `intel_scope` enum's values.

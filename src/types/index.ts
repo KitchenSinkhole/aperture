@@ -28,6 +28,8 @@ import type {
   apSdeState,
   apStructure,
   apStructureEvent,
+  apSystemNote,
+  apSystemNoteEvent,
   apSystemStats,
   apUser,
   universeCategory,
@@ -63,6 +65,7 @@ import type {
   sharePresenceMode,
   signatureGroupKey,
   structureEventKind,
+  systemNoteEventKind,
   tagScheme,
   whJumpMass,
 } from '@/db/schema/ap/enums';
@@ -223,6 +226,12 @@ export type NewApStructure = InferInsertModel<typeof apStructure>;
 export type ApStructureEvent = InferSelectModel<typeof apStructureEvent>;
 export type NewApStructureEvent = InferInsertModel<typeof apStructureEvent>;
 
+export type ApSystemNote = InferSelectModel<typeof apSystemNote>;
+export type NewApSystemNote = InferInsertModel<typeof apSystemNote>;
+
+export type ApSystemNoteEvent = InferSelectModel<typeof apSystemNoteEvent>;
+export type NewApSystemNoteEvent = InferInsertModel<typeof apSystemNoteEvent>;
+
 export type ApSdeState = InferSelectModel<typeof apSdeState>;
 export type NewApSdeState = InferInsertModel<typeof apSdeState>;
 
@@ -238,6 +247,7 @@ export type RouteSafety = (typeof routeSafety.enumValues)[number];
 export type SharePresenceMode = (typeof sharePresenceMode.enumValues)[number];
 export type SignatureGroupKey = (typeof signatureGroupKey.enumValues)[number];
 export type StructureEventKind = (typeof structureEventKind.enumValues)[number];
+export type SystemNoteEventKind = (typeof systemNoteEventKind.enumValues)[number];
 export type TagScheme = (typeof tagScheme.enumValues)[number];
 export type WhJumpMass = (typeof whJumpMass.enumValues)[number];
 
@@ -591,6 +601,18 @@ export type { SystemSearchResult } from '@/lib/map/systemSearch';
 // Read-side structure-intel view-models (computed in src/lib/structures/read.ts).
 export type { StructureIntel, UpwellStructureType } from '@/lib/structures/read';
 
+// Read-side global system-note view-models (computed in src/lib/system-notes/read.ts).
+export type { SystemNote, SystemNoteSearchResult } from '@/lib/system-notes/read';
+
+// The system-note category vocabulary: one entry of the per-deployment
+// instance setting (`ap_instance.system_note_categories`, default
+// `DEFAULT_SYSTEM_NOTE_CATEGORIES`). The stored note column is plain text;
+// this shapes the vocabulary entries, not a DB enum.
+export type {
+  SystemNoteCategoryDef,
+  SystemNoteChipColor,
+} from '@/lib/system-notes/categories';
+
 // Rolling 24h activity totals per system (computed in src/lib/map/stats.ts).
 export type { SystemStatsSummary } from '@/lib/map/stats';
 
@@ -605,11 +627,22 @@ export type {
   DeleteStructureInput,
 } from '@/lib/structures/mutations';
 
+// System-note mutation input types (src/lib/system-notes/mutations.ts).
+export type {
+  CreateSystemNoteInput,
+  UpdateSystemNoteInput,
+  UpdateSystemNotePatch,
+  DeleteSystemNoteInput,
+} from '@/lib/system-notes/mutations';
+
 // Shared JSON fetch result (src/lib/http/fetchJson.ts).
 export type { FetchResult } from '@/lib/http/fetchJson';
 
 // Structure client request-body shapes (src/lib/structures/client.ts).
 export type { CreateStructureBody, UpdateStructureBody } from '@/lib/structures/client';
+
+// System-note client request-body shapes (src/lib/system-notes/client.ts).
+export type { CreateSystemNoteBody, UpdateSystemNoteBody } from '@/lib/system-notes/client';
 
 // Signature paste parser + resolver (src/lib/map/signatureParser.ts, signatureReader.ts).
 export type { ParsedSigRow } from '@/lib/map/signatureParser';
@@ -703,6 +736,7 @@ export type PanelId =
   | 'route'
   | 'intel'
   | 'structure'
+  | 'systemNotes'
   | 'killStats'
   | 'systemGraph'
   | 'systemKillboard'

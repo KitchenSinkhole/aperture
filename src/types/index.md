@@ -21,6 +21,8 @@ Re-exports the static-reference dialog types: `SystemEffect` / `SystemEffectBonu
 
 Re-exports `ApStructure` / `ApStructureEvent` row types, `StructureEventKind` (the `structure_event_kind` pgEnum), `IntelScope` (the `intel_scope` pgEnum — `'private' | 'corp' | 'alliance'`, the tenancy of a manual-intel row), the read-side view-models `StructureIntel` / `UpwellStructureType` (`src/lib/structures/read.ts`), the structure mutation input types, the structure client body shapes (`CreateStructureBody` / `UpdateStructureBody`), and `FetchResult` (the shared no-`eventId` JSON result from `src/lib/http/fetchJson.ts`).
 
+Re-exports `ApSystemNote` / `ApSystemNoteEvent` row types, `SystemNoteEventKind` (the `system_note_event_kind` pgEnum), `SystemNoteCategoryDef` / `SystemNoteChipColor` (one entry of the instance-configured category vocabulary and its palette key — `src/lib/system-notes/categories.ts`; the stored column is plain text), the read-side view-models `SystemNote` / `SystemNoteSearchResult` (`src/lib/system-notes/read.ts`, both carrying `scope` + `scopeEntityId`), the system-note mutation input types (incl. `UpdateSystemNotePatch`), and the system-note client body shapes (`CreateSystemNoteBody` / `UpdateSystemNoteBody`).
+
 The "add system manually" flow re-exports `SystemSearchResult` (`src/lib/map/systemSearch.ts`) — a solar-system search row used by `AddSystemDialog`.
 
 The structure owner picker re-exports `CorpSearchResult` (`src/lib/structures/corpSearch.ts`) — `{ id, name }` corporation matches for the `StructureFormDialog` autocomplete.

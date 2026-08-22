@@ -12,6 +12,8 @@ import {
   apRole,
   apStructure,
   apStructureEvent,
+  apSystemNote,
+  apSystemNoteEvent,
   apUser,
   universeCategory,
   universeConstellation,
@@ -36,7 +38,20 @@ import {
   type UpdateStructurePatch,
 } from '@/lib/structures/mutations';
 import { structuresForSystems } from '@/lib/structures/read';
-import type { ApStructure } from '@/types';
+import { requireNoteIntelTenant, requireSystemNoteMutate } from '@/lib/system-notes/guard';
+import {
+  createSystemNote,
+  deleteSystemNote,
+  SystemNoteLockedError,
+  updateSystemNote,
+  type UpdateSystemNotePatch,
+} from '@/lib/system-notes/mutations';
+import {
+  NOTE_SEARCH_LIMIT,
+  searchSystemNotes,
+  systemNotesForSystems,
+} from '@/lib/system-notes/read';
+import type { ApStructure, ApSystemNote } from '@/types';
 
 /**
  * Regression guard for the P1 intel-scoping invariants on `ap_structure`
@@ -223,7 +238,6 @@ describe.skipIf(!run)('cross-scope intel isolation — ap_structure (real Postgr
 
   afterAll(async () => {
     await cleanup();
-    await pool.end();
   });
 
   // ─── intelScopeForMap — the scope a new row takes ─────────────────────────
@@ -555,11 +569,407 @@ describe.skipIf(!run)('cross-scope intel isolation — ap_structure (real Postgr
   });
 });
 
-// PR #242 mirrors this file for `ap_system_note`: a second
-// `describe.skipIf(!run)('cross-scope intel isolation — ap_system_note …')`
-// block drops in below, with the same org fixtures plus the one assertion
-// structures do not need — that a *capped* notes-browser page contains only
-// admitted rows (the filter must run before the 50-row cap, not after).
+// ─── ap_system_note — the second half of the P1 fix ───────────────────────────
+// Same org shapes as the structure block above (which has cleaned up after
+// itself by the time this runs), plus the one assertion structures do not need:
+// a *capped* notes-browser page contains only admitted rows (the filter must
+// run before the 50-row cap, not after).
+
+describe.skipIf(!run)('cross-scope intel isolation — ap_system_note (real Postgres)', () => {
+  let noteMapACorp = 0n;
+  let noteMapAPrivate = 0n;
+  let noteMapBCorp = 0n;
+  let noteACorp = 0n;
+  let noteAPrivate = 0n;
+  let noteBCorp = 0n;
+  let noteBLocked = 0n;
+
+  const NOTE_MAP_NAMES = ['Note-Scope A Corp', 'Note-Scope A Private', 'Note-Scope B Corp'];
+  const NOTE_GUEST_ROLE = 'Note-Scope Guest Role';
+
+  beforeAll(async () => {
+    await migrate(db, { migrationsFolder: 'src/db/migrations' });
+    await noteCleanup();
+
+    await db.insert(universeRegion).values({ id: REGION, name: 'Cross-Scope Test Region' });
+    await db
+      .insert(universeConstellation)
+      .values({ id: CONSTELLATION, regionId: REGION, name: 'Cross-Scope Test Const' });
+    await db.insert(universeSystem).values([
+      { id: SYSTEM_ONE, constellationId: CONSTELLATION, name: 'J170001', security: 'C4' },
+      { id: SYSTEM_TWO, constellationId: CONSTELLATION, name: 'J170002', security: 'C5' },
+      { id: SYSTEM_OFFMAP, constellationId: CONSTELLATION, name: 'J170003', security: 'C5' },
+    ]);
+
+    const [u] = await db.insert(apUser).values({}).returning({ id: apUser.id });
+    userId = u!.id;
+
+    await db.insert(apCharacter).values([
+      mkChar(A_MEMBER, 'Org A Member', { corporationId: CORP_A, allianceId: ALLIANCE_A }),
+      mkChar(A_PEER, 'Org A Peer', { corporationId: CORP_A, allianceId: ALLIANCE_A }),
+      mkChar(B_MEMBER, 'Org B Member', { corporationId: CORP_B, allianceId: ALLIANCE_B }),
+      mkChar(GUEST_ID, 'Org B Guest', { corporationId: CORP_B, allianceId: ALLIANCE_B }),
+    ]);
+
+    const maps = await db
+      .insert(apMap)
+      .values([
+        { name: 'Note-Scope A Corp', scope: 'wh', type: 'corp', ownerCorporationId: CORP_A },
+        {
+          name: 'Note-Scope A Private',
+          scope: 'wh',
+          type: 'private',
+          ownerCharacterId: A_MEMBER,
+        },
+        { name: 'Note-Scope B Corp', scope: 'wh', type: 'corp', ownerCorporationId: CORP_B },
+      ])
+      .returning({ id: apMap.id, name: apMap.name });
+    const mapId = (name: string) => maps.find((m) => m.name === name)!.id;
+    noteMapACorp = mapId('Note-Scope A Corp');
+    noteMapAPrivate = mapId('Note-Scope A Private');
+    noteMapBCorp = mapId('Note-Scope B Corp');
+
+    const [role] = await db
+      .insert(apRole)
+      .values({ source: 'builtin', name: NOTE_GUEST_ROLE })
+      .returning({ id: apRole.id });
+    guestRoleId = role!.id;
+    await db.insert(apCharacterRole).values({ characterId: GUEST_ID, roleId: guestRoleId });
+    await db
+      .insert(apMapRoleAccess)
+      .values({ mapId: noteMapACorp, roleId: guestRoleId, capability: 'view' });
+
+    noteACorp = (await seedNote(A_MEMBER, noteMapACorp, SYSTEM_ONE, 'A corp intel: POS on moon 4'))
+      .id;
+    noteAPrivate = (
+      await seedNote(A_MEMBER, noteMapAPrivate, SYSTEM_TWO, 'A private journal entry')
+    ).id;
+    noteBCorp = (await seedNote(B_MEMBER, noteMapBCorp, SYSTEM_ONE, 'B corp intel: farm hole')).id;
+    const locked = await createNoteAsRoute(
+      B_MEMBER,
+      noteMapBCorp,
+      SYSTEM_ONE,
+      'B corp locked note',
+      { locked: true },
+    );
+    expect(locked.status).toBe(200);
+    noteBLocked = locked.row!.id;
+  });
+
+  afterAll(async () => {
+    await noteCleanup();
+  });
+
+  describe('create', () => {
+    it('rejects a create naming a map the caller cannot view', async () => {
+      const before = await noteCount(SYSTEM_ONE);
+      const result = await createNoteAsRoute(B_MEMBER, noteMapACorp, SYSTEM_ONE, 'injected');
+      expect(result.status).toBe(404);
+      expect(await noteCount(SYSTEM_ONE)).toBe(before);
+    });
+
+    it('refuses a guest with view access on the host map — tenancy is the separate gate', async () => {
+      const guardOk = await requireMapView(noteMapACorp.toString(), asSession(GUEST_ID));
+      expect(guardOk.ok).toBe(true);
+      const before = await noteCount(SYSTEM_ONE);
+      const result = await createNoteAsRoute(GUEST_ID, noteMapACorp, SYSTEM_ONE, 'guest note');
+      expect(result.status).toBe(403);
+      expect(await noteCount(SYSTEM_ONE)).toBe(before);
+    });
+
+    it('stamps the map-derived scope onto the row and its create event', async () => {
+      const [row] = await db
+        .select({
+          scope: apSystemNote.scope,
+          scopeCorporationId: apSystemNote.scopeCorporationId,
+          scopeCharacterId: apSystemNote.scopeCharacterId,
+        })
+        .from(apSystemNote)
+        .where(eq(apSystemNote.id, noteACorp));
+      expect(row).toEqual({
+        scope: 'corp',
+        scopeCorporationId: CORP_A,
+        scopeCharacterId: null,
+      });
+      const [event] = await db
+        .select({ scope: apSystemNoteEvent.scope, corp: apSystemNoteEvent.scopeCorporationId })
+        .from(apSystemNoteEvent)
+        .where(eq(apSystemNoteEvent.noteId, noteACorp));
+      expect(event).toEqual({ scope: 'corp', corp: CORP_A });
+    });
+  });
+
+  describe('mutate gate', () => {
+    it('admits a corp mate, refuses the other org with 404 — never 403', async () => {
+      expect(await noteGate(A_PEER, noteACorp)).toBe(200);
+      const refusal = await requireSystemNoteMutate(asSession(B_MEMBER), noteACorp);
+      expect(refusal).toEqual({ ok: false, status: 404, error: 'Note not found.' });
+    });
+
+    it('a cross-scope PATCH 404s and leaves the row and its audit trail untouched', async () => {
+      const before = await noteSnapshotOf(noteACorp);
+      const events = await noteEventCount(noteACorp);
+      const result = await patchNoteAsRoute(B_MEMBER, noteACorp, { body: 'vandalized' });
+      expect(result.status).toBe(404);
+      expect(await noteSnapshotOf(noteACorp)).toEqual(before);
+      expect(await noteEventCount(noteACorp)).toBe(events);
+    });
+
+    it('a cross-scope DELETE 404s and leaves the row in place', async () => {
+      const result = await deleteNoteAsRoute(A_MEMBER, noteBCorp);
+      expect(result.status).toBe(404);
+      expect(await noteRowExists(noteBCorp)).toBe(true);
+    });
+
+    it('scope is evaluated before the lock: a locked row outside the scope 404s, inside it 409s', async () => {
+      const outside = await patchNoteAsRoute(A_MEMBER, noteBLocked, { body: 'x' });
+      expect(outside.status).toBe(404);
+      const inside = await patchNoteAsRoute(B_MEMBER, noteBLocked, { body: 'x' });
+      expect(inside.status).toBe(409);
+      const unlock = await patchNoteAsRoute(B_MEMBER, noteBLocked, { locked: false });
+      expect(unlock.status).toBe(200);
+      const relock = await patchNoteAsRoute(B_MEMBER, noteBLocked, { locked: true });
+      expect(relock.status).toBe(200);
+    });
+
+    it('same-scope CRUD is unchanged: create, patch by a corp mate, then delete', async () => {
+      const created = await createNoteAsRoute(A_MEMBER, noteMapACorp, SYSTEM_TWO, 'lifecycle');
+      expect(created.status).toBe(200);
+      const id = created.row!.id;
+      const patched = await patchNoteAsRoute(A_PEER, id, { body: 'lifecycle (edited)' });
+      expect(patched.status).toBe(200);
+      expect(patched.row!.body).toBe('lifecycle (edited)');
+      const deleted = await deleteNoteAsRoute(A_MEMBER, id);
+      expect(deleted.status).toBe(200);
+      expect(await noteRowExists(id)).toBe(false);
+    });
+  });
+
+  describe('read filter', () => {
+    it('returns every row the viewer scope admits and nothing else', async () => {
+      const asA = idsIn(
+        await systemNotesForSystems(noteMapACorp, [SYSTEM_ONE, SYSTEM_TWO], A_MEMBER),
+      );
+      expect(asA.has(noteACorp.toString())).toBe(true);
+      expect(asA.has(noteAPrivate.toString())).toBe(true);
+      expect(asA.has(noteBCorp.toString())).toBe(false);
+
+      const asB = idsIn(
+        await systemNotesForSystems(noteMapBCorp, [SYSTEM_ONE, SYSTEM_TWO], B_MEMBER),
+      );
+      expect(asB.has(noteBCorp.toString())).toBe(true);
+      expect(asB.has(noteACorp.toString())).toBe(false);
+    });
+
+    it('reads no notes at all for a guest on the host map, not even their own org rows', async () => {
+      const asGuest = await systemNotesForSystems(
+        noteMapACorp,
+        [SYSTEM_ONE, SYSTEM_TWO],
+        GUEST_ID,
+      );
+      expect(asGuest).toEqual({});
+    });
+  });
+
+  describe('notes browser', () => {
+    it('matches on the category chip, scope-filtered', async () => {
+      const chipped = await createNoteAsRoute(
+        A_MEMBER,
+        noteMapACorp,
+        SYSTEM_ONE,
+        'no keyword here',
+        { category: 'warning' },
+      );
+      expect(chipped.status).toBe(200);
+      const viewer = (await resolveIntelViewer(A_MEMBER))!;
+      const hits = await searchSystemNotes('warning', viewer);
+      expect(hits.map((h) => h.id)).toContain(chipped.row!.id.toString());
+      const asB = await searchSystemNotes('warning', (await resolveIntelViewer(B_MEMBER))!);
+      expect(asB.map((h) => h.id)).not.toContain(chipped.row!.id.toString());
+      await deleteNoteAsRoute(A_MEMBER, chipped.row!.id);
+    });
+
+    it('a capped page contains only admitted rows — the filter runs before the cap', async () => {
+      // Flood org B with more matching notes than the cap, then bury org A's
+      // few matches under them (newest first): filtering after the cap would
+      // return a page of zero org-A rows.
+      const marker = 'filterbeforecap';
+      const bIds: bigint[] = [];
+      const aIds: bigint[] = [];
+      for (let i = 0; i < 5; i++) {
+        const r = await createNoteAsRoute(
+          A_MEMBER,
+          noteMapACorp,
+          SYSTEM_TWO,
+          `${marker} A ${i}`,
+        );
+        expect(r.status).toBe(200);
+        aIds.push(r.row!.id);
+      }
+      for (let i = 0; i < NOTE_SEARCH_LIMIT + 10; i++) {
+        const r = await createNoteAsRoute(
+          B_MEMBER,
+          noteMapBCorp,
+          SYSTEM_ONE,
+          `${marker} B ${i}`,
+        );
+        expect(r.status).toBe(200);
+        bIds.push(r.row!.id);
+      }
+
+      const viewer = (await resolveIntelViewer(A_MEMBER))!;
+      const hits = await searchSystemNotes(marker, viewer);
+      expect(hits.map((h) => h.id).sort()).toEqual(aIds.map((id) => id.toString()).sort());
+
+      const bViewer = (await resolveIntelViewer(B_MEMBER))!;
+      const bHits = await searchSystemNotes(marker, bViewer);
+      expect(bHits).toHaveLength(NOTE_SEARCH_LIMIT);
+      const bIdSet = new Set(bIds.map((id) => id.toString()));
+      for (const hit of bHits) expect(bIdSet.has(hit.id)).toBe(true);
+    });
+  });
+
+  // ─── note route-shaped helpers ──────────────────────────────────────────────
+
+  async function createNoteAsRoute(
+    actor: bigint,
+    mapId: bigint,
+    systemId: number,
+    body: string,
+    extra: { category?: string | null; locked?: boolean } = {},
+  ): Promise<{ status: number; row?: ApSystemNote }> {
+    const guard = await requireMapView(mapId.toString(), asSession(actor));
+    if (!guard.ok) return { status: guard.status };
+    const tenant = await requireNoteIntelTenant(guard.mapId, guard.characterId);
+    if (!tenant.ok) return { status: tenant.status };
+    if (!tenant.scope) return { status: 404 };
+    const row = await createSystemNote({
+      systemId,
+      body,
+      category: extra.category ?? null,
+      locked: extra.locked ?? false,
+      characterId: guard.characterId,
+      scope: tenant.scope,
+    });
+    return { status: 200, row };
+  }
+
+  async function patchNoteAsRoute(
+    actor: bigint,
+    noteId: bigint,
+    patch: UpdateSystemNotePatch,
+  ): Promise<{ status: number; row?: ApSystemNote }> {
+    const guard = await requireSystemNoteMutate(asSession(actor), noteId);
+    if (!guard.ok) return { status: guard.status };
+    try {
+      const row = await updateSystemNote({ noteId, patch, characterId: guard.characterId });
+      return row ? { status: 200, row } : { status: 404 };
+    } catch (err) {
+      if (err instanceof SystemNoteLockedError) return { status: 409 };
+      throw err;
+    }
+  }
+
+  async function deleteNoteAsRoute(
+    actor: bigint,
+    noteId: bigint,
+  ): Promise<{ status: number; row?: ApSystemNote }> {
+    const guard = await requireSystemNoteMutate(asSession(actor), noteId);
+    if (!guard.ok) return { status: guard.status };
+    try {
+      const row = await deleteSystemNote({ noteId, characterId: guard.characterId });
+      return row ? { status: 200, row } : { status: 404 };
+    } catch (err) {
+      if (err instanceof SystemNoteLockedError) return { status: 409 };
+      throw err;
+    }
+  }
+
+  async function noteGate(actor: bigint, noteId: bigint): Promise<number> {
+    const guard = await requireSystemNoteMutate(asSession(actor), noteId);
+    return guard.ok ? 200 : guard.status;
+  }
+
+  async function seedNote(
+    actor: bigint,
+    mapId: bigint,
+    systemId: number,
+    body: string,
+  ): Promise<ApSystemNote> {
+    const result = await createNoteAsRoute(actor, mapId, systemId, body);
+    expect(result.status).toBe(200);
+    return result.row!;
+  }
+
+  async function noteCount(systemId: number): Promise<number> {
+    const rows = (
+      await db.execute(
+        sql`SELECT count(*)::int AS count FROM ap_system_note WHERE system_id = ${systemId}`,
+      )
+    ).rows as Array<{ count: number }>;
+    return rows[0]!.count;
+  }
+
+  async function noteEventCount(noteId: bigint): Promise<number> {
+    const rows = (
+      await db.execute(
+        sql`SELECT count(*)::int AS count FROM ap_system_note_event WHERE note_id = ${noteId}`,
+      )
+    ).rows as Array<{ count: number }>;
+    return rows[0]!.count;
+  }
+
+  async function noteSnapshotOf(noteId: bigint) {
+    const [row] = await db
+      .select({
+        body: apSystemNote.body,
+        category: apSystemNote.category,
+        locked: apSystemNote.locked,
+        scope: apSystemNote.scope,
+        updatedAt: apSystemNote.updatedAt,
+      })
+      .from(apSystemNote)
+      .where(eq(apSystemNote.id, noteId));
+    return row ?? null;
+  }
+
+  async function noteRowExists(noteId: bigint): Promise<boolean> {
+    const [row] = await db
+      .select({ id: apSystemNote.id })
+      .from(apSystemNote)
+      .where(eq(apSystemNote.id, noteId));
+    return row !== undefined;
+  }
+
+  async function noteCleanup() {
+    await db
+      .delete(apSystemNoteEvent)
+      .where(inArray(apSystemNoteEvent.systemId, FIXTURE_SYSTEMS));
+    await db.delete(apSystemNote).where(inArray(apSystemNote.systemId, FIXTURE_SYSTEMS));
+    await db.delete(apMap).where(inArray(apMap.name, NOTE_MAP_NAMES));
+    await db.delete(apRole).where(eq(apRole.name, NOTE_GUEST_ROLE));
+    await db.delete(apCharacter).where(inArray(apCharacter.id, CHARACTER_IDS));
+    if (userId) {
+      await db.delete(apUser).where(eq(apUser.id, userId));
+      userId = 0;
+    }
+    await db.delete(universeSystem).where(inArray(universeSystem.id, FIXTURE_SYSTEMS));
+    await db.delete(universeConstellation).where(eq(universeConstellation.id, CONSTELLATION));
+    await db.delete(universeRegion).where(eq(universeRegion.id, REGION));
+    guestRoleId = 0n;
+    noteMapACorp = 0n;
+    noteMapAPrivate = 0n;
+    noteMapBCorp = 0n;
+    noteACorp = 0n;
+    noteAPrivate = 0n;
+    noteBCorp = 0n;
+    noteBLocked = 0n;
+  }
+});
+
+afterAll(async () => {
+  await pool.end();
+});
 
 // ─── route-shaped helpers ─────────────────────────────────────────────────────
 // Each mirrors its route's guard-then-mutate order, so removing a guard makes

@@ -195,6 +195,19 @@ export const roleSource = pgEnum('role_source', ['builtin', 'corp_title', 'exter
 export const structureEventKind = pgEnum('structure_event_kind', ['create', 'update', 'delete']);
 
 /**
+ * The mutation recorded in `ap_system_note_event` — the append-only
+ * accountability log for global system notes. A note is editable by people
+ * other than its creator, so every create/update/delete is stamped with the
+ * acting character. (Notes have no `map_id` and therefore cannot live in
+ * `ap_map_event`; this is their dedicated, single-source history.)
+ */
+export const systemNoteEventKind = pgEnum('system_note_event_kind', [
+  'create',
+  'update',
+  'delete',
+]);
+
+/**
  * Who may see a row of manual intel (`ap_structure.scope`). The row takes its
  * scope from the map it was written on, never from the writer's own affiliation:
  * a `private` map yields `private` (the writing character only), a `corp` map

@@ -3,6 +3,7 @@ import {
   bigint,
   check,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   smallint,
@@ -36,6 +37,13 @@ export const apInstance = pgTable(
     staleSignatureThresholdMinutes: integer('stale_signature_threshold_minutes')
       .notNull()
       .default(240),
+    // The system-note category vocabulary: `[{ key, color }, …]`, edited from
+    // the admin settings surface. NULL ⇒ the built-in default vocabulary
+    // (`DEFAULT_SYSTEM_NOTE_CATEGORIES`). Shape is validated at the app layer
+    // (`systemNoteCategoriesSchema`); `color` must be a chip-palette key.
+    systemNoteCategories: jsonb('system_note_categories').$type<
+      { key: string; color: string }[]
+    >(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check('ap_instance_singleton_chk', sql`${t.id} = 1`)],

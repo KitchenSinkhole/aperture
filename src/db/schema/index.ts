@@ -35,6 +35,8 @@ export * from './ap/alliance';
 export * from './ap/role';
 export * from './ap/structure';
 export * from './ap/structure_event';
+export * from './ap/system_note';
+export * from './ap/system_note_event';
 export * from './ap/integration_token';
 export * from './ap/character_presence';
 export * from './ap/map_share';

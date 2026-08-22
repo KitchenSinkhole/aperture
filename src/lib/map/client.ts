@@ -18,6 +18,7 @@ import type {
   StructureIntel,
   SubchainDeleteResult,
   SystemIntelSummary,
+  SystemNote,
   SystemSearchResult,
   SystemStatsSummary,
   TheraConnection,
@@ -530,16 +531,17 @@ export function resolveSignatureDestinationOnServer(args: {
 // Batched read-side per-system data backfill (live-added systems)
 // ---------------------------------------------------------------------------
 
-/** Wire shape of `GET /api/map/[mapId]/system-data` — `stats`/`structures` are sparse. */
+/** Wire shape of `GET /api/map/[mapId]/system-data` — `stats`/`structures`/`systemNotes` are sparse. */
 export type SystemDataBatch = {
   intel: Record<number, SystemIntelSummary>;
   stats: Record<number, SystemStatsSummary>;
   structures: Record<number, StructureIntel[]>;
+  systemNotes: Record<number, SystemNote[]>;
 };
 
 /**
  * Backfill read-side per-system data (sov / FW / incursion intel + 24h activity
- * stats + structure intel) for systems added after the initial server render.
+ * stats + structure intel + global system notes) for systems added after the initial server render.
  * Read-only (view rights) — returns a plain `FetchResult`, no `eventId`.
  * `MapCanvas` calls this when new system ids appear in `viewData` and merges the
  * result into its intel / stats / structures state, so decorators and sidebar
