@@ -96,7 +96,7 @@ export function BookmarkModule({ transit, signatures }: BookmarkModuleProps) {
               value={names.cameFrom}
             />
             {missingSig && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-destructive/70">
                 A signature on this hole hasn&apos;t been entered yet — scan it in Aperture for a
                 complete name.
               </p>
