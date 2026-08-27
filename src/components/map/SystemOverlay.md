@@ -8,9 +8,10 @@
 | Prop | Type | Required | Description |
 |---|---|---|---|
 | viewData | MapViewData | yes | The live map snapshot the canvas already maintains (systems + connections). Provides `map.id` used by the Ping and Rally API calls. |
+| fitOverflow | OverlayFitOverflow | yes | Instance-wide policy applied when a fit-columns-to-content of the pilot table is wider than the overlay window. |
 
 ### Renders
-A compact, low-chrome vertical panel tuned to be as tight as possible (it lives in a Document PiP window that steals screen space from the game client): a single class+tag+name header line, a self-excluding pilots table, and a connections list of thin rows. The section labels ("Pilots in system" / "Connections") are intentionally **omitted** — the colour mass dot on each connection row and a hairline top border are the only separators. No interactivity, no tooltips (synthetic events don't cross the PiP document).
+A compact, low-chrome vertical panel tuned to be as tight as possible (it lives in a Document PiP window that steals screen space from the game client): a single class+tag+name header line, a self-excluding pilots table, and a connections list of thin rows. The section labels ("Pilots in system" / "Connections") are intentionally **omitted** — the colour mass dot on each connection row and a hairline top border are the only separators. The connections list is inert; hints on the pilot table's controls are native `title` tooltips, since the popover-based ones don't cross the PiP document.
 
 ### Behaviour & Interactions
 - Reads `useMapActiveChar()` for `activeCharId` / `activeCharSystemId` and `usePresenceForSystem(activeCharSystemId)` for the in-system roster — so it re-renders live off the presence store's `characterUpdate` folding with no extra wiring.
@@ -19,7 +20,9 @@ A compact, low-chrome vertical panel tuned to be as tight as possible (it lives 
 - **Rally button** (right-aligned in header, next to Ping): toggles `ap_map_system.rally_at` via `updateSystemOnServer` — sets to the current ISO timestamp when unset, clears to null when already set. Border colour `#9036e4` matches `RALLY_UNDERGLOW.color`. Disabled when no node or request is in flight. **Easter egg:** shift-clicking while *setting* (not clearing) a rally point plays `/sounds/rally.mp3` via the Web Audio API.
 - **Off-map fallback:** when the active char's system has no placed node, the header falls back to a roster entry's `systemSecurity` / `systemTrueSec` / `systemName`; no tag, and the connections section is hidden.
 - **No located character** (`activeCharSystemId == null`): renders a neutral "No tracked character located" placeholder.
-- **Pilots:** roster filtered to `characterId !== activeCharId`; rendered as a compact `table-fixed` table (Pilot | Name | ship-class icon | Type, the icon column narrow and unlabelled under a "Type" header spanning both). Column headers are sortable (asc/desc toggle with chevron indicator); default sort is Type asc. Blank custom-ship-name values always sink to the bottom regardless of direction. Empty state: "Alone in system" text (no table rendered).
+- **Pilots:** roster filtered to `characterId !== activeCharId`; rendered as a compact `table-fixed` table (Pilot | Name | ship-class icon | Type, the icon column narrow, fixed-width and unlabelled under a "Type" header spanning both). Column headers are sortable (asc/desc toggle with chevron indicator); default sort is Type asc. Blank custom-ship-name values always sink to the bottom regardless of direction. Empty state: "Alone in system" text (no table rendered, so neither the resize handles nor the fit button are reachable).
+- **Column resizing:** the Pilot and Name headers each carry a drag handle straddling their right edge (pointer-capture drag, no floor breach, no encroaching on the room the icon column and a floor-width Type column need). Both widths are px and persist to localStorage ([[overlayColumnPrefs]]); Type takes whatever width is left, so a wider overlay window widens Type alone.
+- **Fit to content:** an icon button in the Type header sizes every column to its content. Natural widths are measured off a hidden auto-layout clone of the table, so the live table never leaves its fixed layout. A fit wider than the window is resolved by `fitOverflow` through `fitOverlayColumns` ([[overlayColumnFit]]); under `grow_window` the Document PiP window is widened by the overrun instead (`resizeTo` on the table's own `defaultView`, which needs the user activation the click supplies).
 - **Connections:** `viewData.connections` incident to the current node and `scope !== 'abyssal'`; each row is `[mass dot] [sig] [class] [tag] [far name] [badges] [EOL countdown]`. The mass dot is coloured by `connectionStyle(edge).stroke` (mass status for WH, scope colour otherwise); the **sig** is the 3-char `sigId` of the in-system signature that resolves to this connection (`viewData.signatures` filtered to `mapSystemId === node.id && mapConnectionId === edge.id` — the sig as seen on *this* scanner, not the far side; `.slice(0, 3)` defensively), muted/mono, between the dot and the class; the far-end node gives the class colour + tag/name; `connectionBadges` minus the EOL badge (STATIC / size); a live EOL countdown when `eolStage !== 'none'`. The section has a hairline top border instead of a label; no heading.
 
 ### Depends On
@@ -29,12 +32,15 @@ A compact, low-chrome vertical panel tuned to be as tight as possible (it lives 
 - `pingSystemOnServer`, `updateSystemOnServer` (`@/lib/map/client`) — Ping and Rally API calls
 - `UNDERGLOW_PRESETS`, `RALLY_UNDERGLOW` (`./underglowPresets`) — button border colours
 - `connectionTimeLeftMs` / `connectionExpiredSinceMs` (`@/lib/map/connectionState`), `formatRelativeFromMs` / `formatAgoFromMs` (`@/lib/map/relativeTime`) — the EOL countdown and expired-since label
+- `fitOverlayColumns` + the column floor/ceiling (`@/lib/map/overlayColumnFit`) — fit geometry and the overflow policies
+- `readOverlayColumnWidths` / `writeOverlayColumnWidths` (`@/lib/map/overlayColumnPrefs`) — remembered column widths
 - `cn` (`@/lib/utils`)
-- `ChevronDown`, `ChevronUp` from `lucide-react` — pilot table sort indicators
-- Types from `@/types`: `MapViewData`, `MapSystemNode`, `MapConnectionEdge`, `MapPresenceEntry`
+- `ChevronDown`, `ChevronUp`, `FoldHorizontal` from `lucide-react` — pilot table sort indicators and the fit-columns button
+- Types from `@/types`: `MapViewData`, `MapSystemNode`, `MapConnectionEdge`, `MapPresenceEntry`, `OverlayFitOverflow`
 
 ### Local State
 - `useEolCountdown(edge)` — per-connection-row hook ticking a `now` clock every 30s while the edge is EOL; returns a formatted "time left" string for `eol`/`critical`, an `"expired 3h ago"` elapsed string for the manual `expired` stage, or null.
 - `pinging: boolean` (Header) — true while a ping POST is in flight; disables the Ping button.
 - `togglingRally: boolean` (Header) — true while a rally PATCH is in flight; disables the Rally button.
 - `sort: PilotSort` (Pilots) — `{ key: PilotSortKey; dir: 'asc' | 'desc' }` tracking the active pilot table sort column and direction.
+- `widths: OverlayColumnWidths` (Pilots) — px widths of the Pilot and Name columns, seeded from localStorage and written back on drag end and on fit.

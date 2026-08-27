@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Session } from 'next-auth';
 import type {
   MapLayoutConfig,
+  OverlayFitOverflow,
   SignatureIndicatorAccountSettings,
   SignatureIndicatorPrefs,
 } from '@/types';
@@ -116,6 +117,19 @@ export async function getGlobalStaleThresholdMinutes(): Promise<number> {
     .from(apInstance)
     .where(eq(apInstance.id, 1));
   return row?.minutes ?? DEFAULT_STALE_THRESHOLD_MINUTES;
+}
+
+/**
+ * The instance-wide policy for the system overlay's fit-columns-to-content
+ * action when the fit is wider than the overlay window. Admin-set; there is no
+ * per-account override.
+ */
+export async function getOverlayFitOverflow(): Promise<OverlayFitOverflow> {
+  const [row] = await db
+    .select({ policy: apInstance.overlayFitOverflow })
+    .from(apInstance)
+    .where(eq(apInstance.id, 1));
+  return row?.policy ?? 'proportional';
 }
 
 /**

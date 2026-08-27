@@ -19,6 +19,7 @@
 | liveShares | LiveShareBadge[] | yes | Share links currently publishing this map (`loadLiveShareBadges`). Seeds the header `MapShareIndicator`, which every viewer sees regardless of capability. |
 | travelAnimation | boolean | yes | The viewer's per-account connection-travel-animation toggle. When true, mounts the `TravelBridge` that plays the moving-dot effect on pilot jumps. |
 | signatureIndicators | SignatureIndicatorPrefs | yes | The viewer's resolved stale/unscanned indicator prefs (effective threshold + the two toggles). Feeds `MapSignatureIndicatorProvider`. |
+| overlayFitOverflow | OverlayFitOverflow | yes | Instance-wide overlay fit-columns overflow policy. Passed straight through to `SystemOverlayButton`. |
 | viewerCharacterIds | number[] | yes | The viewer's account character ids; passed to `SignaturePasteHotkey` for the CTRL+V fast-paste location check. |
 | viewerCharacters | { id: number; name: string }[] | yes | The viewer's active characters (id + name); passed to `MapActiveCharProvider` to seed the active-character selector. |
 | mainCharacterId | number \| null | yes | The account's main character id (fallback when no character is explicitly picked), or null. |

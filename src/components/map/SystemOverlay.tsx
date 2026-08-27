@@ -1,21 +1,42 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMapActiveChar } from '@/components/map/MapActiveCharContext';
 import { usePresenceForSystem } from '@/components/map/MapPresenceContext';
 import { connectionBadges, connectionStyle, systemClassColor } from '@/components/map/styling';
 import { ShipClassIcon } from '@/components/icons/ShipClassIcon';
-import { ChevronDown, ChevronUp, Flag } from 'lucide-react';
+import { ChevronDown, ChevronUp, Flag, FoldHorizontal } from 'lucide-react';
+import {
+  fitOverlayColumns,
+  MAX_OVERLAY_COLUMN_PX,
+  MIN_OVERLAY_COLUMN_PX,
+  type OverlayColumnSizes,
+} from '@/lib/map/overlayColumnFit';
+import {
+  DEFAULT_OVERLAY_COLUMN_WIDTHS,
+  readOverlayColumnWidths,
+  writeOverlayColumnWidths,
+  type OverlayColumnWidths,
+} from '@/lib/map/overlayColumnPrefs';
 import { connectionExpiredSinceMs, connectionTimeLeftMs } from '@/lib/map/connectionState';
 import { formatAgoFromMs, formatRelativeFromMs } from '@/lib/map/relativeTime';
 import { pingSystemOnServer, updateSystemOnServer } from '@/lib/map/client';
 import { RALLY_UNDERGLOW, UNDERGLOW_PRESETS } from '@/components/map/underglowPresets';
 import { cn } from '@/lib/utils';
-import type { MapConnectionEdge, MapPresenceEntry, MapSystemNode, MapViewData } from '@/types';
+import type {
+  MapConnectionEdge,
+  MapPresenceEntry,
+  MapSystemNode,
+  MapViewData,
+  OverlayFitOverflow,
+} from '@/types';
 import { Button } from '../ui/button';
 
 // Re-tick the EOL countdown on the same cadence as the canvas edge label.
 const EOL_TICK_MS = 30_000;
+
+// The unlabelled ship-class icon column, the one pilot column that never resizes.
+const ICON_COLUMN_PX = 20;
 
 /** System class label: the `C<n>`/sec rating, falling back to trueSec then `?`. */
 function classLabel(security: string | null, trueSec: number | null): string {
@@ -109,13 +130,13 @@ function Header({
     }
 
     setTogglingRally(true);
-    
+
     await updateSystemOnServer({
       mapId,
       mapSystemId: node.id,
       patch: { rallyAt: isStartingRallyPoint ? new Date().toISOString() : null },
     });
-    
+
     setTogglingRally(false);
   }
 
@@ -156,8 +177,72 @@ function Header({
   );
 }
 
-function Pilots({ others }: { others: readonly MapPresenceEntry[] }) {
+const COLS: {
+  key: PilotSortKey;
+  label: string;
+  columnSpan?: number;
+  resize?: keyof OverlayColumnWidths;
+}[] = [
+  { key: 'name', label: 'Pilot', resize: 'pilot' },
+  { key: 'ship-name', label: 'Name', resize: 'name' },
+  { key: 'ship-type', label: 'Type', columnSpan: 2 },
+];
+
+/**
+ * Natural width of each pilot column, measured off a hidden auto-layout clone of
+ * the live table so the real one never flickers out of its fixed layout. The
+ * clone keeps the original's classes and so resolves against the same
+ * stylesheets, including inside the PiP document.
+ */
+function measureNaturalWidths(
+  table: HTMLTableElement,
+): { content: OverlayColumnSizes; fixed: number } | null {
+  const probe = table.cloneNode(true) as HTMLTableElement;
+  probe.querySelector('colgroup')?.remove();
+  probe.style.cssText =
+    'position:absolute;left:-9999px;top:0;visibility:hidden;width:max-content;table-layout:auto';
+  table.ownerDocument.body.appendChild(probe);
+  try {
+    const cells = probe.tBodies[0]?.rows[0]?.cells;
+    if (!cells || cells.length < 4) return null;
+    const widthOf = (index: number) => cells[index]!.getBoundingClientRect().width;
+    return {
+      content: { pilot: widthOf(0), name: widthOf(1), type: widthOf(3) },
+      fixed: widthOf(2),
+    };
+  } finally {
+    probe.remove();
+  }
+}
+
+/**
+ * Widen the Document PiP window `node` lives in by `growBy` px. A no-op when the
+ * overlay is not in a PiP window; `resizeTo` needs a user activation, which the
+ * click that reached here supplies.
+ */
+function growOverlayWindow(node: HTMLElement, growBy: number): void {
+  const win = node.ownerDocument.defaultView;
+  if (!win || win === window) return;
+  try {
+    win.resizeTo(Math.round(win.outerWidth + growBy), win.outerHeight);
+  } catch {
+    // NotAllowedError — the click carried no activation after all.
+  }
+}
+
+function Pilots({
+  others,
+  fitOverflow,
+}: {
+  others: readonly MapPresenceEntry[];
+  fitOverflow: OverlayFitOverflow;
+}) {
   const [sort, setSort] = useState<PilotSort>({ key: 'ship-type', dir: 'asc' });
+  const [widths, setWidths] = useState<OverlayColumnWidths>(
+    () => readOverlayColumnWidths() ?? DEFAULT_OVERLAY_COLUMN_WIDTHS,
+  );
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
 
   const onSort = (key: PilotSortKey) =>
     setSort((prev) =>
@@ -169,61 +254,133 @@ function Pilots({ others }: { others: readonly MapPresenceEntry[] }) {
     [others, sort],
   );
 
+  function startResize(key: keyof OverlayColumnWidths, e: React.PointerEvent<HTMLElement>) {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    const startX = e.clientX;
+    const startWidth = widths[key];
+    const other = key === 'pilot' ? widths.name : widths.pilot;
+    const available = wrapRef.current?.clientWidth ?? 0;
+    // Leave the icon column and a floor-width trailing column their room.
+    const max =
+      available > 0
+        ? Math.max(
+            MIN_OVERLAY_COLUMN_PX,
+            available - ICON_COLUMN_PX - other - MIN_OVERLAY_COLUMN_PX,
+          )
+        : MAX_OVERLAY_COLUMN_PX;
+
+    let next = startWidth;
+    const onMove = (ev: PointerEvent) => {
+      next = Math.round(
+        Math.min(Math.max(startWidth + ev.clientX - startX, MIN_OVERLAY_COLUMN_PX), max),
+      );
+      setWidths((w) => ({ ...w, [key]: next }));
+    };
+    const onEnd = () => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onEnd);
+      handle.removeEventListener('pointercancel', onEnd);
+      writeOverlayColumnWidths({ ...widths, [key]: next });
+    };
+    handle.setPointerCapture(e.pointerId);
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onEnd);
+    handle.addEventListener('pointercancel', onEnd);
+  }
+
+  function fitToContent() {
+    const table = tableRef.current;
+    const wrap = wrapRef.current;
+    if (!table || !wrap) return;
+    const measured = measureNaturalWidths(table);
+    if (!measured) return;
+
+    const { widths: fitted, growBy } = fitOverlayColumns({
+      ...measured,
+      available: wrap.clientWidth,
+      policy: fitOverflow,
+    });
+    const applied = { pilot: Math.round(fitted.pilot), name: Math.round(fitted.name) };
+    setWidths(applied);
+    writeOverlayColumnWidths(applied);
+    if (growBy > 0) growOverlayWindow(wrap, growBy);
+  }
+
   if (others.length === 0) {
     return <div className="text-[11px] italic text-muted-foreground">Alone in system</div>;
   }
 
-  const COLS: { key: PilotSortKey; label: string; columnSpan?: number }[] = [
-    { key: 'name', label: 'Pilot' },
-    { key: 'ship-name', label: 'Name' },
-    { key: 'ship-type', label: 'Type', columnSpan: 2 },
-  ];
-
   return (
-    <table className="w-full table-fixed text-xs">
-      <colgroup>
-        <col className="w-[38%]" />
-        <col className="w-[38%]" />
-        <col className="w-5" />
-        <col />
-      </colgroup>
-      <thead className="text-[10px] uppercase text-muted-foreground">
-        <tr>
-          {COLS.map(({ key, label, columnSpan }) => {
-            const active = sort.key === key;
-            return (
-              <th key={key} colSpan={columnSpan} className="pb-1 text-left font-medium">
-                <button
-                  type="button"
-                  onClick={() => onSort(key)}
-                  className="flex w-full items-center gap-1 transition-colors hover:text-foreground"
-                >
-                  {label}
-                  {active &&
-                    (sort.dir === 'asc' ? (
-                      <ChevronUp className="size-3" aria-hidden />
-                    ) : (
-                      <ChevronDown className="size-3" aria-hidden />
-                    ))}
-                </button>
-              </th>
-            );
-          })}
-        </tr>
-      </thead>
-      <tbody>
-        {sorted.map((p) => (
-          <tr key={p.characterId} className="border-t border-foreground/10">
-            <td className="truncate py-0.5 pr-1 text-muted-foreground">{p.characterName}</td>
-            <td className="truncate py-0.5 pr-1">{customShipName(p) || '—'}</td>
-            <td className="py-0.5 pr-1">
-              <ShipClassIcon shipClass={p.shipClass} />
-            </td>
-            <td className="truncate py-0.5 text-emerald-400">{p.shipTypeName ?? '—'}</td>
+    <div ref={wrapRef} className="w-full overflow-hidden">
+      <table ref={tableRef} className="w-full table-fixed text-xs">
+        <colgroup>
+          <col style={{ width: widths.pilot }} />
+          <col style={{ width: widths.name }} />
+          <col style={{ width: ICON_COLUMN_PX }} />
+          <col />
+        </colgroup>
+        <thead className="text-[10px] uppercase text-muted-foreground">
+          <tr>
+            {COLS.map(({ key, label, columnSpan, resize }) => {
+              const active = sort.key === key;
+              return (
+                <th key={key} colSpan={columnSpan} className="relative pb-1 text-left font-medium">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onSort(key)}
+                      className="flex min-w-0 flex-1 items-center gap-1 transition-colors hover:text-foreground"
+                    >
+                      <span className="truncate">{label}</span>
+                      {active &&
+                        (sort.dir === 'asc' ? (
+                          <ChevronUp className="size-3 shrink-0" aria-hidden />
+                        ) : (
+                          <ChevronDown className="size-3 shrink-0" aria-hidden />
+                        ))}
+                    </button>
+                    {!resize && (
+                      <button
+                        type="button"
+                        title="Fit columns to content"
+                        aria-label="Fit columns to content"
+                        onClick={fitToContent}
+                        className="shrink-0 transition-colors hover:text-foreground"
+                      >
+                        <FoldHorizontal className="size-3" aria-hidden />
+                      </button>
+                    )}
+                  </div>
+                  {resize && (
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`Resize ${label} column`}
+                      title="Drag to resize"
+                      onPointerDown={(e) => startResize(resize, e)}
+                      className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none"
+                    />
+                  )}
+                </th>
+              );
+            })}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {sorted.map((p) => (
+            <tr key={p.characterId} className="border-t border-foreground/10">
+              <td className="truncate py-0.5 pr-1 text-muted-foreground">{p.characterName}</td>
+              <td className="truncate py-0.5 pr-1">{customShipName(p) || '—'}</td>
+              <td className="py-0.5 pr-1">
+                <ShipClassIcon shipClass={p.shipClass} />
+              </td>
+              <td className="truncate py-0.5 text-emerald-400">{p.shipTypeName ?? '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -322,7 +479,13 @@ function Connections({ node, viewData }: { node: MapSystemNode; viewData: MapVie
  * already maintains, so it stays in sync with no extra data wiring. Must render
  * (via a PiP portal) inside `MapPresenceProvider` + `MapActiveCharProvider`.
  */
-export function SystemOverlay({ viewData }: { viewData: MapViewData }) {
+export function SystemOverlay({
+  viewData,
+  fitOverflow,
+}: {
+  viewData: MapViewData;
+  fitOverflow: OverlayFitOverflow;
+}) {
   const { activeCharId, activeCharSystemId } = useMapActiveChar();
   const roster = usePresenceForSystem(activeCharSystemId ?? -1);
 
@@ -343,7 +506,7 @@ export function SystemOverlay({ viewData }: { viewData: MapViewData }) {
   return (
     <div className="flex flex-col gap-2 p-2 text-sm">
       <Header node={node} fallback={fallback} mapId={viewData.map.id} />
-      <Pilots others={others} />
+      <Pilots others={others} fitOverflow={fitOverflow} />
       {node && <Connections node={node} viewData={viewData} />}
     </div>
   );

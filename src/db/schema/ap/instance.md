@@ -10,6 +10,7 @@
 - `id` — `smallint` PK, pinned to `1` by CHECK `ap_instance_singleton_chk` (`id = 1`).
 - `access_mode` — `access_mode` enum, required, default `restricted`. `restricted` gates login behind owner membership + the allowlist; `open` allows any EVE account to log in.
 - `stale_signature_threshold_minutes` (`staleSignatureThresholdMinutes`) — `integer NOT NULL DEFAULT 240` (migration `0035`). Global default for the stale-signature map indicator: a system whose newest signature is older than this (or a wormhole system with no signatures) is flagged. Admins edit it via `/admin/settings` (`adminSetStaleSignatureThreshold`); each account may override it to a *smaller* value on `ap_user.stale_signature_threshold_minutes`. Resolved per-user by `getSignatureIndicatorPrefs` (`session.ts`).
+- `overlay_fit_overflow` (`overlayFitOverflow`) — `overlay_fit_overflow` enum, required, default `proportional` (migration `0071`). Instance-wide policy for the system overlay's fit-columns-to-content action when the fitted widths exceed the overlay window. Admin-only via `/admin/settings` (`adminSetOverlayFitOverflow`); no per-account override. Read by `getOverlayFitOverflow` (`session.ts`).
 - `updated_at` — `timestamptz`, default `now()`.
 
 **Constraints:**
