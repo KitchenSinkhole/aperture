@@ -109,7 +109,9 @@ components or services. DB-derived types use Drizzle's `InferSelectModel` / `Inf
 
 ## Git workflow
 
-- Branch from `master`; one logical change per branch.
+- Branch from `dev`; one logical change per branch.
+- Open the PR against `dev`, never `master` — CI rejects any PR targeting `master`. `master` only
+  advances by merging `dev` into it at release time; see [docs/RELEASING.md](docs/RELEASING.md).
 - Keep PRs reviewable in a single sitting, with a green CI build (`pnpm typecheck`, `pnpm lint`,
   `pnpm test`) and companion `.md` updates alongside the code.
 - Don't force-push to `master`; don't skip CI hooks.
