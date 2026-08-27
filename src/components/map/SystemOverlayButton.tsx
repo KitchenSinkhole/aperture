@@ -48,7 +48,7 @@ export function SystemOverlayButton({ viewData }: { viewData: MapViewData }) {
         aria-pressed={isOpen}
         onClick={() => {
           if (isOpen) close();
-          else void open({ width: 260, height: 320 });
+          else void open();
         }}
       >
         <PictureInPicture2 />
