@@ -1,0 +1,42 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # PRs must target dev — guard-master.yml fails any PR against master whose
+    # head is not dev, and dependabot otherwise targets the default branch.
+    target-branch: dev
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # One PR per weekly batch of patch/minor bumps rather than fifteen.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Majors for the framework core land as deliberate, tested upgrades.
+      - dependency-name: next
+        update-types: [version-update:semver-major]
+      - dependency-name: react
+        update-types: [version-update:semver-major]
+      - dependency-name: react-dom
+        update-types: [version-update:semver-major]
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      - dependency-name: drizzle-orm
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    target-branch: dev
+    commit-message:
+      prefix: chore
+      include: scope
