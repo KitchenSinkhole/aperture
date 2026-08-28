@@ -31,6 +31,7 @@ import type {
   MapSignature,
   MapSystemNode,
   MapViewData,
+  OverlayFitOverflow,
   PanelGroup,
   PanelId,
   RouteDestinationView,
@@ -278,6 +279,7 @@ export function MapCanvas({
   liveShares: initialLiveShares,
   travelAnimation,
   signatureIndicators,
+  overlayFitOverflow,
   viewerCharacterIds,
   viewerCharacters,
   mainCharacterId,
@@ -314,6 +316,8 @@ export function MapCanvas({
   travelAnimation: boolean;
   /** Viewer's resolved stale/unscanned indicator prefs (threshold + toggles). */
   signatureIndicators: SignatureIndicatorPrefs;
+  /** Instance-wide policy for the system overlay's fit-columns-to-content action. */
+  overlayFitOverflow: OverlayFitOverflow;
   /** Viewer's account character ids — matched against presence for the CTRL+V fast-paste location check. */
   viewerCharacterIds: number[];
   /** Viewer's active characters (id + name) for the route planner's source picker. */
@@ -2198,7 +2202,7 @@ export function MapCanvas({
             <div className="flex shrink-0 items-center gap-1">
               <ActiveCharSelector />
               <PilotRosterButton viewData={viewData} />
-              <SystemOverlayButton viewData={viewData} />
+              <SystemOverlayButton viewData={viewData} overlayFitOverflow={overlayFitOverflow} />
               <Menu>
                 <MenuTrigger
                   render={

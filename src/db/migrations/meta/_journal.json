@@ -491,6 +491,20 @@
       "when": 1787213420021,
       "tag": "0070_intel_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1787865692501,
+      "tag": "0071_overlay_fit_overflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1787926375542,
+      "tag": "0072_overlay_fit_truncate_cascade",
+      "breakpoints": true
     }
   ]
 }

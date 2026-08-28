@@ -58,6 +58,7 @@ import type {
   mapCapability,
   mapRight,
   mapType,
+  overlayFitOverflow,
   roleSource,
   routeSafety,
   sharePresenceMode,
@@ -233,6 +234,7 @@ export type IntelScope = (typeof intelScope.enumValues)[number];
 export type MapCapability = (typeof mapCapability.enumValues)[number];
 export type MapRight = (typeof mapRight.enumValues)[number];
 export type MapType = (typeof mapType.enumValues)[number];
+export type OverlayFitOverflow = (typeof overlayFitOverflow.enumValues)[number];
 export type RoleSource = (typeof roleSource.enumValues)[number];
 export type RouteSafety = (typeof routeSafety.enumValues)[number];
 export type SharePresenceMode = (typeof sharePresenceMode.enumValues)[number];
