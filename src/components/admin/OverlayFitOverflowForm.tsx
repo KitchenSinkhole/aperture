@@ -8,6 +8,11 @@ import type { OverlayFitOverflow } from '@/types';
 
 const OPTIONS: { value: OverlayFitOverflow; label: string; hint: string }[] = [
   {
+    value: 'truncate_cascade',
+    label: 'Truncate Name first, then Pilot (default)',
+    hint: 'Name shrinks to its minimum before Pilot gives up anything, and Type only once both are at the floor.',
+  },
+  {
     value: 'proportional',
     label: 'Share it across all three columns',
     hint: 'Each column gives up part of the overrun in proportion to its own fitted width.',

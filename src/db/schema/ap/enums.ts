@@ -284,6 +284,10 @@ export const errorSource = pgEnum('error_source', ['server', 'job', 'client']);
  * - `eat_pilot` / `eat_name` / `eat_type` — the named column absorbs the whole
  *   overrun, the others keeping their fitted width. A column can never shrink
  *   below its floor, so any residue falls back to a proportional share.
+ * - `truncate_cascade` — the ship-name column absorbs the overrun down to its
+ *   floor, then the pilot-name column, then the type column.
+ *
+ * Appended rather than ordered, so adding a value never rewrites the ordinals.
  */
 export const overlayFitOverflow = pgEnum('overlay_fit_overflow', [
   'proportional',
@@ -291,4 +295,5 @@ export const overlayFitOverflow = pgEnum('overlay_fit_overflow', [
   'eat_pilot',
   'eat_name',
   'eat_type',
+  'truncate_cascade',
 ]);

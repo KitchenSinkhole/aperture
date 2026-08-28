@@ -129,7 +129,7 @@ export async function getOverlayFitOverflow(): Promise<OverlayFitOverflow> {
     .select({ policy: apInstance.overlayFitOverflow })
     .from(apInstance)
     .where(eq(apInstance.id, 1));
-  return row?.policy ?? 'proportional';
+  return row?.policy ?? 'truncate_cascade';
 }
 
 /**

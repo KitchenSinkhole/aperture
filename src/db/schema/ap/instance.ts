@@ -40,7 +40,7 @@ export const apInstance = pgTable(
     // wider than the overlay window. Admin-set; there is no per-account override.
     overlayFitOverflow: overlayFitOverflow('overlay_fit_overflow')
       .notNull()
-      .default('proportional'),
+      .default('truncate_cascade'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check('ap_instance_singleton_chk', sql`${t.id} = 1`)],

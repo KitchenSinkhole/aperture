@@ -10,7 +10,7 @@
 | initialPolicy | OverlayFitOverflow | yes | The stored `ap_instance.overlay_fit_overflow` value the radio group opens on |
 
 ### Renders
-A radio group of the five policies, each with a one-line explanation, above a Save button. Rendered inside the `/admin/settings` page's overlay section.
+A radio group of the six policies, each with a one-line explanation, above a Save button. The default policy leads the list. Rendered inside the `/admin/settings` page's overlay section.
 
 ### Behaviour & Interactions
 - Selection is local until Save; Save posts the whole policy through `adminSetOverlayFitOverflow` inside a transition, disabling every control while pending.

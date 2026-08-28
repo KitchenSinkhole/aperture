@@ -30,7 +30,7 @@ The account's `ap_user.map_layout` — the free-form map dashboard arrangement (
 The instance-wide default stale-signature threshold (`ap_instance.stale_signature_threshold_minutes`), defaulting to 240 (4h) when the singleton row is somehow missing. The cap for per-account overrides.
 
 ### getOverlayFitOverflow(): Promise<OverlayFitOverflow>
-The instance-wide policy for the system overlay's fit-columns-to-content action when the fit is wider than the overlay window (`ap_instance.overlay_fit_overflow`), defaulting to `proportional` when the singleton row is somehow missing. Admin-set, with no per-account override. Loaded in `map/[[...slug]]/page.tsx` and passed to `MapCanvas` → `SystemOverlayButton` → `SystemOverlay`.
+The instance-wide policy for the system overlay's fit-columns-to-content action when the fit is wider than the overlay window (`ap_instance.overlay_fit_overflow`), defaulting to `truncate_cascade` when the singleton row is somehow missing. Admin-set, with no per-account override. Loaded in `map/[[...slug]]/page.tsx` and passed to `MapCanvas` → `SystemOverlayButton` → `SystemOverlay`.
 
 ### getSignatureIndicatorPrefs(userId: number): Promise<SignatureIndicatorPrefs>
 The account's *resolved* signature-indicator prefs for client rendering: the effective `thresholdMinutes` (the `ap_user` override, capped to the global default — a defensive `Math.min` even though the write action already enforces it) plus `showStale` / `showUnscanned`. Loaded in `map/[[...slug]]/page.tsx`, passed to `MapCanvas` → `MapSignatureIndicatorContext`.
