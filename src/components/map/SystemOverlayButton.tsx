@@ -6,7 +6,7 @@ import { Tooltip } from '@base-ui/react/tooltip';
 import { Button } from '@/components/ui/button';
 import { SystemOverlay } from './SystemOverlay';
 import { useDocumentPip } from './useDocumentPip';
-import type { MapViewData } from '@/types';
+import type { MapViewData, OverlayFitOverflow } from '@/types';
 
 /**
  * Toolbar control that pops the read-only `SystemOverlay` into an always-on-top
@@ -16,7 +16,14 @@ import type { MapViewData } from '@/types';
  * against the same live state. On non-Chromium browsers the button is disabled
  * with an explanatory tooltip.
  */
-export function SystemOverlayButton({ viewData }: { viewData: MapViewData }) {
+export function SystemOverlayButton({
+  viewData,
+  overlayFitOverflow,
+}: {
+  viewData: MapViewData;
+  /** Instance-wide policy for the overlay's fit-columns-to-content action. */
+  overlayFitOverflow: OverlayFitOverflow;
+}) {
   const { pipWindow, isOpen, isSupported, open, close } = useDocumentPip();
 
   if (!isSupported) {
@@ -54,7 +61,11 @@ export function SystemOverlayButton({ viewData }: { viewData: MapViewData }) {
         <PictureInPicture2 />
         Overlay
       </Button>
-      {pipWindow && createPortal(<SystemOverlay viewData={viewData} />, pipWindow.document.body)}
+      {pipWindow &&
+        createPortal(
+          <SystemOverlay viewData={viewData} fitOverflow={overlayFitOverflow} />,
+          pipWindow.document.body,
+        )}
     </>
   );
 }

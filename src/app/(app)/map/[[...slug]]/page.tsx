@@ -15,6 +15,7 @@ import {
   getConnectionTravelAnimation,
   getMainCharacterId,
   getMapLayout,
+  getOverlayFitOverflow,
   getSignatureIndicatorPrefs,
   requireSession,
 } from '@/lib/session';
@@ -58,6 +59,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     settings,
     travelAnimation,
     signatureIndicators,
+    overlayFitOverflow,
     accountCharacters,
     mapLayout,
     routeConfig,
@@ -73,6 +75,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     loadMapSettings(BigInt(session.characterId), mapId),
     getConnectionTravelAnimation(session.userId),
     getSignatureIndicatorPrefs(session.userId),
+    getOverlayFitOverflow(),
     getAccountCharacters(session.userId),
     getMapLayout(session.userId),
     loadRouteConfig(session.userId),
@@ -111,6 +114,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
         liveShares={liveShares}
         travelAnimation={travelAnimation}
         signatureIndicators={signatureIndicators}
+        overlayFitOverflow={overlayFitOverflow}
         viewerCharacterIds={viewerCharacterIds}
         viewerCharacters={viewerCharacters}
         mainCharacterId={mainCharacterId == null ? null : Number(mainCharacterId)}

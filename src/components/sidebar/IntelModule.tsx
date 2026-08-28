@@ -1,6 +1,7 @@
 'use client';
 
-import { ExternalLink } from 'lucide-react';
+import { Copy, ExternalLink } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import type { MapSystemNode } from '@/lib/map/loadMap';
 import type { SystemIntelSummary } from '@/lib/map/intel';
@@ -34,13 +35,46 @@ export function IntelModule({
   );
 }
 
+function CopyValue({ value, label }: { value: string; label: string }) {
+  const copy = () => {
+    void navigator.clipboard.writeText(value).then(
+      () => toast.success(`${label} copied`),
+      () => toast.error(`Could not copy ${label.toLowerCase()}`),
+    );
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      aria-label={`Copy ${label.toLowerCase()}`}
+      className="shrink-0 text-muted-foreground/60 transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+    >
+      <Copy className="size-3" />
+    </button>
+  );
+}
+
 function SystemMeta({ system }: { system: MapSystemNode }) {
   return (
     <dl className="grid grid-cols-[3rem_1fr] gap-x-2 gap-y-1">
+      <dt className="text-muted-foreground">System</dt>
+      <dd className="flex min-w-0 items-center gap-1">
+        <span className="truncate">{system.name}</span>
+        <CopyValue value={system.name} label="System name" />
+        <span className="ml-2 shrink-0 font-mono text-muted-foreground">{system.systemId}</span>
+        <CopyValue value={String(system.systemId)} label="System ID" />
+      </dd>
       <dt className="text-muted-foreground">Region</dt>
-      <dd>{system.regionName}</dd>
+      <dd className="flex min-w-0 items-center gap-1">
+        <span className="truncate">{system.regionName}</span>
+        <CopyValue value={system.regionName} label="Region" />
+      </dd>
       <dt className="text-muted-foreground">Const.</dt>
-      <dd>{system.constellationName}</dd>
+      <dd className="flex min-w-0 items-center gap-1">
+        <span className="truncate">{system.constellationName}</span>
+        <CopyValue value={system.constellationName} label="Constellation" />
+      </dd>
       <dt className="text-muted-foreground">Security</dt>
       <dd>
         <SecurityValue system={system} />

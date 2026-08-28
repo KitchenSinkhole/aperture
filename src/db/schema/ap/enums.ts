@@ -156,10 +156,7 @@ export const signatureGroupKey = pgEnum('signature_group_key', [
  * `ap_map_signature.class_kind`. Nullable: paste-derived only, so legacy rows
  * and low-information manual rows have no known kind.
  */
-export const signatureClassKind = pgEnum('signature_class_kind', [
-  'signature',
-  'anomaly'
-]);
+export const signatureClassKind = pgEnum('signature_class_kind', ['signature', 'anomaly']);
 
 /**
  * Site-safety of a cosmic signature: whether running the site pits you against
@@ -169,10 +166,7 @@ export const signatureClassKind = pgEnum('signature_class_kind', [
  * Orthogonal to `signature_group_key`: a `relic` site can be a `combat`
  * activity, so this is its own type, not a group value.
  */
-export const signatureActivity = pgEnum('signature_activity', [
-  'combat',
-  'exploration'
-]);
+export const signatureActivity = pgEnum('signature_activity', ['combat', 'exploration']);
 
 /**
  * Where an `ap_role` row originates.
@@ -256,12 +250,7 @@ export const accessScope = pgEnum('access_scope', ['instance', 'map']);
  * `ALTER TYPE access_capability ADD VALUE`. The capability↔scope pairing is
  * enforced by a CHECK.
  */
-export const accessCapability = pgEnum('access_capability', [
-  'login',
-  'admin',
-  'view',
-  'edit',
-]);
+export const accessCapability = pgEnum('access_capability', ['login', 'admin', 'view', 'edit']);
 
 /**
  * Roster disclosure level for a public map share (`ap_map_share.presence_mode`).
@@ -285,3 +274,26 @@ export const errorLevel = pgEnum('error_level', ['warn', 'error', 'fatal']);
  * now to avoid a later `ALTER TYPE`).
  */
 export const errorSource = pgEnum('error_source', ['server', 'job', 'client']);
+
+/**
+ * How the system overlay's "fit columns to content" action resolves a fit that
+ * would be wider than the overlay window (`ap_instance.overlay_fit_overflow`).
+ * - `proportional` — every resizable column gives up a share of the overrun in
+ *   proportion to its own fitted width.
+ * - `grow_window` — the Document PiP window is widened by the overrun instead.
+ * - `eat_pilot` / `eat_name` / `eat_type` — the named column absorbs the whole
+ *   overrun, the others keeping their fitted width. A column can never shrink
+ *   below its floor, so any residue falls back to a proportional share.
+ * - `truncate_cascade` — the ship-name column absorbs the overrun down to its
+ *   floor, then the pilot-name column, then the type column.
+ *
+ * Appended rather than ordered, so adding a value never rewrites the ordinals.
+ */
+export const overlayFitOverflow = pgEnum('overlay_fit_overflow', [
+  'proportional',
+  'grow_window',
+  'eat_pilot',
+  'eat_name',
+  'eat_type',
+  'truncate_cascade',
+]);
