@@ -278,8 +278,13 @@ function Pilots({
     if (!node) return;
     const measure = () => setPool(Math.max(node.clientWidth - ICON_COLUMN_PX, 0));
     measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
+    // The observer has to be constructed from the overlay's own window. Resize
+    // observations are delivered per-document, so one built in the map window
+    // never fires for a node living in the PiP document, leaving the measured
+    // pool frozen at its mount value and the trailing column squeezed to nothing.
+    const view = node.ownerDocument.defaultView;
+    if (!view?.ResizeObserver) return;
+    const observer = new view.ResizeObserver(measure);
     observer.observe(node);
     observerRef.current = observer;
   }, []);
