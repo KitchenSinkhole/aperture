@@ -1,0 +1,24 @@
+# Review routing for release-critical paths.
+#
+# There is deliberately no global `*` rule — ordinary feature work does not
+# need to wait on one person. These are the files where a mistake is either
+# expensive to unwind (the release process, migrations) or changes how the
+# repository itself behaves (CI, rulesets, contributor docs).
+#
+# CODEOWNERS only *requests* a review. To make it blocking, tick
+# "Require review from Code Owners" in the `dev` ruleset.
+
+# Release process, versioning, and the changelog that feeds the GitHub release.
+/docs/RELEASING.md      @MonoliYoda
+/package.json           @MonoliYoda
+/CHANGELOG.md           @MonoliYoda
+
+# CI, templates, and anything else that changes repository behaviour.
+/.github/               @MonoliYoda
+
+# Migrations apply once and in order; a bad one is not a revert away.
+/src/db/migrations/     @MonoliYoda
+
+# The working agreements themselves.
+/CONTRIBUTING.md        @MonoliYoda
+/CLAUDE.md              @MonoliYoda
