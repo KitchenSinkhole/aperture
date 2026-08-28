@@ -60,6 +60,15 @@ describe('IntelModule', () => {
     expect(html).toContain('DOTLAN');
   });
 
+  it('renders the system name and EVE system id with copy controls', () => {
+    const html = renderToStaticMarkup(<IntelModule system={SYSTEM} intel={INTEL} />);
+    expect(html).toContain('Jita');
+    expect(html).toContain('30000142');
+    for (const label of ['system name', 'system id', 'region', 'constellation']) {
+      expect(html).toContain(`aria-label="Copy ${label}"`);
+    }
+  });
+
   it('renders empty state without a selected system', () => {
     const html = renderToStaticMarkup(<IntelModule system={null} intel={undefined} />);
     expect(html).toContain('Select a system to see intel.');
