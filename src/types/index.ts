@@ -501,6 +501,9 @@ export type {
 // Route module view-model (computed in src/lib/map/route.ts).
 export type { HubRoute } from '@/lib/map/route';
 
+// Bookmark-scheme contract + input (src/lib/bookmarking/types.ts).
+export type { BookmarkInput, BookmarkScheme } from '@/lib/bookmarking/types';
+
 // Read-side intel module view-models (computed in src/lib/map/intel.ts).
 export type {
   SovereigntyIntel,
@@ -709,7 +712,8 @@ export type PanelId =
   | 'systemGraph'
   | 'systemKillboard'
   | 'tags'
-  | 'thera';
+  | 'thera'
+  | 'bookmarks';
 
 /** Responsive breakpoint keys. Each holds an independent arrangement. */
 export type Breakpoint = 'lg' | 'md' | 'sm';

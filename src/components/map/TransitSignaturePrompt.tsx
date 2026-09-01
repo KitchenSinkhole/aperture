@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { fetchWormholeCatalog, type UpdateConnectionBody } from '@/lib/map/client';
 import type { WhJumpMass } from '@/lib/map/enumLabels';
+import { BUFFER_TTL_MS, resolveTransit } from '@/lib/map/transitResolve';
 import type { MapConnectionEdge, MapSignature, MapSystemNode } from '@/types';
 import { useTraversals } from './MapPresenceContext';
 
@@ -57,9 +58,6 @@ type PendingJump = {
   at: number;
 };
 
-/** How long a buffered jump waits for its `connection.create` before it's forgotten. */
-const BUFFER_TTL_MS = 3000;
-
 type ResolveResult =
   | { kind: 'open'; prompt: Prompt }
   | { kind: 'drop' }
@@ -77,18 +75,9 @@ function resolveJump(
   connections: MapConnectionEdge[],
   signatures: MapSignature[],
 ): ResolveResult {
-  const source = systems.find((s) => s.systemId === jump.fromSystemId);
-  const dest = systems.find((s) => s.systemId === jump.toSystemId);
-  if (!source || !dest) return { kind: 'pending' };
-  const incident = connections.filter(
-    (c) =>
-      (c.source === source.id && c.target === dest.id) ||
-      (c.source === dest.id && c.target === source.id),
-  );
-  // A gate jump (or any gate link between the two) is never a wormhole transit.
-  if (incident.some((c) => c.scope === 'stargate')) return { kind: 'drop' };
-  const wh = incident.find((c) => c.scope === 'wh');
-  if (!wh) return { kind: 'pending' };
+  const transit = resolveTransit(jump, systems, connections);
+  if (transit.kind !== 'resolved') return transit;
+  const { here: dest, cameFrom: source, connection: wh } = transit;
   // Hole is already mapped (a sig points at this connection) — nothing to ask.
   if (signatures.some((s) => s.mapConnectionId === wh.id)) return { kind: 'drop' };
   return {

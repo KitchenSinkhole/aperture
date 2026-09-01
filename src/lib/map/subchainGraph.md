@@ -1,6 +1,6 @@
 ## subchainGraph.ts
 
-**Purpose:** Pure, client+server-shared graph traversal that resolves which systems make up a "subchain" hanging off a head system, used by the delete-subchain feature.
+**Purpose:** Pure, client+server-shared graph traversal over a map's systems and connections — the subchain hanging off a head system, the set cut off from Home, hop distance from Home, and a system's direct neighbours.
 **File:** `src/lib/map/subchainGraph.ts`
 
 No `server-only` import: the client uses it to preview/highlight the doomed set; the server re-runs it authoritatively before deleting.
@@ -31,6 +31,18 @@ Returns every system in `args.systems` with no path back to `args.homeId` over t
 - `args.homeId` — the Home system; the reachability root, never in the result.
 
 **Returns:** Set of disconnected `ap_map_system.id`s (excludes `homeId`). Empty when `homeId` isn't in `systems`.
+
+---
+
+### hopsFromHome(args): Map<string, number>
+BFS hop distance from `args.homeId` to every reachable system, over the undirected graph built from `args.systems` + `args.connections`.
+
+**Parameters:**
+- `args.systems` — visible systems (`{ id }`, `ap_map_system.id` as a string). Defines the node set.
+- `args.connections` — edges (`{ source, target }`); treated as undirected, scope-agnostic.
+- `args.homeId` — the Home system; the BFS root. `null` when no Home is set.
+
+**Returns:** Map of `ap_map_system.id` to hop count, with the Home itself at `0`. A system with no path back to Home is absent from the map. Empty when `homeId` is `null` or isn't in `systems`.
 
 ---
 

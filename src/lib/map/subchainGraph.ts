@@ -1,7 +1,9 @@
 /**
- * Pure graph traversal for the "delete subchain" feature. No `server-only`
- * import — the same code runs on the client (to preview/highlight the doomed
- * set) and on the server (to recompute it authoritatively before deleting).
+ * Pure graph traversal over a map's systems and connections: the subchain
+ * hanging off a system, the set cut off from Home, hop distance from Home, and
+ * a system's direct neighbours. No `server-only` import — the same code runs on
+ * the client (to preview/highlight a doomed set, to answer distance questions
+ * for the UI) and on the server (to recompute a deletion authoritatively).
  *
  * A subchain is defined by a `head` (the system being deleted, plus its branch)
  * and an `anchor` (the keep-side root — the map's Home when one is set, else a
@@ -118,6 +120,41 @@ export function computeDisconnected(args: {
   const out = new Set<string>();
   for (const s of systems) {
     if (!fromHome.has(s.id)) out.add(s.id);
+  }
+  return out;
+}
+
+/**
+ * BFS hop distance from `homeId` to every reachable system, over the same
+ * undirected, scope-agnostic graph as `computeDisconnected`.
+ *
+ * Returns an empty map when `homeId` is `null` or isn't in `args.systems`. A
+ * system with no path back to Home is absent from the map — never inserted
+ * with a sentinel value.
+ */
+export function hopsFromHome(args: {
+  systems: readonly SystemRef[];
+  connections: readonly ConnectionRef[];
+  homeId: string | null;
+}): Map<string, number> {
+  const { systems, connections, homeId } = args;
+  const out = new Map<string, number>();
+  if (homeId === null) return out;
+
+  const adjacency = buildAdjacency(systems, connections);
+  if (!adjacency.has(homeId)) return out;
+
+  out.set(homeId, 0);
+  const queue: string[] = [homeId];
+  let head = 0;
+  while (head < queue.length) {
+    const cur = queue[head++]!;
+    const dist = out.get(cur)!;
+    for (const nb of adjacency.get(cur) ?? []) {
+      if (out.has(nb)) continue;
+      out.set(nb, dist + 1);
+      queue.push(nb);
+    }
   }
   return out;
 }
