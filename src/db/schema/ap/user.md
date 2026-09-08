@@ -20,6 +20,7 @@
   - `route_avoid_reduced` / `route_avoid_critical` (`routeAvoidReduced` / `routeAvoidCritical`) — `boolean NOT NULL DEFAULT false`. Drop reduced- / critical-mass wormholes from the routed graph.
   - `route_avoid_eol` (`routeAvoidEol`) — `boolean NOT NULL DEFAULT false`. Drop wormholes whose `eol_stage <> 'none'`.
   - `route_include_eve_scout` (`routeIncludeEveScout`) — `boolean NOT NULL DEFAULT false`. Fold the public EVE-Scout Thera/Turnur connections into the routed graph.
+- `route_settings_keep_open` (`routeSettingsKeepOpen`) — nullable `boolean` (migration `0073`). Personal override of `ap_instance.route_settings_keep_open`: whether the route-planner settings popover survives an outside press. NULL ⇒ inherit the instance default, so an admin changing that default reaches accounts that have never set it. Written by `setRouteSettingsKeepOpenAction` (`actions/routes.ts`), which stores NULL whenever the chosen value already matches the instance default.
 - `created_at` / `updated_at` — `timestamptz`, default `now()`.
 
 One user is created per newly-seen character. Additional characters are linked onto an existing user via the SSO tile grid / "add character" flow; `ap_character.user_id` FKs here.

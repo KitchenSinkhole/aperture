@@ -32,6 +32,12 @@ The instance-wide default stale-signature threshold (`ap_instance.stale_signatur
 ### getOverlayFitOverflow(): Promise<OverlayFitOverflow>
 The instance-wide policy for the system overlay's fit-columns-to-content action when the fit is wider than the overlay window (`ap_instance.overlay_fit_overflow`), defaulting to `truncate_cascade` when the singleton row is somehow missing. Admin-set, with no per-account override. Loaded in `map/[[...slug]]/page.tsx` and passed to `MapCanvas` → `SystemOverlayButton` → `SystemOverlay`.
 
+### getGlobalRouteSettingsKeepOpen(): Promise<boolean>
+The instance-wide default for whether the route planner's settings popover survives an outside press (`ap_instance.route_settings_keep_open`), defaulting to `false` when the singleton row is somehow missing.
+
+### getRouteSettingsKeepOpen(userId: number): Promise<RouteSettingsDismissPrefs>
+The account's resolved popover dismiss behaviour: `keepOpen` is the `ap_user` override, else the instance default. `instanceDefault` rides along so the pin control can clear the override back to inherit when the two agree. Loaded in `map/[[...slug]]/page.tsx`, passed to `MapCanvas` → `RoutePlannerModule`.
+
 ### getSignatureIndicatorPrefs(userId: number): Promise<SignatureIndicatorPrefs>
 The account's *resolved* signature-indicator prefs for client rendering: the effective `thresholdMinutes` (the `ap_user` override, capped to the global default — a defensive `Math.min` even though the write action already enforces it) plus `showStale` / `showUnscanned`. Loaded in `map/[[...slug]]/page.tsx`, passed to `MapCanvas` → `MapSignatureIndicatorContext`.
 

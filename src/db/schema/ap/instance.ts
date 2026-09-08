@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   check,
   integer,
   pgTable,
@@ -41,6 +42,10 @@ export const apInstance = pgTable(
     overlayFitOverflow: overlayFitOverflow('overlay_fit_overflow')
       .notNull()
       .default('truncate_cascade'),
+    // Global default for whether the route-planner settings popover survives an
+    // outside press. Admins set the default; each user may override it either way
+    // on `ap_user`.
+    routeSettingsKeepOpen: boolean('route_settings_keep_open').notNull().default(false),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check('ap_instance_singleton_chk', sql`${t.id} = 1`)],

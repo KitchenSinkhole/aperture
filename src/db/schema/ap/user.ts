@@ -42,6 +42,10 @@ export const apUser = pgTable('ap_user', {
   routeAvoidCritical: boolean('route_avoid_critical').notNull().default(false),
   routeAvoidEol: boolean('route_avoid_eol').notNull().default(false),
   routeIncludeEveScout: boolean('route_include_eve_scout').notNull().default(false),
+  // Personal override of `ap_instance.route_settings_keep_open` — whether the
+  // route-planner settings popover survives an outside press. NULL ⇒ inherit the
+  // instance default, so a later change to that default reaches this account.
+  routeSettingsKeepOpen: boolean('route_settings_keep_open'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
