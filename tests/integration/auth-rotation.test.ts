@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { db, pool } from '@/db/client';
 import { apCharacter, apUser } from '@/db/schema';
 import { decryptToken, encryptToken } from '@/lib/crypto';
-import { refreshAccessToken } from '@/lib/auth/eve-provider';
+import { refreshAccessToken, SsoRefreshError } from '@/lib/auth/eve-provider';
 import { __resetEveKeySetForTest, verifyEveAccessToken } from '@/lib/auth/jwks';
 
 const CHARACTER_ID = 90000001n;
@@ -92,6 +92,71 @@ describe('refresh-token rotation (real Postgres)', () => {
 
     await refreshAccessToken(CHARACTER_ID);
     expect(seen).toEqual([ROTATED_REFRESH]);
+  });
+
+  async function storedRefresh(): Promise<string> {
+    const [row] = await db
+      .select({ refresh: apCharacter.esiRefreshToken })
+      .from(apCharacter)
+      .where(eq(apCharacter.id, CHARACTER_ID));
+    return decryptToken(row!.refresh!);
+  }
+
+  it('classifies an invalid_grant rejection as a permanently dead refresh token', async () => {
+    const before = await storedRefresh();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: 'invalid_grant' }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          }),
+      ),
+    );
+
+    const err = await refreshAccessToken(CHARACTER_ID).catch((e) => e);
+    expect(err).toBeInstanceOf(SsoRefreshError);
+    expect((err as SsoRefreshError).permanent).toBe(true);
+    expect((err as SsoRefreshError).ssoError).toBe('invalid_grant');
+    expect((err as SsoRefreshError).status).toBe(400);
+    expect(await storedRefresh()).toBe(before);
+  });
+
+  it('classifies a 5xx from the token endpoint as transient', async () => {
+    const before = await storedRefresh();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('bad gateway', { status: 503 })));
+
+    const err = await refreshAccessToken(CHARACTER_ID).catch((e) => e);
+    expect(err).toBeInstanceOf(SsoRefreshError);
+    expect((err as SsoRefreshError).permanent).toBe(false);
+    expect((err as SsoRefreshError).status).toBe(503);
+    expect(await storedRefresh()).toBe(before);
+  });
+
+  it('classifies a network failure reaching the token endpoint as transient', async () => {
+    const before = await storedRefresh();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('fetch failed');
+      }),
+    );
+
+    const err = await refreshAccessToken(CHARACTER_ID).catch((e) => e);
+    expect(err).toBeInstanceOf(SsoRefreshError);
+    expect((err as SsoRefreshError).permanent).toBe(false);
+    expect(await storedRefresh()).toBe(before);
+  });
+
+  it('classifies a drifted token-response shape as transient', async () => {
+    const before = await storedRefresh();
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ access_token: NEW_ACCESS })));
+
+    const err = await refreshAccessToken(CHARACTER_ID).catch((e) => e);
+    expect(err).toBeInstanceOf(SsoRefreshError);
+    expect((err as SsoRefreshError).permanent).toBe(false);
+    expect(await storedRefresh()).toBe(before);
   });
 });
 
