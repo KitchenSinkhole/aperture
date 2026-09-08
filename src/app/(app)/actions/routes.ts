@@ -5,7 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db/client';
 import { apRouteDestination, apUser, universeSystem } from '@/db/schema';
-import { requireSession } from '@/lib/session';
+import { getGlobalRouteSettingsKeepOpen, requireSession } from '@/lib/session';
 import { routePrefsSchema } from '@/lib/map/routePrefs';
 import type { RouteDestinationView } from '@/types';
 
@@ -34,6 +34,29 @@ export async function setRoutePrefsAction(input: unknown): Promise<RouteActionRe
       routeAvoidCritical: p.avoidCritical,
       routeAvoidEol: p.avoidEol,
       routeIncludeEveScout: p.includeEveScout,
+      updatedAt: new Date(),
+    })
+    .where(eq(apUser.id, session.userId));
+  revalidatePath('/', 'layout');
+  return { ok: true };
+}
+
+const keepOpenSchema = z.boolean();
+
+/**
+ * Persist whether the settings popover survives an outside press for this
+ * account. A value matching the instance default is stored as NULL, so the
+ * account keeps inheriting a default an admin may later change.
+ */
+export async function setRouteSettingsKeepOpenAction(input: unknown): Promise<RouteActionResult> {
+  const session = await requireSession();
+  const parsed = keepOpenSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid popover setting.' };
+  const instanceDefault = await getGlobalRouteSettingsKeepOpen();
+  await db
+    .update(apUser)
+    .set({
+      routeSettingsKeepOpen: parsed.data === instanceDefault ? null : parsed.data,
       updatedAt: new Date(),
     })
     .where(eq(apUser.id, session.userId));

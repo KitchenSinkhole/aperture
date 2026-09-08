@@ -491,6 +491,13 @@
       "when": 1787213420021,
       "tag": "0070_intel_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1788866273908,
+      "tag": "0073_route_settings_keep_open",
+      "breakpoints": true
     }
   ]
 }

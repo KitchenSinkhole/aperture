@@ -10,6 +10,11 @@ Persists the account's route-planner settings to the `ap_user` route columns. `i
 
 ---
 
+### setRouteSettingsKeepOpenAction(input: unknown): Promise<RouteActionResult>
+Persists whether the route planner's settings popover survives an outside press, to `ap_user.route_settings_keep_open`. `input` must be a boolean; anything else returns `{ ok: false, error: 'Invalid popover setting.' }`. A value equal to the instance default (`getGlobalRouteSettingsKeepOpen`) is stored as `NULL`, so the account keeps inheriting a default an admin may later change. Revalidates the `/` layout. Returns `{ ok: true }`.
+
+---
+
 ### addRouteDestinationAction(input: unknown): Promise<RouteActionResult<RouteDestinationView>>
 Saves a destination for the account. Validates `{ systemId, label? }`, confirms `systemId` resolves to a `universe_system`, then upserts on the `(user_id, system_id)` unique key (a duplicate just re-labels — no error). Returns the destination joined to its system display fields (`RouteDestinationView`) so the panel folds it optimistically. `{ ok: false, error: 'No such system.' }` when the system id is unknown.
 

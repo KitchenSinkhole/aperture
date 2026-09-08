@@ -15,6 +15,7 @@ import {
   getConnectionTravelAnimation,
   getMainCharacterId,
   getMapLayout,
+  getRouteSettingsKeepOpen,
   getSignatureIndicatorPrefs,
   requireSession,
 } from '@/lib/session';
@@ -61,6 +62,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     accountCharacters,
     mapLayout,
     routeConfig,
+    routeSettingsDismiss,
     mainCharacterId,
     canManage,
     capabilities,
@@ -76,6 +78,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     getAccountCharacters(session.userId),
     getMapLayout(session.userId),
     loadRouteConfig(session.userId),
+    getRouteSettingsKeepOpen(session.userId),
     getMainCharacterId(session.userId),
     canManageMap(BigInt(session.characterId), mapId),
     resolveMapCapabilities(BigInt(session.characterId), mapId),
@@ -116,6 +119,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
         mainCharacterId={mainCharacterId == null ? null : Number(mainCharacterId)}
         routePrefs={routeConfig.prefs}
         routeDestinations={routeConfig.destinations}
+        routeSettingsDismiss={routeSettingsDismiss}
         mapLayout={mapLayout}
       />
     </>

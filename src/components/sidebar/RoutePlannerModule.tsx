@@ -11,11 +11,13 @@ import {
   useTransition,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, Copy, Loader2, Plus, Search, X } from 'lucide-react';
+import { ChevronRight, Copy, Loader2, Pin, Plus, Search, Settings2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tooltip } from '@base-ui/react/tooltip';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -37,6 +39,7 @@ import {
   addRouteDestinationAction,
   removeRouteDestinationAction,
   setRoutePrefsAction,
+  setRouteSettingsKeepOpenAction,
 } from '@/app/(app)/actions/routes';
 import { subscribeRouteDestinations } from '@/lib/map/routeDestinationBus';
 import type {
@@ -49,6 +52,7 @@ import type {
   RoutePlan,
   RoutePrefs,
   RouteSafety,
+  RouteSettingsDismissPrefs,
   SystemSearchResult,
   WhJumpMass,
 } from '@/types';
@@ -72,6 +76,47 @@ const SHIP_LABELS: Record<WhJumpMass, string> = {
   l: 'Large (L)',
   xl: 'X-Large (XL)',
 };
+/**
+ * One-line digest of the current settings for the collapsed settings button,
+ * split into the always-present base state and the situational flags so the two
+ * can be weighted differently. Only *enabled* flags contribute a token, so
+ * `flags` is empty in the common case.
+ *
+ * A flag's sign carries its polarity: the avoid toggles subtract wormholes from
+ * the routed graph, EVE-Scout adds connections to it. The signed form is for the
+ * width-constrained button face; `detail` spells the same flags as prose for the
+ * hover tooltip.
+ */
+function routeSettingsSummary(
+  source: RouteSource,
+  prefs: RoutePrefs,
+): { base: string; flags: string; detail: string } {
+  const base = [
+    source === 'character' ? 'Active character' : 'Selected system',
+    SAFETY_LABELS[prefs.safety],
+    prefs.minShipClass ? prefs.minShipClass.toUpperCase() : 'Any',
+  ];
+  const flags: string[] = [];
+  const detail: string[] = [];
+  if (prefs.avoidReduced) {
+    flags.push('−Reduced');
+    detail.push('Avoid reduced');
+  }
+  if (prefs.avoidCritical) {
+    flags.push('−Crit');
+    detail.push('Avoid critical');
+  }
+  if (prefs.avoidEol) {
+    flags.push('−EOL');
+    detail.push('Avoid EOL');
+  }
+  if (prefs.includeEveScout) {
+    flags.push('+ES');
+    detail.push('Via EVE-Scout');
+  }
+  return { base: base.join(' · '), flags: flags.join(' · '), detail: detail.join(', ') };
+}
+
 const COMPUTE_DEBOUNCE_MS = 300;
 const SEARCH_DEBOUNCE_MS = 200;
 const ROUTE_SOURCE_KEY = 'aperture:routes:source';
@@ -111,6 +156,7 @@ export function RoutePlannerModule({
   selectedSystemId,
   initialPrefs,
   initialDestinations,
+  initialDismiss,
   systems,
   connections,
   signatures,
@@ -119,6 +165,7 @@ export function RoutePlannerModule({
   selectedSystemId: number | null;
   initialPrefs: RoutePrefs;
   initialDestinations: RouteDestinationView[];
+  initialDismiss: RouteSettingsDismissPrefs;
   systems: MapSystemNode[];
   connections: MapConnectionEdge[];
   signatures: MapSignature[];
@@ -134,6 +181,7 @@ export function RoutePlannerModule({
   const [plans, setPlans] = useState<RoutePlan[]>([]);
   const [computing, setComputing] = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<ReadonlySet<number>>(() => new Set());
+  const [keepOpen, setKeepOpen] = useState(initialDismiss.keepOpen);
   const [, startPrefs] = useTransition();
 
   const routeSource = useSyncExternalStore(
@@ -229,6 +277,16 @@ export function RoutePlannerModule({
     [startPrefs],
   );
 
+  const toggleKeepOpen = useCallback(() => {
+    setKeepOpen((prev) => {
+      const next = !prev;
+      startPrefs(() => {
+        void setRouteSettingsKeepOpenAction(next);
+      });
+      return next;
+    });
+  }, [startPrefs]);
+
   const addDestination = useCallback(async (system: SystemSearchResult) => {
     const result = await addRouteDestinationAction({ systemId: system.id });
     if (!result.ok) return;
@@ -271,9 +329,132 @@ export function RoutePlannerModule({
   return (
     <Card size="sm">
       <CardContent className="flex flex-col gap-3 text-xs">
-        {/* Source + route settings. `@container` lets the three selects share one
-            row once the card is wide enough, and stack when it's narrow. */}
-        <div className="@container flex flex-col gap-2">
+        <RouteSettingsPopover
+          routeSource={routeSource}
+          setRouteSource={setRouteSource}
+          prefs={prefs}
+          updatePrefs={updatePrefs}
+          keepOpen={keepOpen}
+          onToggleKeepOpen={toggleKeepOpen}
+        />
+
+        {/* Fallback prompts when the chosen source has no system. They stay in
+            the panel body: they block every route, so hiding them behind the
+            settings button would leave the panel silently empty. */}
+        {routeSource === 'character' && activeCharSystemId === null && (
+          <div className="flex flex-col gap-1">
+            <span className="text-muted-foreground">
+              No tracked character is located. Pick a start system:
+            </span>
+            <SystemSearchField
+              mapId={mapId}
+              placeholder={manualSource ? manualSource.name : 'Start system…'}
+              onPick={(s) => setManualSource(s)}
+            />
+          </div>
+        )}
+        {routeSource === 'system' && selectedSystemId === null && (
+          <span className="text-muted-foreground">Select a system on the map.</span>
+        )}
+
+        {/* Destinations + routes */}
+        <div className="flex flex-col gap-2">
+          {destinations.length === 0 ? (
+            <p className="text-muted-foreground">Add a destination to plan a route.</p>
+          ) : (
+            destinations.map((dest) => (
+              <DestinationRow
+                key={dest.id}
+                dest={dest}
+                plan={planBySystem.get(dest.systemId)}
+                computing={computing}
+                sourceSystemId={sourceSystemId}
+                expanded={expandedSteps.has(dest.id)}
+                onToggle={() => toggleSteps(dest.id)}
+                onRemove={() => removeDestination(dest.id)}
+              />
+            ))
+          )}
+
+          <SystemSearchField
+            mapId={mapId}
+            placeholder="Add destination…"
+            icon="plus"
+            clearOnPick
+            onPick={addDestination}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RouteSettingsPopover({
+  routeSource,
+  setRouteSource,
+  prefs,
+  updatePrefs,
+  keepOpen,
+  onToggleKeepOpen,
+}: {
+  routeSource: RouteSource;
+  setRouteSource: (v: RouteSource) => void;
+  prefs: RoutePrefs;
+  updatePrefs: (patch: Partial<RoutePrefs>) => void;
+  keepOpen: boolean;
+  onToggleKeepOpen: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const { base, flags, detail } = routeSettingsSummary(routeSource, prefs);
+  const summary = detail ? `${base} · ${detail}` : base;
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen, details) => {
+        // Pinned: only the trigger closes it, so settings stay reachable while
+        // working the map underneath.
+        if (keepOpen && details.reason === 'outside-press') {
+          details.cancel();
+          return;
+        }
+        setOpen(nextOpen);
+      }}
+    >
+      <Tooltip.Root>
+        <Tooltip.Trigger
+          render={
+            <PopoverTrigger
+              render={
+                <Button variant="ghost" size="xs" className="w-full justify-start gap-1.5">
+                  <Settings2 />
+                  {/* `min-w-0` so the span may shrink below its content width — a
+                      flex item's `auto` minimum is the full string when nothing
+                      may wrap, which would push the digest past the panel
+                      instead of ellipsizing. */}
+                  <span className="min-w-0 truncate">
+                    {base}
+                    {flags && <span className="text-muted-foreground"> · {flags}</span>}
+                  </span>
+                </Button>
+              }
+            />
+          }
+        />
+        <Tooltip.Portal>
+          <Tooltip.Positioner sideOffset={4} side="top" align="start">
+            {/* Spelled out and wrapped at a readable size, so the settings are
+                legible on hover whether or not the button face truncated them. */}
+            <Tooltip.Popup className="z-50 max-w-[20rem] rounded-md border bg-popover px-2 py-1 text-sm text-popover-foreground shadow-md">
+              {summary}
+            </Tooltip.Popup>
+          </Tooltip.Positioner>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+      <PopoverContent className="w-[22rem] max-w-[calc(100vw-2rem)] p-3">
+        {/* `@container` lets the three selects share one row once the popover is
+            wide enough, and stack when it's narrow. */}
+        <div className="@container flex flex-col gap-2 text-xs">
           <div className="grid grid-cols-1 gap-2 @md:grid-cols-3">
             <label className="flex flex-col gap-1">
               <span className="text-muted-foreground">From</span>
@@ -335,81 +516,52 @@ export function RoutePlannerModule({
             </label>
           </div>
 
-          {/* Fallback prompts when the chosen source has no system */}
-          {routeSource === 'character' && activeCharSystemId === null && (
-            <div className="flex flex-col gap-1">
-              <span className="text-muted-foreground">
-                No tracked character is located. Pick a start system:
-              </span>
-              <SystemSearchField
-                mapId={mapId}
-                placeholder={manualSource ? manualSource.name : 'Start system…'}
-                onPick={(s) => setManualSource(s)}
-              />
+          <div className="flex flex-col gap-1.5 rounded-md bg-muted/30 p-2">
+            <div className="flex flex-wrap gap-1">
+              <ToggleChip
+                active={prefs.avoidReduced}
+                onClick={() => updatePrefs({ avoidReduced: !prefs.avoidReduced })}
+              >
+                Avoid reduced
+              </ToggleChip>
+              <ToggleChip
+                active={prefs.avoidCritical}
+                onClick={() => updatePrefs({ avoidCritical: !prefs.avoidCritical })}
+              >
+                Avoid critical
+              </ToggleChip>
+              <ToggleChip
+                active={prefs.avoidEol}
+                onClick={() => updatePrefs({ avoidEol: !prefs.avoidEol })}
+              >
+                Avoid EOL
+              </ToggleChip>
             </div>
-          )}
-          {routeSource === 'system' && selectedSystemId === null && (
-            <span className="text-muted-foreground">Select a system on the map.</span>
-          )}
-        </div>
+            {/* Ruled off from the Avoid chips above: those subtract wormholes
+                from the routed graph, this one adds connections to it. A rule
+                rather than a vertical divider, which strands a stray edge on the
+                chip when the row wraps in a narrow panel. */}
+            <div className="flex flex-wrap gap-1 border-t pt-1.5">
+              <ToggleChip
+                active={prefs.includeEveScout}
+                onClick={() => updatePrefs({ includeEveScout: !prefs.includeEveScout })}
+              >
+                Via EVE-Scout
+              </ToggleChip>
+            </div>
+          </div>
 
-        {/* Avoid toggles */}
-        <div className="flex flex-wrap gap-1 rounded-md bg-muted/30 p-2">
-            <ToggleChip
-              active={prefs.avoidReduced}
-              onClick={() => updatePrefs({ avoidReduced: !prefs.avoidReduced })}
-            >
-              Avoid reduced
+          <div className="flex justify-end border-t pt-2">
+            <ToggleChip active={keepOpen} onClick={onToggleKeepOpen}>
+              <span className="inline-flex items-center gap-1">
+                <Pin className="size-3" />
+                Keep open
+              </span>
             </ToggleChip>
-            <ToggleChip
-              active={prefs.avoidCritical}
-              onClick={() => updatePrefs({ avoidCritical: !prefs.avoidCritical })}
-            >
-              Avoid critical
-            </ToggleChip>
-            <ToggleChip
-              active={prefs.avoidEol}
-              onClick={() => updatePrefs({ avoidEol: !prefs.avoidEol })}
-            >
-              Avoid EOL
-            </ToggleChip>
-            <ToggleChip
-              active={prefs.includeEveScout}
-              onClick={() => updatePrefs({ includeEveScout: !prefs.includeEveScout })}
-            >
-              EVE-Scout
-            </ToggleChip>
+          </div>
         </div>
-
-        {/* Destinations + routes */}
-        <div className="flex flex-col gap-2">
-          {destinations.length === 0 ? (
-            <p className="text-muted-foreground">Add a destination to plan a route.</p>
-          ) : (
-            destinations.map((dest) => (
-              <DestinationRow
-                key={dest.id}
-                dest={dest}
-                plan={planBySystem.get(dest.systemId)}
-                computing={computing}
-                sourceSystemId={sourceSystemId}
-                expanded={expandedSteps.has(dest.id)}
-                onToggle={() => toggleSteps(dest.id)}
-                onRemove={() => removeDestination(dest.id)}
-              />
-            ))
-          )}
-
-          <SystemSearchField
-            mapId={mapId}
-            placeholder="Add destination…"
-            icon="plus"
-            clearOnPick
-            onPick={addDestination}
-          />
-        </div>
-      </CardContent>
-    </Card>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -600,7 +752,7 @@ function ToggleChip({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors ${
+      className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 ${
         active
           ? 'border-primary/40 bg-primary/15 text-foreground'
           : 'border-border bg-transparent text-muted-foreground hover:bg-muted/40'

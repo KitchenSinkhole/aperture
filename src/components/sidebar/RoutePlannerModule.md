@@ -11,14 +11,17 @@
 | selectedSystemId | number \| null | yes | The currently selected system on the map (EVE system ID), or null if no selection. |
 | initialPrefs | RoutePrefs | yes | Server-loaded route settings; seeds local state. |
 | initialDestinations | RouteDestinationView[] | yes | Server-loaded saved destinations; seeds local list. |
+| initialDismiss | RouteSettingsDismissPrefs | yes | Resolved settings-popover dismiss behaviour plus the instance default behind it. |
 | systems | MapSystemNode[] | yes | The map's live systems; drives recompute when a per-system tag changes. |
 | connections | MapConnectionEdge[] | yes | The map's live connections; drives recompute when the chain changes. |
 | signatures | MapSignature[] | yes | The map's live signatures; drives recompute when a connection-bound sig changes. |
 
 ### Renders
-A `Card` ("Routes") with: a **controls row** with a **From** label and two toggle chips ("Active character" / "Selected system"), **Safety** select, and **Min ship** select — in a `@container` grid that stacks (1 col) when the card is narrow and spreads to one row (3 cols) at `@md`; optional **fallback prompts** when the chosen source has no system (character mode, no located chars → system search field; system mode, no selected system → "Select a system on the map"); an Avoid-reduced / Avoid-critical / Avoid-EOL / EVE-Scout toggle-chip box; and the destination list — each row a name + `Nj` jump count, a remove (✕), a breadcrumb of per-hop **markers** — **circles** for wormhole (J-space) systems, **squares** for everything else (fill = system colour — K-space by its fine-grained security-status gradient, wormhole/Pochven/Abyssal by class colour) — and below it a **step disclosure** (`N steps`, chevron) that expands into a numbered list of navigational instructions for the route, alongside a **Copy** button. Each marker shows the system's `[tag]` (when set) + name + via label in a hover/focus `Tooltip` (base-ui). An inline "Add destination…" typeahead at the bottom.
+A `Card` ("Routes") with: a full-width ghost **settings button** carrying a gear icon and a one-line digest of the current settings (the source named in full — "Active character" / "Selected system" — then safety, min ship, and a signed token per enabled flag: `−` for the avoid toggles, which subtract wormholes from the routed graph, `+` for EVE-Scout, which adds connections to it; the hover tooltip spells the same flags as prose), truncated when the panel is narrow; optional **fallback prompts** when the chosen source has no system (character mode, no located chars → system search field; system mode, no selected system → "Select a system on the map"); and the destination list — each row a name + `Nj` jump count, a remove (✕), a breadcrumb of per-hop **markers** — **circles** for wormhole (J-space) systems, **squares** for everything else (fill = system colour — K-space by its fine-grained security-status gradient, wormhole/Pochven/Abyssal by class colour) — and below it a **step disclosure** (`N steps`, chevron) that expands into a numbered list of navigational instructions for the route, alongside a **Copy** button. Each marker shows the system's `[tag]` (when set) + name + via label in a hover/focus `Tooltip` (base-ui). An inline "Add destination…" typeahead at the bottom.
 
 ### Behaviour & Interactions
+- **Settings popover** — the settings button opens a `Popover` holding the **From** toggle chips ("Active character" / "Selected system"), the **Safety** and **Min ship** selects (a `@container` grid: 1 col when narrow, 3 cols at `@md`), the toggle-chip box holding Avoid-reduced / Avoid-critical / Avoid-EOL, then a divider and Via-EVE-Scout (the three subtract from the routed graph, the fourth adds to it), and a **Keep open** pin chip. It is portalled to `document.body`, so the enclosing `Card`'s `overflow-hidden` doesn't clip it.
+- **Popover dismiss** — an outside press closes the popover unless the account's resolved `keepOpen` is set, in which case the dismiss is cancelled and only the trigger closes it. The pin chip writes through `setRouteSettingsKeepOpenAction`, which stores `NULL` whenever the chosen value matches the instance default, leaving the account inheriting that default.
 - **Route source persistence** — choice between "Active character" and "Selected system" is persisted to `localStorage` under key `aperture:routes:source`; survives tab refresh.
 - **Character mode source** — reads `activeCharSystemId` from `useMapActiveChar()` context; when it changes (character jumps), route recomputes without UI flicker. Fallback: when no character is located, show a `SystemSearchField` to manually pick a start system (stored in `manualSource` state); this fallback is independent of "Selected system" mode.
 - **System mode source** — uses the `selectedSystemId` prop (the map's primary selection, updated every render when the user clicks a system).
@@ -31,7 +34,7 @@ A `Card` ("Routes") with: a **controls row** with a **From** label and two toggl
 - `SystemSearchField` (inline) reuses `searchSystemsOnServer` (the map `system-search` endpoint) for both the manual-source fallback and add-destination typeaheads. Its result list (`SearchResults`) is **portalled to `document.body`** and pinned under the input via the input's `getBoundingClientRect()` (re-measured on capture-phase scroll + resize) — the enclosing `Card` is `overflow-hidden`, which would otherwise clip an absolutely-positioned dropdown at the card edge.
 
 ### Emits / Calls
-- `setRoutePrefsAction`, `addRouteDestinationAction`, `removeRouteDestinationAction` (`@/app/(app)/actions/routes`)
+- `setRoutePrefsAction`, `setRouteSettingsKeepOpenAction`, `addRouteDestinationAction`, `removeRouteDestinationAction` (`@/app/(app)/actions/routes`)
 - `subscribeRouteDestinations` (`@/lib/map/routeDestinationBus`) — folds context-menu "Add to routes" additions
 - `requestJson('POST', /api/map/<id>/route-plan)` → `RoutePlan[]`
 - `useMapActiveChar()` — reads `activeCharSystemId` (the active character's current location from presence data)
@@ -46,3 +49,4 @@ A `Card` ("Routes") with: a **controls row** with a **From** label and two toggl
 - `plans: RoutePlan[]`, `computing: boolean` — computed routes from source to each destination
 - `computeSeq: number` (ref) — sequence counter for deduping old async responses
 - `expandedSteps: ReadonlySet<number>` — destination ids whose instruction list is expanded
+- `keepOpen: boolean` — seeded from `initialDismiss`; whether an outside press leaves the settings popover open
