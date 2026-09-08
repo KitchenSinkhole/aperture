@@ -16,6 +16,7 @@ import {
   EsiDowntimeError,
   EsiHttpError,
   EsiTokenError,
+  EsiTokenTransientError,
 } from '@/lib/esi/client';
 import {
   allianceSchema,
@@ -82,7 +83,7 @@ export interface SyncCharacterAuthzResult {
   /** `true` when ESI was reachable and the DB was updated. */
   applied: boolean;
   /** Reason the sync was skipped (when `applied === false`). */
-  skipped?: 'esi-breaker' | 'esi-downtime' | 'esi-http' | 'no-token';
+  skipped?: 'esi-breaker' | 'esi-downtime' | 'esi-http' | 'no-token' | 'token-refresh';
 }
 
 export async function syncCharacterAuthz(
@@ -134,6 +135,9 @@ export async function syncCharacterAuthz(
     }
     if (err instanceof EsiTokenError) {
       return emptyResult({ skipped: 'no-token' });
+    }
+    if (err instanceof EsiTokenTransientError) {
+      return emptyResult({ skipped: 'token-refresh' });
     }
     if (err instanceof EsiHttpError) {
       return emptyResult({ skipped: 'esi-http' });
