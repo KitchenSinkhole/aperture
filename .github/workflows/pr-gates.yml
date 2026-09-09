@@ -1,0 +1,64 @@
+name: PR gates
+
+# Mechanical backstop for AGENTS.md's scope rule — catches an AI-authored PR
+# that drifted wide before a human has to say so.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  diff-size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail if diff exceeds size limit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          CHANGED=$(git diff --shortstat "$BASE_SHA" "$HEAD_SHA" | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
+          echo "Changed lines: $CHANGED"
+          if [ "$CHANGED" -gt 400 ]; then
+            echo "::error::Diff is $CHANGED lines, over the 400-line guideline. See AGENTS.md — split this into smaller PRs, one per issue."
+            exit 1
+          fi
+
+  lockfile-touch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Flag dependency changes for manual approval
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -qE '^(pnpm-lock\.yaml|package\.json)$'; then
+            echo "::error::This PR changes dependencies (package.json / pnpm-lock.yaml). Needs maintainer approval — do not auto-merge."
+            exit 1
+          fi
+
+  scope-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Warn on files outside typical single-issue scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          COUNT=$(echo "$FILES" | grep -c . || true)
+          echo "$FILES"
+          if [ "$COUNT" -gt 15 ]; then
+            echo "::warning::PR touches $COUNT files. Confirm this matches the linked issue's declared scope — AGENTS.md says no drive-by refactors."
+          fi

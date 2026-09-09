@@ -1,0 +1,39 @@
+name: Project status sync
+
+# No built-in Projects workflow can read a PR's base branch. This fills the
+# two gaps: PR opened against dev (non-draft) -> "In Review"; PR merged into
+# dev -> "In Dev". Uses pull_request_target so the org PROJECT_AUTOMATION_TOKEN
+# is available even on PRs from forks; only PR metadata is read, no PR code
+# is executed.
+
+on:
+  pull_request_target:
+    types: [opened, ready_for_review, converted_to_draft, closed]
+
+jobs:
+  sync:
+    if: github.event.pull_request.base.ref == 'dev'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine target status
+        id: status
+        run: |
+          if [ "${{ github.event.action }}" = "closed" ] && [ "${{ github.event.pull_request.merged }}" = "true" ]; then
+            echo "name=In Dev" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.action }}" = "closed" ]; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.pull_request.draft }}" = "true" ]; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=In Review" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Move linked issues
+        if: steps.status.outputs.skip != '1'
+        run: bash .github/scripts/set-linked-issue-status.sh "${{ steps.status.outputs.name }}"
