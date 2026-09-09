@@ -24,7 +24,10 @@ vi.mock('@/lib/crypto', () => ({
 // The forced-refresh-on-401 path delegates to the provider; mock it so the
 // client tests stay DB-free and deterministic. Returns a fresh plaintext token.
 const { refreshMock } = vi.hoisted(() => ({ refreshMock: vi.fn() }));
-vi.mock('@/lib/auth/eve-provider', () => ({ refreshAccessToken: refreshMock }));
+vi.mock('@/lib/auth/eve-provider', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth/eve-provider')>()),
+  refreshAccessToken: refreshMock,
+}));
 
 import {
   esiCall,
@@ -34,7 +37,9 @@ import {
   EsiHttpError,
   EsiRateLimitError,
   EsiTokenError,
+  EsiTokenTransientError,
 } from '@/lib/esi/client';
+import { SsoRefreshError } from '@/lib/auth/eve-provider';
 import { statusSchema } from '@/lib/esi/decoders';
 import { __resetBreakersForTest, breakerState } from '@/lib/esi/breaker';
 import { resolveRoute, __resetRouteIndexForTest } from '@/lib/esi/routes';
@@ -249,13 +254,52 @@ describe('esiCall — 401 force-refresh + retry', () => {
     expect(breakerState(ONLINE_OP)).toBe('closed'); // breaker untouched
   });
 
-  it('surfaces EsiTokenError when the forced refresh itself fails (dead refresh token)', async () => {
+  it('surfaces EsiTokenError when SSO rejects the refresh token (dead refresh token)', async () => {
     freshTokenRow();
-    refreshMock.mockRejectedValue(new Error('EVE SSO token refresh failed: 400'));
+    refreshMock.mockRejectedValue(
+      new SsoRefreshError('EVE SSO token refresh failed: 400', true, 400, 'invalid_grant'),
+    );
     vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 401 })));
 
     const err = await callOnline().catch((e) => e);
     expect(err).toBeInstanceOf(EsiTokenError);
     expect(breakerState(ONLINE_OP)).toBe('closed');
+  });
+
+  it('surfaces EsiTokenTransientError when the SSO endpoint fails the refresh', async () => {
+    freshTokenRow();
+    refreshMock.mockRejectedValue(
+      new SsoRefreshError('EVE SSO token refresh failed: 503', false, 503),
+    );
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 401 })));
+
+    const err = await callOnline().catch((e) => e);
+    expect(err).toBeInstanceOf(EsiTokenTransientError);
+    expect(err).not.toBeInstanceOf(EsiTokenError);
+    expect(breakerState(ONLINE_OP)).toBe('closed');
+  });
+
+  it('treats an unclassified refresh failure as transient, not token loss', async () => {
+    freshTokenRow();
+    refreshMock.mockRejectedValue(new Error('socket hang up'));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 401 })));
+
+    const err = await callOnline().catch((e) => e);
+    expect(err).toBeInstanceOf(EsiTokenTransientError);
+  });
+
+  it('classifies a stale-token refresh failure on the expiry-buffer path too', async () => {
+    // No 401 involved: the stored token is inside the refresh buffer, so the
+    // proactive refresh runs before the request leaves.
+    tokenRow.value = { accessToken: 'blob', expires: new Date(Date.now() + 1000) };
+    refreshMock.mockRejectedValue(
+      new SsoRefreshError('EVE SSO token refresh unreachable', false),
+    );
+    const fetchMock = vi.fn(async () => statusResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const err = await callOnline().catch((e) => e);
+    expect(err).toBeInstanceOf(EsiTokenTransientError);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
