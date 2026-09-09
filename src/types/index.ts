@@ -870,6 +870,8 @@ export type PublicWsUpgradeOutcome = 'accepted' | 'rate_limited' | 'unauthorized
 export type TokenRefreshOutcome =
   | 'success'
   | 'missing_token'
+  | 'invalid_grant'
+  | 'network_error'
   | 'http_error'
   | 'invalid_response';
 

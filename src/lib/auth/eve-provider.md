@@ -19,9 +19,16 @@ Refreshes a character's ESI access token via CCP's `/v2/oauth/token` (`grant_typ
 
 **Returns:** the freshly-issued access token (plaintext, for immediate use by the caller).
 
-**Throws:** if no refresh token is stored, the HTTP call fails, or the response shape drifts. A throw rolls back the transaction (and releases the lock).
+**Throws:** `SsoRefreshError` if no refresh token is stored, the HTTP call fails or is unreachable, or the response shape drifts. A throw rolls back the transaction (and releases the lock).
 
-**Metrics:** records `esi_token_refresh_total{outcome}` — `missing_token` / `http_error` / `invalid_response` inline at each failure site (before the throw, inside the transaction), `success` only after the transaction commits. No `character_id` label (unbounded).
+**Metrics:** records `esi_token_refresh_total{outcome}` — `missing_token` / `invalid_grant` / `network_error` / `http_error` / `invalid_response` inline at each failure site (before the throw, inside the transaction), `success` only after the transaction commits. No `character_id` label (unbounded).
+
+---
+
+### class SsoRefreshError extends Error
+A failed refresh-token exchange. Carries `permanent` — whether SSO *affirmatively rejected* the refresh token — plus the HTTP `status` and the OAuth2 `ssoError` code when the response had one.
+
+`permanent` is true only for an `invalid_grant` error body and for a character with no stored refresh token. Every other failure (thrown fetch, timeout, 429, 5xx, rejected client credential, drifted response body) is `permanent: false`: the endpoint failed to answer while the refresh token is still valid. Callers distinguishing the two must treat anything unclassified as transient — a character that keeps retrying is recoverable, one whose state has been deleted is not.
 
 ---
 

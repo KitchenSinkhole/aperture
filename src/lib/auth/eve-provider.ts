@@ -17,6 +17,20 @@ function basicAuthHeader(): string {
   return `Basic ${Buffer.from(`${env.AUTH_EVE_CLIENT_ID}:${env.AUTH_EVE_CLIENT_SECRET}`).toString('base64')}`;
 }
 
+/** The OAuth2 error code from a token-endpoint error body, when it has one. */
+function parseSsoError(body: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+      const code = (parsed as { error: unknown }).error;
+      return typeof code === 'string' ? code : undefined;
+    }
+  } catch {
+    // Not JSON — an HTML error page or a proxy's plain-text 502.
+  }
+  return undefined;
+}
+
 // CCP's /v2/oauth/token response. Decoded with Zod so SSO drift is a hard error.
 const tokenResponseSchema = z.object({
   access_token: z.string().min(1),
@@ -25,6 +39,29 @@ const tokenResponseSchema = z.object({
 });
 
 export type EveProfile = EveAccessTokenClaims;
+
+/**
+ * A failed refresh-token exchange, carrying whether SSO *affirmatively rejected*
+ * the refresh token (`permanent`) or merely failed to answer.
+ *
+ * Only `permanent` means the token is dead. Everything else — a thrown fetch, a
+ * 5xx, a 429, even a 401 on the client credentials — is an outage, and callers
+ * must keep the character's state intact and retry later. Unclassified failures
+ * default to transient: a character that keeps backing off is recoverable, one
+ * whose tracking has been deleted is not.
+ */
+export class SsoRefreshError extends Error {
+  constructor(
+    message: string,
+    public readonly permanent: boolean,
+    public readonly status?: number,
+    public readonly ssoError?: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = 'SsoRefreshError';
+  }
+}
 
 /**
  * Auth.js v5 custom EVE SSO provider. EVE issues a JWT access token and has no
@@ -104,29 +141,58 @@ export async function refreshAccessToken(characterId: bigint): Promise<string> {
       .where(eq(apCharacter.id, characterId));
     if (!row?.esiRefreshToken) {
       recordTokenRefresh('missing_token');
-      throw new Error(`No stored refresh token for character ${characterId}`);
+      throw new SsoRefreshError(`No stored refresh token for character ${characterId}`, true);
     }
     const refreshToken = decryptToken(row.esiRefreshToken);
 
-    const res = await fetch(tokenUrl(), {
-      method: 'POST',
-      headers: {
-        Authorization: basicAuthHeader(),
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Host: new URL(ssoBase()).host,
-      },
-      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
-    });
+    let res: Response;
+    try {
+      res = await fetch(tokenUrl(), {
+        method: 'POST',
+        headers: {
+          Authorization: basicAuthHeader(),
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Host: new URL(ssoBase()).host,
+        },
+        body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
+      });
+    } catch (err) {
+      recordTokenRefresh('network_error');
+      throw new SsoRefreshError(
+        `EVE SSO token refresh unreachable for character ${characterId}`,
+        false,
+        undefined,
+        undefined,
+        { cause: err },
+      );
+    }
     if (!res.ok) {
-      recordTokenRefresh('http_error');
-      throw new Error(`EVE SSO token refresh failed: ${res.status} ${await res.text()}`);
+      const body = await res.text();
+      const ssoError = parseSsoError(body);
+      // SSO answering `invalid_grant` is the one response that proves the
+      // refresh token is dead. Any other status is the endpoint failing, not
+      // the token being rejected.
+      const permanent = ssoError === 'invalid_grant';
+      recordTokenRefresh(permanent ? 'invalid_grant' : 'http_error');
+      throw new SsoRefreshError(
+        `EVE SSO token refresh failed: ${res.status} ${body}`,
+        permanent,
+        res.status,
+        ssoError,
+      );
     }
     let tokens: z.infer<typeof tokenResponseSchema>;
     try {
       tokens = tokenResponseSchema.parse(await res.json());
     } catch (err) {
       recordTokenRefresh('invalid_response');
-      throw err;
+      throw new SsoRefreshError(
+        `EVE SSO token response failed to decode for character ${characterId}`,
+        false,
+        res.status,
+        undefined,
+        { cause: err },
+      );
     }
 
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
