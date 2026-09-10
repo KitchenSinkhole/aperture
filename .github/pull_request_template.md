@@ -37,3 +37,15 @@ They are not part of the CI check. See CONTRIBUTING.md.
 
 <!-- Delete if nothing. A tricky path, a decision you are unsure about, a
      behaviour with no automated guard. -->
+## Summary
+
+<!-- What changed and why, in a sentence or two. -->
+
+Closes #
+
+## Checklist
+
+- [ ] Base branch is `dev` (never `master`)
+- [ ] Changes stay within the linked issue's scope — no drive-by refactors
+- [ ] Companion `.md` files updated for any `.ts`/`.tsx` file touched
+- [ ] `pnpm typecheck && pnpm lint && pnpm test` pass locally

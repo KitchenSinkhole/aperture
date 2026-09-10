@@ -1,0 +1,72 @@
+name: PR gates
+
+# Mechanical backstop for AGENTS.md's scope rule — catches an AI-authored PR
+# that drifted wide before a human has to say so.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  diff-size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Warn if diff exceeds size guideline
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Drizzle Kit rewrites the whole schema snapshot/journal on every
+          # migration — not hand-written diff, doesn't count against scope.
+          # This is a visibility flag, not a block: this repo ships legitimate
+          # large feature PRs, so it warns instead of failing the check.
+          CHANGED=$(git diff --shortstat "$BASE_SHA" "$HEAD_SHA" -- . \
+              ':(exclude)src/db/migrations/meta/*_snapshot.json' \
+              ':(exclude)src/db/migrations/meta/_journal.json' \
+            | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
+          echo "Changed lines: $CHANGED"
+          if [ "$CHANGED" -gt 2000 ]; then
+            echo "::warning::Diff is $CHANGED lines, over the 2000-line guideline. Worth a second look before merging."
+          fi
+
+  lockfile-touch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Flag dependency changes for manual approval
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -qE '^(pnpm-lock\.yaml|package\.json)$'; then
+            echo "::error::This PR changes dependencies (package.json / pnpm-lock.yaml). Needs maintainer approval — do not auto-merge."
+            exit 1
+          fi
+
+  scope-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Warn on files outside typical single-issue scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- . \
+              ':(exclude)src/db/migrations/meta/*_snapshot.json' \
+              ':(exclude)src/db/migrations/meta/_journal.json')
+          COUNT=$(echo "$FILES" | grep -c . || true)
+          echo "$FILES"
+          if [ "$COUNT" -gt 15 ]; then
+            echo "::warning::PR touches $COUNT files. Confirm this matches the linked issue's declared scope — AGENTS.md says no drive-by refactors."
+          fi

@@ -8,6 +8,7 @@ import {
   EsiBreakerOpenError,
   EsiDowntimeError,
   EsiHttpError,
+  EsiTokenTransientError,
 } from '@/lib/esi/client';
 import { pruneTrackingForLostAccess, seedTrackingForGainedAccess } from '../tracking';
 import { withInstrumentation } from '../withInstrumentation';
@@ -162,7 +163,8 @@ async function syncAffiliationsAndRevoke(): Promise<{
     if (
       err instanceof EsiBreakerOpenError ||
       err instanceof EsiDowntimeError ||
-      err instanceof EsiHttpError
+      err instanceof EsiHttpError ||
+      err instanceof EsiTokenTransientError
     ) {
       return { scanned: characters.length, changed: 0, pruned: 0, seeded: 0 };
     }

@@ -5,7 +5,7 @@ import { db } from '@/db/client';
 import { apCharacter } from '@/db/schema';
 import { env } from '@/lib/env';
 import { decryptToken } from '@/lib/crypto';
-import { refreshAccessToken } from '@/lib/auth/eve-provider';
+import { refreshAccessToken, SsoRefreshError } from '@/lib/auth/eve-provider';
 import { OP_KEYS, type OpKey } from './opkeys';
 import { resolveRoute } from './routes';
 import { canRequest, recordFailure, recordSuccess } from './breaker';
@@ -37,7 +37,10 @@ const esiLog = getLogger('job');
  *   - `EsiHttpError`         — non-2xx / network / timeout (counted by breaker).
  *   - `EsiDecodeError`       — 2xx body failed Zod validation (schema drift).
  *   - `EsiTokenError`        — character-authed call couldn't resolve a token
- *                              (missing row, refresh failed, decryption failed).
+ *                              (missing row, decryption failed, or SSO rejected
+ *                              the refresh token with `invalid_grant`).
+ *   - `EsiTokenTransientError` — the SSO token endpoint failed to answer a
+ *                              refresh; the refresh token is still good.
  */
 
 export class EsiBreakerOpenError extends Error {
@@ -103,6 +106,24 @@ export class EsiTokenError extends Error {
   }
 }
 
+export class EsiTokenTransientError extends Error {
+  /**
+   * Raised when a character's token could not be refreshed because the SSO
+   * token endpoint failed to answer — a network error, a timeout, a 429, a 5xx,
+   * or a rejected client credential. The refresh token is still valid, so the
+   * caller must keep the character's state (tracking rows, session) and retry
+   * later rather than treating it as token loss.
+   */
+  constructor(
+    public readonly characterId: bigint,
+    public readonly cause?: unknown,
+  ) {
+    const reason = cause instanceof Error ? cause.message : 'SSO unreachable';
+    super(`ESI token refresh temporarily unavailable for character ${characterId}: ${reason}`);
+    this.name = 'EsiTokenTransientError';
+  }
+}
+
 export interface EsiCallOptions<T> {
   /** Zod schema the 200 body is parsed through. */
   schema: z.ZodType<T>;
@@ -147,15 +168,23 @@ async function resolveCharacterToken(characterId: bigint): Promise<string> {
 
 /**
  * Unconditionally rotate the character's access token (ignoring the expiry
- * buffer) and return it. Used as the one retry after a 401: the stored token
- * was stale or early-invalidated. A failed rotation means the refresh token
- * itself is dead — surfaced as `EsiTokenError` so the caller stops cleanly.
+ * buffer) and return it. Used both by the expiry-buffer path and as the one
+ * retry after a 401.
+ *
+ * A rotation that SSO *affirmatively rejects* (`invalid_grant`, or no stored
+ * refresh token) means the token is dead — `EsiTokenError`, and the caller stops.
+ * Every other failure is the SSO endpoint being unreachable while the refresh
+ * token is still good — `EsiTokenTransientError`, and the caller backs off with
+ * its state intact.
  */
 async function forceRefreshCharacterToken(characterId: bigint): Promise<string> {
   try {
     return await refreshAccessToken(characterId);
   } catch (err) {
-    throw new EsiTokenError(characterId, err);
+    if (err instanceof SsoRefreshError && err.permanent) {
+      throw new EsiTokenError(characterId, err);
+    }
+    throw new EsiTokenTransientError(characterId, err);
   }
 }
 
@@ -217,7 +246,7 @@ function outcomeOf(err: unknown): EsiMetricOutcome {
   if (err instanceof EsiDowntimeError) return 'downtime';
   if (err instanceof EsiRateLimitError) return 'rate_limited';
   if (err instanceof EsiDecodeError) return 'decode_error';
-  if (err instanceof EsiTokenError) return 'token_error';
+  if (err instanceof EsiTokenError || err instanceof EsiTokenTransientError) return 'token_error';
   // EsiHttpError and any unexpected throw fold to the generic transport failure.
   return 'http_error';
 }
