@@ -1,4 +1,15 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import type { NextConfig } from 'next';
+
+// Deployment-local bookmark scheme override slot: `#bookmark-local` resolves
+// to a deployment's untracked local.ts when present, and to the tracked empty
+// slot (localNone.ts) otherwise, so a clone with no override still builds.
+const bookmarkLocalPath = existsSync(
+  path.join(__dirname, 'src/lib/bookmarking/local.ts'),
+)
+  ? './src/lib/bookmarking/local.ts'
+  : './src/lib/bookmarking/localNone.ts';
 
 // Restrict where images may load from. The only legitimate remote image origin
 // is CCP's image server (character/corp/alliance/ship art); everything else is
@@ -19,6 +30,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['pg', 'graphile-worker', 'pino'],
   turbopack: {
     root: __dirname,
+    resolveAlias: {
+      '#bookmark-local': bookmarkLocalPath,
+    },
   },
   async headers() {
     return [

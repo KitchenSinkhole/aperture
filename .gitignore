@@ -25,6 +25,13 @@ dist/
 # without the tracked file ever diverging.
 /docker-compose.override.yml
 
+# Deployment-local bookmark naming scheme, aliased over the tracked empty slot
+# (`#bookmark-local`) when present. Each deployment keeps its own convention
+# without ever publishing it.
+/src/lib/bookmarking/local.ts
+/src/lib/bookmarking/local.md
+/tests/unit/bookmarking-local.test.ts
+
 # Editor / OS
 .idea/
 .vscode/

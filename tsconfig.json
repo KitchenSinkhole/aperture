@@ -21,6 +21,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "#bookmark-local": [
+        "./src/lib/bookmarking/localNone.ts"
       ]
     },
     "plugins": [

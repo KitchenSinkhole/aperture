@@ -1,5 +1,13 @@
 import { defineConfig } from 'vitest/config';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+
+const localSchemePath = fileURLToPath(
+  new URL('./src/lib/bookmarking/local.ts', import.meta.url),
+);
+const bookmarkLocalPath = existsSync(localSchemePath)
+  ? localSchemePath
+  : fileURLToPath(new URL('./src/lib/bookmarking/localNone.ts', import.meta.url));
 
 export default defineConfig({
   test: {
@@ -27,6 +35,7 @@ export default defineConfig({
       // stub them so server modules can be unit-tested.
       'server-only': fileURLToPath(new URL('./tests/stubs/empty.ts', import.meta.url)),
       'client-only': fileURLToPath(new URL('./tests/stubs/empty.ts', import.meta.url)),
+      '#bookmark-local': bookmarkLocalPath,
     },
   },
 });

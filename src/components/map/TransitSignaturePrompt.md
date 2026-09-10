@@ -40,6 +40,7 @@ A small dismissible `Card` pinned to the canvas top-left (`absolute left-2 top-2
 
 ### Depends On
 - `MapPresenceContext` (`useTraversals`, must be inside `MapPresenceProvider`).
+- `@/lib/map/transitResolve` — `resolveTransit` (jump → the crossed `wh` connection, with gate links dropped) and `BUFFER_TTL_MS`. The already-mapped-hole rule is a filter this component applies on top of that result.
 - `Card`, `Button` (shadcn/ui); `fetchWormholeCatalog` (`src/lib/map/client.ts`).
 
 ### Local State
