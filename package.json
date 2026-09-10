@@ -2,12 +2,13 @@
   "name": "aperture",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "pnpm@9.15.9",
+  "packageManager": "pnpm@11.7.0",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
     "dev": "tsx watch server.ts",
+    "dev:debug": "tsx watch --inspect server.ts",
     "build": "next build",
     "start": "tsx server.ts",
     "typecheck": "tsc --noEmit",
