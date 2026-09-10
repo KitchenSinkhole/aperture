@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useMapActiveChar } from '@/components/map/MapActiveCharContext';
 import { usePresenceForSystem } from '@/components/map/MapPresenceContext';
@@ -23,20 +23,29 @@ import {
 } from '@/lib/map/overlayColumnPrefs';
 import { connectionExpiredSinceMs, connectionTimeLeftMs } from '@/lib/map/connectionState';
 import { formatAgoFromMs, formatRelativeFromMs } from '@/lib/map/relativeTime';
+import { parseDscanPaste } from '@/lib/map/dscanParser';
+import { resolveShipClass } from '@/lib/eve/shipClass';
+import { fetchShipTypeGroups } from '@/lib/reference/client';
 import { pingSystemOnServer, updateSystemOnServer } from '@/lib/map/client';
 import { RALLY_UNDERGLOW, UNDERGLOW_PRESETS } from '@/components/map/underglowPresets';
 import { cn } from '@/lib/utils';
+import { Input } from '../ui/input';
 import type {
   MapConnectionEdge,
   MapPresenceEntry,
   MapSystemNode,
   MapViewData,
   OverlayFitOverflow,
+  ParsedDscanRow,
+  ShipClass,
 } from '@/types';
 import { Button } from '../ui/button';
 
 // Re-tick the EOL countdown on the same cadence as the canvas edge label.
 const EOL_TICK_MS = 30_000;
+
+// How long the "No ships in D-SCAN" notice stays on screen.
+const NOTICE_TTL_MS = 30_000;
 
 // The unlabelled ship-class icon column, the one pilot column that never resizes:
 // a 16px glyph plus the gutters that keep it off the divider and the Type text.
@@ -242,14 +251,72 @@ function growOverlayWindow(node: HTMLElement, growBy: number): void {
   }
 }
 
+/**
+ * `text` with every occurrence of `needle` marked, so a hit is visible in the
+ * cell that produced it. Case-insensitive, to match how the search compares.
+ * Renders the text untouched when there is no needle.
+ */
+function Highlight({ text, needle }: { text: string; needle?: string }) {
+  if (!needle) return <>{text}</>;
+  const haystack = text.toLowerCase();
+  const target = needle.toLowerCase();
+  const parts: ReactNode[] = [];
+  let at = 0;
+  for (let hit = haystack.indexOf(target); hit !== -1; hit = haystack.indexOf(target, at)) {
+    if (hit > at) parts.push(text.slice(at, hit));
+    parts.push(
+      <mark key={hit} className="rounded-[2px] bg-amber-400/30 text-inherit">
+        {text.slice(hit, hit + target.length)}
+      </mark>,
+    );
+    at = hit + target.length;
+  }
+  if (parts.length === 0) return <>{text}</>;
+  return (
+    <>
+      {parts}
+      {text.slice(at)}
+    </>
+  );
+}
+
+/** A D-Scanned hull nobody on the roster is flying, pinned atop the pilot list. */
+type EnemyShip = { key: string; name: string; typeName: string; shipClass: ShipClass | null };
+
+function EnemyCells({ ship }: { ship: EnemyShip }) {
+  return (
+    <>
+      <td className="truncate py-0.5 pr-3 text-red-400">Unknown pilot</td>
+      <td className="truncate py-0.5 pl-2 pr-3 text-red-400">{ship.name}</td>
+      <td className="py-0.5 pl-2 pr-1">
+        {ship.shipClass && <ShipClassIcon shipClass={ship.shipClass} />}
+      </td>
+      <td className="truncate py-0.5 text-red-400">{ship.typeName}</td>
+    </>
+  );
+}
+
+function pilotMatchesQuery(p: MapPresenceEntry, needle: string): boolean {
+  return (
+    p.characterName.toLowerCase().includes(needle) ||
+    (p.shipName ?? '').toLowerCase().includes(needle) ||
+    (p.shipTypeName ?? '').toLowerCase().includes(needle)
+  );
+}
+
 function Pilots({
   others,
+  enemies,
+  highlight,
   fitOverflow,
 }: {
   others: readonly MapPresenceEntry[];
+  enemies: readonly EnemyShip[];
+  highlight: string;
   fitOverflow: OverlayFitOverflow;
 }) {
   const [sort, setSort] = useState<PilotSort>({ key: 'ship-type', dir: 'asc' });
+  const needle = highlight.toLowerCase();
   const [fractions, setFractions] = useState<OverlayColumnFractions>(
     () => readOverlayColumnFractions() ?? DEFAULT_OVERLAY_COLUMN_FRACTIONS,
   );
@@ -325,9 +392,18 @@ function Pilots({
       prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
     );
 
+  // Query matches lead the list; the column sort orders within each half.
   const sorted = useMemo(
-    () => [...others].sort((a, b) => comparePilots(a, b, sort)),
-    [others, sort],
+    () =>
+      [...others].sort((a, b) => {
+        if (needle) {
+          const am = pilotMatchesQuery(a, needle);
+          const bm = pilotMatchesQuery(b, needle);
+          if (am !== bm) return am ? -1 : 1;
+        }
+        return comparePilots(a, b, sort);
+      }),
+    [others, sort, needle],
   );
 
   function startResize(key: keyof OverlayColumnFractions, e: React.PointerEvent<HTMLElement>) {
@@ -404,7 +480,7 @@ function Pilots({
     });
   }
 
-  if (others.length === 0) {
+  if (others.length === 0 && enemies.length === 0) {
     return <div className="text-[11px] italic text-muted-foreground">Alone in system</div>;
   }
 
@@ -509,19 +585,185 @@ function Pilots({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((p) => (
-            <tr key={p.characterId} className="border-t border-foreground/10">
-              <td className="truncate py-0.5 pr-3 text-muted-foreground">{p.characterName}</td>
-              <td className="truncate py-0.5 pl-2 pr-3">{customShipName(p) || '—'}</td>
-              <td className="py-0.5 pl-2 pr-1">
-                <ShipClassIcon shipClass={p.shipClass} />
-              </td>
-              <td className="truncate py-0.5 text-emerald-400">{p.shipTypeName ?? '—'}</td>
+          {enemies.map((ship) => (
+            <tr key={ship.key} className="border-t border-foreground/10">
+              <EnemyCells ship={ship} />
             </tr>
           ))}
+          {sorted.map((p) => {
+            const shipName = customShipName(p);
+            const mark = needle ? highlight : undefined;
+            return (
+              <tr key={p.characterId} className="border-t border-foreground/10">
+                <td className="truncate py-0.5 pr-3 text-muted-foreground">
+                  <Highlight text={p.characterName} needle={mark} />
+                </td>
+                <td className="truncate py-0.5 pl-2 pr-3">
+                  {shipName ? <Highlight text={shipName} needle={mark} /> : '—'}
+                </td>
+                <td className="py-0.5 pl-2 pr-1">
+                  <ShipClassIcon shipClass={p.shipClass} />
+                </td>
+                <td className="truncate py-0.5 text-emerald-400">
+                  {p.shipTypeName === null ? '—' : <Highlight text={p.shipTypeName} needle={mark} />}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * The roster entry a D-Scan row names, or null when nobody in the list flies it.
+ * The hull type id must match, plus either the exact ship name (a renamed hull)
+ * or the pilot's name appearing inside it (the client's default `<Pilot>'s
+ * <Type>` naming) — same ship, same pilot.
+ */
+function matchDscanRow(
+  row: ParsedDscanRow,
+  roster: readonly MapPresenceEntry[],
+): MapPresenceEntry | null {
+  const name = row.name.toLowerCase();
+  const onHull = roster.filter((p) => p.shipTypeId === row.typeId);
+
+  // ESI stores the ship's own name, which is the same string D-Scan prints, so
+  // an exact match is the dependable path.
+  const named = onHull.find((p) => (p.shipName ?? '').toLowerCase() === name);
+  if (named) return named;
+
+  // Otherwise fall back to the client's default `<Pilot>'s <Type>` naming,
+  // anchored at the start: searching for the pilot's name anywhere in the cell
+  // would let "Bob" claim "Bobby's Loki". A tie is left unresolved rather than
+  // attributed to whichever pilot the roster happens to list first.
+  const owners = onHull.filter((p) => name.startsWith(`${p.characterName.toLowerCase()}'s `));
+  return owners.length === 1 ? (owners[0] ?? null) : null;
+}
+
+// The result area is only a couple hundred pixels wide in a PiP window, so a
+// long query echoed back whole would wrap the not-found line over several rows.
+const QUERY_ECHO_MAX = 40;
+
+function echoQuery(query: string): string {
+  return query.length <= QUERY_ECHO_MAX ? query : `${query.slice(0, QUERY_ECHO_MAX)}…`;
+}
+
+/**
+ * Search box over the pilot list, plus the list itself. A typed query lifts the
+ * pilots it matches (substring over pilot / ship name / hull type) to the top
+ * of the list with the query marked in their cells, live as it is typed; a
+ * query nobody matches shows a not-found line under the box instead. Pasting
+ * D-Scan text resolves each ship line against the roster and pins the
+ * unresolved ones atop the list as red enemy rows, which stay until the next
+ * scan replaces them or the Clear button drops them.
+ */
+function PilotSection({
+  others,
+  fitOverflow,
+}: {
+  others: readonly MapPresenceEntry[];
+  fitOverflow: OverlayFitOverflow;
+}) {
+  const [query, setQuery] = useState('');
+  const [enemies, setEnemies] = useState<EnemyShip[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Read at paste time only: an enemy set is a snapshot of one scan, so live
+  // presence churn must not re-resolve it.
+  const rosterRef = useRef(others);
+  useEffect(() => {
+    rosterRef.current = others;
+  }, [others]);
+  const scanCount = useRef(0);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), NOTICE_TTL_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  async function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    // The clipboard is only readable while the event is being dispatched, so
+    // parse and claim the paste before anything is awaited.
+    const rows = parseDscanPaste(e.clipboardData.getData('text'));
+    if (rows.length === 0) return; // not D-Scan — let it land as a typed query
+    e.preventDefault();
+
+    // Which type ids are hulls comes from the SDE, memoised for the session:
+    // only the first paste after a reload costs a request. Null when it failed,
+    // which `requestJson` has already surfaced as a toast.
+    const shipTypes = await fetchShipTypeGroups();
+    const roster = rosterRef.current;
+    // A scan lists everything in range, most of it not a ship at all; only what
+    // the SDE files under the Ship category belongs against a ship list.
+    // Gating on the parsed rows rather than the ship rows keeps a scan holding
+    // no ships from being mistaken for a typed query.
+    //
+    // Anything a tracked pilot is flying is a ship by demonstration, so the
+    // panel still recognises its own fleet even with no catalog to consult.
+    const ships = rows.filter(
+      (row) =>
+        (shipTypes?.has(row.typeId) ?? false) || roster.some((p) => p.shipTypeId === row.typeId),
+    );
+    setQuery('');
+    if (ships.length === 0) {
+      setNotice('No ships in D-SCAN');
+      return;
+    }
+    setNotice(null);
+    const scan = ++scanCount.current;
+    // A scan is a full snapshot of what is in range, so it replaces the pinned
+    // set outright — an all-friendly scan clears it. Scan order is kept.
+    setEnemies(
+      ships
+        .filter((row) => matchDscanRow(row, roster) === null)
+        .map((row, i) => ({
+          key: `d:${scan}:${row.typeId}:${i}`,
+          name: row.name,
+          typeName: row.typeName,
+          shipClass: resolveShipClass(row.typeId, shipTypes?.get(row.typeId) ?? null),
+        })),
+    );
+  }
+
+  const needle = query.trim();
+  const missed = needle.length > 0 && !others.some((p) => pilotMatchesQuery(p, needle.toLowerCase()));
+
+  return (
+    <>
+      {others.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <Input
+            value={query}
+            placeholder="Search or paste D-SCAN"
+            aria-label="Search or paste D-SCAN"
+            className="h-7 text-xs"
+            onPaste={(e) => void handlePaste(e)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setNotice(null);
+            }}
+          />
+          {(notice !== null || missed) && (
+            <div className="text-[11px] italic text-muted-foreground">
+              {notice ?? `"${echoQuery(needle)}" not found`}
+            </div>
+          )}
+        </div>
+      )}
+      {enemies.length > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 text-[10px]"
+          onClick={() => setEnemies([])}
+        >
+          Clear enemy ships
+        </Button>
+      )}
+      <Pilots others={others} enemies={enemies} highlight={needle} fitOverflow={fitOverflow} />
+    </>
   );
 }
 
@@ -647,7 +889,7 @@ export function SystemOverlay({
   return (
     <div className="flex flex-col gap-2 p-2 text-sm">
       <Header node={node} fallback={fallback} mapId={viewData.map.id} />
-      <Pilots others={others} fitOverflow={fitOverflow} />
+      <PilotSection others={others} fitOverflow={fitOverflow} />
       {node && <Connections node={node} viewData={viewData} />}
     </div>
   );
