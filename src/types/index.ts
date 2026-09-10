@@ -341,6 +341,20 @@ export type RoutePrefs = {
 };
 
 /**
+ * Whether the route-planner settings popover survives an outside press.
+ * `keepOpen` is the effective value (the account's override, else the
+ * deployment default); `instanceDefault` is that default, which the pin control
+ * compares against to decide between writing a boolean and clearing the
+ * override back to inherit. Resolved by `getRouteSettingsKeepOpen`
+ * (`session.ts`). Deliberately outside `RoutePrefs`: it is a dismiss preference,
+ * and `RoutePrefs` changes retrigger a route recompute.
+ */
+export type RouteSettingsDismissPrefs = {
+  keepOpen: boolean;
+  instanceDefault: boolean;
+};
+
+/**
  * One system on a computed route. `via` is how this hop was *entered* from the
  * previous one (`origin` for the starting system); `connectionId` is the
  * `ap_map_connection.id` for a mapped wormhole/jumpbridge hop (null for gate /
