@@ -1,6 +1,6 @@
 {
   "name": "aperture",
-  "version": "1.0.0-rc.18",
+  "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@9.15.9",
   "engines": {
@@ -12,6 +12,7 @@
     "start": "tsx server.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",

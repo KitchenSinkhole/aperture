@@ -1,9 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import {
+  DEFAULT_PIP_WINDOW_SIZE,
+  readPipWindowSize,
+  writePipWindowSize,
+} from '@/lib/pipWindowPrefs';
 
 // Stable no-op subscription — capability never changes within a session.
 const NEVER_CHANGES = () => () => {};
+
+// How long Chromium's own post-open resizes keep arriving.
+const POST_OPEN_SETTLE_MS = 1500;
 
 // Minimal typings for the Document Picture-in-Picture API (Chromium 116+). Not
 // yet in the DOM lib, so we declare just the surface we use.
@@ -29,7 +37,7 @@ export interface DocumentPipController {
   isOpen: boolean;
   /** Chromium-only; false on the server and in non-supporting browsers. */
   isSupported: boolean;
-  open: (size?: { width?: number; height?: number }) => Promise<void>;
+  open: () => Promise<void>;
   close: () => void;
 }
 
@@ -40,43 +48,6 @@ function cloneStyles(target: Window): void {
   const nodes = document.head.querySelectorAll('style, link[rel="stylesheet"]');
   for (const node of Array.from(nodes)) {
     target.document.head.appendChild(node.cloneNode(true));
-  }
-}
-
-const PIP_SIZE_STORAGE_KEY = 'aperture:pip-window-size';
-
-interface StoredPipSize {
-  width: number;
-  height: number;
-}
-
-// localStorage survives across sessions, unlike the PiP window itself which is
-// torn down and recreated on every open() — it's the only place a remembered
-// size can live.
-function readStoredPipSize(): StoredPipSize | null {
-  try {
-    const raw = window.localStorage.getItem(PIP_SIZE_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      typeof (parsed as StoredPipSize).width === 'number' &&
-      typeof (parsed as StoredPipSize).height === 'number'
-    ) {
-      return parsed as StoredPipSize;
-    }
-  } catch {
-    // Malformed or inaccessible storage (e.g. private browsing) — fall back to defaults.
-  }
-  return null;
-}
-
-function writeStoredPipSize(size: StoredPipSize): void {
-  try {
-    window.localStorage.setItem(PIP_SIZE_STORAGE_KEY, JSON.stringify(size));
-  } catch {
-    // Storage unavailable — the size just won't persist to the next session.
   }
 }
 
@@ -97,30 +68,76 @@ export function useDocumentPip(): DocumentPipController {
     () => false,
   );
 
-  const open = useCallback(async (size?: { width?: number; height?: number }) => {
+  const open = useCallback(async () => {
     if (typeof window === 'undefined' || !window.documentPictureInPicture) return;
-    // A remembered size (from the last time the user resized the window) always
-    // wins over the caller's requested default.
-    const stored = readStoredPipSize();
-    const pip = await window.documentPictureInPicture.requestWindow({
-      width: stored?.width ?? size?.width ?? 320,
-      height: stored?.height ?? size?.height ?? 420,
-    });
+    // Passing dimensions forces initial placement and discards the size *and*
+    // position Chromium remembers from the last close, so they are passed only
+    // on the first open of a browser profile, when there is nothing to restore.
+    const hadStoredSize = readPipWindowSize() !== null;
+    const pip = await window.documentPictureInPicture.requestWindow(
+      hadStoredSize ? undefined : DEFAULT_PIP_WINDOW_SIZE,
+    );
     cloneStyles(pip);
     // Mirror the .dark custom-variant class so themed tokens resolve identically.
     pip.document.documentElement.className = document.documentElement.className;
     // Fill the whole window with the app surface so transparent gaps don't flash white.
     pip.document.body.className = 'bg-background text-foreground min-h-screen';
-    pip.addEventListener('pagehide', () => setPipWindow(null), { once: true });
+
+    // Chromium refuses to *open* a PiP window narrower than roughly 300px, so a
+    // narrower remembered width arrives clamped. `resizeTo` reaches past that
+    // floor, but needs a user activation and `requestWindow` consumed the one
+    // from the opening click — the first interaction inside the window carries a
+    // fresh one. The size is re-read at that moment, so a resize the user made
+    // in between wins.
+    const restoreStoredSize = () => {
+      detachRestore();
+      const target = readPipWindowSize();
+      if (!target || (target.width === pip.outerWidth && target.height === pip.outerHeight)) return;
+      try {
+        pip.resizeTo(target.width, target.height);
+      } catch {
+        // NotAllowedError — the interaction carried no activation after all.
+      }
+    };
+    const detachRestore = () => {
+      pip.document.removeEventListener('pointerdown', restoreStoredSize);
+      pip.document.removeEventListener('keydown', restoreStoredSize);
+    };
+    if (hadStoredSize) {
+      pip.document.addEventListener('pointerdown', restoreStoredSize);
+      pip.document.addEventListener('keydown', restoreStoredSize);
+    }
+
+    // Chromium fires several resizes of its own while the window settles after
+    // opening, at the size it chose rather than the one the pilot picked.
+    // Persisting those would overwrite the remembered size with a clamped one.
+    const openedAt = Date.now();
+    const isSettling = () => Date.now() - openedAt < POST_OPEN_SETTLE_MS;
 
     // Persist the live size on resize (debounced) so the next open() restores it.
-    let resizeTimer: ReturnType<typeof setTimeout>;
-    pip.addEventListener('resize', () => {
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    const onResize = () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        writeStoredPipSize({ width: pip.innerWidth, height: pip.innerHeight });
+        if (isSettling()) return;
+        writePipWindowSize({ width: pip.outerWidth, height: pip.outerHeight });
       }, 300);
-    });
+    };
+    pip.addEventListener('resize', onResize);
+
+    // A closed window reports 0×0, so the pending debounce is dropped and the
+    // final size flushed here, while the window can still be measured.
+    pip.addEventListener(
+      'pagehide',
+      () => {
+        clearTimeout(resizeTimer);
+        pip.removeEventListener('resize', onResize);
+        detachRestore();
+        if (!isSettling()) writePipWindowSize({ width: pip.outerWidth, height: pip.outerHeight });
+        setPipWindow(null);
+      },
+      { once: true },
+    );
 
     setPipWindow(pip);
   }, []);

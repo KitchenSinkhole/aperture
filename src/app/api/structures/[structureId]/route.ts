@@ -10,8 +10,10 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
  * PATCH / DELETE /api/structures/[structureId] — edit or remove a manual
- * structure-intel row. Any authenticated user may write; the mutation records an
- * `update` / `delete` row in `ap_structure_event` for accountability.
+ * structure-intel row. `requireStructureMutate` admits only a caller the row's
+ * `scope` admits, and answers 404 rather than 403 outside it so a `bigserial` id
+ * cannot be walked for existence. The mutation records an `update` / `delete`
+ * row in `ap_structure_event` for accountability.
  */
 
 export const runtime = 'nodejs';
@@ -29,15 +31,15 @@ export const PATCH = withApiMetrics('/api/structures/:structureId', async functi
   { params }: { params: Promise<{ structureId: string }> },
 ) {
   const session = await getSession();
-  const guard = requireStructureMutate(session);
-  if (!guard.ok) {
-    return Response.json({ ok: false, error: guard.error }, { status: guard.status });
-  }
-
   const { structureId: rawId } = await params;
   const structureId = parseBigInt(rawId);
   if (!structureId) {
     return Response.json({ ok: false, error: 'Invalid structure id.' }, { status: 400 });
+  }
+
+  const guard = await requireStructureMutate(session, structureId);
+  if (!guard.ok) {
+    return Response.json({ ok: false, error: guard.error }, { status: guard.status });
   }
 
   let body: unknown;
@@ -77,15 +79,15 @@ export const DELETE = withApiMetrics('/api/structures/:structureId', async funct
   { params }: { params: Promise<{ structureId: string }> },
 ) {
   const session = await getSession();
-  const guard = requireStructureMutate(session);
-  if (!guard.ok) {
-    return Response.json({ ok: false, error: guard.error }, { status: guard.status });
-  }
-
   const { structureId: rawId } = await params;
   const structureId = parseBigInt(rawId);
   if (!structureId) {
     return Response.json({ ok: false, error: 'Invalid structure id.' }, { status: 400 });
+  }
+
+  const guard = await requireStructureMutate(session, structureId);
+  if (!guard.ok) {
+    return Response.json({ ok: false, error: guard.error }, { status: guard.status });
   }
 
   const row = await deleteStructure({ structureId, characterId: guard.characterId });

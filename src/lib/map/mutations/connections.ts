@@ -2,6 +2,7 @@ import 'server-only';
 import { and, eq, type InferInsertModel } from 'drizzle-orm';
 import { apMapConnection, connectionScope, eolStage, whJumpMass, whMass } from '@/db/schema';
 import { commitMapEvent, type ActionResult, type Tx } from './core';
+import { assertSystemOnMap } from './tenancy';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 
 /**
@@ -71,6 +72,11 @@ export function createConnection(
     kind: 'connection.create',
     tx: input.tx,
     mutate: async (tx) => {
+      // Asserting both endpoints against input.mapId also guarantees the edge
+      // cannot span two maps — no separate equality check needed.
+      await assertSystemOnMap(tx, input.sourceMapSystemId, input.mapId);
+      await assertSystemOnMap(tx, input.targetMapSystemId, input.mapId);
+
       const stage = input.eolStage ?? 'none';
       const [row] = await tx
         .insert(apMapConnection)

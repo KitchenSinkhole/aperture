@@ -20,5 +20,5 @@ A filter toolbar (actor dropdown, category chips, "Deletions only", date range, 
 - Fills its parent's height (`flex-1 min-h-0`): the toolbar, summary bar, and "Load more" footer stay fixed (`shrink-0`) while only the feed table scrolls. The table header is `sticky top-0` so it stays visible while scrolling.
 
 ### Depends On
-- `GET /api/map/[mapId]/audit` (gated by `canManageMap`)
+- `GET /api/map/[mapId]/audit` (gated by the `audit_view` capability)
 - `ccpImageUrl` for avatars; `AuditActor` / `AuditEventRow` / `ActorSummary` types

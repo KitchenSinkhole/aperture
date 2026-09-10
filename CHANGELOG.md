@@ -1,5 +1,49 @@
 # Changelog
 
+## v1.0.0
+
+The first stable release, closing out eighteen release candidates.
+
+Since rc.18: routes come with written directions you can paste into fleet chat, structure intel stays inside the corp or alliance that wrote it, and a second map open in another tab no longer picks up the first one's updates.
+
+### New features
+
+- **Written route directions** - the route planner turns a route into step by step instructions naming the sig to warp to at each hole, ready to copy into fleet chat. *(Ionis)*
+- **Abyssal filament runs fold onto the map** - the abyssal tracking toggle in Map Settings now does something. Off by default. *(MonoliYoda)*
+- **Privacy and cookie notice at `/privacy`** - lists every cookie Aperture sets and how account data is handled, worded so self-hosters can ship it unchanged. *(MonoliYoda)*
+
+### Security
+
+- **Structure intel is confined to the corp or alliance that wrote it** - each structure carries the audience of the map it was written on, shown as a chip on the row and named in the add/edit dialog before you submit. Nobody outside that audience can see or touch it. *(MonoliYoda)*
+- **Maps no longer bleed into each other** - two maps open in two tabs each keep to themselves, and a signature or connection can only ever be attached to the map you are working on. *(MonoliYoda)*
+
+### Improvements
+
+- **The create-map dialog says why Corporation and Alliance are unavailable** instead of refusing after you submit. *(MonoliYoda)*
+- **Insurgency Site is accepted as a Combat Site**, and site names containing "Wormhole" survive a paste. *(Ionis)*
+
+### Fixes
+
+- **Map settings only offer what you can actually do** - the General and Roles tabs and the delete button on `/maps` appear based on your rights, and saved settings survive reopening the dialog. *(MonoliYoda)*
+- **A deleted map's share links and webhooks are properly closed off** during the 30-day grace period. *(MonoliYoda)*
+- **Losing your pod in the abyss no longer draws a connection** on the map. *(MonoliYoda)*
+- **SDE ingest no longer risks running the instance out of memory.** *(MonoliYoda)*
+- **Docker builds install again.** *(MonoliYoda)*
+
+### Misc
+
+- Two map columns nothing read (`icon`, `log_activity`) are gone. *(MonoliYoda)*
+
+### Upgrading
+
+- Run `pnpm db:migrate` (migrations 0067 to 0070). Existing structure intel is backfilled, so nothing changes visibility.
+- Abyssal jump tracking is off by default. Enable it per map in Map Settings.
+
+### Contributors
+
+- **Ionis** - written route directions, and Insurgency Site classification
+- **MonoliYoda** - structure intel scoping, cross-map isolation, the map settings fixes, abyssal tracking, the create-map gate, and the privacy notice
+
 ## v1.0.0-rc.18
 
 Wormhole ends can now be marked as bubbled so a camped hole reads at a glance, and static data keeps itself current instead of quietly drifting behind FC's builds.

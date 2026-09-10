@@ -15,7 +15,13 @@ import { UNDERGLOW_PRESETS } from './underglowPresets';
 // Notifications are keyed by EVE solar-system id; the underglow store is keyed
 // by `ap_map_system.id`, so we map the former to the latter via `systems`.
 
-export function MapUnderglowBridge({ systems }: { systems: MapSystemNode[] }) {
+export function MapUnderglowBridge({
+  systems,
+  mapId,
+}: {
+  systems: MapSystemNode[];
+  mapId: string;
+}) {
   const systemsRef = useRef(systems);
   useEffect(() => {
     systemsRef.current = systems;
@@ -27,6 +33,10 @@ export function MapUnderglowBridge({ systems }: { systems: MapSystemNode[] }) {
     useCallback(
       (envelope: Envelope) => {
         if (!store || envelope.task !== 'systemNotification') return;
+        // Belt-and-suspenders: the SharedWorker already routes map-scoped
+        // envelopes only to subscribed ports; a foreign mapId here would mean
+        // a worker routing regression, not a legitimate cross-map glow.
+        if (envelope.mapId != null && envelope.mapId !== Number(mapId)) return;
         const parsed = systemNotificationLoadSchema.safeParse(envelope.load);
         if (!parsed.success) return;
         const load = parsed.data;
@@ -36,7 +46,7 @@ export function MapUnderglowBridge({ systems }: { systems: MapSystemNode[] }) {
 
         store.trigger(node.id, UNDERGLOW_PRESETS[load.kind]);
       },
-      [store],
+      [store, mapId],
     ),
   );
 

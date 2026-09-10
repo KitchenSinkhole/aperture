@@ -4,7 +4,7 @@
 // `server-only` default export throws on load. Every caller is server-side
 // (API routes, Server Actions, the WS upgrade handler); we rely on that
 // rather than the marker package.
-import { and, eq, exists, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, exists, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { Session } from 'next-auth';
 import { db } from '@/db/client';
 import {
@@ -165,9 +165,11 @@ export async function canViewMap(characterId: bigint, mapId: bigint): Promise<bo
  *     private owner, owning-corp Director, owning-alliance executor-corp
  *     Director).
  *
- * The `right` argument is otherwise retained for the future title-delegation
- * overlay (R4). `map_create` has no target map and must be checked via
- * `canCreateMap`.
+ * The `right` argument is otherwise retained for call-site symmetry; per-map
+ * feature delegation (title-holders granted a single director-gated feature)
+ * lives on the separate `MapCapability` vocabulary and routes through
+ * `canUseMapFeature/requireMapCapability`, not through `MapRight`.
+ * `map_create` has no target map and must be checked via `canCreateMap`.
  */
 export async function canMutateMap(
   characterId: bigint,
@@ -238,8 +240,11 @@ export async function executorCorpOf(allianceId: bigint): Promise<bigint | null>
 
 /**
  * Can the actor *manage* this map (settings, webhooks, audit, the full mutation
- * surface) under the derived-authority model? Binary — no per-right granularity
- * at the baseline (title-delegation is the future R4 overlay).
+ * surface) under the derived-authority model? Binary — a manager holds every
+ * capability implicitly, with no per-right granularity of its own. Per-map
+ * feature delegation to specific titles is the separate `MapCapability`
+ * overlay below (`canUseMapFeature`/`hasMapCapability`); this function is one
+ * of its two disjuncts, not superseded by it.
  *
  *   admin                                   → true (deployment operator)
  *   private  → owner_character_id == actor
@@ -445,6 +450,88 @@ export async function resolveMapCapabilities(
       ),
     );
   return new Set(rows.map((r) => r.capability));
+}
+
+/**
+ * Batched `canUseMapFeature` for a card-list render. Three queries regardless
+ * of `mapIds.length`: the actor row, one ownership pass over every map
+ * (mirrors `canManageMap`'s switch at `:259-282`, but left-joins `ap_alliance`
+ * so the executor corp resolves in the join instead of a per-map
+ * `executorCorpOf` round trip), then one grant query over only the maps
+ * ownership didn't already cover. Keep the ownership branch a literal mirror
+ * of `canManageMap` — they must never disagree. Both passes exclude
+ * soft-deleted maps, so a title grant can't outlive its map's deletion.
+ */
+export async function mapsWithCapability(
+  characterId: bigint,
+  mapIds: bigint[],
+  capability: MapCapability,
+): Promise<Set<bigint>> {
+  if (mapIds.length === 0) return new Set();
+
+  const actor = await loadActor(characterId);
+  if (!actor || actor.status !== 'active') return new Set();
+  if (actor.authzLevel === 'admin') return new Set(mapIds);
+
+  const rows = await db
+    .select({
+      id: apMap.id,
+      type: apMap.type,
+      ownerCharacterId: apMap.ownerCharacterId,
+      ownerCorporationId: apMap.ownerCorporationId,
+      ownerAllianceId: apMap.ownerAllianceId,
+      executorCorporationId: apAlliance.executorCorporationId,
+    })
+    .from(apMap)
+    .leftJoin(apAlliance, eq(apAlliance.id, apMap.ownerAllianceId))
+    .where(and(inArray(apMap.id, mapIds), isNull(apMap.deletedAt)));
+
+  const managed = new Set<bigint>();
+  for (const row of rows) {
+    let isManaged: boolean;
+    switch (row.type) {
+      case 'private':
+        isManaged = row.ownerCharacterId !== null && row.ownerCharacterId === characterId;
+        break;
+      case 'corp':
+        isManaged =
+          actor.isDirector &&
+          row.ownerCorporationId !== null &&
+          actor.corporationId !== null &&
+          row.ownerCorporationId === actor.corporationId;
+        break;
+      case 'alliance':
+        isManaged =
+          actor.isDirector &&
+          row.ownerAllianceId !== null &&
+          actor.allianceId !== null &&
+          actor.corporationId !== null &&
+          row.ownerAllianceId === actor.allianceId &&
+          row.executorCorporationId !== null &&
+          row.executorCorporationId === actor.corporationId;
+        break;
+    }
+    if (isManaged) managed.add(row.id);
+  }
+
+  const remaining = mapIds.filter((id) => !managed.has(id));
+  if (remaining.length === 0) return managed;
+
+  const grantRows = await db
+    .selectDistinct({ mapId: apMapRoleAccess.mapId })
+    .from(apMapRoleAccess)
+    .innerJoin(apCharacterRole, eq(apCharacterRole.roleId, apMapRoleAccess.roleId))
+    .innerJoin(apMap, eq(apMap.id, apMapRoleAccess.mapId))
+    .where(
+      and(
+        inArray(apMapRoleAccess.mapId, remaining),
+        eq(apMapRoleAccess.capability, capability),
+        eq(apCharacterRole.characterId, characterId),
+        isNull(apMap.deletedAt),
+      ),
+    );
+
+  return new Set([...managed, ...grantRows.map((r) => r.mapId)]);
 }
 
 /**

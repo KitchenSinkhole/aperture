@@ -236,11 +236,9 @@ describe.skipIf(!run)('map import/export — round-trip + remap (real Postgres)'
         name: 'x',
         scope: 'all',
         type: 'private',
-        icon: null,
         deleteExpiredConnections: true,
         deleteEolConnections: true,
         trackAbyssalJumps: true,
-        logActivity: true,
       },
       systems: [
         {

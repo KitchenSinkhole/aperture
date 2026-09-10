@@ -12,3 +12,4 @@
 - **downtime** — inside the window, failures → `EsiDowntimeError` and the breaker stays closed.
 - **error limit** — `x-esi-error-limit-remain: 0` → `EsiRateLimitError` carrying reset seconds.
 - **character auth** — Bearer token resolved from the row + attached; missing `characterId` throws.
+- **refresh classification** — a forced refresh rejected with a permanent `SsoRefreshError` → `EsiTokenError`; a transient one, an unclassified error, and a failure on the expiry-buffer path (no request leaves) → `EsiTokenTransientError`.

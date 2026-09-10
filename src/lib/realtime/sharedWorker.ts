@@ -3,10 +3,12 @@ import { envelopeSchema, type Envelope } from './protocol';
 
 /**
  * SharedWorker body — one WebSocket per browser origin, multiplexed across every
- * tab of a character. Tabs connect a MessagePort; the worker
- * reference-counts map subscriptions across ports so a `subscribe` frame goes
- * out only when the first tab wants a map and `unsubscribe` only when the last
- * leaves. Inbound envelopes and connection-state changes fan to all ports.
+ * tab of a character. Tabs connect a MessagePort; the worker tracks, per map,
+ * the set of ports subscribed to it, so a `subscribe` frame goes out only when
+ * the first tab wants a map and `unsubscribe` only when the last leaves. A
+ * map-scoped inbound envelope (carries `mapId`) is routed only to the ports
+ * subscribed to that map; a control-plane frame (no `mapId`, e.g. `healthCheck`)
+ * and connection-state changes fan to all ports.
  *
  * The socket is broadcast-only from the server's side; the only frames this
  * worker sends are `subscribe` / `unsubscribe` (protocol.ts).
@@ -24,8 +26,8 @@ type PortOutbound =
   | { type: 'message'; envelope: Envelope };
 
 const ports = new Set<MessagePort>();
-/** mapId → number of ports currently interested. */
-const subscriptions = new Map<number, number>();
+/** mapId → ports currently subscribed. */
+const subscriptions = new Map<number, Set<MessagePort>>();
 
 let socket: WebSocket | null = null;
 let status: ConnStatus = 'closed';
@@ -82,7 +84,15 @@ function connect(): void {
     }
     const result = envelopeSchema.safeParse(parsed);
     if (!result.success) return;
-    broadcast({ type: 'message', envelope: result.data });
+    const envelope = result.data;
+    if (typeof envelope.mapId === 'number') {
+      const subs = subscriptions.get(envelope.mapId);
+      if (!subs) return;
+      const message: PortOutbound = { type: 'message', envelope };
+      for (const port of subs) port.postMessage(message);
+    } else {
+      broadcast({ type: 'message', envelope });
+    }
   };
 
   ws.onclose = () => {
@@ -114,29 +124,33 @@ function scheduleReconnect(): void {
   }, delay);
 }
 
-function addSubscription(mapId: number): void {
-  const count = subscriptions.get(mapId) ?? 0;
-  subscriptions.set(mapId, count + 1);
-  if (count === 0) {
+function addSubscription(port: MessagePort, mapId: number): void {
+  let subs = subscriptions.get(mapId);
+  if (!subs) {
+    subs = new Set();
+    subscriptions.set(mapId, subs);
+  }
+  const wasEmpty = subs.size === 0;
+  subs.add(port);
+  if (wasEmpty) {
     connect();
     sendFrame('subscribe', [mapId]);
   }
 }
 
-function removeSubscription(mapId: number): void {
-  const count = subscriptions.get(mapId);
-  if (!count) return;
-  if (count <= 1) {
+function removeSubscription(port: MessagePort, mapId: number): void {
+  const subs = subscriptions.get(mapId);
+  if (!subs) return;
+  subs.delete(port);
+  if (subs.size === 0) {
     subscriptions.delete(mapId);
     sendFrame('unsubscribe', [mapId]);
-  } else {
-    subscriptions.set(mapId, count - 1);
   }
 }
 
-function handlePortMessage(message: PortInbound): void {
-  if (message.type === 'subscribe') addSubscription(message.mapId);
-  else removeSubscription(message.mapId);
+function handlePortMessage(port: MessagePort, message: PortInbound): void {
+  if (message.type === 'subscribe') addSubscription(port, message.mapId);
+  else removeSubscription(port, message.mapId);
 }
 
 self.addEventListener('connect', (event) => {
@@ -144,7 +158,7 @@ self.addEventListener('connect', (event) => {
   if (!port) return;
   ports.add(port);
 
-  port.onmessage = (e: MessageEvent) => handlePortMessage(e.data as PortInbound);
+  port.onmessage = (e: MessageEvent) => handlePortMessage(port, e.data as PortInbound);
   port.start();
 
   // Hand the new tab the current status immediately so its banner is accurate.

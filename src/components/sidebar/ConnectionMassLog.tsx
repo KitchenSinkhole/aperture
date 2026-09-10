@@ -58,6 +58,13 @@ export function ConnectionMassLog({
         if (envelope.task !== 'connectionMassLog') return;
         const parsed = connectionMassLogLoadSchema.safeParse(envelope.load);
         if (!parsed.success || parsed.data.connectionId !== connectionId) return;
+        // Belt-and-suspenders: the SharedWorker already routes map-scoped
+        // envelopes only to subscribed ports; a foreign mapId here would mean
+        // a worker routing regression, not a legitimate cross-map refetch.
+        // Checked against the load's mapId, which the schema makes mandatory —
+        // the envelope-level tag is optional, so a producer that stopped setting
+        // it would leave a guard on it passing everything.
+        if (parsed.data.mapId !== Number(mapId)) return;
         const seq = ++reqSeq.current;
         void (async () => {
           const result = await fetchConnectionMassLog({ mapId, connectionId });

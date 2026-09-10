@@ -2,7 +2,7 @@ import 'server-only';
 import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { searchCorporations } from '@/lib/structures/corpSearch';
-import { EsiHttpError, EsiTokenError } from '@/lib/esi/client';
+import { EsiHttpError, EsiTokenError, EsiTokenTransientError } from '@/lib/esi/client';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
@@ -27,6 +27,12 @@ export const GET = withApiMetrics('/api/structures/corp-search', async function 
     const data = await searchCorporations(query, BigInt(session.characterId));
     return Response.json({ ok: true, data });
   } catch (err) {
+    if (err instanceof EsiTokenTransientError) {
+      return Response.json(
+        { ok: false, error: 'EVE services are temporarily unavailable. Try again shortly.' },
+        { status: 503 },
+      );
+    }
     if (
       err instanceof EsiTokenError ||
       (err instanceof EsiHttpError && (err.status === 401 || err.status === 403))

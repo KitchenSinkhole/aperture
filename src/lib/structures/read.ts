@@ -9,7 +9,8 @@ import {
   universeGroup,
   universeType,
 } from '@/db/schema';
-import type { ApStructure } from '@/types';
+import type { ApStructure, IntelScope } from '@/types';
+import { requireIntelTenant, structureVisibleTo } from './guard';
 
 /** A structure-intel row shaped for the sidebar (ids as strings, type name resolved). */
 export type StructureIntel = {
@@ -27,24 +28,63 @@ export type StructureIntel = {
   createdByName: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Who may see this row. Distinct from `ownerCorporationId`, the citadel's in-game owner. */
+  scope: IntelScope;
+  /**
+   * The id of the entity `scope` names — character, corporation or alliance.
+   * Null only for the erased-owner `private` row, which is admin-only.
+   */
+  scopeEntityId: number | null;
 };
+
+/** The one populated `scope_*` id for a row's branch, as a number. */
+function scopeEntityIdOf(row: {
+  scope: IntelScope;
+  scopeCharacterId: bigint | null;
+  scopeCorporationId: bigint | null;
+  scopeAllianceId: bigint | null;
+}): number | null {
+  const id =
+    row.scope === 'private'
+      ? row.scopeCharacterId
+      : row.scope === 'corp'
+        ? row.scopeCorporationId
+        : row.scopeAllianceId;
+  return id === null ? null : Number(id);
+}
 
 /** An Upwell structure type for the create/edit picker. */
 export type UpwellStructureType = { typeId: number; name: string; groupName: string };
 
 /**
- * Structure intel for the given universe systems, keyed by `system_id`. One
+ * Structure intel for the given universe systems as seen on `mapId`, keyed by
+ * `system_id`, filtered to the rows `viewerCharacterId`'s scope admits. One
  * batched query joins `universe_type` for the type name and `ap_character` for
- * the creator name. Systems with no structures are absent from the record.
+ * the creator name. Systems with no admitted structures are absent from the
+ * record.
  *
- * NOTE: structure intel has no realtime channel (it is deployment-global, not
+ * Empty for a viewer `requireIntelTenant` refuses — a guest on someone else's
+ * map sees no intel there, including their own organisation's rows.
+ *
+ * Map and viewer are both required rather than optional so no caller can reach
+ * the table unfiltered: `ap_structure` rows carry no `map_id`, so these filters
+ * are the only thing standing between a 256-system `system-data` sweep and the
+ * deployment's whole structure log.
+ *
+ * NOTE: structure intel has no realtime channel (it is system-scoped, not
  * map-scoped — see `ap_structure`). This snapshot is load-time only: a structure
  * another user adds appears here on the next page load, not live.
  */
 export async function structuresForSystems(
+  mapId: bigint,
   systemIds: number[],
+  viewerCharacterId: bigint,
 ): Promise<Record<number, StructureIntel[]>> {
   if (systemIds.length === 0) return {};
+  const tenant = await requireIntelTenant(mapId, viewerCharacterId);
+  if (!tenant.ok) return {};
+  const viewer = tenant.viewer;
+
   const rows = await db
     .select({
       id: apStructure.id,
@@ -58,12 +98,16 @@ export async function structuresForSystems(
       createdByName: apCharacter.name,
       createdAt: apStructure.createdAt,
       updatedAt: apStructure.updatedAt,
+      scope: apStructure.scope,
+      scopeCharacterId: apStructure.scopeCharacterId,
+      scopeCorporationId: apStructure.scopeCorporationId,
+      scopeAllianceId: apStructure.scopeAllianceId,
     })
     .from(apStructure)
     .innerJoin(universeType, eq(apStructure.structureTypeId, universeType.id))
     .leftJoin(universeCorporation, eq(apStructure.ownerCorporationId, universeCorporation.id))
     .leftJoin(apCharacter, eq(apStructure.createdByCharacterId, apCharacter.id))
-    .where(inArray(apStructure.systemId, systemIds))
+    .where(and(inArray(apStructure.systemId, systemIds), structureVisibleTo(viewer)))
     .orderBy(asc(apStructure.systemId), asc(apStructure.name));
 
   const out: Record<number, StructureIntel[]> = {};
@@ -80,6 +124,8 @@ export async function structuresForSystems(
       createdByName: r.createdByName,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
+      scope: r.scope,
+      scopeEntityId: scopeEntityIdOf(r),
     });
   }
   return out;
@@ -145,5 +191,7 @@ export async function withTypeName(row: ApStructure): Promise<StructureIntel> {
     createdByName,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    scope: row.scope,
+    scopeEntityId: scopeEntityIdOf(row),
   };
 }

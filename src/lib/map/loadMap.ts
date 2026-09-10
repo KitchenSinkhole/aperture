@@ -229,13 +229,11 @@ export type MapListItem = {
   name: string;
   scope: MapScope;
   type: MapType;
-  icon: string | null;
 };
 
 /** Editable map metadata + behaviour toggles, for the settings dialog. */
 export type MapSettings = {
   name: string;
-  icon: string | null;
   /** Immutable post-create; shown read-only in the dialog. */
   scope: MapScope;
   /** Immutable post-create; shown read-only in the dialog. */
@@ -243,7 +241,6 @@ export type MapSettings = {
   deleteExpiredConnections: boolean;
   deleteEolConnections: boolean;
   trackAbyssalJumps: boolean;
-  logActivity: boolean;
   /** Auto-tagging scheme (owner/admin-gated). */
   tagScheme: TagScheme;
   /** `ap_map_system.id` of the designated Home, or null. */
@@ -263,7 +260,6 @@ export type AdminMapListItem = {
   name: string;
   scope: MapScope;
   type: MapType;
-  icon: string | null;
   ownerCharacterId: string | null;
   ownerCorporationId: string | null;
   ownerAllianceId: string | null;
@@ -480,11 +476,11 @@ export async function loadMapForView(
 }
 
 /**
- * Load a map's editable settings (name / icon / scope / type + behaviour
- * toggles) for the settings dialog. Gated by `canViewMap` to mirror
- * `loadMapForView`; returns null when the map is missing, soft-deleted, or the
- * viewer can't see it. The dialog's Save still re-checks `map_update`
- * server-side — this read only pre-fills the form.
+ * Load a map's editable settings (name / scope / type + behaviour toggles)
+ * for the settings dialog. Gated by `canViewMap` to mirror `loadMapForView`;
+ * returns null when the map is missing, soft-deleted, or the viewer can't see
+ * it. The dialog's Save still re-checks `settings_manage` server-side — this
+ * read only pre-fills the form.
  */
 export async function loadMapSettings(
   viewerCharacterId: bigint,
@@ -495,13 +491,11 @@ export async function loadMapSettings(
   const [row] = await db
     .select({
       name: apMap.name,
-      icon: apMap.icon,
       scope: apMap.scope,
       type: apMap.type,
       deleteExpiredConnections: apMap.deleteExpiredConnections,
       deleteEolConnections: apMap.deleteEolConnections,
       trackAbyssalJumps: apMap.trackAbyssalJumps,
-      logActivity: apMap.logActivity,
       tagScheme: apMap.tagScheme,
       homeMapSystemId: apMap.homeMapSystemId,
       exemptHomeStaticFromTag: apMap.exemptHomeStaticFromTag,
@@ -608,7 +602,6 @@ export async function listViewableMaps(
       name: apMap.name,
       scope: apMap.scope,
       type: apMap.type,
-      icon: apMap.icon,
     })
     .from(apMap)
     .where(where)
@@ -632,7 +625,6 @@ export async function listAdminMaps(): Promise<AdminMapListItem[]> {
       name: apMap.name,
       scope: apMap.scope,
       type: apMap.type,
-      icon: apMap.icon,
       ownerCharacterId: apMap.ownerCharacterId,
       ownerCorporationId: apMap.ownerCorporationId,
       ownerAllianceId: apMap.ownerAllianceId,
@@ -648,7 +640,6 @@ export async function listAdminMaps(): Promise<AdminMapListItem[]> {
     name: r.name,
     scope: r.scope,
     type: r.type,
-    icon: r.icon,
     ownerCharacterId: r.ownerCharacterId === null ? null : r.ownerCharacterId.toString(),
     ownerCorporationId: r.ownerCorporationId === null ? null : r.ownerCorporationId.toString(),
     ownerAllianceId: r.ownerAllianceId === null ? null : r.ownerAllianceId.toString(),

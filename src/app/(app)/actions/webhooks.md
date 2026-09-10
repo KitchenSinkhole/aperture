@@ -5,7 +5,7 @@
 
 ---
 
-Access for every action: `requireSession` → `canUseMapFeature(characterId, mapId, 'webhooks_manage')` (manager implicitly, or a corp title delegated the capability). Create gates on the input `mapId`; id-scoped ops resolve `mapId` from the `ap_map_webhook` row first (`gateForWebhook`), returning `'Webhook not found.'` when absent and `'Forbidden.'` when the viewer lacks the capability. No `ap_map_event` is written (webhook config is infra, not map state); no `revalidatePath` (the tab refetches `GET /api/map/[mapId]/webhooks`).
+Access for every action: `requireSession` → `requireMapCapability(session, mapId, 'webhooks_manage')` (manager implicitly, or a corp title delegated the capability; resolves the map row before the capability check, so a soft-deleted map is off-limits to a delegated title-holder the same as a Director). Create gates on the input `mapId`; id-scoped ops resolve `mapId` from the `ap_map_webhook` row first (`gateForWebhook`), returning `'Webhook not found.'` when absent and the guard's error (`'Forbidden.'` or `'Map not found.'`) when the viewer lacks access. No `ap_map_event` is written (webhook config is infra, not map state); no `revalidatePath` (the tab refetches `GET /api/map/[mapId]/webhooks`).
 
 ### createWebhook(input): Promise<ActionResult<{ id: string }>>
 Insert an `ap_map_webhook` row. Surfaces the `ap_map_webhook_map_channel_event_uq` unique violation as a friendly conflict message.

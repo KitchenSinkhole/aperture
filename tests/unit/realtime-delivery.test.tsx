@@ -103,3 +103,103 @@ describe('realtime envelope delivery', () => {
     expect(received).toEqual([0]);
   });
 });
+
+// Exercises `sharedWorker.ts` itself (not the client-side provider): a fake
+// `self` captures the `connect` listener the module registers at import time,
+// and a fake `WebSocket` stands in for the one socket the worker opens. Each
+// test re-imports the module after `vi.resetModules()` so the worker's
+// module-level `ports`/`subscriptions`/`socket` state starts fresh.
+describe('sharedWorker per-port routing', () => {
+  class FakeWebSocket {
+    static readonly CONNECTING = 0;
+    static readonly OPEN = 1;
+    static readonly CLOSING = 2;
+    static readonly CLOSED = 3;
+    // Constructed by sharedWorker.ts's own `connect()`, not by the test, so the
+    // test recovers the instance from this static list rather than aliasing `this`.
+    static instances: FakeWebSocket[] = [];
+    readyState: number = FakeWebSocket.CONNECTING;
+    onopen: (() => void) | null = null;
+    onmessage: ((e: { data: string }) => void) | null = null;
+    onclose: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    send = vi.fn();
+    constructor() {
+      FakeWebSocket.instances.push(this);
+    }
+  }
+
+  class FakeSelf {
+    listeners: Record<string, ((e: unknown) => void)[]> = {};
+    location = { protocol: 'https:', host: 'test.invalid' };
+    addEventListener(type: string, cb: (e: unknown) => void) {
+      (this.listeners[type] ??= []).push(cb);
+    }
+    dispatchConnect(port: FakePort) {
+      for (const cb of this.listeners.connect ?? []) cb({ ports: [port] });
+    }
+  }
+
+  type PortOutboundMessage = { type: 'message'; envelope: { task: string; mapId?: number } };
+
+  let fakeSelf: FakeSelf;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    FakeWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    fakeSelf = new FakeSelf();
+    vi.stubGlobal('self', fakeSelf);
+    await import('@/lib/realtime/sharedWorker');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function messagesOf(port: FakePort): PortOutboundMessage[] {
+    return port.postMessage.mock.calls
+      .map(([msg]) => msg as { type: string })
+      .filter((msg): msg is PortOutboundMessage => msg.type === 'message');
+  }
+
+  function connectTwoSubscribedPorts(): { portA: FakePort; portB: FakePort; socket: FakeWebSocket } {
+    const portA = new FakePort();
+    const portB = new FakePort();
+    fakeSelf.dispatchConnect(portA);
+    fakeSelf.dispatchConnect(portB);
+    portA.onmessage!({ data: { type: 'subscribe', mapId: 1 } } as MessageEvent);
+    portB.onmessage!({ data: { type: 'subscribe', mapId: 2 } } as MessageEvent);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    const socket = FakeWebSocket.instances[0]!;
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.onopen!();
+    return { portA, portB, socket };
+  }
+
+  it('routes a mapId-tagged envelope only to the matching subscriber', () => {
+    const { portA, portB, socket } = connectTwoSubscribedPorts();
+
+    socket.onmessage!({
+      data: JSON.stringify({ task: 'characterUpdate', mapId: 1, load: { n: 1 } }),
+    });
+
+    const receivedByA = messagesOf(portA);
+    expect(receivedByA).toHaveLength(1);
+    expect(receivedByA[0]!.envelope).toMatchObject({ task: 'characterUpdate', mapId: 1 });
+    expect(messagesOf(portB)).toHaveLength(0);
+  });
+
+  it('fans a control-plane frame (no mapId) out to every port', () => {
+    const { portA, portB, socket } = connectTwoSubscribedPorts();
+
+    socket.onmessage!({ data: JSON.stringify({ task: 'healthCheck', load: { ts: 1 } }) });
+
+    const receivedByA = messagesOf(portA);
+    const receivedByB = messagesOf(portB);
+    expect(receivedByA).toHaveLength(1);
+    expect(receivedByB).toHaveLength(1);
+    expect(receivedByA[0]!.envelope.task).toBe('healthCheck');
+    expect(receivedByB[0]!.envelope.task).toBe('healthCheck');
+  });
+});

@@ -19,7 +19,7 @@ import { describeMapEvent, type WebhookEventContext } from '@/lib/webhooks/forma
 
 /**
  * Read layer for the in-map audit console (`GET /api/map/[mapId]/audit`, gated
- * by `canManageMap`).
+ * by the `audit_view` capability).
  *
  * Every map mutation already lands as one `ap_map_event` row; this module is the
  * only read path that turns that append-only log into a human-browsable feed.

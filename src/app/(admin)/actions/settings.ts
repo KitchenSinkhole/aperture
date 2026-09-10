@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db/client';
 import { apInstance } from '@/db/schema';
+import { overlayFitOverflow } from '@/db/schema/ap/enums';
 import { auth } from '@/lib/auth';
 import { isAdmin } from '@/lib/auth/rights';
 
@@ -42,6 +43,60 @@ export async function adminSetStaleSignatureThreshold(
   await db
     .update(apInstance)
     .set({ staleSignatureThresholdMinutes: parsed.data.minutes, updatedAt: new Date() })
+    .where(eq(apInstance.id, 1));
+
+  revalidatePath('/admin/settings');
+  return { ok: true };
+}
+
+const routeSettingsKeepOpenSchema = z.object({
+  keepOpen: z.boolean(),
+});
+
+/**
+ * Set the instance-wide default for whether the route-planner settings popover
+ * survives an outside press (`ap_instance`), gated to global admins. Accounts
+ * may override it either way on `ap_user`; an account that has never set it
+ * follows this value.
+ */
+export async function adminSetRouteSettingsKeepOpen(
+  input: z.input<typeof routeSettingsKeepOpenSchema>,
+): Promise<ActionResult> {
+  const parsed = routeSettingsKeepOpenSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]!.message };
+
+  const session = await auth();
+  if (!(await isAdmin(session))) return { ok: false, error: 'Forbidden.' };
+
+  await db
+    .update(apInstance)
+    .set({ routeSettingsKeepOpen: parsed.data.keepOpen, updatedAt: new Date() })
+    .where(eq(apInstance.id, 1));
+
+  revalidatePath('/admin/settings');
+  return { ok: true };
+}
+
+const overlayFitOverflowSchema = z.object({
+  policy: z.enum(overlayFitOverflow.enumValues),
+});
+
+/**
+ * Set the instance-wide overlay fit-columns overflow policy (`ap_instance`),
+ * gated to global admins. There is no per-account override.
+ */
+export async function adminSetOverlayFitOverflow(
+  input: z.input<typeof overlayFitOverflowSchema>,
+): Promise<ActionResult> {
+  const parsed = overlayFitOverflowSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]!.message };
+
+  const session = await auth();
+  if (!(await isAdmin(session))) return { ok: false, error: 'Forbidden.' };
+
+  await db
+    .update(apInstance)
+    .set({ overlayFitOverflow: parsed.data.policy, updatedAt: new Date() })
     .where(eq(apInstance.id, 1));
 
   revalidatePath('/admin/settings');

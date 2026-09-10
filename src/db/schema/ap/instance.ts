@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   check,
   integer,
   pgTable,
@@ -8,7 +9,7 @@ import {
   smallint,
   timestamp,
 } from 'drizzle-orm/pg-core';
-import { accessMode, accessPrincipal } from './enums';
+import { accessMode, accessPrincipal, overlayFitOverflow } from './enums';
 
 // Permissions-overhaul. Per-deployment access configuration.
 //
@@ -36,6 +37,15 @@ export const apInstance = pgTable(
     staleSignatureThresholdMinutes: integer('stale_signature_threshold_minutes')
       .notNull()
       .default(240),
+    // How the system overlay's fit-columns-to-content action resolves a fit
+    // wider than the overlay window. Admin-set; there is no per-account override.
+    overlayFitOverflow: overlayFitOverflow('overlay_fit_overflow')
+      .notNull()
+      .default('truncate_cascade'),
+    // Global default for whether the route-planner settings popover survives an
+    // outside press. Admins set the default; each user may override it either way
+    // on `ap_user`.
+    routeSettingsKeepOpen: boolean('route_settings_keep_open').notNull().default(false),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check('ap_instance_singleton_chk', sql`${t.id} = 1`)],
@@ -54,9 +64,6 @@ export const apInstanceOwner = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.principalKind, t.principalId], name: 'ap_instance_owner_pk' }),
-    check(
-      'ap_instance_owner_kind_chk',
-      sql`${t.principalKind} in ('corporation', 'alliance')`,
-    ),
+    check('ap_instance_owner_kind_chk', sql`${t.principalKind} in ('corporation', 'alliance')`),
   ],
 );

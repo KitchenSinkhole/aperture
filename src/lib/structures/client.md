@@ -23,5 +23,5 @@ Built on `requestJson` (`@/lib/http/fetchJson`), so toasts + error folding are s
 `GET /api/structures/corp-search?q=…`. Corporation name autocomplete for the owner picker. Caller debounces; under 3 chars the server returns `[]`.
 
 ### Body types
-- `CreateStructureBody` — `{ systemId, name, structureTypeId, ownerCorporationId?, ownerName?, notes? }`
+- `CreateStructureBody` — `{ mapId, systemId, name, structureTypeId, ownerCorporationId?, ownerName?, notes? }`. `mapId` is the map the row is written on; the server derives the row's scope from it and rejects a map the caller cannot view.
 - `UpdateStructureBody` — `{ name?, structureTypeId?, ownerCorporationId?, ownerName?, notes? }`

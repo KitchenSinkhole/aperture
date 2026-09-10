@@ -110,11 +110,9 @@ export const mapExportSchema = z.object({
     name: z.string(),
     scope: z.enum(mapScope.enumValues),
     type: z.enum(mapType.enumValues),
-    icon: z.string().nullable(),
     deleteExpiredConnections: z.boolean(),
     deleteEolConnections: z.boolean(),
     trackAbyssalJumps: z.boolean(),
-    logActivity: z.boolean(),
   }),
   systems: z.array(exportSystemSchema).max(2000),
   connections: z.array(exportConnectionSchema).max(4000),
@@ -137,8 +135,8 @@ export type ImportResult = {
 /**
  * Read a map's current visible state into a `MapExportFile`. Throws if the map
  * does not exist or is soft-deleted (callers gate access via `requireMapMutate`
- * with `map_export` first). Exports `intel_notes` (which `loadMapForView`
- * omits) so an import round-trips the full per-system intel.
+ * with `map_export` first). Exports `intel_notes` so an import round-trips the
+ * full per-system intel.
  */
 export async function buildMapExport(mapId: bigint): Promise<MapExportFile> {
   const [map] = await db
@@ -146,11 +144,9 @@ export async function buildMapExport(mapId: bigint): Promise<MapExportFile> {
       name: apMap.name,
       scope: apMap.scope,
       type: apMap.type,
-      icon: apMap.icon,
       deleteExpiredConnections: apMap.deleteExpiredConnections,
       deleteEolConnections: apMap.deleteEolConnections,
       trackAbyssalJumps: apMap.trackAbyssalJumps,
-      logActivity: apMap.logActivity,
     })
     .from(apMap)
     .where(and(eq(apMap.id, mapId), isNull(apMap.deletedAt)));

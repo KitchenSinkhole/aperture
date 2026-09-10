@@ -66,7 +66,6 @@ describe.skipIf(!run)('map CRUD pipeline (real Postgres)', () => {
           name: 'CRUD Test Map',
           scope: 'wh' as const,
           type: 'private' as const,
-          icon: null,
         };
       },
     });

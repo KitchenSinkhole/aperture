@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { apertureConfig } from '../../../../aperture.config';
 import { db } from '@/db/client';
 import { apMap, apMapConnection } from '@/db/schema';
@@ -7,9 +7,9 @@ import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
 
 /**
- * Expired-wormhole-connection cron: delete `ap_map_connection` rows
- * with `scope = 'wh'` older than `WORMHOLE_DEFAULT_LIFETIME_MS` (48h — the
- * practical wormhole lifetime cap), but only on
+ * Expired-connection cron: delete `ap_map_connection` rows with
+ * `scope IN ('wh', 'abyssal')` older than `WORMHOLE_DEFAULT_LIFETIME_MS` (48h —
+ * the practical wormhole lifetime cap), but only on
  * maps where `ap_map.delete_expired_connections = true`. Each delete fires
  * through `commitMapEvent` so it becomes a `connection.delete` event.
  *
@@ -17,8 +17,13 @@ import type { JobModule } from '../registry';
  * displayed lifetime and the actual reap threshold can't drift; the SQL
  * `make_interval(secs => …)` site converts ms → seconds.
  *
- * Non-WH scopes (`stargate`, `jumpbridge`, `abyssal`) are stable and never
- * expire on age alone.
+ * An abyssal trace outlives its pocket by even further than a wormhole outlives
+ * its own lifetime — the filament is single-use and collapses in minutes — so
+ * the shared 48h threshold is a generous upper bound rather than a modelled
+ * lifetime. Without it a map that folds filament runs accretes an edge per run
+ * with nothing to ever remove it.
+ *
+ * `stargate` and `jumpbridge` are structural and never expire on age alone.
  */
 
 const NAME = 'expired-connections';
@@ -33,7 +38,7 @@ async function expire(): Promise<{ scanned: number; deleted: number; failed: num
     .innerJoin(apMap, eq(apMapConnection.mapId, apMap.id))
     .where(
       and(
-        eq(apMapConnection.scope, 'wh'),
+        inArray(apMapConnection.scope, ['wh', 'abyssal']),
         lt(
           apMapConnection.createdAt,
           sql`now() - make_interval(secs => ${apertureConfig.WORMHOLE_DEFAULT_LIFETIME_MS / 1000})`,

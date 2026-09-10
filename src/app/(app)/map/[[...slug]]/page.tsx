@@ -9,11 +9,14 @@ import { loadRouteConfig } from '@/lib/map/routeConfig';
 import { statsForSystems } from '@/lib/map/stats';
 import { intelForSystems } from '@/lib/map/intel';
 import { structuresForSystems } from '@/lib/structures/read';
+import { requireIntelTenant } from '@/lib/structures/guard';
 import {
   getAccountCharacters,
   getConnectionTravelAnimation,
   getMainCharacterId,
   getMapLayout,
+  getOverlayFitOverflow,
+  getRouteSettingsKeepOpen,
   getSignatureIndicatorPrefs,
   requireSession,
 } from '@/lib/session';
@@ -57,27 +60,33 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     settings,
     travelAnimation,
     signatureIndicators,
+    overlayFitOverflow,
     accountCharacters,
     mapLayout,
     routeConfig,
+    routeSettingsDismiss,
     mainCharacterId,
     canManage,
     capabilities,
     liveShares,
+    intelTenant,
   ] = await Promise.all([
     statsForSystems(systemIds),
     intelForSystems(systemIds),
-    structuresForSystems(systemIds),
+    structuresForSystems(mapId, systemIds, BigInt(session.characterId)),
     loadMapSettings(BigInt(session.characterId), mapId),
     getConnectionTravelAnimation(session.userId),
     getSignatureIndicatorPrefs(session.userId),
+    getOverlayFitOverflow(),
     getAccountCharacters(session.userId),
     getMapLayout(session.userId),
     loadRouteConfig(session.userId),
+    getRouteSettingsKeepOpen(session.userId),
     getMainCharacterId(session.userId),
     canManageMap(BigInt(session.characterId), mapId),
     resolveMapCapabilities(BigInt(session.characterId), mapId),
     loadLiveShareBadges(mapId),
+    requireIntelTenant(mapId, BigInt(session.characterId)),
   ]);
 
   // Active characters drive both the CTRL+V paste location check (ids) and the
@@ -101,17 +110,20 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
         stats={stats}
         intel={intel}
         structures={structures}
+        structureIntelEnabled={intelTenant.ok}
         settings={settings}
         canManage={canManage}
         capabilities={[...capabilities]}
         liveShares={liveShares}
         travelAnimation={travelAnimation}
         signatureIndicators={signatureIndicators}
+        overlayFitOverflow={overlayFitOverflow}
         viewerCharacterIds={viewerCharacterIds}
         viewerCharacters={viewerCharacters}
         mainCharacterId={mainCharacterId == null ? null : Number(mainCharacterId)}
         routePrefs={routeConfig.prefs}
         routeDestinations={routeConfig.destinations}
+        routeSettingsDismiss={routeSettingsDismiss}
         mapLayout={mapLayout}
       />
     </>

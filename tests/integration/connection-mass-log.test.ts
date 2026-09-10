@@ -15,7 +15,7 @@ import {
 } from '@/db/schema';
 import { addSystem } from '@/lib/map/mutations/systems';
 import { createConnection, deleteConnection } from '@/lib/map/mutations/connections';
-import { foldWormholeJumpOntoMap } from '@/lib/jobs/locationCommit';
+import { foldJumpOntoMap } from '@/lib/jobs/locationCommit';
 import { listConnectionMassLog, logConnectionJump } from '@/lib/map/connectionMassLog';
 import { shipMass } from '@/lib/eve/shipMass';
 
@@ -124,23 +124,25 @@ describe.skipIf(!run)('connection mass-log (real Postgres)', () => {
     expect(await listConnectionMassLog({ mapId: foldMapId, connectionId: connId })).toEqual([]);
   });
 
-  it('foldWormholeJumpOntoMap returns a connection id for created then pre-existing', async () => {
-    const first = await foldWormholeJumpOntoMap({
+  it('foldJumpOntoMap returns a connection id for created then pre-existing', async () => {
+    const first = await foldJumpOntoMap({
       mapId: foldMapId,
       characterId: null as unknown as bigint, // fold accepts a bigint; null is fine for the audit FK
       fromSystemId: C3,
       toSystemId: HS,
       addNewSystems: true,
+      scope: 'wh',
     });
     expect(first.connectionCreated).toBe(true);
     expect(first.connectionId).toBeGreaterThan(0n);
 
-    const second = await foldWormholeJumpOntoMap({
+    const second = await foldJumpOntoMap({
       mapId: foldMapId,
       characterId: null as unknown as bigint,
       fromSystemId: C3,
       toSystemId: HS,
       addNewSystems: true,
+      scope: 'wh',
     });
     expect(second.connectionCreated).toBe(false);
     expect(second.connectionId).toBe(first.connectionId);
@@ -159,12 +161,13 @@ describe.skipIf(!run)('connection mass-log (real Postgres)', () => {
 
     // Pilot has the map closed and neither endpoint is on it → nothing is added,
     // no connection to log against.
-    const suppressed = await foldWormholeJumpOntoMap({
+    const suppressed = await foldJumpOntoMap({
       mapId: gateMapId,
       characterId: null as unknown as bigint,
       fromSystemId: C3,
       toSystemId: HS,
       addNewSystems: false,
+      scope: 'wh',
     });
     expect(suppressed.connectionId).toBeNull();
     expect(suppressed.fromSystemAdded).toBe(false);
@@ -179,12 +182,13 @@ describe.skipIf(!run)('connection mass-log (real Postgres)', () => {
     // the connection between them (movement among already-added systems).
     await addSystem({ mapId: gateMapId, systemId: C3, characterId: null });
     await addSystem({ mapId: gateMapId, systemId: HS, characterId: null });
-    const recorded = await foldWormholeJumpOntoMap({
+    const recorded = await foldJumpOntoMap({
       mapId: gateMapId,
       characterId: null as unknown as bigint,
       fromSystemId: C3,
       toSystemId: HS,
       addNewSystems: false,
+      scope: 'wh',
     });
     expect(recorded.connectionId).not.toBeNull();
     expect(recorded.connectionCreated).toBe(true);

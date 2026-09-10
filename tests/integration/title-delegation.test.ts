@@ -186,6 +186,41 @@ describe.skipIf(!run)('per-title feature delegation actions (real Postgres)', ()
     expect(revokedEvents).toHaveLength(1);
   });
 
+  it('grants map_export to a title; the holder gains exactly that capability', async () => {
+    actAs(DIRECTOR_ID);
+    const granted = await setMapDelegation({
+      mapId: corpMapId.toString(),
+      roleId: TITLE_A_LOGI.toString(),
+      capability: 'map_export',
+      enabled: true,
+    });
+    expect(granted.ok).toBe(true);
+
+    try {
+      const state = await getMapDelegationState(corpMapId.toString());
+      if (!state.ok || !state.data.available) throw new Error('expected available corp map');
+      const logi = state.data.roles.find((r) => r.label === 'Logistics')!;
+      expect(logi.capabilities).toEqual(['map_export']);
+
+      // The member holding that title gains exactly map_export, nothing else —
+      // audit_view was revoked in the prior test, so it must not still be set.
+      expect(await hasMapCapability(MEMBER_ID, corpMapId, 'map_export')).toBe(true);
+      expect(await hasMapCapability(MEMBER_ID, corpMapId, 'audit_view')).toBe(false);
+      expect(await hasMapCapability(MEMBER_ID, corpMapId, 'webhooks_manage')).toBe(false);
+      expect(await hasMapCapability(MEMBER_ID, corpMapId, 'settings_manage')).toBe(false);
+    } finally {
+      // Later tests assume the same empty-grant state the original suite did,
+      // so the grant is dropped even when an assertion above fails.
+      const revoked = await setMapDelegation({
+        mapId: corpMapId.toString(),
+        roleId: TITLE_A_LOGI.toString(),
+        capability: 'map_export',
+        enabled: false,
+      });
+      expect(revoked.ok).toBe(true);
+    }
+  });
+
   it('rejects the implicit view capability', async () => {
     actAs(DIRECTOR_ID);
     const result = await setMapDelegation({

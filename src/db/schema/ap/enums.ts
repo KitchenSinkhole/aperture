@@ -15,7 +15,7 @@ export const characterStatus = pgEnum('character_status', ['active', 'kicked', '
  */
 export const authzLevel = pgEnum('authz_level', ['member', 'admin']);
 
-/** What kinds of systems a map is allowed to hold. */
+/** Descriptive label for what kinds of systems a map is meant to hold. */
 export const mapScope = pgEnum('map_scope', ['wh', 'k_space', 'none', 'all']);
 
 /** Map ownership/visibility class. */
@@ -88,10 +88,12 @@ export const apWebhookChannel = pgEnum('ap_webhook_channel', ['discord']);
 export const apWebhookEvent = pgEnum('ap_webhook_event', ['history', 'rally']);
 
 /**
- * The map-management rights vocabulary. Reserved as the granular delegation
- * vocabulary for the future title-delegation overlay (R4); at the baseline the
- * mutate guards take a `MapRight` argument but ignore it (authority is the
- * binary `canManageMap`). No table stores these today — the old
+ * The map-management rights vocabulary. The `canMutateMap` guards take a
+ * `MapRight` argument but only distinguish `map_update` (view-gated content
+ * editing) from everything else (binary `canManageMap`) — this vocabulary
+ * carries no per-right granularity of its own. Per-map feature delegation to
+ * specific titles (R4) is a separate, shipped vocabulary (`MapCapability`,
+ * `src/lib/auth/rights.ts`). No table stores `MapRight` values today — the old
  * `ap_corporation_right` matrix was retired in 0041.
  */
 export const mapRight = pgEnum('map_right', [
@@ -154,10 +156,7 @@ export const signatureGroupKey = pgEnum('signature_group_key', [
  * `ap_map_signature.class_kind`. Nullable: paste-derived only, so legacy rows
  * and low-information manual rows have no known kind.
  */
-export const signatureClassKind = pgEnum('signature_class_kind', [
-  'signature',
-  'anomaly'
-]);
+export const signatureClassKind = pgEnum('signature_class_kind', ['signature', 'anomaly']);
 
 /**
  * Site-safety of a cosmic signature: whether running the site pits you against
@@ -167,10 +166,7 @@ export const signatureClassKind = pgEnum('signature_class_kind', [
  * Orthogonal to `signature_group_key`: a `relic` site can be a `combat`
  * activity, so this is its own type, not a group value.
  */
-export const signatureActivity = pgEnum('signature_activity', [
-  'combat',
-  'exploration'
-]);
+export const signatureActivity = pgEnum('signature_activity', ['combat', 'exploration']);
 
 /**
  * Where an `ap_role` row originates.
@@ -184,13 +180,28 @@ export const roleSource = pgEnum('role_source', ['builtin', 'corp_title', 'exter
 
 /**
  * The mutation recorded in `ap_structure_event` — the append-only
- * accountability log for manual structure intel. Structures are deployment-global
- * and editable by any authenticated user, so every create/update/delete is
+ * accountability log for manual structure intel. A structure is editable by
+ * people other than its creator, so every create/update/delete is
  * stamped with the acting character to identify griefers. (Structures have no
  * `map_id` and therefore cannot live in `ap_map_event`; this is their dedicated,
  * single-source history.)
  */
 export const structureEventKind = pgEnum('structure_event_kind', ['create', 'update', 'delete']);
+
+/**
+ * Who may see a row of manual intel (`ap_structure.scope`). The row takes its
+ * scope from the map it was written on, never from the writer's own affiliation:
+ * a `private` map yields `private` (the writing character only), a `corp` map
+ * `corp` (members of that corporation), an `alliance` map `alliance` (members of
+ * that alliance). Visibility then follows the *viewer*, not whichever map they
+ * currently have open, so a member sees every row their affiliation admits at
+ * once. Access revokes itself on a membership change, since the filter matches
+ * the viewer's current `ap_character.corporation_id` / `alliance_id`.
+ *
+ * Deliberately not a reuse of `map_type` despite the identical spelling: a
+ * future map type must not silently widen intel visibility.
+ */
+export const intelScope = pgEnum('intel_scope', ['private', 'corp', 'alliance']);
 
 /**
  * The auto-tagging scheme a map runs (`ap_map.tag_scheme`).
@@ -239,12 +250,7 @@ export const accessScope = pgEnum('access_scope', ['instance', 'map']);
  * `ALTER TYPE access_capability ADD VALUE`. The capability↔scope pairing is
  * enforced by a CHECK.
  */
-export const accessCapability = pgEnum('access_capability', [
-  'login',
-  'admin',
-  'view',
-  'edit',
-]);
+export const accessCapability = pgEnum('access_capability', ['login', 'admin', 'view', 'edit']);
 
 /**
  * Roster disclosure level for a public map share (`ap_map_share.presence_mode`).
@@ -268,3 +274,26 @@ export const errorLevel = pgEnum('error_level', ['warn', 'error', 'fatal']);
  * now to avoid a later `ALTER TYPE`).
  */
 export const errorSource = pgEnum('error_source', ['server', 'job', 'client']);
+
+/**
+ * How the system overlay's "fit columns to content" action resolves a fit that
+ * would be wider than the overlay window (`ap_instance.overlay_fit_overflow`).
+ * - `proportional` — every resizable column gives up a share of the overrun in
+ *   proportion to its own fitted width.
+ * - `grow_window` — the Document PiP window is widened by the overrun instead.
+ * - `eat_pilot` / `eat_name` / `eat_type` — the named column absorbs the whole
+ *   overrun, the others keeping their fitted width. A column can never shrink
+ *   below its floor, so any residue falls back to a proportional share.
+ * - `truncate_cascade` — the ship-name column absorbs the overrun down to its
+ *   floor, then the pilot-name column, then the type column.
+ *
+ * Appended rather than ordered, so adding a value never rewrites the ordinals.
+ */
+export const overlayFitOverflow = pgEnum('overlay_fit_overflow', [
+  'proportional',
+  'grow_window',
+  'eat_pilot',
+  'eat_name',
+  'eat_type',
+  'truncate_cascade',
+]);

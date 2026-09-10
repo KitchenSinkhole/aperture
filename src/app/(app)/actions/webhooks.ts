@@ -5,14 +5,17 @@ import { z } from 'zod';
 import { db } from '@/db/client';
 import { apMapWebhook, apWebhookChannel, apWebhookEvent } from '@/db/schema';
 import { requireSession } from '@/lib/session';
-import { canUseMapFeature } from '@/lib/auth/rights';
+import { requireMapCapability } from '@/lib/auth/rights';
 
 /**
- * Map-scoped actions on `ap_map_webhook` rows, gated by the `webhooks_manage`
- * capability — held implicitly by a manager (private-map owner, owning-corp
- * Director, owning-alliance executor-corp Director, or admin) and grantable to a
- * specific corp title via `ap_map_role_access`. Surfaced in the in-map
- * Settings → Webhooks tab; the admin panel no longer owns webhook config.
+ * Map-scoped actions on `ap_map_webhook` rows, gated by
+ * `requireMapCapability(session, mapId, 'webhooks_manage')` — held implicitly
+ * by a manager (private-map owner, owning-corp Director, owning-alliance
+ * executor-corp Director, or admin) and grantable to a specific corp title via
+ * `ap_map_role_access`. The guard resolves the map row first, so a
+ * soft-deleted map is inaccessible to a delegated title-holder the same as it
+ * is to a Director. Surfaced in the in-map Settings → Webhooks tab; the admin
+ * panel no longer owns webhook config.
  *
  * No `ap_map_event` row is written — webhook subscriptions are infrastructure,
  * not map state. The Webhooks tab refetches `GET /api/map/[mapId]/webhooks`
@@ -39,9 +42,8 @@ type ActionResult<T = void> =
 /** Resolve the session character and confirm it may manage this map's webhooks. */
 async function gateForMap(mapId: bigint): Promise<{ ok: true } | { ok: false; error: string }> {
   const session = await requireSession();
-  if (!(await canUseMapFeature(BigInt(session.characterId), mapId, 'webhooks_manage'))) {
-    return { ok: false, error: 'Forbidden.' };
-  }
+  const guard = await requireMapCapability(session, mapId, 'webhooks_manage');
+  if (!guard.ok) return { ok: false, error: guard.error };
   return { ok: true };
 }
 

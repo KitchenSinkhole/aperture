@@ -1,0 +1,21 @@
+name: Issue opened -> Backlog
+
+# Every new issue lands on the maintainer project board with Status
+# "Backlog" so nothing has to be added by hand.
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+      REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add issue to board as Backlog
+        run: bash .github/scripts/add-issue-to-backlog.sh
