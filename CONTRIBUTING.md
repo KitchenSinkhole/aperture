@@ -140,3 +140,19 @@ to `master`; don't skip CI hooks.
 
 For larger work that spans multiple sessions, write a staged plan to `docs/plans/<feature>.md`
 following the format in [CLAUDE.md](CLAUDE.md) § Planning Mode.
+
+### Project board
+
+Every issue moves through five statuses on the maintainer project board, driven entirely by
+GitHub events — nobody drags cards by hand:
+
+| Status | Set automatically when... |
+|---|---|
+| **Backlog** | An issue is opened |
+| **In Progress** | The issue is assigned |
+| **Pending Dev** | A non-draft PR closing the issue is opened against `dev` |
+| **Dev Testing** | That PR is merged into `dev` |
+| **Done** | `dev` is merged into `master` (a release) — every issue in "Dev Testing" moves to "Done" at once |
+
+See `.github/workflows/issue-opened.yml`, `issue-assigned.yml`, `project-status-sync.yml`, and
+`release-to-master.yml`.

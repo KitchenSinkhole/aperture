@@ -1,0 +1,21 @@
+name: Issue assigned -> In Progress
+
+# Assigning an issue signals work has started. Moves it to "In Progress" on
+# the maintainer project board. No reverse transition on unassign.
+
+on:
+  issues:
+    types: [assigned]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+      REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Move issue to In Progress
+        run: bash .github/scripts/set-issue-status.sh "In Progress"

@@ -89,6 +89,10 @@ and `git push --follow-tags` only carries **annotated** tags — so folding the 
 branch push with `--follow-tags` silently leaves it local, and the GitHub release in step 4
 then fails to find it. Push the tag ref explicitly.
 
+`git push origin master` also fires `.github/workflows/release-to-master.yml`, which moves
+every issue currently in "Dev Testing" on the project board to "Done" — no manual board step
+needed.
+
 ### 4. Create the GitHub release
 
 The release body is the matching `CHANGELOG.md` section — the changelog is the single source
