@@ -36,6 +36,7 @@ import type {
   PanelId,
   RouteDestinationView,
   RoutePrefs,
+  RouteSettingsDismissPrefs,
   SignatureIndicatorPrefs,
   SigSearchFilters,
   StructureIntel,
@@ -285,6 +286,7 @@ export function MapCanvas({
   mainCharacterId,
   routePrefs,
   routeDestinations,
+  routeSettingsDismiss,
   mapLayout,
 }: {
   data: MapViewData;
@@ -328,6 +330,8 @@ export function MapCanvas({
   routePrefs: RoutePrefs;
   /** The account's saved route destinations (routes-module). */
   routeDestinations: RouteDestinationView[];
+  /** Resolved dismiss behaviour for the route-planner settings popover, plus the instance default behind it. */
+  routeSettingsDismiss: RouteSettingsDismissPrefs;
   /**
    * Saved per-account dashboard layout (map-layout-builder), or `null` to use
    * `DEFAULT_MAP_LAYOUT`.
@@ -2105,6 +2109,7 @@ export function MapCanvas({
             selectedSystemId={selectedSystem?.systemId ?? null}
             initialPrefs={routePrefs}
             initialDestinations={routeDestinations}
+            initialDismiss={routeSettingsDismiss}
             systems={viewData.systems}
             connections={viewData.connections}
             signatures={viewData.signatures}

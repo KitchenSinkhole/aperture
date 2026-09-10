@@ -109,12 +109,50 @@ components or services. DB-derived types use Drizzle's `InferSelectModel` / `Inf
 
 ## Git workflow
 
-- Branch from `dev`; one logical change per branch.
-- Open the PR against `dev`, never `master` — CI rejects any PR targeting `master`. `master` only
-  advances by merging `dev` into it at release time; see [docs/RELEASING.md](docs/RELEASING.md).
-- Keep PRs reviewable in a single sitting, with a green CI build (`pnpm typecheck`, `pnpm lint`,
-  `pnpm test`) and companion `.md` updates alongside the code.
-- Don't force-push to `master`; don't skip CI hooks.
+Every change starts from an issue, not a blank branch. If nothing covers what you want to do,
+[open one](../../issues/new/choose) first — the templates ask for acceptance criteria, likely
+files, and out-of-scope notes, which is also what an AI coding tool needs to work the issue
+unattended.
+
+1. **Assign yourself** to the issue (keeps two people from picking up the same one).
+2. **Branch from it:**
+   ```bash
+   gh issue develop <issue-number> --base dev
+   git checkout <the branch gh just created>
+   ```
+   This links the branch to the issue from the start, which survives even if an AI tool
+   later rewrites the PR body. Never branch off `master` — CI rejects any PR targeting it;
+   `master` only advances by merging `dev` at release time, see
+   [docs/RELEASING.md](docs/RELEASING.md).
+3. **Point your AI tool at the issue** — `gh issue view <issue-number>` gives it the spec.
+   `AGENTS.md` at the repo root carries the working conventions every AI tool should already
+   be reading.
+4. **Open the PR against `dev`**, include `Closes #<issue-number>` in the description (a bot
+   will try to infer and inject this if you forget, but don't rely on it), and click
+   **Enable auto-merge**. Once `pnpm typecheck`, `pnpm lint`, and `pnpm test` are green — plus
+   the size/scope/dependency gates in `.github/workflows/pr-gates.yml` — it merges on its own.
+   A PR touching `src/lib/auth/`, `src/lib/esi/`, or `src/db/schema|migrations/` additionally
+   needs a maintainer review (see `.github/CODEOWNERS`).
+
+Keep PRs reviewable in a single sitting — one logical change per branch, companion `.md`
+updates alongside the code, no drive-by refactors outside the issue's scope. Don't force-push
+to `master`; don't skip CI hooks.
 
 For larger work that spans multiple sessions, write a staged plan to `docs/plans/<feature>.md`
 following the format in [CLAUDE.md](CLAUDE.md) § Planning Mode.
+
+### Project board
+
+Every issue moves through five statuses on the maintainer project board, driven entirely by
+GitHub events — nobody drags cards by hand:
+
+| Status | Set automatically when... |
+|---|---|
+| **Backlog** | An issue is opened |
+| **In Progress** | The issue is assigned |
+| **Pending Dev** | A non-draft PR closing the issue is opened against `dev` |
+| **Dev Testing** | That PR is merged into `dev` |
+| **Done** | `dev` is merged into `master` (a release) — every issue in "Dev Testing" moves to "Done" at once |
+
+See `.github/workflows/issue-opened.yml`, `issue-assigned.yml`, `project-status-sync.yml`, and
+`release-to-master.yml`.

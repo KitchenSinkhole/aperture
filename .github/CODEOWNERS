@@ -22,3 +22,8 @@
 # The working agreements themselves.
 /CONTRIBUTING.md        @MonoliYoda
 /CLAUDE.md              @MonoliYoda
+# Sensitive paths require maintainer review regardless of who opens the PR.
+/src/lib/auth/ @marks-lolcode
+/src/lib/esi/ @marks-lolcode
+/src/db/schema/ @marks-lolcode
+/src/db/migrations/ @marks-lolcode

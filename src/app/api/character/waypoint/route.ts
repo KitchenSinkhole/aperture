@@ -2,7 +2,12 @@ import 'server-only';
 import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession, assertCharacterOwnership } from '@/lib/session';
-import { esiCall, EsiHttpError, EsiTokenError } from '@/lib/esi/client';
+import {
+  esiCall,
+  EsiHttpError,
+  EsiTokenError,
+  EsiTokenTransientError,
+} from '@/lib/esi/client';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 /**
@@ -61,6 +66,12 @@ export const POST = withApiMetrics('/api/character/waypoint', async function POS
     });
     return Response.json({ ok: true });
   } catch (err) {
+    if (err instanceof EsiTokenTransientError) {
+      return Response.json(
+        { ok: false, error: 'EVE services are temporarily unavailable. Try again shortly.' },
+        { status: 503 },
+      );
+    }
     if (
       err instanceof EsiTokenError ||
       (err instanceof EsiHttpError && (err.status === 401 || err.status === 403))

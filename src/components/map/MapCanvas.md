@@ -25,6 +25,7 @@
 | mainCharacterId | number \| null | yes | The account's main character id (fallback when no character is explicitly picked), or null. |
 | routePrefs | RoutePrefs | yes | Per-account route-planner settings (routes-module); seeds `RoutePlannerModule`. |
 | routeDestinations | RouteDestinationView[] | yes | The account's saved route destinations (routes-module). |
+| routeSettingsDismiss | RouteSettingsDismissPrefs | yes | Resolved dismiss behaviour for the Routes settings popover, plus the instance default behind it. |
 | mapLayout | MapLayoutConfig \| null | no | The viewer's saved per-account dashboard layout (map-layout-builder). Seeds the live layout state, run through `migrateLayout` (pre-v2 → singleton groups) → `dedupeGroups` (heal duplicated members) → `ensurePanelsPlaced` (forward-compat); `null` ⇒ `DEFAULT_MAP_LAYOUT`. |
 
 ### Renders

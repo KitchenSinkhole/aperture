@@ -11,4 +11,5 @@ Returns `{ ok, data: CorpSearchResult[] }` (`{ id, name }[]`). Any signed-in use
 **Errors:**
 - 401 — not signed in.
 - 400 `Sign out and back in…` — the caller's token predates the `esi-search.search_structures.v1` scope (`EsiTokenError` / ESI 401|403).
+- 503 — the SSO token endpoint could not be reached to refresh the caller's token (`EsiTokenTransientError`); the token is still valid, so the caller retries rather than re-authenticating.
 - 502 — any other ESI failure (breaker open, http, decode).

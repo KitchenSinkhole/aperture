@@ -15,9 +15,14 @@ import { reportClientError } from '@/lib/log/reportClientError';
 export function ClientErrorReporter() {
   useEffect(() => {
     const onError = (event: ErrorEvent): void => {
-      // Cross-origin script errors are opaque ("Script error.", no stack) — no
-      // useful payload, so skip them rather than logging noise.
-      if (!event.error && event.message === 'Script error.') return;
+      // An `error` event with no `Error` object carries no stack and nothing
+      // actionable. Two things arrive that way and neither is a fault: the
+      // opaque cross-origin case ("Script error.") and browser notifications
+      // dispatched through `onerror`, chiefly the benign "ResizeObserver loop
+      // completed with undelivered notifications". A tab emitting the latter
+      // saturates the ingest rate limit and alone clears the error-rate alert
+      // threshold several times over, so it must never reach the log.
+      if (!event.error) return;
       reportClientError({
         message: event.error?.message ?? event.message,
         stack: event.error?.stack,
