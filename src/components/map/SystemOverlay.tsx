@@ -28,10 +28,8 @@ import { Button } from '../ui/button';
 // Re-tick the EOL countdown on the same cadence as the canvas edge label.
 const EOL_TICK_MS = 30_000;
 
-// How long a search result set stays on screen. The countdown bar runs off the
-// same value, so it fills exactly as the rows are dropped.
-const RESULT_TTL_MS = 30_000;
-const SEARCH_DEBOUNCE_MS = 200;
+// How long the "No ships in D-SCAN" notice stays on screen.
+const NOTICE_TTL_MS = 30_000;
 
 /** System class label: the `C<n>`/sec rating, falling back to trueSec then `?`. */
 function classLabel(security: string | null, trueSec: number | null): string {
@@ -172,22 +170,10 @@ function Header({
   );
 }
 
-/** Shared column widths so a result row lines up with the ship list above it. */
-function PilotCols() {
-  return (
-    <colgroup>
-      <col className="w-[38%]" />
-      <col className="w-[38%]" />
-      <col className="w-5" />
-      <col />
-    </colgroup>
-  );
-}
-
 /**
  * `text` with every occurrence of `needle` marked, so a hit is visible in the
  * cell that produced it. Case-insensitive, to match how the search compares.
- * Renders the text untouched when there is no needle — a D-Scan paste has none.
+ * Renders the text untouched when there is no needle.
  */
 function Highlight({ text, needle }: { text: string; needle?: string }) {
   if (!needle) return <>{text}</>;
@@ -233,20 +219,38 @@ function PilotCells({ p, highlight }: { p: MapPresenceEntry; highlight?: string 
   );
 }
 
-function Pilots({ others }: { others: readonly MapPresenceEntry[] }) {
+function Pilots({
+  others,
+  enemies,
+  highlight,
+}: {
+  others: readonly MapPresenceEntry[];
+  enemies: readonly EnemyShip[];
+  highlight: string;
+}) {
   const [sort, setSort] = useState<PilotSort>({ key: 'ship-type', dir: 'asc' });
+  const needle = highlight.toLowerCase();
 
   const onSort = (key: PilotSortKey) =>
     setSort((prev) =>
       prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
     );
 
+  // Query matches lead the list; the column sort orders within each half.
   const sorted = useMemo(
-    () => [...others].sort((a, b) => comparePilots(a, b, sort)),
-    [others, sort],
+    () =>
+      [...others].sort((a, b) => {
+        if (needle) {
+          const am = pilotMatchesQuery(a, needle);
+          const bm = pilotMatchesQuery(b, needle);
+          if (am !== bm) return am ? -1 : 1;
+        }
+        return comparePilots(a, b, sort);
+      }),
+    [others, sort, needle],
   );
 
-  if (others.length === 0) {
+  if (others.length === 0 && enemies.length === 0) {
     return <div className="text-[11px] italic text-muted-foreground">Alone in system</div>;
   }
 
@@ -258,7 +262,12 @@ function Pilots({ others }: { others: readonly MapPresenceEntry[] }) {
 
   return (
     <table className="w-full table-fixed text-xs">
-      <PilotCols />
+      <colgroup>
+        <col className="w-[38%]" />
+        <col className="w-[38%]" />
+        <col className="w-5" />
+        <col />
+      </colgroup>
       <thead className="text-[10px] uppercase text-muted-foreground">
         <tr>
           {COLS.map(({ key, label, columnSpan }) => {
@@ -284,9 +293,14 @@ function Pilots({ others }: { others: readonly MapPresenceEntry[] }) {
         </tr>
       </thead>
       <tbody>
+        {enemies.map((ship) => (
+          <tr key={ship.key} className="border-t border-foreground/10">
+            <EnemyCells ship={ship} />
+          </tr>
+        ))}
         {sorted.map((p) => (
           <tr key={p.characterId} className="border-t border-foreground/10">
-            <PilotCells p={p} />
+            <PilotCells p={p} highlight={needle ? highlight : undefined} />
           </tr>
         ))}
       </tbody>
@@ -294,34 +308,17 @@ function Pilots({ others }: { others: readonly MapPresenceEntry[] }) {
   );
 }
 
-type SearchResult =
-  | { key: string; kind: 'pilot'; pilot: MapPresenceEntry }
-  | { key: string; kind: 'unknown'; name: string; typeName: string; shipClass: ShipClass | null };
+/** A D-Scanned hull nobody on the roster is flying, pinned atop the pilot list. */
+type EnemyShip = { key: string; name: string; typeName: string; shipClass: ShipClass | null };
 
-/**
- * One frozen result set. `id` keys the DOM so the countdown restarts,
- * `emptyMessage` is what the area shows in place of rows when nothing matched,
- * and `highlight` is the query to mark inside the rows — null for a D-Scan
- * paste, which matches on type id rather than on any text the row shows.
- */
-type SearchOutcome = {
-  id: number;
-  emptyMessage: string;
-  highlight: string | null;
-  results: SearchResult[];
-};
-
-/**
- * The countdown above a result set: a muted-foreground line filling left to
- * right over the set's lifetime, on a faded track of the same colour. Styling
- * and keyframe live in `globals.css`; only the duration rides in on the element,
- * so it cannot drift from the constant that arms the removal timer.
- */
-function ResultProgress() {
+function EnemyCells({ ship }: { ship: EnemyShip }) {
   return (
-    <span className="ap-result-track" aria-hidden>
-      <span className="ap-result-fill" style={{ animationDuration: `${RESULT_TTL_MS}ms` }} />
-    </span>
+    <>
+      <td className="truncate py-0.5 pr-1 text-red-400">Unknown pilot</td>
+      <td className="truncate py-0.5 pr-1 text-red-400">{ship.name}</td>
+      <td className="py-0.5 pr-1">{ship.shipClass && <ShipClassIcon shipClass={ship.shipClass} />}</td>
+      <td className="truncate py-0.5 text-red-400">{ship.typeName}</td>
+    </>
   );
 }
 
@@ -359,104 +356,40 @@ function echoQuery(query: string): string {
   return query.length <= QUERY_ECHO_MAX ? query : `${query.slice(0, QUERY_ECHO_MAX)}…`;
 }
 
-function searchRoster(query: string, roster: readonly MapPresenceEntry[]): MapPresenceEntry[] {
-  const needle = query.toLowerCase();
-  return roster.filter(
-    (p) =>
-      p.characterName.toLowerCase().includes(needle) ||
-      (p.shipName ?? '').toLowerCase().includes(needle) ||
-      (p.shipTypeName ?? '').toLowerCase().includes(needle),
-  );
-}
-
-// Padding sits on the rows rather than the panel, so the countdown bar can run
-// edge to edge along the top.
-function ResultArea({ outcome }: { outcome: SearchOutcome }) {
+function pilotMatchesQuery(p: MapPresenceEntry, needle: string): boolean {
   return (
-    <div className="mb-2 flex flex-col gap-1 bg-muted/50 pb-1">
-      <ResultProgress />
-      <div className="px-1.5">
-        {outcome.results.length === 0 ? (
-          <div className="text-[11px] italic text-muted-foreground">{outcome.emptyMessage}</div>
-        ) : (
-          <table className="w-full table-fixed text-xs">
-            <PilotCols />
-            <tbody>
-              {outcome.results.map((r) => (
-                <tr key={r.key}>
-                  {r.kind === 'pilot' ? (
-                    <PilotCells p={r.pilot} highlight={outcome.highlight ?? undefined} />
-                  ) : (
-                    <>
-                      <td className="truncate py-0.5 pr-1 text-red-400">Unknown pilot</td>
-                      <td className="truncate py-0.5 pr-1 text-red-400">{r.name}</td>
-                      <td className="py-0.5 pr-1">
-                        {r.shipClass && <ShipClassIcon shipClass={r.shipClass} />}
-                      </td>
-                      <td className="truncate py-0.5 text-red-400">{r.typeName}</td>
-                    </>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
+    p.characterName.toLowerCase().includes(needle) ||
+    (p.shipName ?? '').toLowerCase().includes(needle) ||
+    (p.shipTypeName ?? '').toLowerCase().includes(needle)
   );
 }
 
 /**
- * Search box over the ship list plus the transient result area beneath it.
- * Pasting D-Scan text resolves each line against the list; anything else is a
- * substring search over pilot / ship name / hull type. Results are a frozen
- * snapshot that self-clears after `RESULT_TTL_MS`.
+ * Search box over the pilot list, plus the list itself. A typed query lifts the
+ * pilots it matches (substring over pilot / ship name / hull type) to the top
+ * of the list with the query marked in their cells, live as it is typed; a
+ * query nobody matches shows a not-found line under the box instead. Pasting
+ * D-Scan text resolves each ship line against the roster and pins the
+ * unresolved ones atop the list as red enemy rows, which stay until the next
+ * scan replaces them or the Clear button drops them.
  */
-function PilotSearch({ others }: { others: readonly MapPresenceEntry[] }) {
+function PilotSection({ others }: { others: readonly MapPresenceEntry[] }) {
   const [query, setQuery] = useState('');
-  const [outcome, setOutcome] = useState<SearchOutcome | null>(null);
-  // Read at search time only: a result set is a snapshot, so live presence
-  // churn must not re-run the search and restart its countdown.
+  const [enemies, setEnemies] = useState<EnemyShip[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Read at paste time only: an enemy set is a snapshot of one scan, so live
+  // presence churn must not re-resolve it.
   const rosterRef = useRef(others);
   useEffect(() => {
     rosterRef.current = others;
   }, [others]);
-  const nextId = useRef(0);
-
-  // Held so a paste can cancel a search the user had already half-typed: the
-  // paste awaits the ship-type catalog, and a debounce firing inside that gap
-  // would put the abandoned query's results on screen.
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelPendingSearch = () => {
-    if (searchTimer.current !== null) clearTimeout(searchTimer.current);
-    searchTimer.current = null;
-  };
+  const scanCount = useRef(0);
 
   useEffect(() => {
-    const q = query.trim();
-    if (q.length === 0) return;
-    searchTimer.current = setTimeout(() => {
-      searchTimer.current = null;
-      setOutcome({
-        id: ++nextId.current,
-        emptyMessage: `"${echoQuery(q)}" not found`,
-        highlight: q,
-        results: searchRoster(q, rosterRef.current).map((p) => ({
-          key: `p:${p.characterId}`,
-          kind: 'pilot' as const,
-          pilot: p,
-        })),
-      });
-    }, SEARCH_DEBOUNCE_MS);
-    return cancelPendingSearch;
-  }, [query]);
-
-  // A fresh outcome object every search means this re-arms on each result set.
-  useEffect(() => {
-    if (!outcome) return;
-    const timer = setTimeout(() => setOutcome(null), RESULT_TTL_MS);
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), NOTICE_TTL_MS);
     return () => clearTimeout(timer);
-  }, [outcome]);
+  }, [notice]);
 
   async function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
     // The clipboard is only readable while the event is being dispatched, so
@@ -464,7 +397,6 @@ function PilotSearch({ others }: { others: readonly MapPresenceEntry[] }) {
     const rows = parseDscanPaste(e.clipboardData.getData('text'));
     if (rows.length === 0) return; // not D-Scan — let it land as a typed query
     e.preventDefault();
-    cancelPendingSearch();
 
     // Which type ids are hulls comes from the SDE, memoised for the session:
     // only the first paste after a reload costs a request. Null when it failed,
@@ -482,48 +414,64 @@ function PilotSearch({ others }: { others: readonly MapPresenceEntry[] }) {
       (row) =>
         (shipTypes?.has(row.typeId) ?? false) || roster.some((p) => p.shipTypeId === row.typeId),
     );
-    const resolved: SearchResult[] = ships.map((row, i) => {
-      const key = `d:${row.typeId}:${i}`;
-      const pilot = matchDscanRow(row, roster);
-      return pilot
-        ? { key, kind: 'pilot' as const, pilot }
-        : {
-            key,
-            kind: 'unknown' as const,
-            name: row.name,
-            typeName: row.typeName,
-            shipClass: resolveShipClass(row.typeId, shipTypes?.get(row.typeId) ?? null),
-          };
-    });
     setQuery('');
-    setOutcome({
-      id: ++nextId.current,
-      emptyMessage: 'No ships in D-SCAN',
-      highlight: null,
-      // Unknown pilots lead: a hull nobody on the map is flying is the reason to
-      // read a D-Scan at all. Scan order is kept within each group.
-      results: [
-        ...resolved.filter((r) => r.kind === 'unknown'),
-        ...resolved.filter((r) => r.kind === 'pilot'),
-      ],
-    });
+    if (ships.length === 0) {
+      setNotice('No ships in D-SCAN');
+      return;
+    }
+    setNotice(null);
+    const scan = ++scanCount.current;
+    // A scan is a full snapshot of what is in range, so it replaces the pinned
+    // set outright — an all-friendly scan clears it. Scan order is kept.
+    setEnemies(
+      ships
+        .filter((row) => matchDscanRow(row, roster) === null)
+        .map((row, i) => ({
+          key: `d:${scan}:${row.typeId}:${i}`,
+          name: row.name,
+          typeName: row.typeName,
+          shipClass: resolveShipClass(row.typeId, shipTypes?.get(row.typeId) ?? null),
+        })),
+    );
   }
 
+  const needle = query.trim();
+  const missed = needle.length > 0 && !others.some((p) => pilotMatchesQuery(p, needle.toLowerCase()));
+
   return (
-    <div className="flex flex-col gap-1.5">
-      <Input
-        value={query}
-        placeholder="Search or paste D-SCAN"
-        aria-label="Search or paste D-SCAN"
-        className="h-7 text-xs"
-        onPaste={(e) => void handlePaste(e)}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          if (e.target.value.trim().length === 0) setOutcome(null);
-        }}
-      />
-      {outcome && <ResultArea key={outcome.id} outcome={outcome} />}
-    </div>
+    <>
+      {others.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <Input
+            value={query}
+            placeholder="Search or paste D-SCAN"
+            aria-label="Search or paste D-SCAN"
+            className="h-7 text-xs"
+            onPaste={(e) => void handlePaste(e)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setNotice(null);
+            }}
+          />
+          {(notice !== null || missed) && (
+            <div className="text-[11px] italic text-muted-foreground">
+              {notice ?? `"${echoQuery(needle)}" not found`}
+            </div>
+          )}
+        </div>
+      )}
+      {enemies.length > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 text-[10px]"
+          onClick={() => setEnemies([])}
+        >
+          Clear enemy ships
+        </Button>
+      )}
+      <Pilots others={others} enemies={enemies} highlight={needle} />
+    </>
   );
 }
 
@@ -643,8 +591,7 @@ export function SystemOverlay({ viewData }: { viewData: MapViewData }) {
   return (
     <div className="flex flex-col gap-2 p-2 text-sm">
       <Header node={node} fallback={fallback} mapId={viewData.map.id} />
-      {others.length > 0 && <PilotSearch others={others} />}
-      <Pilots others={others} />
+      <PilotSection others={others} />
       {node && <Connections node={node} viewData={viewData} />}
     </div>
   );
