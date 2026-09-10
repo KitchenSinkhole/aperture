@@ -20,7 +20,12 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          CHANGED=$(git diff --shortstat "$BASE_SHA" "$HEAD_SHA" | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
+          # Drizzle Kit rewrites the whole schema snapshot/journal on every
+          # migration — not hand-written diff, doesn't count against scope.
+          CHANGED=$(git diff --shortstat "$BASE_SHA" "$HEAD_SHA" -- . \
+              ':(exclude)src/db/migrations/meta/*_snapshot.json' \
+              ':(exclude)src/db/migrations/meta/_journal.json' \
+            | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
           echo "Changed lines: $CHANGED"
           if [ "$CHANGED" -gt 400 ]; then
             echo "::error::Diff is $CHANGED lines, over the 400-line guideline. See AGENTS.md — split this into smaller PRs, one per issue."
@@ -56,7 +61,9 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- . \
+              ':(exclude)src/db/migrations/meta/*_snapshot.json' \
+              ':(exclude)src/db/migrations/meta/_journal.json')
           COUNT=$(echo "$FILES" | grep -c . || true)
           echo "$FILES"
           if [ "$COUNT" -gt 15 ]; then
