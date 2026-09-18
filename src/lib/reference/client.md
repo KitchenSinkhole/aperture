@@ -13,4 +13,4 @@ GETs `/api/reference/wormholes` via the shared `requestJson` core. Memoised, so 
 ---
 
 ### fetchShipTypeGroups(): Promise<ReadonlyMap\<number, number\> | null>
-GETs `/api/reference/ship-types` and folds the rows into a ship type id → `universe_group.id` map, for telling ships from the rest of a D-Scan. Memoised, so only the first paste of a session costs a request. Resolves to **null** on failure rather than an error shape (the shared core has already toasted), so callers can degrade instead of treating every scanned object as a hull.
+GETs `/api/reference/ship-types` and folds the rows into a ship type id → `universe_group.id` map, for telling ships from the rest of a D-Scan. Memoised, so only the first paste of a session costs a request; callers arriving while that request is still in flight await the same one rather than issuing their own, and the in-flight promise is released on settle so the next caller retries a failed fetch. Resolves to **null** on failure rather than an error shape (the shared core has already toasted), so callers can degrade instead of treating every scanned object as a hull.

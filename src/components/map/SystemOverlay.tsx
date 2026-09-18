@@ -295,7 +295,7 @@ function Pilots({
       <tbody>
         {enemies.map((ship) => (
           <tr key={ship.key} className="border-t border-foreground/10">
-            <EnemyCells ship={ship} />
+            <EnemyCells ship={ship} highlight={needle ? highlight : undefined} />
           </tr>
         ))}
         {sorted.map((p) => (
@@ -311,13 +311,23 @@ function Pilots({
 /** A D-Scanned hull nobody on the roster is flying, pinned atop the pilot list. */
 type EnemyShip = { key: string; name: string; typeName: string; shipClass: ShipClass | null };
 
-function EnemyCells({ ship }: { ship: EnemyShip }) {
+// The Pilot column is the literal "Unknown pilot", not scanned text, so it is
+// not searchable and a query is never marked in it.
+function enemyMatchesQuery(ship: EnemyShip, needle: string): boolean {
+  return ship.name.toLowerCase().includes(needle) || ship.typeName.toLowerCase().includes(needle);
+}
+
+function EnemyCells({ ship, highlight }: { ship: EnemyShip; highlight?: string }) {
   return (
     <>
       <td className="truncate py-0.5 pr-1 text-red-400">Unknown pilot</td>
-      <td className="truncate py-0.5 pr-1 text-red-400">{ship.name}</td>
+      <td className="truncate py-0.5 pr-1 text-red-400">
+        <Highlight text={ship.name} needle={highlight} />
+      </td>
       <td className="py-0.5 pr-1">{ship.shipClass && <ShipClassIcon shipClass={ship.shipClass} />}</td>
-      <td className="truncate py-0.5 text-red-400">{ship.typeName}</td>
+      <td className="truncate py-0.5 text-red-400">
+        <Highlight text={ship.typeName} needle={highlight} />
+      </td>
     </>
   );
 }
@@ -371,18 +381,30 @@ function pilotMatchesQuery(p: MapPresenceEntry, needle: string): boolean {
  * query nobody matches shows a not-found line under the box instead. Pasting
  * D-Scan text resolves each ship line against the roster and pins the
  * unresolved ones atop the list as red enemy rows, which stay until the next
- * scan replaces them or the Clear button drops them.
+ * scan replaces them or the Clear button drops them. Keyed on the system in
+ * SystemOverlay: an enemy set is only in range of the system it was scanned in.
  */
-function PilotSection({ others }: { others: readonly MapPresenceEntry[] }) {
+function PilotSection({
+  others,
+  roster,
+}: {
+  others: readonly MapPresenceEntry[];
+  roster: readonly MapPresenceEntry[];
+}) {
   const [query, setQuery] = useState('');
   const [enemies, setEnemies] = useState<EnemyShip[]>([]);
-  const [notice, setNotice] = useState<string | null>(null);
+  // Wrapped rather than a bare string so re-showing the same text is a real
+  // state change: the TTL effect keys off identity and restarts its timer.
+  const [notice, setNotice] = useState<{ text: string } | null>(null);
   // Read at paste time only: an enemy set is a snapshot of one scan, so live
-  // presence churn must not re-resolve it.
-  const rosterRef = useRef(others);
+  // presence churn must not re-resolve it. Matching is against the whole
+  // roster, including the active character: a scan taken from one alt's client
+  // lists the other's hull, and a pilot missing from the match roster resolves
+  // as an enemy.
+  const rosterRef = useRef(roster);
   useEffect(() => {
-    rosterRef.current = others;
-  }, [others]);
+    rosterRef.current = roster;
+  }, [roster]);
   const scanCount = useRef(0);
 
   useEffect(() => {
@@ -397,11 +419,16 @@ function PilotSection({ others }: { others: readonly MapPresenceEntry[] }) {
     const rows = parseDscanPaste(e.clipboardData.getData('text'));
     if (rows.length === 0) return; // not D-Scan — let it land as a typed query
     e.preventDefault();
+    const scan = ++scanCount.current;
 
     // Which type ids are hulls comes from the SDE, memoised for the session:
     // only the first paste after a reload costs a request. Null when it failed,
     // which `requestJson` has already surfaced as a toast.
     const shipTypes = await fetchShipTypeGroups();
+    // Several pastes can be in the air at once, and they need not settle in
+    // order. Only the newest scan may touch the panel; an overtaken one drops
+    // its result instead of replacing a fresher set with a staler one.
+    if (scan !== scanCount.current) return;
     const roster = rosterRef.current;
     // A scan lists everything in range, most of it not a ship at all; only what
     // the SDE files under the Ship category belongs against a ship list.
@@ -416,11 +443,10 @@ function PilotSection({ others }: { others: readonly MapPresenceEntry[] }) {
     );
     setQuery('');
     if (ships.length === 0) {
-      setNotice('No ships in D-SCAN');
+      setNotice({ text: 'No ships in D-SCAN' });
       return;
     }
     setNotice(null);
-    const scan = ++scanCount.current;
     // A scan is a full snapshot of what is in range, so it replaces the pinned
     // set outright — an all-friendly scan clears it. Scan order is kept.
     setEnemies(
@@ -436,30 +462,32 @@ function PilotSection({ others }: { others: readonly MapPresenceEntry[] }) {
   }
 
   const needle = query.trim();
-  const missed = needle.length > 0 && !others.some((p) => pilotMatchesQuery(p, needle.toLowerCase()));
+  const lowered = needle.toLowerCase();
+  const missed =
+    needle.length > 0 &&
+    !others.some((p) => pilotMatchesQuery(p, lowered)) &&
+    !enemies.some((ship) => enemyMatchesQuery(ship, lowered));
 
   return (
     <>
-      {others.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <Input
-            value={query}
-            placeholder="Search or paste D-SCAN"
-            aria-label="Search or paste D-SCAN"
-            className="h-7 text-xs"
-            onPaste={(e) => void handlePaste(e)}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setNotice(null);
-            }}
-          />
-          {(notice !== null || missed) && (
-            <div className="text-[11px] italic text-muted-foreground">
-              {notice ?? `"${echoQuery(needle)}" not found`}
-            </div>
-          )}
-        </div>
-      )}
+      <div className="flex flex-col gap-1.5">
+        <Input
+          value={query}
+          placeholder="Search or paste D-SCAN"
+          aria-label="Search or paste D-SCAN"
+          className="h-7 text-xs"
+          onPaste={(e) => void handlePaste(e)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setNotice(null);
+          }}
+        />
+        {(notice !== null || missed) && (
+          <div className="text-[11px] italic text-muted-foreground">
+            {notice?.text ?? `"${echoQuery(needle)}" not found`}
+          </div>
+        )}
+      </div>
       {enemies.length > 0 && (
         <Button
           variant="outline"
@@ -591,7 +619,7 @@ export function SystemOverlay({ viewData }: { viewData: MapViewData }) {
   return (
     <div className="flex flex-col gap-2 p-2 text-sm">
       <Header node={node} fallback={fallback} mapId={viewData.map.id} />
-      <PilotSection others={others} />
+      <PilotSection key={activeCharSystemId} others={others} roster={roster} />
       {node && <Connections node={node} viewData={viewData} />}
     </div>
   );

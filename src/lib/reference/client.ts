@@ -24,6 +24,7 @@ export async function fetchWormholeJumpInfo(): Promise<FetchResult<WormholeJumpI
 }
 
 let shipTypeCache: ReadonlyMap<number, number> | null = null;
+let shipTypeInFlight: Promise<ReadonlyMap<number, number> | null> | null = null;
 
 /**
  * Ship type id → SDE group id, for telling ships from the rest of a D-Scan.
@@ -32,6 +33,16 @@ let shipTypeCache: ReadonlyMap<number, number> | null = null;
  */
 export async function fetchShipTypeGroups(): Promise<ReadonlyMap<number, number> | null> {
   if (shipTypeCache) return shipTypeCache;
+  // The cache is only populated once the response lands, so callers arriving
+  // during the first request share that one rather than each firing their own.
+  // Cleared on settle, so a failed fetch is retried by the next caller.
+  shipTypeInFlight ??= loadShipTypeGroups().finally(() => {
+    shipTypeInFlight = null;
+  });
+  return shipTypeInFlight;
+}
+
+async function loadShipTypeGroups(): Promise<ReadonlyMap<number, number> | null> {
   const result = await requestJson<FetchResult<ShipTypeGroupRow[]>>(
     'GET',
     '/api/reference/ship-types',
