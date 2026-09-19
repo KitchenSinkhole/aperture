@@ -1,0 +1,23 @@
+name: Master merge -> Done
+
+# dev is merged into master via a local `git merge --no-ff dev` + push, or a
+# PR from dev (guard-master.yml blocks any other PR into master) — either
+# way it lands as a push event on master. A release ships everything
+# currently staged, so every issue sitting in "Dev Testing" moves to "Done"
+# in bulk rather than tracing individual commits.
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  sync:
+    if: github.event.pusher.name != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Move Dev Testing issues to Done
+        run: bash .github/scripts/mark-dev-testing-done.sh
