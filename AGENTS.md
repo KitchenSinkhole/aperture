@@ -24,8 +24,8 @@ a PR opened against `master` from anything but `dev` is rejected by CI
 
 **Do not refactor or reformat outside the issue's scope.** Touch only the files the change
 requires. No drive-by renames, no reformatting files you didn't need to edit, no "while I'm
-in here" cleanup. CI enforces a diff-size limit and flags files outside the issue's declared
-scope — an over-scope PR will be blocked, not just discouraged.
+in here" cleanup. CI posts a warning when the diff or the file count runs wide; the warning
+does not fail the check, so a sprawling PR costs the reviewer's time rather than the bot's.
 
 ## Comments and logging
 
@@ -44,6 +44,5 @@ those are hard-coded constants on purpose; don't turn them into runtime config.
 
 ## Closing the issue
 
-Every PR body must include `Closes #<issue-number>`. If it's missing, a bot will try to infer
-it from the branch name or PR title/body and inject it — but don't rely on that; write it
-yourself.
+Every PR body must include `Closes #<issue-number>`. Nothing infers it for you. Without that
+line the issue stays open after the release merge and its board card never reaches Done.

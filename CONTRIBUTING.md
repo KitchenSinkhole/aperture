@@ -127,12 +127,13 @@ unattended.
 3. **Point your AI tool at the issue** — `gh issue view <issue-number>` gives it the spec.
    `AGENTS.md` at the repo root carries the working conventions every AI tool should already
    be reading.
-4. **Open the PR against `dev`**, include `Closes #<issue-number>` in the description (a bot
-   will try to infer and inject this if you forget, but don't rely on it), and click
-   **Enable auto-merge**. Once `pnpm typecheck`, `pnpm lint`, and `pnpm test` are green — plus
-   the size/scope/dependency gates in `.github/workflows/pr-gates.yml` — it merges on its own.
-   A PR touching `src/lib/auth/`, `src/lib/esi/`, or `src/db/schema|migrations/` additionally
-   needs a maintainer review (see `.github/CODEOWNERS`).
+4. **Open the PR against `dev`** and include `Closes #<issue-number>` in the description;
+   nothing infers it for you. Two things gate the merge: the `check` job in
+   `.github/workflows/ci.yml` (typecheck, lint, test, build, schema drift) has to be green,
+   and the maintainer has to approve. They own every path in `.github/CODEOWNERS`, so that
+   approval is required on every PR, and nobody merges their own work. The jobs in
+   `.github/workflows/pr-gates.yml` only post warnings about diff size, file count and
+   dependency changes; they never block, and they are not a substitute for the review.
 
 Keep PRs reviewable in a single sitting — one logical change per branch, companion `.md`
 updates alongside the code, no drive-by refactors outside the issue's scope. Don't force-push
