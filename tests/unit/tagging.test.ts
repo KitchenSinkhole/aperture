@@ -7,6 +7,7 @@ import {
   indexForLetter,
 } from '@/lib/tagging/abc';
 import { scheme0121Strategy } from '@/lib/tagging/scheme0121';
+import { classTagLabel } from '@/lib/tagging/display';
 import type { TagContext, TagEdge, TagSystem } from '@/lib/tagging/types';
 
 // Pure-strategy tests for the auto-tagging schemes. No db.
@@ -377,5 +378,29 @@ describe('ABC home-static exemption', () => {
       exemptCtx([home, target], [edge(STATIC_HOME, 1, true)], true),
     );
     expect(changes).toEqual([]);
+  });
+});
+
+describe('classTagLabel', () => {
+  it('concatenates class then tag on ABC and unschemed maps', () => {
+    expect(classTagLabel('C2', 'G', 'abc')).toBe('C2G');
+    expect(classTagLabel('C2', 'G', 'none')).toBe('C2G');
+    expect(classTagLabel('C5', null, 'abc')).toBe('C5');
+    expect(classTagLabel(null, 'G', 'abc')).toBe('G');
+  });
+
+  it('shows the tag alone on a 0121 map, so a C3 tagged 2 does not read as C32', () => {
+    expect(classTagLabel('C3', '2', '0121')).toBe('2');
+    expect(classTagLabel('C1', '1211', '0121')).toBe('1211');
+  });
+
+  it('falls back to the class band for an untagged system on a 0121 map', () => {
+    expect(classTagLabel('C3', null, '0121')).toBe('C3');
+    expect(classTagLabel('H', null, '0121')).toBe('H');
+  });
+
+  it('is empty when neither a class nor a tag is known', () => {
+    expect(classTagLabel(null, null, '0121')).toBe('');
+    expect(classTagLabel(null, null, 'abc')).toBe('');
   });
 });

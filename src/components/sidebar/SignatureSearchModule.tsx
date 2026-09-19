@@ -17,6 +17,7 @@ import { SIGNATURE_GROUP_CATALOG, labelForSignatureGroupKey } from '@/lib/map/si
 import { effectiveSignatureActivity } from '@/lib/map/siteActivity';
 import { formatAgoFromMs } from '@/lib/map/relativeTime';
 import { systemClassColor } from '@/components/map/styling';
+import { classTagLabel } from '@/lib/tagging/display';
 import { cn } from '@/lib/utils';
 import type {
   MapSignature,
@@ -25,6 +26,7 @@ import type {
   SignatureActivity,
   SignatureClassKind,
   SignatureGroupKey,
+  TagScheme,
 } from '@/types';
 
 const CLASS_KIND_TOGGLES: { kind: SignatureClassKind; label: string; title: string }[] = [
@@ -98,6 +100,7 @@ interface Props {
   filters: SigSearchFilters;
   onFiltersChange: (f: SigSearchFilters) => void;
   onNavigate: (systemId: string, sigId: string) => void;
+  tagScheme: TagScheme;
 }
 
 export function SignatureSearchModule({
@@ -106,6 +109,7 @@ export function SignatureSearchModule({
   filters,
   onFiltersChange,
   onNavigate,
+  tagScheme,
 }: Props) {
   const [sortField, setSortField] = useState<SigSortField>('sigId');
   const [sortDir, setSortDir] = useState<SigSortDir>('asc');
@@ -338,47 +342,50 @@ export function SignatureSearchModule({
                 </td>
               </tr>
             )}
-            {rows.map(({ sig, system, ageMs }) => (
-              <tr
-                key={sig.id}
-                className="group border-t border-foreground/10 align-middle even:bg-foreground/[0.03] hover:bg-muted/30"
-              >
-                <td className="px-1 py-px">
-                  <ActivityGlyph sig={sig} />
-                </td>
-                <td className="px-2 py-px font-mono text-xs">{sig.sigId}</td>
-                <td className="px-2 py-px">
-                  {labelForSignatureGroupKey(sig.groupKey) ?? '—'}
-                </td>
-                <td className="w-px whitespace-nowrap px-2 py-px">
-                  {system.alias ?? system.name}
-                  {system.security && (
-                    <span
-                      className="ml-1.5 shrink-0 text-xs font-bold"
-                      style={{ color: systemClassColor(system.security) }}
+            {rows.map(({ sig, system, ageMs }) => {
+              const classTag = classTagLabel(system.security, system.tag, tagScheme);
+              return (
+                <tr
+                  key={sig.id}
+                  className="group border-t border-foreground/10 align-middle even:bg-foreground/[0.03] hover:bg-muted/30"
+                >
+                  <td className="px-1 py-px">
+                    <ActivityGlyph sig={sig} />
+                  </td>
+                  <td className="px-2 py-px font-mono text-xs">{sig.sigId}</td>
+                  <td className="px-2 py-px">
+                    {labelForSignatureGroupKey(sig.groupKey) ?? '—'}
+                  </td>
+                  <td className="w-px whitespace-nowrap px-2 py-px">
+                    {system.alias ?? system.name}
+                    {classTag && (
+                      <span
+                        className="ml-1.5 shrink-0 text-xs font-bold"
+                        style={{ color: systemClassColor(system.security) }}
+                      >
+                        {classTag}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-2 py-px">{sig.name ?? '—'}</td>
+                  <td className="px-2 py-px text-xs text-muted-foreground tabular-nums">
+                    {formatAgoFromMs(ageMs)}
+                  </td>
+                  <td className="px-1 py-px">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-6 gap-1 px-2 text-xs opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                      onClick={() => onNavigate(system.id, sig.id)}
+                      title={`Go to ${system.alias ?? system.name}`}
                     >
-                      {system.security}{system.tag ?? ''}
-                    </span>
-                  )}
-                </td>
-                <td className="px-2 py-px">{sig.name ?? '—'}</td>
-                <td className="px-2 py-px text-xs text-muted-foreground tabular-nums">
-                  {formatAgoFromMs(ageMs)}
-                </td>
-                <td className="px-1 py-px">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="h-6 gap-1 px-2 text-xs opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                    onClick={() => onNavigate(system.id, sig.id)}
-                    title={`Go to ${system.alias ?? system.name}`}
-                  >
-                    Go
-                    <ArrowRight className="size-3.5" />
-                  </Button>
-                </td>
-              </tr>
-            ))}
+                      Go
+                      <ArrowRight className="size-3.5" />
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

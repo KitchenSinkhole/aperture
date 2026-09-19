@@ -9,7 +9,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { systemClassColor } from '@/components/map/styling';
-import type { MapConnectionEdge, MapSystemNode } from '@/types';
+import { classTagLabel } from '@/lib/tagging/display';
+import type { MapConnectionEdge, MapSystemNode, TagScheme } from '@/types';
 
 const NONE_VALUE = '__none__';
 
@@ -31,6 +32,9 @@ const NONE_VALUE = '__none__';
  * same system — the sig↔connection binding is 1:1, so a connection that's
  * spoken for shouldn't be offered again. The current `value` is always exempt
  * so the row keeps showing its own binding.
+ *
+ * The far end's class+tag label is scheme-dependent (`classTagLabel`), so the
+ * map's `tagScheme` has to be passed in.
  */
 export function ConnectionSelect({
   system,
@@ -42,6 +46,7 @@ export function ConnectionSelect({
   targetClass,
   excludeIds,
   triggerClassName,
+  tagScheme,
 }: {
   system: MapSystemNode;
   connections: MapConnectionEdge[];
@@ -52,6 +57,7 @@ export function ConnectionSelect({
   targetClass?: string | null;
   excludeIds?: string[];
   triggerClassName?: string;
+  tagScheme: TagScheme;
 }) {
   const options = useMemo(() => {
     const systemsById = new Map(systems.map((s) => [s.id, s]));
@@ -62,7 +68,7 @@ export function ConnectionSelect({
         const other = systemsById.get(otherId);
         if (!other) return null;
         const label = other.alias ?? other.name;
-        const cls = [other.security, other.tag].filter(Boolean).join('');
+        const cls = classTagLabel(other.security, other.tag, tagScheme);
         return { id: c.id, label, cls, security: other.security };
       })
       .filter(
@@ -71,7 +77,7 @@ export function ConnectionSelect({
       )
       .filter((o) => !targetClass || o.security === targetClass || o.id === value)
       .filter((o) => o.id === value || !excludeIds?.includes(o.id));
-  }, [connections, systems, system.id, targetClass, value, excludeIds]);
+  }, [connections, systems, system.id, targetClass, value, excludeIds, tagScheme]);
 
   const items = useMemo(() => {
     const labels: Record<string, string> = { [NONE_VALUE]: '—' };

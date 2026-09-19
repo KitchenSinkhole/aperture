@@ -2069,6 +2069,7 @@ export function MapCanvas({
             onBulkPaste={onSignaturePasteResult}
             flashSigId={flashSigId}
             pasteFlash={pasteFlash}
+            tagScheme={viewData.map.tagScheme}
           />
         );
       case 'sigSearch':
@@ -2079,6 +2080,7 @@ export function MapCanvas({
             filters={sigSearchFilters}
             onFiltersChange={setSigSearchFilters}
             onNavigate={handleNavigateToSig}
+            tagScheme={viewData.map.tagScheme}
           />
         );
       case 'inspector':
