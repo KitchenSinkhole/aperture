@@ -1,0 +1,27 @@
+name: Issue link fallback
+
+# AI-authored PRs usually mention the issue without "Closes #N". Recover the
+# link automatically so it closes when the release PR merges to master.
+
+on:
+  pull_request:
+    types: [opened, edited]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  link:
+    if: github.event.pull_request.base.ref == 'dev'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_BODY: ${{ github.event.pull_request.body }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      BRANCH: ${{ github.event.pull_request.head.ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash .github/scripts/link-issue-fallback.sh
