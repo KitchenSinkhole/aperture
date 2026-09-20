@@ -8,9 +8,6 @@
 ### adminSetStaleSignatureThreshold({ minutes }): Promise<ActionResult>
 Sets the instance-wide default stale-signature threshold (`ap_instance.stale_signature_threshold_minutes`). Zod-validates `minutes` as an integer in `[1, 10080]` (one week). Gated to **global admins only** via `isAdmin`. Per-account overrides, capped at this value, live on `ap_user` (`setSignatureIndicatorPrefsAction`). Revalidates `/admin/settings`.
 
-### adminSetRouteSettingsKeepOpen({ keepOpen }): Promise<ActionResult>
-Sets the instance-wide default for whether the route planner's settings popover survives an outside press (`ap_instance.route_settings_keep_open`). Zod-validates `keepOpen` as a boolean. Gated to **global admins only** via `isAdmin`. Accounts override it either way on `ap_user.route_settings_keep_open`; an account that has never set it follows this value. Revalidates `/admin/settings`.
-
 ---
 
 ### Depends on

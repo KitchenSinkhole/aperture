@@ -10,7 +10,6 @@
 - `id` — `smallint` PK, pinned to `1` by CHECK `ap_instance_singleton_chk` (`id = 1`).
 - `access_mode` — `access_mode` enum, required, default `restricted`. `restricted` gates login behind owner membership + the allowlist; `open` allows any EVE account to log in.
 - `stale_signature_threshold_minutes` (`staleSignatureThresholdMinutes`) — `integer NOT NULL DEFAULT 240` (migration `0035`). Global default for the stale-signature map indicator: a system whose newest signature is older than this (or a wormhole system with no signatures) is flagged. Admins edit it via `/admin/settings` (`adminSetStaleSignatureThreshold`); each account may override it to a *smaller* value on `ap_user.stale_signature_threshold_minutes`. Resolved per-user by `getSignatureIndicatorPrefs` (`session.ts`).
-- `route_settings_keep_open` (`routeSettingsKeepOpen`) — `boolean NOT NULL DEFAULT false` (migration `0073`). Deployment default for whether the route-planner settings popover survives an outside press. Admins set it via `/admin/settings` (`adminSetRouteSettingsKeepOpen`); each account may override it either way on `ap_user.route_settings_keep_open`. Resolved per-user by `getRouteSettingsKeepOpen` (`session.ts`).
 - `updated_at` — `timestamptz`, default `now()`.
 
 **Constraints:**

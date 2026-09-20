@@ -11,7 +11,7 @@ import {
   useTransition,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, Copy, Loader2, Pin, Plus, Search, Settings2, X } from 'lucide-react';
+import { ChevronRight, Copy, Loader2, Plus, Search, Settings2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tooltip } from '@base-ui/react/tooltip';
 import { Button } from '@/components/ui/button';
@@ -39,7 +39,6 @@ import {
   addRouteDestinationAction,
   removeRouteDestinationAction,
   setRoutePrefsAction,
-  setRouteSettingsKeepOpenAction,
 } from '@/app/(app)/actions/routes';
 import { subscribeRouteDestinations } from '@/lib/map/routeDestinationBus';
 import type {
@@ -52,7 +51,6 @@ import type {
   RoutePlan,
   RoutePrefs,
   RouteSafety,
-  RouteSettingsDismissPrefs,
   SystemSearchResult,
   WhJumpMass,
 } from '@/types';
@@ -156,7 +154,6 @@ export function RoutePlannerModule({
   selectedSystemId,
   initialPrefs,
   initialDestinations,
-  initialDismiss,
   systems,
   connections,
   signatures,
@@ -165,7 +162,6 @@ export function RoutePlannerModule({
   selectedSystemId: number | null;
   initialPrefs: RoutePrefs;
   initialDestinations: RouteDestinationView[];
-  initialDismiss: RouteSettingsDismissPrefs;
   systems: MapSystemNode[];
   connections: MapConnectionEdge[];
   signatures: MapSignature[];
@@ -181,7 +177,6 @@ export function RoutePlannerModule({
   const [plans, setPlans] = useState<RoutePlan[]>([]);
   const [computing, setComputing] = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<ReadonlySet<number>>(() => new Set());
-  const [keepOpen, setKeepOpen] = useState(initialDismiss.keepOpen);
   const [, startPrefs] = useTransition();
 
   const routeSource = useSyncExternalStore(
@@ -277,16 +272,6 @@ export function RoutePlannerModule({
     [startPrefs],
   );
 
-  const toggleKeepOpen = useCallback(() => {
-    setKeepOpen((prev) => {
-      const next = !prev;
-      startPrefs(() => {
-        void setRouteSettingsKeepOpenAction(next);
-      });
-      return next;
-    });
-  }, [startPrefs]);
-
   const addDestination = useCallback(async (system: SystemSearchResult) => {
     const result = await addRouteDestinationAction({ systemId: system.id });
     if (!result.ok) return;
@@ -334,8 +319,6 @@ export function RoutePlannerModule({
           setRouteSource={setRouteSource}
           prefs={prefs}
           updatePrefs={updatePrefs}
-          keepOpen={keepOpen}
-          onToggleKeepOpen={toggleKeepOpen}
         />
 
         {/* Fallback prompts when the chosen source has no system. They stay in
@@ -394,33 +377,18 @@ function RouteSettingsPopover({
   setRouteSource,
   prefs,
   updatePrefs,
-  keepOpen,
-  onToggleKeepOpen,
 }: {
   routeSource: RouteSource;
   setRouteSource: (v: RouteSource) => void;
   prefs: RoutePrefs;
   updatePrefs: (patch: Partial<RoutePrefs>) => void;
-  keepOpen: boolean;
-  onToggleKeepOpen: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const { base, flags, detail } = routeSettingsSummary(routeSource, prefs);
   const summary = detail ? `${base} · ${detail}` : base;
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(nextOpen, details) => {
-        // Pinned: only the trigger closes it, so settings stay reachable while
-        // working the map underneath.
-        if (keepOpen && details.reason === 'outside-press') {
-          details.cancel();
-          return;
-        }
-        setOpen(nextOpen);
-      }}
-    >
+    <Popover open={open} onOpenChange={setOpen}>
       <Tooltip.Root>
         <Tooltip.Trigger
           render={
@@ -549,15 +517,6 @@ function RouteSettingsPopover({
                 Via EVE-Scout
               </ToggleChip>
             </div>
-          </div>
-
-          <div className="flex justify-end border-t pt-2">
-            <ToggleChip active={keepOpen} onClick={onToggleKeepOpen}>
-              <span className="inline-flex items-center gap-1">
-                <Pin className="size-3" />
-                Keep open
-              </span>
-            </ToggleChip>
           </div>
         </div>
       </PopoverContent>

@@ -4,7 +4,6 @@ import { and, eq } from 'drizzle-orm';
 import type { Session } from 'next-auth';
 import type {
   MapLayoutConfig,
-  RouteSettingsDismissPrefs,
   SignatureIndicatorAccountSettings,
   SignatureIndicatorPrefs,
 } from '@/types';
@@ -117,33 +116,6 @@ export async function getGlobalStaleThresholdMinutes(): Promise<number> {
     .from(apInstance)
     .where(eq(apInstance.id, 1));
   return row?.minutes ?? DEFAULT_STALE_THRESHOLD_MINUTES;
-}
-
-/** The instance-wide default for the route-planner settings popover dismiss. */
-export async function getGlobalRouteSettingsKeepOpen(): Promise<boolean> {
-  const [row] = await db
-    .select({ keepOpen: apInstance.routeSettingsKeepOpen })
-    .from(apInstance)
-    .where(eq(apInstance.id, 1));
-  return row?.keepOpen ?? false;
-}
-
-/**
- * Whether the route-planner settings popover survives an outside press for this
- * account. The instance default rides along so the pin control can clear the
- * override back to inherit when the two agree.
- */
-export async function getRouteSettingsKeepOpen(
-  userId: number,
-): Promise<RouteSettingsDismissPrefs> {
-  const [instanceDefault, [user]] = await Promise.all([
-    getGlobalRouteSettingsKeepOpen(),
-    db
-      .select({ override: apUser.routeSettingsKeepOpen })
-      .from(apUser)
-      .where(eq(apUser.id, userId)),
-  ]);
-  return { keepOpen: user?.override ?? instanceDefault, instanceDefault };
 }
 
 /**
