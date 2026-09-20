@@ -18,13 +18,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { systemSecurityColor } from '@/components/map/styling';
 import {
   formatRouteInstructions,
@@ -67,7 +60,6 @@ const SAFETY_LABELS: Record<RouteSafety, string> = {
   safer: 'Safer',
   less_safe: 'Less safe',
 };
-const SHIP_NONE = '__any__';
 const SHIP_LABELS: Record<WhJumpMass, string> = {
   s: 'Frigate (S)',
   m: 'Medium (M)',
@@ -419,105 +411,87 @@ function RouteSettingsPopover({
           </Tooltip.Positioner>
         </Tooltip.Portal>
       </Tooltip.Root>
-      <PopoverContent className="w-[22rem] max-w-[calc(100vw-2rem)] p-3">
-        {/* `@container` lets the three selects share one row once the popover is
-            wide enough, and stack when it's narrow. */}
-        <div className="@container flex flex-col gap-2 text-xs">
-          <div className="grid grid-cols-1 gap-2 @md:grid-cols-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-muted-foreground">From</span>
-              <div className="flex gap-1">
-                <ToggleChip
-                  active={routeSource === 'character'}
-                  onClick={() => setRouteSource('character')}
-                >
-                  Active character
-                </ToggleChip>
-                <ToggleChip
-                  active={routeSource === 'system'}
-                  onClick={() => setRouteSource('system')}
-                >
-                  Selected system
-                </ToggleChip>
-              </div>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-muted-foreground">Safety</span>
-              <Select<RouteSafety>
-                value={prefs.safety}
-                onValueChange={(v) => v && updatePrefs({ safety: v })}
-                items={SAFETY_LABELS}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(SAFETY_LABELS) as RouteSafety[]).map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {SAFETY_LABELS[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-muted-foreground">Min ship</span>
-              <Select<string>
-                value={prefs.minShipClass ?? SHIP_NONE}
-                onValueChange={(v) =>
-                  v && updatePrefs({ minShipClass: v === SHIP_NONE ? null : (v as WhJumpMass) })
-                }
-                items={{ [SHIP_NONE]: 'Any', ...SHIP_LABELS }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={SHIP_NONE}>Any</SelectItem>
-                  {(Object.keys(SHIP_LABELS) as WhJumpMass[]).map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {SHIP_LABELS[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
-
-          <div className="flex flex-col gap-1.5 rounded-md bg-muted/30 p-2">
-            <div className="flex flex-wrap gap-1">
+      {/* Pulled up past the trigger's own height so the popover sits on the
+          settings button and the panel header rather than on the destination
+          rows below it. */}
+      <PopoverContent
+        sideOffset={({ anchor }) => -anchor.height - 20}
+        className="w-max max-w-[calc(100vw-2rem)] p-2.5"
+      >
+        <div className="flex flex-col gap-1.5 text-xs">
+          <SettingRow label="From">
+            <ToggleChip
+              active={routeSource === 'character'}
+              onClick={() => setRouteSource('character')}
+            >
+              Active character
+            </ToggleChip>
+            <ToggleChip
+              active={routeSource === 'system'}
+              onClick={() => setRouteSource('system')}
+            >
+              Selected system
+            </ToggleChip>
+          </SettingRow>
+          <SettingRow label="Safety">
+            {(Object.keys(SAFETY_LABELS) as RouteSafety[]).map((s) => (
               <ToggleChip
-                active={prefs.avoidReduced}
-                onClick={() => updatePrefs({ avoidReduced: !prefs.avoidReduced })}
+                key={s}
+                active={prefs.safety === s}
+                onClick={() => updatePrefs({ safety: s })}
               >
-                Avoid reduced
+                {SAFETY_LABELS[s]}
               </ToggleChip>
+            ))}
+          </SettingRow>
+          <SettingRow label="Min ship">
+            <ToggleChip
+              active={prefs.minShipClass === null}
+              onClick={() => updatePrefs({ minShipClass: null })}
+            >
+              Any
+            </ToggleChip>
+            {(Object.keys(SHIP_LABELS) as WhJumpMass[]).map((s) => (
               <ToggleChip
-                active={prefs.avoidCritical}
-                onClick={() => updatePrefs({ avoidCritical: !prefs.avoidCritical })}
+                key={s}
+                active={prefs.minShipClass === s}
+                onClick={() => updatePrefs({ minShipClass: s })}
+                title={SHIP_LABELS[s]}
               >
-                Avoid critical
+                {s.toUpperCase()}
               </ToggleChip>
-              <ToggleChip
-                active={prefs.avoidEol}
-                onClick={() => updatePrefs({ avoidEol: !prefs.avoidEol })}
-              >
-                Avoid EOL
-              </ToggleChip>
-            </div>
-            {/* Ruled off from the Avoid chips above: those subtract wormholes
-                from the routed graph, this one adds connections to it. A rule
-                rather than a vertical divider, which strands a stray edge on the
-                chip when the row wraps in a narrow panel. */}
-            <div className="flex flex-wrap gap-1 border-t pt-1.5">
-              <ToggleChip
-                active={prefs.includeEveScout}
-                onClick={() => updatePrefs({ includeEveScout: !prefs.includeEveScout })}
-              >
-                Via EVE-Scout
-              </ToggleChip>
-            </div>
-          </div>
+            ))}
+          </SettingRow>
+          {/* Avoid subtracts wormholes from the routed graph; Via adds
+              connections to it. The row labels carry that split. */}
+          <SettingRow label="Avoid">
+            <ToggleChip
+              active={prefs.avoidReduced}
+              onClick={() => updatePrefs({ avoidReduced: !prefs.avoidReduced })}
+            >
+              Reduced
+            </ToggleChip>
+            <ToggleChip
+              active={prefs.avoidCritical}
+              onClick={() => updatePrefs({ avoidCritical: !prefs.avoidCritical })}
+            >
+              Critical
+            </ToggleChip>
+            <ToggleChip
+              active={prefs.avoidEol}
+              onClick={() => updatePrefs({ avoidEol: !prefs.avoidEol })}
+            >
+              EOL
+            </ToggleChip>
+          </SettingRow>
+          <SettingRow label="Via">
+            <ToggleChip
+              active={prefs.includeEveScout}
+              onClick={() => updatePrefs({ includeEveScout: !prefs.includeEveScout })}
+            >
+              EVE-Scout
+            </ToggleChip>
+          </SettingRow>
         </div>
       </PopoverContent>
     </Popover>
@@ -698,19 +672,32 @@ function HopSquare({ hop }: { hop: RouteHop }) {
   );
 }
 
+/** One labelled line of the settings popover: a fixed-width label, then its chips. */
+function SettingRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div role="group" aria-label={label} className="flex items-center gap-2">
+      <span className="w-12 shrink-0 text-muted-foreground">{label}</span>
+      <div className="flex flex-wrap gap-1">{children}</div>
+    </div>
+  );
+}
+
 function ToggleChip({
   active,
   onClick,
+  title,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  title?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      title={title}
       className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 ${
         active
           ? 'border-primary/40 bg-primary/15 text-foreground'

@@ -12,10 +12,15 @@ function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
   return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
 }
 
-function PopoverContent({ className, children, ...props }: PopoverPrimitive.Popup.Props) {
+function PopoverContent({
+  className,
+  children,
+  sideOffset = 4,
+  ...props
+}: PopoverPrimitive.Popup.Props & Pick<PopoverPrimitive.Positioner.Props, "sideOffset">) {
   return (
     <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Positioner sideOffset={4} align="end" className="z-50 outline-none">
+      <PopoverPrimitive.Positioner sideOffset={sideOffset} align="end" className="z-50 outline-none">
         <PopoverPrimitive.Popup
           data-slot="popover-content"
           className={cn(

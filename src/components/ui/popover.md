@@ -11,8 +11,8 @@ Re-export of `Popover.Root`. Controlled/uncontrolled open state lives here; the 
 ### PopoverTrigger(props)
 Re-export of `Popover.Trigger`. Use the base-ui `render` prop to project a `Button` (same pattern as `MenuTrigger`).
 
-### PopoverContent({ className, children, ...props })
-`Portal → Positioner (sideOffset 4, align "end") → Popup`. Applies the shared popover surface classes (`rounded-lg border bg-popover ... shadow-md`, `z-50`, `data-starting/ending-style` fade) matching `MenuContent`. `className` extends the Popup; remaining props spread onto the Popup.
+### PopoverContent({ className, children, sideOffset, ...props })
+`Portal → Positioner (align "end") → Popup`. `sideOffset` is forwarded to the Positioner (default 4; base-ui also accepts a function of the anchor's size, so a caller can offset by the trigger's own height). Applies the shared popover surface classes (`rounded-lg border bg-popover ... shadow-md`, `z-50`, `data-starting/ending-style` fade) matching `MenuContent`. `className` extends the Popup; remaining props spread onto the Popup.
 
 ---
 
