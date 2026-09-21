@@ -6,8 +6,10 @@ import type {
   MapLayoutConfig,
   SignatureIndicatorAccountSettings,
   SignatureIndicatorPrefs,
+  SoundPrefs,
 } from '@/types';
 import { auth } from '@/lib/auth';
+import { resolveSoundPrefs } from '@/lib/sounds/prefs';
 import { db } from '@/db/client';
 import { apCharacter, apInstance, apUser } from '@/db/schema';
 
@@ -105,6 +107,19 @@ export async function getMapLayout(userId: number): Promise<MapLayoutConfig | nu
     .from(apUser)
     .where(eq(apUser.id, userId));
   return row?.mapLayout ?? null;
+}
+
+/**
+ * The account's resolved sound preferences (audio-cues). A NULL column, a
+ * partial blob or one naming a sound this build no longer knows all resolve to
+ * usable prefs rather than an error.
+ */
+export async function getSoundPrefs(userId: number): Promise<SoundPrefs> {
+  const [row] = await db
+    .select({ soundPrefs: apUser.soundPrefs })
+    .from(apUser)
+    .where(eq(apUser.id, userId));
+  return resolveSoundPrefs(row?.soundPrefs ?? null);
 }
 
 const DEFAULT_STALE_THRESHOLD_MINUTES = 240;
