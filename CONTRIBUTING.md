@@ -109,9 +109,14 @@ components or services. DB-derived types use Drizzle's `InferSelectModel` / `Inf
 
 ## Git workflow
 
-- Branch from `master`; one logical change per branch.
-- Keep PRs reviewable in a single sitting, with a green CI build (`pnpm typecheck`, `pnpm lint`,
-  `pnpm test`) and companion `.md` updates alongside the code.
+- Branch from `dev`; one logical change per branch. Never branch off `master`. It only
+  advances by merging `dev` at release time, and CI rejects any PR that targets it
+  (`.github/workflows/guard-master.yml`). See [docs/RELEASING.md](docs/RELEASING.md).
+- Open the PR against `dev`. It merges once the `check` job in `.github/workflows/ci.yml`
+  is green (typecheck, lint, test, build, schema drift) and the maintainer has approved.
+  Nobody merges their own work.
+- Keep PRs reviewable in a single sitting, with companion `.md` updates alongside the code
+  and no drive-by refactors outside the change's scope.
 - Don't force-push to `master`; don't skip CI hooks.
 
 For larger work that spans multiple sessions, write a staged plan to `docs/plans/<feature>.md`

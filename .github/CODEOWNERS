@@ -1,0 +1,9 @@
+# Every path in this repository is owned by the maintainer.
+#
+# A global rule is the only shape that holds. A path-scoped rule gates only
+# the paths it names, so anything it misses can be approved by any writer.
+#
+# CODEOWNERS on its own only requests a review. It blocks a merge when the
+# `dev` ruleset has "Require review from Code Owners" ticked.
+
+* @MonoliYoda

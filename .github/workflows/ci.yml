@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, dev]
   pull_request:
 
 jobs:
@@ -48,6 +48,26 @@ jobs:
       - run: pnpm lint
 
       - run: pnpm test
+
+      # `next build` runs with NODE_ENV=production, where `src/lib/env.ts`
+      # requires the SSO and crypto secrets. These are throwaway values that
+      # only have to satisfy the schema — the build never authenticates.
+      - name: Build
+        run: pnpm build
+        env:
+          AUTH_SECRET: ci-build-only
+          AUTH_EVE_CLIENT_ID: ci-build-only
+          AUTH_EVE_CLIENT_SECRET: ci-build-only
+          ESI_TOKEN_ENC_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          SETUP_PASSWORD: ci-build-only
+
+      # drizzle-kit writes a new migration when the schema and the committed
+      # migrations disagree, so a dirty tree here means a migration was never
+      # generated for a schema change.
+      - name: Check for schema drift
+        run: |
+          pnpm db:generate
+          git diff --exit-code src/db/migrations
 
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/aperture

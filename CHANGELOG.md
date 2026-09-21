@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.1.0
+
+Since v1.0.0: the overlay's pilot list gains a search box, a pasted D-Scan pins everything in range that nobody on the map is flying, and an SSO outage no longer untracks every character until people log out and back in.
+
+### New features
+
+- **Search the overlay's pilot list** - a search box above the pilot table matches per keystroke over pilot name, ship name and hull type. The pilots it hits rise to the top with the matched text marked, the rest stay below, and the column sort still orders within each half. *(Caillou)*
+- **Paste a D-Scan against the pilot list** - a D-Scan pasted into the search box is narrowed to ships and resolved against the roster. Anything nobody on the map is flying pins atop the table as a red "Unknown pilot" row with its hull icon, held until you clear it, paste again, or jump. *(Caillou)*
+
+### Fixes
+
+- **A D-Scan no longer hides a hull the SDE has not heard of** - classification moved to the server, so a hull too new for the ingested build, or one the SDE leaves unpublished, pins as an enemy row instead of vanishing from the panel. A failed lookup says so in the panel rather than behind the game client. *(MonoliYoda)*
+- **D-Scan rows survive a clipboard that strips tabs** - a ship name holding a run of spaces split into the wrong columns, pinning a friendly's hull as a red Unknown pilot. *(MonoliYoda)*
+- **An SSO outage no longer untracks your characters** - a failed token refresh is classified by why it failed, so only an affirmative rejection counts as dead and an outage backs off instead. Previously it deleted the opt-in itself, leaving every pilot to log out and back in. *(Agate West)* Closes #246
+- **The overlay comes back where you left it** - position as well as size is restored between sessions. *(Agate West)*
+- **A numeric tag no longer reads as a class on a 0121 map** - the Signatures panel's "Leads to" dropdown and the Signature Search system column concatenated the class band onto the tag, so a C3 tagged 2 and a class 32 both showed as "C32". On a 0121 map the tag stands alone. *(MonoliYoda)* Closes #254
+- **A benign browser notification stopped filling the error log** - `ResizeObserver loop completed with undelivered notifications` was recorded as an application error, enough on its own to hold the public deployment at `degraded`. *(MonoliYoda)*
+
+### Misc
+
+- Three demo seed pilots fly the hulls they are labelled with. *(Caillou)*
+
+### Upgrading
+
+- No migrations. Deploy as usual.
+
+### Contributors
+
+- **Agate West** - the SSO outage classification, and the overlay size and position restore
+- **Caillou** - the overlay pilot search, and the D-Scan paste
+- **MonoliYoda** - the D-Scan classification and parsing fixes, the 0121 tag label, and the error-log fix
+
 ## v1.0.0
 
 The first stable release, closing out eighteen release candidates.

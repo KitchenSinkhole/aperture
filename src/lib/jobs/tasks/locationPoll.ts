@@ -17,6 +17,7 @@ import {
   EsiDowntimeError,
   EsiHttpError,
   EsiTokenError,
+  EsiTokenTransientError,
 } from '@/lib/esi/client';
 import {
   characterOnlineSchema,
@@ -53,10 +54,13 @@ import type { LocationPollOutcome } from '@/types';
  *   - `no-tracking`        — no `ap_map_character_tracking` rows for this id.
  *   - `character-missing`  — `ap_character` row gone (account erased).
  *   - `character-inactive` — status is `kicked` / `banned`.
- *   - `token-loss`         — `EsiTokenError` from any ESI call; tracking rows
- *                            for the character are deleted (a future
+ *   - `token-loss`         — `EsiTokenError` from any ESI call: SSO answered
+ *                            `invalid_grant`, or no token is stored. Tracking
+ *                            rows for the character are deleted (a future
  *                            re-authenticate + `startTrackingCharacter` re-arms
- *                            the loop).
+ *                            the loop). A refresh that merely failed to reach
+ *                            SSO is `EsiTokenTransientError` and backs off
+ *                            instead, keeping the tracking rows.
  */
 
 const NAME = 'location-poll';
@@ -91,7 +95,7 @@ interface PollNotes {
   previousSystemId?: number | null;
   currentSystemId?: number | null;
   reenqueuedInMs?: number;
-  esiOutage?: 'breaker-open' | 'downtime' | 'http-401';
+  esiOutage?: 'breaker-open' | 'downtime' | 'http-401' | 'token-refresh';
   jumpClass?: JumpClass | null;
   folds?: FoldSummary[];
   /**
@@ -325,17 +329,22 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
         .where(eq(apMapCharacterTracking.characterId, characterId));
       return { stopped: 'token-loss' };
     }
-    // Expected external-outage classes: back off to the offline cadence and
+    // Expected external-outage classes — including a refresh the SSO endpoint
+    // never answered, which leaves the refresh token good: back off to the offline cadence and
     // return *cleanly* (no throw). A throw would increment graphile's `attempts`
     // on this locked job whose key the re-enqueue's `jobKeyMode:'replace'` has
     // already nulled — walking it to `max_attempts` mints a permanently-failed
     // NULL-key zombie the boot re-arm can never reap. Returning completes this
     // job (graphile deletes it) and leaves exactly the one keyed pending tick;
     // the outage is already tallied via `location_polls_total{outcome='esi-outage'}`.
-    if (err instanceof EsiBreakerOpenError || err instanceof EsiDowntimeError) {
+    if (
+      err instanceof EsiBreakerOpenError ||
+      err instanceof EsiDowntimeError ||
+      err instanceof EsiTokenTransientError
+    ) {
       await reenqueue(helpers, payload, apertureConfig.LOCATION_POLL_OFFLINE_MS);
       return {
-        esiOutage: err instanceof EsiBreakerOpenError ? 'breaker-open' : 'downtime',
+        esiOutage: outageReason(err),
         reenqueuedInMs: apertureConfig.LOCATION_POLL_OFFLINE_MS,
       };
     }
@@ -349,6 +358,12 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
     }
     throw err;
   }
+}
+
+function outageReason(err: unknown): NonNullable<PollNotes['esiOutage']> {
+  if (err instanceof EsiBreakerOpenError) return 'breaker-open';
+  if (err instanceof EsiTokenTransientError) return 'token-refresh';
+  return 'downtime';
 }
 
 /**

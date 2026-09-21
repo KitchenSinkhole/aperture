@@ -24,6 +24,7 @@ import {
   EsiDowntimeError,
   EsiHttpError,
   EsiTokenError,
+  EsiTokenTransientError,
 } from '@/lib/esi/client';
 import { locationPoll } from '@/lib/jobs/tasks/locationPoll';
 import { bus } from '@/lib/realtime/bus';
@@ -40,6 +41,8 @@ import {
  *     stop reason in `ap_job_run.notes`; no re-enqueue.
  *   - EsiBreakerOpenError → re-enqueue at the offline interval (success=false
  *     row).
+ *   - EsiTokenTransientError → an SSO outage keeps the tracking rows and backs
+ *     off, so the loop self-heals when SSO returns.
  *   - `characterUpdate` envelope reaches the realtime bus on a location
  *     change (LISTEN smoke).
  *
@@ -210,6 +213,11 @@ describe.skipIf(!run)('Stage 12.3 location-poll lifecycle (real Postgres)', () =
       error: () => new EsiHttpError('get_characters_character_id_online', 401, 'Unauthorized'),
       esiOutage: 'http-401',
     },
+    {
+      label: 'EsiTokenTransientError (SSO outage, refresh token still valid)',
+      error: () => new EsiTokenTransientError(CHAR_ID, new Error('fetch failed')),
+      esiOutage: 'token-refresh',
+    },
   ] as const;
 
   it.each(outageCases)(
@@ -228,6 +236,7 @@ describe.skipIf(!run)('Stage 12.3 location-poll lifecycle (real Postgres)', () =
       ).resolves.toBeUndefined();
 
       expect(captured).toHaveLength(1);
+      expect(captured[0]!.spec!.jobKeyMode).toBe('replace');
       const delayMs = (captured[0]!.spec!.runAt as Date).getTime() - Date.now();
       expect(delayMs).toBeGreaterThan(apertureConfig.LOCATION_POLL_OFFLINE_MS - 1000);
 

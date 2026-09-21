@@ -44,6 +44,7 @@ import type {
   MapSystemNode,
   SignatureActivity,
   SignatureGroupKey,
+  TagScheme,
 } from '@/types';
 import type {
   CreateSignatureBody,
@@ -231,6 +232,8 @@ type SignatureTableMeta = {
   resolveDestination: (sig: MapSignature) => void;
   /** The sig currently being resolved (button disabled), or null. */
   resolvingSigId: string | null;
+  /** The map's auto-tag scheme — drives the far end's class+tag label. */
+  tagScheme: TagScheme;
 };
 
 // Cell renderers are module-level components with fixed identities. TanStack's
@@ -359,6 +362,7 @@ function LeadsToCell({ row, table }: CellContext<MapSignature, unknown>) {
     assignedConnectionIds,
     resolveDestination,
     resolvingSigId,
+    tagScheme,
   } = table.options.meta as SignatureTableMeta;
   if (sig.groupKey !== 'wormhole') return null;
   const leadsToMissing = sig.mapConnectionId === null;
@@ -385,6 +389,7 @@ function LeadsToCell({ row, table }: CellContext<MapSignature, unknown>) {
         }
         excludeIds={assignedConnectionIds}
         triggerClassName={FLAT_TRIGGER}
+        tagScheme={tagScheme}
       />
       {canResolve && (
         <Button
@@ -640,6 +645,7 @@ export function SignatureModule({
   onBulkPaste,
   flashSigId = null,
   pasteFlash,
+  tagScheme,
 }: {
   mapId: string;
   system: MapSystemNode | null;
@@ -653,6 +659,7 @@ export function SignatureModule({
   onBulkPaste: (payloads: MapEventPayload[]) => void;
   flashSigId?: string | null;
   pasteFlash?: Record<string, 'created' | 'updated'>;
+  tagScheme: TagScheme;
 }) {
   return (
     <Card className="flex h-full flex-col gap-3 p-3">
@@ -675,6 +682,7 @@ export function SignatureModule({
           onBulkPaste={onBulkPaste}
           flashSigId={flashSigId}
           pasteFlash={pasteFlash}
+          tagScheme={tagScheme}
         />
       )}
     </Card>
@@ -802,6 +810,7 @@ function SignaturePanelBody({
   onBulkPaste,
   flashSigId = null,
   pasteFlash,
+  tagScheme,
 }: {
   mapId: string;
   system: MapSystemNode;
@@ -815,6 +824,7 @@ function SignaturePanelBody({
   onBulkPaste: (payloads: MapEventPayload[]) => void;
   flashSigId?: string | null;
   pasteFlash?: Record<string, 'created' | 'updated'>;
+  tagScheme: TagScheme;
 }) {
   const rows = useMemo(
     () => signatures.filter((s) => s.mapSystemId === system.id),
@@ -952,6 +962,7 @@ function SignaturePanelBody({
       assignedConnectionIds,
       resolveDestination: handleResolve,
       resolvingSigId,
+      tagScheme,
     } satisfies SignatureTableMeta,
   });
 
@@ -1104,6 +1115,7 @@ function SignaturePanelBody({
                 draftTypeId == null ? null : metaByTypeId.get(draftTypeId)?.targetClass ?? null
               }
               excludeIds={assignedConnectionIds}
+              tagScheme={tagScheme}
             />
           </div>
         )}

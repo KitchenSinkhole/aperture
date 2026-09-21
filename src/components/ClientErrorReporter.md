@@ -8,7 +8,10 @@ Nothing (`return null`) — it only installs window listeners, mirroring `LowCon
 
 ### Behaviour & Interactions
 - One `useEffect` registers `window` `error` and `unhandledrejection` listeners on mount and removes them on unmount.
-- Skips the cross-origin opaque case (`"Script error."` with no `error`) — no useful payload.
+- Skips any `error` event carrying no `Error` object: the opaque cross-origin case (`"Script error."`) and
+  browser notifications dispatched through `onerror`, chiefly the benign `ResizeObserver loop completed with
+  undelivered notifications`. Neither has a stack, and this is what keeps a looping tab's notifications out of
+  `ap_error_log` and the `error_rate` alert.
 - For each captured error calls `reportClientError({ message, stack?, route: location.pathname })`.
 - Mounted just inside `RealtimeProvider`, **outside** `ClientErrorBoundary`, so it keeps reporting even when the page subtree has crashed.
 
