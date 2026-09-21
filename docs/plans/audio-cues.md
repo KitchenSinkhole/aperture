@@ -37,7 +37,7 @@
 
 ## Stage 2 — Persist sound preferences
 **Mode:** Execute
-**Status:** todo
+**Status:** done — b4905654
 **Goal:** The account's `SoundPrefs` round-trip through `ap_user.sound_prefs` via a session getter and a Server Action.
 **References:** `src/db/schema/ap/user.md`, `src/lib/session.md`, `src/app/(app)/actions/account.md` (`setMapLayoutAction` is the template), memory: `db:generate` works, `.rollback.sql` is hand-written.
 **Touches:** `src/db/schema/ap/user.ts` (+ `.md`): `sound_prefs` nullable `jsonb` `.$type<SoundPrefs>()`; new migration via `pnpm db:generate` plus a hand-written `.rollback.sql`; `src/lib/session.ts` (+ `.md`): `getSoundPrefs(userId): Promise<SoundPrefs>` running the column through `resolveSoundPrefs`; `src/app/(app)/actions/account.ts` (+ `.md`): `setSoundPrefsAction(prefs: unknown)` validating with `soundPrefsSchema`, writing the column and `updated_at`, revalidating the `/` layout; `src/types/index.ts` if the inferred row type needs no change, confirm only.
