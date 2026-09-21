@@ -1,0 +1,116 @@
+# Audio Cues
+
+**Goal:** Opt-in sounds for the things a pilot cannot watch the map for: a tracked pilot entering or leaving their system (#215), a jump through a wormhole they chose to watch (#280), and a kill landing in an on-map system (#263), with a choice of built-in chimes, a voice pack, and the user's own sound files.
+**References:** CLAUDE.md (realtime, config, code style), `src/components/map/MapCanvas.md` (provider stack and toolbar), `src/components/map/MapPresenceContext.md` (`useTraversals`), `src/components/map/MapTravelContext.md` (`TravelBridge`, the bridge precedent), `src/components/map/MapUnderglowBridge.md`, `src/components/account/AccountSettingsDialog.md`, `src/app/(app)/actions/account.md`, `src/lib/session.md`, `src/db/schema/ap/user.md`, `src/lib/wormholePickerPrefs.md` (localStorage store precedent).
+
+**Background:** All three issues are triaged from Discord and ask for the same thing with a different trigger. Today the codebase has exactly one audio call (the shift-click rally easter egg in `SystemOverlay.tsx`) and no sound engine, no volume control, no mute, and no handling of the browser autoplay policy. The event signals already exist on the client: the presence store derives a `Traversal` (character, from system, to system) for every tracked pilot move, the active-character context knows the viewer's current system, and the `systemNotification` envelope already drives the red kill underglow. Nothing here needs a server-side event or a new realtime task name.
+
+**Key design decisions (agreed up front):**
+
+- **One engine, many event sources.** `src/lib/sounds/engine.ts` owns Web Audio, volume, mute, autoplay unlock, cross-tab dedupe and coalescing. Each issue is a renderless bridge component that turns a realtime signal into `engine.play(event)`. Bridges follow the `TravelBridge` pattern: mounted by `MapCanvas` only when the account has that event enabled, so an off setting means the code path is absent, not gated at runtime.
+- **The sound event vocabulary is fixed:** `pilotArrived`, `pilotLeft`, `watchedJump`, `killInSystem`. A future system-of-interest alert (#182) adds a fifth; nothing else does.
+- **Account-level preferences, one jsonb column.** `ap_user.sound_prefs` typed `SoundPrefs` (`{ enabled, volume, events: Record<SoundEvent, { enabled, sound }> }`), NULL meaning every default. Follows the `map_layout` precedent (typed jsonb, Zod-validated at the Server Action boundary, threaded to `MapCanvas` as a prop, `revalidatePath('/', 'layout')` on save). Defaults: master off, every event off, volume 0.7, one built-in chime per event. Per-map profiles are deliberately out of scope.
+- **Device-level mute plus unlock indicator on the map toolbar.** A speaker button beside `PilotRosterButton`. Mute is localStorage (`aperture:sounds:muted`), so it survives reload and applies to every tab on the device. The same button shows a locked state while the browser has not yet allowed audio (no user gesture since page load) and clicking it is itself the unlocking gesture.
+- **Built-in chimes are synthesized with Web Audio, not shipped as files.** A soft rising two-tone for arrive, falling for leave, a short tick for a watched jump, a harsher tone for a kill. No assets, no fetch latency, volume via one master `GainNode`. The voice pack (Stage 7) and custom files (Stage 8) are file-backed and decoded into `AudioBuffer`s through the same engine.
+- **Sound ids are strings with a namespace.** Built-in ids are a fixed union (`chime-up`, `chime-down`, `tick`, `alarm`, later `voice-*`); custom ids are `custom:<uuid>`. `SoundPrefs` stores the id, so an account pref that names a custom sound missing on this device falls back to that event's default chime.
+- **Custom sound files never touch the server.** They live in the browser's IndexedDB per device, validated by decoding them with the `AudioContext` on import, capped in size and duration. Self-hosted deployments have no object store, and the server has no business holding audio.
+- **Cross-tab: one tab per map plays.** The SharedWorker gives one socket per origin but every subscribed tab receives every envelope, so without dedupe N tabs on the same map play N sounds. The engine elects a leader per map with the Web Locks API (`navigator.locks.request('aperture:sound-leader:<mapId>')`, held until the tab closes); non-leaders stay silent, and the next waiter takes over when the leader goes. Where Web Locks is unavailable the engine plays unconditionally.
+- **Coalescing is per event, leading edge.** The first event of a kind plays; further events of the same kind inside `SOUND_COALESCE_MS` (2000, a module constant) are dropped. This satisfies #215's "suppress repeated chimes on rapid jumps" without a queue.
+- **The viewer's own characters never trigger a sound.** Arrive, leave and watched-jump all skip traversals whose `characterId` is one of `viewerCharacterIds`, the same filter `TransitSignaturePrompt` applies.
+- **Sounds play regardless of tab visibility.** Hearing it while tabbed out is the point.
+- **Autoplay failures are silent.** A `play()` while the context is suspended is dropped, never toasted; the toolbar indicator is the only surface for "audio is locked".
+- **No reconnect grace window is needed.** A socket reconnect re-seeds the presence store from a fresh snapshot, and `seed()` never emits traversals (`MapPresenceContext.md`), so a catch-up cannot produce a chime burst.
+- **Watched wormholes are personal and device-local.** A watch is `(mapId, connectionId)` in localStorage (`aperture:map:<mapId>:watched-connections`), pruned against the live connection set on load and on every connection delete. Connections hard-delete on collapse, so a watch has the lifetime of the hole. A shared "everyone hears this hole" mode is a possible later variant and is not designed here.
+- **Watched-jump direction is relative to the viewer.** When the viewer's active character sits at one end of the watched hole, the event carries `variant: 'inbound' | 'outbound'`; otherwise `variant: 'plain'`. Built-in chimes ignore the variant; the voice pack uses it.
+
+**Non-goals:** Browser `Notification` API, Discord or EVE-mail delivery (#182's other channels), per-event volume, server-stored audio, the rally easter egg (left as is), the public spectator layout.
+
+---
+
+## Stage 1 — Sound engine and built-in chimes
+**Mode:** Execute
+**Status:** todo
+**Goal:** A browser-only engine that can synthesize the four built-in chimes and play a named sound event with volume, mute, autoplay unlock, per-map leader election and per-event coalescing, proven by unit tests against a fake audio backend.
+**References:** `src/lib/wormholePickerPrefs.md` (subscribable localStorage store shape), `src/lib/realtime/useRealtime.md` (for the `useSyncExternalStore` idiom used client-side), `tests/unit/pip-window-prefs.test.ts` (localStorage test precedent).
+**Touches:** new `src/lib/sounds/prefs.ts` (+ `.md`): `SoundEvent`, `SoundId`, `SoundPrefs`, `DEFAULT_SOUND_PREFS`, `soundPrefsSchema` (Zod), `resolveSoundPrefs(raw: unknown): SoundPrefs`; pure, no browser or server imports, safe for `session.ts` and Server Actions. New `src/lib/sounds/catalog.ts` (+ `.md`): the built-in catalog `{ id, label, event default, synth(ctx) => AudioBuffer }` for `chime-up`, `chime-down`, `tick`, `alarm`. New `src/lib/sounds/engine.ts` (+ `.md`): lazily created `AudioContext` + master `GainNode`; `unlock()` bound to the first `pointerdown` / `keydown` on the document; `play(event, { variant })` resolving the event's sound id through prefs, coalescing, mute and leadership; `preview(soundId)` bypassing master, mute and leadership; `setPrefs`, `setMapId`; a subscribable `{ unlocked, muted }` snapshot for the toolbar; mute read/written through localStorage. The audio backend is an injectable interface so tests run on a fake. New `src/lib/sounds/mutePrefs.ts` if the mute store is cleaner separate (implementer's call). `src/types/index.ts` (+ `.md`) re-exports `SoundEvent`, `SoundId`, `SoundPrefs`. Tests `tests/unit/sound-engine.test.ts`, `tests/unit/sound-prefs.test.ts`.
+**Done when:** `pnpm test` covers: `resolveSoundPrefs` fills every default from `null`, a partial object, and garbage; an unknown or `custom:` id with no registered buffer resolves to the event's default chime; `play` is a no-op when the engine is locked, muted, master-disabled, event-disabled, or not the map leader; two `play` calls of one event inside the coalesce window produce one backend call and a different event inside the window still plays; leadership passes when the fake lock releases; `preview` plays while muted and master-disabled. `pnpm lint`, `pnpm typecheck`, `pnpm build` green. Nothing in the app mounts the engine yet.
+
+## Stage 2 — Persist sound preferences
+**Mode:** Execute
+**Status:** todo
+**Goal:** The account's `SoundPrefs` round-trip through `ap_user.sound_prefs` via a session getter and a Server Action.
+**References:** `src/db/schema/ap/user.md`, `src/lib/session.md`, `src/app/(app)/actions/account.md` (`setMapLayoutAction` is the template), memory: `db:generate` works, `.rollback.sql` is hand-written.
+**Touches:** `src/db/schema/ap/user.ts` (+ `.md`): `sound_prefs` nullable `jsonb` `.$type<SoundPrefs>()`; new migration via `pnpm db:generate` plus a hand-written `.rollback.sql`; `src/lib/session.ts` (+ `.md`): `getSoundPrefs(userId): Promise<SoundPrefs>` running the column through `resolveSoundPrefs`; `src/app/(app)/actions/account.ts` (+ `.md`): `setSoundPrefsAction(prefs: unknown)` validating with `soundPrefsSchema`, writing the column and `updated_at`, revalidating the `/` layout; `src/types/index.ts` if the inferred row type needs no change, confirm only.
+**Done when:** Migration applies and rolls back cleanly against the dev DB; `setSoundPrefsAction` rejects a malformed blob with `{ ok: false }` and accepts a valid one; `getSoundPrefs` on a fresh account returns `DEFAULT_SOUND_PREFS`. CI green.
+
+## Stage 3 — "Sounds" section in Account Settings
+**Mode:** Execute
+**Status:** todo
+**Goal:** A user can turn sounds on, set the volume, and pick and preview a built-in sound per event, and the choice follows their account.
+**References:** `src/components/account/AccountSettingsDialog.md` (optimistic state + `startTransition` + rollback toast pattern), `src/components/chrome/CharacterPanel.md`, `src/app/(app)/layout.tsx`, `src/lib/sounds/catalog.md`, `src/lib/sounds/engine.md`.
+**Touches:** `src/components/account/AccountSettingsDialog.tsx` (+ `.md`): new `soundPrefs: SoundPrefs` prop and a "Sounds" section under the signature indicators: master checkbox, volume slider (disabled when master off), one row per `SoundEvent` with an enabled checkbox and a sound select plus a preview button; every commit sends the full `SoundPrefs` through `setSoundPrefsAction` with rollback on failure; the master checkbox's own click also previews that event's chime so the enabling gesture is the unlocking gesture. New `src/components/account/SoundPicker.tsx` (+ `.md`) if the select+preview row is cleaner extracted. `src/components/chrome/CharacterPanel.tsx` (+ `.md`) threads the prop; `src/app/(app)/layout.tsx` calls `getSoundPrefs`. Event labels live in the catalog, not the dialog.
+**Done when:** Toggling and saving each control persists (verified by reload) and a failed action rolls back with a toast; preview plays with sounds otherwise off; CI green. The map does not react to the prefs yet.
+
+## Stage 4 — Toolbar mute and unlock indicator
+**Mode:** Execute
+**Status:** todo
+**Goal:** The map toolbar shows whether sounds can play right now and offers a one-click device mute.
+**References:** `src/components/map/MapCanvas.md` (toolbar cluster, `PilotRosterButton` placement, prop threading), `src/components/map/PilotRosterButton.md`, `src/lib/sounds/engine.md`, `src/app/(app)/map/[[...slug]]/page.tsx`.
+**Touches:** new `src/components/map/SoundToolbarButton.tsx` (+ `.md`): ghost icon button subscribing to the engine snapshot; three states with tooltips: locked ("Click to enable sounds"), muted, live; click unlocks when locked, otherwise toggles mute; hidden entirely when the account's master switch is off. `src/components/map/MapCanvas.tsx` (+ `.md`): new `soundPrefs: SoundPrefs` prop, mounts the button in the toolbar, calls `engine.setPrefs` / `engine.setMapId` in an effect. `src/app/(app)/map/[[...slug]]/page.tsx` adds `getSoundPrefs` to the parallel preload.
+**Done when:** With sounds enabled, a freshly loaded map shows the locked state until the first click anywhere, then live; mute persists across reload; the button is absent when the master switch is off; CI green.
+
+## Stage 5 — Pilot arrived and pilot left (#215)
+**Mode:** Execute
+**Status:** todo
+**Goal:** A tracked pilot moving into or out of the viewer's current system plays the arrive or leave sound.
+**References:** `src/components/map/MapPresenceContext.md` (`useTraversals`, `Traversal`), `src/components/map/MapActiveCharContext.md` (`activeCharSystemId`), `src/components/map/MapTravelContext.md` (`TravelBridge` as the bridge template), `src/components/map/TransitSignaturePrompt.md` (own-character filter), `tests/unit/presence-store.test.ts`.
+**Touches:** new `src/lib/sounds/presenceEvents.ts` (+ `.md`): pure `classifyTraversal(t, mySystemId, viewerCharacterIds): 'pilotArrived' | 'pilotLeft' | null`; new `src/components/map/PresenceSoundBridge.tsx` (+ `.md`): renderless, subscribes to `useTraversals`, reads `useMapActiveChar().activeCharSystemId`, calls `engine.play`; `src/components/map/MapCanvas.tsx` (+ `.md`): mounts the bridge inside `MapActiveCharProvider` only when `soundPrefs.enabled` and either event is enabled, passing `viewerCharacterIds`; tests `tests/unit/presence-sound-events.test.ts`.
+**Done when:** Unit tests cover: move into my system → arrived; move out → left; move between two other systems → null; my own character → null; no active character located → null. CI green. Closes #215 once the manual check passes.
+
+## Stage 6 — Watch a wormhole (#280)
+**Mode:** Execute
+**Status:** todo
+**Goal:** A user can mark a wormhole as watched from its context menu, see which holes they watch, and hear a sound when a tracked pilot jumps one, with inbound and outbound variants when they sit at one end.
+**References:** `src/components/map/MapContextMenu.md` (connection block, self-contained item precedent `SetDestinationItem`), `src/components/map/ConnectionEdge.md` (badge row), `src/components/map/MapTravelContext.md` (traversal → edge resolution), `src/lib/wormholePickerPrefs.md`, `tests/unit/set-destination-item.test.tsx`.
+**Touches:** new `src/lib/connectionWatchPrefs.ts` (+ `.md`): per-map localStorage store with subscribe/notify, `isWatched`, `toggleWatch`, `prune(liveConnectionIds)`. `src/components/map/MapTravelContext.tsx` (+ `.md`): export the existing traversal-to-edges resolver as a pure helper so the new bridge reuses it rather than duplicating it. New `src/components/map/WatchConnectionItem.tsx` (+ `.md`): a `MenuCheckboxItem` "Watch this wormhole" in the `connection` block of `MapContextMenu` (+ `.md`), self-contained like `SetDestinationItem`, shown only for `wh`-scope connections. `src/components/map/ConnectionEdge.tsx` (+ `.md`): a small watched badge in the text-badge row driven by the store. New `src/components/map/WatchedConnectionSoundBridge.tsx` (+ `.md`): subscribes to `useTraversals`, resolves edges, skips own characters, computes the variant from `activeCharSystemId`, plays `watchedJump`. `src/components/map/MapCanvas.tsx` (+ `.md`): mounts the bridge when the event is enabled and prunes the store when `viewData.connections` changes. Tests `tests/unit/connection-watch-prefs.test.ts` and a pure-function test for the variant computation.
+**Done when:** Unit tests cover watch toggle persistence and prune; variant is inbound when the traversal ends in my system, outbound when it starts there, plain otherwise; own character skipped. The menu item and badge render only for wormhole connections. CI green. Closes #280 once the manual check passes.
+
+## Stage 7 — Kill in system (#263)
+**Mode:** Execute
+**Status:** todo
+**Goal:** A zKB kill in any on-map system plays the kill sound alongside the existing red underglow.
+**References:** `src/components/map/MapUnderglowBridge.md`, `src/lib/realtime/protocol.md` (`systemNotificationLoadSchema`, kind `killmail`).
+**Touches:** new `src/components/map/KillSoundBridge.tsx` (+ `.md`): a `useRealtimeEvents` listener mirroring `MapUnderglowBridge`'s envelope guard and parse, playing `killInSystem` for `kind === 'killmail'` only (a `ping` is not a kill); `src/components/map/MapCanvas.tsx` (+ `.md`): mounts it when the event is enabled.
+**Done when:** A `killmail` notification for the open map plays once (coalesced across a same-tick burst), a `ping` plays nothing, a foreign-map envelope plays nothing; CI green. Closes #263 once the manual check passes.
+
+## Stage 8 — Voice pack
+**Mode:** Barrier
+**Status:** todo
+**Goal:** A recorded voice pack ("Friendly arriving", "Friendly departing", "Friendly inbound" / "outbound" / "Jump on watched hole", "Kill in system") is selectable per event and the watched-jump line follows the direction variant.
+**References:** `src/lib/sounds/catalog.md`, `src/lib/sounds/engine.md`, `public/sounds/`.
+**Touches:** `public/sounds/voice/*.ogg` (the assets), `src/lib/sounds/catalog.ts` (+ `.md`): file-backed catalog entries with `{ id, label, event, files: Record<variant, path> }`, lazily fetched and decoded on first use, prefetched when selected in prefs; `src/lib/sounds/engine.ts` (+ `.md`) if buffer loading needs a change; the picker lists voice entries under a group heading.
+**Done when:** Every voice sound previews from the picker; a watched jump with `variant: 'inbound'` plays the inbound line; a missing file falls back to the event's chime silently; CI green.
+Barrier because the audio files do not exist yet: they must be recorded or generated outside the repo (own recordings or a TTS service, never lifted from the game client), and the line list and voice are the user's call. Provide the files, then run the code side.
+
+## Stage 9 — Custom sound files
+**Mode:** Execute
+**Status:** todo
+**Goal:** A user can add their own short sound files on this device, pick them per event, and remove them.
+**References:** `src/lib/sounds/engine.md`, `src/lib/sounds/catalog.md`, `src/components/account/AccountSettingsDialog.md`.
+**Touches:** new `src/lib/sounds/customStore.ts` (+ `.md`): IndexedDB store of `{ id: 'custom:<uuid>', label, mime, blob, durationMs }` with `list`, `add(file)`, `remove(id)`, a subscribe/notify surface, and validation on add (decode through the `AudioContext`, reject over `CUSTOM_SOUND_MAX_BYTES` / `CUSTOM_SOUND_MAX_MS` module constants); `src/lib/sounds/engine.ts` (+ `.md`): resolve `custom:` ids from the store; `src/components/account/AccountSettingsDialog.tsx` (+ `.md`) or the extracted picker: a "Your sounds" list with file input, preview and delete, and custom entries in each event's select; tests `tests/unit/custom-sound-store.test.ts` with a fake IndexedDB or the decode step injected.
+**Done when:** Add, preview, select, reload, delete all work; an oversize or undecodable file is rejected with a toast and nothing stored; a pref naming a deleted custom id plays the event's default chime; CI green.
+
+## Manual verification
+_(worked by the user once, after the run; the plan is not complete until it passes)_
+- **Stage 3** — Open Account Settings, enable sounds, pick a chime per event, preview each; reload and confirm the choices stuck.
+- **Stage 4** — Load a map in a fresh tab with sounds enabled: the toolbar speaker shows locked; click anywhere and it goes live; mute it, reload, still muted.
+- **Stage 5** — With a second account's tracked pilot jumping into and out of your system, hear the up chime on entry and the down chime on exit; jump one of your own alts in and hear nothing; have three pilots jump in within a second and hear one chime.
+- **Stage 5** — Tab away from the map (another tab in front) and confirm the chime still plays.
+- **Stage 5** — Open the same map in two tabs; one chime per event, not two. Close the tab that played and confirm the other takes over.
+- **Stage 6** — Right-click a wormhole, watch it, see the badge; have a tracked pilot jump it from your side and hear the outbound variant, back and hear inbound; watch a hole you are not on and hear the plain cue; delete the hole and confirm the badge and the watch are gone.
+- **Stage 7** — With a kill feed active, a kill in an on-map system plays the kill sound together with the red underglow.
+- **Stage 8** — Select the voice pack for each event and repeat the Stage 5 and 6 checks by ear.
+- **Stage 9** — Add a custom file, pick it for arrive, hear it; open the same account on another device and confirm arrive falls back to the chime.
+
+## Notes
+_(appended by executing sessions; non-obvious findings only)_
