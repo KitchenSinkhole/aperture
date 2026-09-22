@@ -36,6 +36,11 @@ describe('parseDscanPaste', () => {
       [{ typeId: 33697, name: 'Tiny', typeName: 'Prospect' }],
     ],
     [
+      'a name whose outer spaces a tabbed row keeps verbatim',
+      tab('641', '░ BOOOP BEEEP ░ ', 'Megathron', '-'),
+      [{ typeId: 641, name: '░ BOOOP BEEEP ░ ', typeName: 'Megathron' }],
+    ],
+    [
       'a name holding a tab-path double space',
       tab('33697', 'My  Ship', 'Prospect', '13 km'),
       [{ typeId: 33697, name: 'My  Ship', typeName: 'Prospect' }],
