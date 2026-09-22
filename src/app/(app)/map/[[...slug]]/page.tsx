@@ -16,7 +16,6 @@ import {
   getMainCharacterId,
   getMapLayout,
   getSignatureIndicatorPrefs,
-  getSoundPrefs,
   requireSession,
 } from '@/lib/session';
 
@@ -67,7 +66,6 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     capabilities,
     liveShares,
     intelTenant,
-    soundPrefs,
   ] = await Promise.all([
     statsForSystems(systemIds),
     intelForSystems(systemIds),
@@ -83,7 +81,6 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     resolveMapCapabilities(BigInt(session.characterId), mapId),
     loadLiveShareBadges(mapId),
     requireIntelTenant(mapId, BigInt(session.characterId)),
-    getSoundPrefs(session.userId),
   ]);
 
   // Active characters drive both the CTRL+V paste location check (ids) and the
@@ -120,7 +117,6 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
         routePrefs={routeConfig.prefs}
         routeDestinations={routeConfig.destinations}
         mapLayout={mapLayout}
-        soundPrefs={soundPrefs}
       />
     </>
   );

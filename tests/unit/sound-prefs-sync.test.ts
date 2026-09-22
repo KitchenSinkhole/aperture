@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveSoundPrefs } from '@/lib/sounds/prefs';
+import { resolveSoundPrefs, type SoundPrefs } from '@/lib/sounds/prefs';
 import {
   SOUND_PREFS_CHANNEL,
   announceSoundPrefs,
@@ -20,6 +20,25 @@ describe('sound prefs sync', () => {
     await flush();
 
     expect(listener).toHaveBeenCalledWith(prefs);
+    otherTab.close();
+    unsubscribe();
+  });
+
+  it('fills in what an older build left out of its blob', async () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeSoundPrefs(listener);
+    const otherTab = new BroadcastChannel(SOUND_PREFS_CHANNEL);
+    const olderEvents: Partial<SoundPrefs['events']> = { ...resolveSoundPrefs(null).events };
+    delete olderEvents.systemPinged;
+
+    otherTab.postMessage({ enabled: true, volume: 0.5, events: olderEvents });
+    await flush();
+
+    expect(listener).toHaveBeenCalledWith({
+      ...resolveSoundPrefs(null),
+      enabled: true,
+      volume: 0.5,
+    });
     otherTab.close();
     unsubscribe();
   });

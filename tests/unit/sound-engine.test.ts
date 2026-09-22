@@ -211,6 +211,24 @@ describe('sound engine gates', () => {
     engine.dispose();
   });
 
+  it('holds no document gesture listener while sounds are off', () => {
+    const add = vi.spyOn(document, 'addEventListener');
+    const remove = vi.spyOn(document, 'removeEventListener');
+    const engine = createSoundEngine({ backend: fakeBackend({ unlocked: false }) });
+    expect(add).not.toHaveBeenCalledWith('pointerdown', expect.anything(), true);
+
+    engine.setPrefs(allOn());
+    expect(add).toHaveBeenCalledWith('pointerdown', expect.anything(), true);
+    expect(add).toHaveBeenCalledWith('keydown', expect.anything(), true);
+
+    engine.setPrefs(allOn({ enabled: false }));
+    expect(remove).toHaveBeenCalledWith('pointerdown', expect.anything(), true);
+    expect(remove).toHaveBeenCalledWith('keydown', expect.anything(), true);
+    engine.dispose();
+    add.mockRestore();
+    remove.mockRestore();
+  });
+
   it('unlocks again on the next gesture after the browser suspends playback', async () => {
     const backend = fakeBackend();
     const engine = createSoundEngine({ backend });
@@ -236,6 +254,20 @@ describe('sound engine gates', () => {
     engine.toggleMute();
     expect(notified).toBe(1);
     expect(engine.getSnapshot().muted).toBe(true);
+    unsubscribe();
+    engine.dispose();
+  });
+
+  it('publishes new prefs to subscribers and keeps them stable otherwise', () => {
+    const engine = createSoundEngine({ backend: fakeBackend(), bindGestures: false });
+    expect(engine.getPrefs()).toBe(DEFAULT_SOUND_PREFS);
+    let notified = 0;
+    const unsubscribe = engine.subscribe(() => void (notified += 1));
+    const next = allOn();
+    engine.setPrefs(next);
+    engine.setPrefs(next);
+    expect(notified).toBe(1);
+    expect(engine.getPrefs()).toBe(next);
     unsubscribe();
     engine.dispose();
   });

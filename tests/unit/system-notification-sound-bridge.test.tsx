@@ -19,7 +19,7 @@ vi.mock('@/lib/sounds/engine', async (importOriginal) => {
   return { ...actual, getSoundEngine: () => engine };
 });
 
-import { KillSoundBridge } from '@/components/map/KillSoundBridge';
+import { SystemNotificationSoundBridge } from '@/components/map/SystemNotificationSoundBridge';
 import { RealtimeProvider } from '@/lib/realtime/useRealtime';
 
 const MAP_ID = 7;
@@ -82,20 +82,20 @@ function killFrame(mapId = MAP_ID): MessageEvent {
   } as MessageEvent;
 }
 
-function pingFrame(): MessageEvent {
+function pingFrame(mapId = MAP_ID): MessageEvent {
   return {
     data: {
       type: 'message',
       envelope: {
         task: 'systemNotification',
-        mapId: MAP_ID,
-        load: { mapId: MAP_ID, systemId: SYSTEM_ID, kind: 'ping' },
+        mapId,
+        load: { mapId, systemId: SYSTEM_ID, kind: 'ping' },
       },
     },
   } as MessageEvent;
 }
 
-describe('KillSoundBridge', () => {
+describe('SystemNotificationSoundBridge', () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -103,14 +103,15 @@ describe('KillSoundBridge', () => {
     act(() => {
       root.render(
         <RealtimeProvider>
-          <KillSoundBridge mapId={String(MAP_ID)} systems={systems} />
+          <SystemNotificationSoundBridge mapId={String(MAP_ID)} systems={systems} />
         </RealtimeProvider>,
       );
     });
   }
 
   beforeEach(() => {
-    (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
+      true;
     vi.stubGlobal('SharedWorker', FakeSharedWorker);
     lastPort = null;
     played = [];
@@ -120,6 +121,7 @@ describe('KillSoundBridge', () => {
     const prefs = resolveSoundPrefs(null);
     prefs.enabled = true;
     prefs.events.killInSystem.enabled = true;
+    prefs.events.systemPinged.enabled = true;
     engine = createSoundEngine({
       backend: fakeBackend(),
       election: null,
@@ -164,21 +166,52 @@ describe('KillSoundBridge', () => {
     expect(played).toEqual(['alarm', 'alarm']);
   });
 
-  it('stays silent for a ping', () => {
+  it('plays the ping cue for a ping on the open map', () => {
     mount();
     act(() => lastPort?.onmessage?.(pingFrame()));
-    expect(played).toEqual([]);
+    expect(played).toEqual(['ping']);
+  });
+
+  it('coalesces kills and pings separately', () => {
+    mount();
+    act(() => {
+      lastPort?.onmessage?.(killFrame());
+      lastPort?.onmessage?.(pingFrame());
+      lastPort?.onmessage?.(killFrame());
+      lastPort?.onmessage?.(pingFrame());
+    });
+    expect(played).toEqual(['alarm', 'ping']);
+  });
+
+  it('stays silent for a kind the account has off', () => {
+    const prefs = engine.getPrefs();
+    engine.setPrefs({
+      ...prefs,
+      events: { ...prefs.events, systemPinged: { ...prefs.events.systemPinged, enabled: false } },
+    });
+    mount();
+    act(() => {
+      lastPort?.onmessage?.(pingFrame());
+      lastPort?.onmessage?.(killFrame());
+    });
+    expect(played).toEqual(['alarm']);
   });
 
   it('stays silent for a notification scoped to another map', () => {
     mount();
-    act(() => lastPort?.onmessage?.(killFrame(OTHER_MAP_ID)));
+    act(() => {
+      lastPort?.onmessage?.(killFrame(OTHER_MAP_ID));
+      lastPort?.onmessage?.(pingFrame(OTHER_MAP_ID));
+    });
     expect(played).toEqual([]);
   });
 
   it('stays silent for a system the map no longer shows', () => {
     mount([]);
-    act(() => lastPort?.onmessage?.(killFrame()));
+    act(() => {
+      lastPort?.onmessage?.(killFrame());
+      lastPort?.onmessage?.(pingFrame());
+    });
     expect(played).toEqual([]);
   });
 });

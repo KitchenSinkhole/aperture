@@ -1,11 +1,10 @@
 import type React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act } from 'react';
+import { act, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
 // Must be called before the imports that depend on them — Vitest hoists vi.mock calls.
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('@/lib/sounds/prefsSync', () => ({
   announceSoundPrefs: vi.fn(),
   subscribeSoundPrefs: () => () => {},
@@ -17,9 +16,17 @@ vi.mock('@/app/(app)/actions/account', () => ({
   setSoundPrefsAction: vi.fn(async () => ({ ok: true })),
   deleteAccountAction: vi.fn(async () => ({ ok: true })),
 }));
-vi.mock('@/lib/sounds/engine', () => ({
-  getSoundEngine: () => ({ setPrefs: vi.fn(), preview: vi.fn() }),
-}));
+// A real engine on a silent backend, so the dialog reads and writes the same
+// prefs store the map's cue surfaces read.
+let engine!: SoundEngine;
+vi.mock('@/lib/sounds/engine', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/sounds/engine')>();
+  return {
+    ...actual,
+    getSoundEngine: () => engine,
+    useSoundPrefs: () => useSyncExternalStore(engine.subscribe, engine.getPrefs, engine.getPrefs),
+  };
+});
 // Stub the Base UI-backed primitives — they need portals/contexts jsdom can't provide.
 vi.mock('@/components/ui/dialog', async () => {
   const { createElement } = await import('react');
@@ -61,6 +68,7 @@ vi.mock('@/components/account/DeleteAccountDialog', () => ({ DeleteAccountDialog
 
 import { setSoundPrefsAction } from '@/app/(app)/actions/account';
 import { AccountSettingsDialog } from '@/components/account/AccountSettingsDialog';
+import { createSoundEngine, type SoundEngine } from '@/lib/sounds/engine';
 import { DEFAULT_SOUND_PREFS } from '@/lib/sounds/prefs';
 import type { SoundPrefs } from '@/types';
 
@@ -79,28 +87,38 @@ const soundPrefs: SoundPrefs = {
 let container: HTMLDivElement;
 let root: Root;
 
-async function render() {
+function dialog(prefs: SoundPrefs) {
+  return (
+    <AccountSettingsDialog
+      open
+      onOpenChange={() => {}}
+      characters={[{ id: '1', name: 'Pilot', status: 'active', authzLevel: 'member' }]}
+      mainCharacterId="1"
+      activeCharacter={{ id: '1', name: 'Pilot' }}
+      travelAnimation={false}
+      signatureIndicators={{
+        globalThresholdMinutes: 180,
+        userThresholdMinutes: null,
+        showStale: true,
+        showUnscanned: true,
+      }}
+      soundPrefs={prefs}
+    />
+  );
+}
+
+async function render(prefs: SoundPrefs = soundPrefs) {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root.render(
-      <AccountSettingsDialog
-        open
-        onOpenChange={() => {}}
-        characters={[{ id: '1', name: 'Pilot', status: 'active', authzLevel: 'member' }]}
-        mainCharacterId="1"
-        activeCharacter={{ id: '1', name: 'Pilot' }}
-        travelAnimation={false}
-        signatureIndicators={{
-          globalThresholdMinutes: 180,
-          userThresholdMinutes: null,
-          showStale: true,
-          showUnscanned: true,
-        }}
-        soundPrefs={soundPrefs}
-      />,
-    );
+    root.render(dialog(prefs));
+  });
+}
+
+async function rerender(prefs: SoundPrefs) {
+  await act(async () => {
+    root.render(dialog(prefs));
   });
 }
 
@@ -127,11 +145,24 @@ beforeEach(() => {
   (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   mockSetSoundPrefs.mockReset();
   mockSetSoundPrefs.mockResolvedValue({ ok: true });
+  engine = createSoundEngine({
+    backend: {
+      isUnlocked: () => false,
+      unlock: async () => false,
+      onStateChange: () => () => {},
+      has: () => true,
+      load: async () => true,
+      play: () => {},
+    },
+    election: null,
+    bindGestures: false,
+  });
 });
 
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  engine.dispose();
 });
 
 describe('AccountSettingsDialog — sound volume', () => {
@@ -167,5 +198,39 @@ describe('AccountSettingsDialog — sound volume', () => {
 
     expect(mockSetSoundPrefs).toHaveBeenCalledTimes(1);
     expect(volumeSlider().disabled).toBe(true);
+  });
+});
+
+describe('AccountSettingsDialog — sound prefs source', () => {
+  it('seeds the engine from the saved prefs', async () => {
+    await render();
+    expect(engine.getPrefs()).toEqual(soundPrefs);
+  });
+
+  it('adopts a changed server copy, as after a save on another device', async () => {
+    await render();
+    const saved: SoundPrefs = {
+      ...soundPrefs,
+      volume: 0.3,
+      events: {
+        ...soundPrefs.events,
+        killInSystem: { ...soundPrefs.events.killInSystem, enabled: true },
+      },
+    };
+
+    await rerender(saved);
+
+    expect(engine.getPrefs()).toEqual(saved);
+    expect(volumeSlider().value).toBe('30');
+    expect(eventCheckbox('Kill on the map').checked).toBe(true);
+  });
+
+  it('keeps an uncommitted edit when the server copy re-renders unchanged', async () => {
+    await render();
+    await act(async () => setSliderValue(volumeSlider(), '40'));
+
+    await rerender({ ...soundPrefs });
+
+    expect(engine.getPrefs().volume).toBe(0.4);
   });
 });

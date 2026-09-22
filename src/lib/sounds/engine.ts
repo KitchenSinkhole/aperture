@@ -1,5 +1,6 @@
 'use client';
 
+import { useSyncExternalStore } from 'react';
 import { getBuiltInSound, soundFilesFor } from './catalog';
 import { getCustomSoundStore } from './customStore';
 import { readSoundMuted, subscribeSoundMuted, writeSoundMuted } from './mutePrefs';
@@ -60,6 +61,8 @@ export type SoundStatus = {
 
 export interface SoundEngine {
   setPrefs(prefs: SoundPrefs): void;
+  /** The prefs every sound surface reads; reference-stable between `setPrefs` calls. */
+  getPrefs(): SoundPrefs;
   setMapId(mapId: string | null): void;
   /** Play an event's cue, subject to every gate. Silent when any gate blocks. */
   play(event: SoundEvent, opts?: { variant?: SoundVariant }): void;
@@ -80,7 +83,7 @@ export type SoundEngineDeps = {
   /** `null` (no Web Locks) makes every tab a leader. */
   election?: SoundLeaderElection | null;
   now?: () => number;
-  /** Bind `unlock()` to the first document gesture. Defaults to on. */
+  /** Bind `unlock()` to document gestures while sounds are on. Defaults to on. */
   bindGestures?: boolean;
 };
 
@@ -145,17 +148,32 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
     void backend.unlock().then(applyUnlockResult);
   }
 
-  if (deps.bindGestures !== false && typeof document !== 'undefined') {
-    const onGesture = () => unlock();
-    document.addEventListener('pointerdown', onGesture, true);
-    document.addEventListener('keydown', onGesture, true);
-    teardown.push(() => {
-      document.removeEventListener('pointerdown', onGesture, true);
-      document.removeEventListener('keydown', onGesture, true);
-    });
+  const canBindGestures = deps.bindGestures !== false && typeof document !== 'undefined';
+  let unbindGestures: (() => void) | null = null;
+  const onGesture = () => unlock();
+
+  // Only while the master switch is on: an account with sounds off has nothing
+  // to unlock, so it pays for no document-wide listener.
+  function syncGestures(): void {
+    if (!canBindGestures) return;
+    if (prefs.enabled && unbindGestures == null) {
+      document.addEventListener('pointerdown', onGesture, true);
+      document.addEventListener('keydown', onGesture, true);
+      unbindGestures = () => {
+        document.removeEventListener('pointerdown', onGesture, true);
+        document.removeEventListener('keydown', onGesture, true);
+      };
+    } else if (!prefs.enabled && unbindGestures != null) {
+      unbindGestures();
+      unbindGestures = null;
+    }
   }
 
   teardown.push(
+    () => {
+      unbindGestures?.();
+      unbindGestures = null;
+    },
     backend.onStateChange(() => applyUnlockResult(backend.isUnlocked())),
     subscribeSoundMuted(() => {
       muted = readSoundMuted();
@@ -193,10 +211,15 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
 
   return {
     setPrefs(next: SoundPrefs): void {
+      if (next === prefs) return;
       prefs = next;
       prefetch(next);
+      syncGestures();
       syncLeadership();
+      for (const listener of listeners) listener();
     },
+
+    getPrefs: () => prefs,
 
     setMapId(next: string | null): void {
       mapId = next;
@@ -491,4 +514,30 @@ export function getSoundEngine(): SoundEngine {
     election: createWebLocksElection(),
   });
   return singleton;
+}
+
+function defaultPrefs(): SoundPrefs {
+  return DEFAULT_SOUND_PREFS;
+}
+
+/** The app-wide engine's prefs, re-rendering the caller on every change. */
+export function useSoundPrefs(): SoundPrefs {
+  const engine = getSoundEngine();
+  return useSyncExternalStore(engine.subscribe, engine.getPrefs, defaultPrefs);
+}
+
+/**
+ * Whether the master switch is on and, given an `event`, that event too.
+ * A boolean snapshot, so a volume drag does not re-render the caller.
+ */
+export function useSoundCueOn(event?: SoundEvent): boolean {
+  const engine = getSoundEngine();
+  return useSyncExternalStore(
+    engine.subscribe,
+    () => {
+      const prefs = engine.getPrefs();
+      return prefs.enabled && (event == null || prefs.events[event].enabled);
+    },
+    () => false,
+  );
 }

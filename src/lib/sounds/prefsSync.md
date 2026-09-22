@@ -14,4 +14,4 @@ The `BroadcastChannel` name the prefs travel on.
 Posts `prefs` to every other tab on the device. Called by `AccountSettingsDialog` after a successful save.
 
 ### subscribeSoundPrefs(listener: (prefs: SoundPrefs) => void): () => void
-Receives prefs another tab announced; returns an unsubscribe fn.
+Receives prefs another tab announced, passed through `resolveSoundPrefs` first so a blob from a tab on a different build still yields complete prefs. Returns an unsubscribe fn.

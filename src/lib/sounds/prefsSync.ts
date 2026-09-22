@@ -1,6 +1,6 @@
 'use client';
 
-import type { SoundPrefs } from './prefs';
+import { resolveSoundPrefs, type SoundPrefs } from './prefs';
 
 /** BroadcastChannel name that carries a saved `SoundPrefs` to the device's other tabs. */
 export const SOUND_PREFS_CHANNEL = 'aperture:sound-prefs';
@@ -14,8 +14,11 @@ function getChannel(): BroadcastChannel | null {
   if (channel) return channel;
   if (typeof BroadcastChannel === 'undefined') return null;
   channel = new BroadcastChannel(SOUND_PREFS_CHANNEL);
-  channel.onmessage = (event: MessageEvent<SoundPrefs>) => {
-    for (const listener of listeners) listener(event.data);
+  // Another tab can run an older build whose blob lacks a newer event, so the
+  // message is resolved like any other untrusted copy of the column.
+  channel.onmessage = (event: MessageEvent<unknown>) => {
+    const prefs = resolveSoundPrefs(event.data);
+    for (const listener of listeners) listener(prefs);
   };
   return channel;
 }

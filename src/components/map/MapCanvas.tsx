@@ -37,7 +37,6 @@ import type {
   RoutePrefs,
   SignatureIndicatorPrefs,
   SigSearchFilters,
-  SoundPrefs,
   StructureIntel,
 } from '@/types';
 import type { SystemStatsSummary } from '@/lib/map/stats';
@@ -84,7 +83,11 @@ import {
   updateStructureOnServer,
 } from '@/lib/structures/client';
 import { mapUpdateLoadSchema, type Envelope } from '@/lib/realtime/protocol';
-import { useMapSubscription, useRealtimeEvents, useReconnectResync } from '@/lib/realtime/useRealtime';
+import {
+  useMapSubscription,
+  useRealtimeEvents,
+  useReconnectResync,
+} from '@/lib/realtime/useRealtime';
 import { RoutePlannerModule } from '@/components/sidebar/RoutePlannerModule';
 import { KillStatsModule } from '@/components/sidebar/KillStatsModule';
 import { SystemGraphModule } from '@/components/sidebar/SystemGraphModule';
@@ -99,7 +102,17 @@ import {
   SignatureModule,
   SignatureModuleHeaderActions,
 } from '@/components/sidebar/SignatureModule';
-import { Download, Info, LayoutDashboard, RotateCcw, ScrollText, Settings, Trash2, Upload, User } from 'lucide-react';
+import {
+  Download,
+  Info,
+  LayoutDashboard,
+  RotateCcw,
+  ScrollText,
+  Settings,
+  Trash2,
+  Upload,
+  User,
+} from 'lucide-react';
 import { Tooltip } from '@base-ui/react/tooltip';
 import { Button } from '@/components/ui/button';
 import {
@@ -119,7 +132,7 @@ import {
 } from '@/components/ui/menu';
 import { MapInfoDialog } from '@/components/dialogs/MapInfoDialog';
 import { dropWatchedConnection } from '@/lib/connectionWatchPrefs';
-import { getSoundEngine } from '@/lib/sounds/engine';
+import { getSoundEngine, useSoundCueOn } from '@/lib/sounds/engine';
 import { PilotRosterButton } from './PilotRosterButton';
 import { SoundToolbarButton } from './SoundToolbarButton';
 import { SystemOverlayButton } from './SystemOverlayButton';
@@ -136,11 +149,10 @@ import { SignaturePasteHotkey } from './SignaturePasteHotkey';
 import { TransitSignaturePrompt } from './TransitSignaturePrompt';
 import { MapTravelProvider, TravelBridge } from './MapTravelContext';
 import { MapUnderglowProvider } from './MapUnderglowContext';
-import { KillSoundBridge } from './KillSoundBridge';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
-import { PingSoundBridge } from './PingSoundBridge';
 import { PresenceSoundBridge } from './PresenceSoundBridge';
 import { RallySoundBridge } from './RallySoundBridge';
+import { SystemNotificationSoundBridge } from './SystemNotificationSoundBridge';
 import { WatchedConnectionSoundBridge } from './WatchedConnectionSoundBridge';
 import { SystemNode, type SystemNodeData } from './SystemNode';
 import { MapNoteNode, type MapNoteNodeData } from './MapNoteNode';
@@ -293,7 +305,6 @@ export function MapCanvas({
   routePrefs,
   routeDestinations,
   mapLayout,
-  soundPrefs,
 }: {
   data: MapViewData;
   stats: Record<number, SystemStatsSummary>;
@@ -339,12 +350,6 @@ export function MapCanvas({
    * `DEFAULT_MAP_LAYOUT`.
    */
   mapLayout?: MapLayoutConfig | null;
-  /**
-   * The account's sound preferences. Read-only here: the engine is fed by
-   * `AccountSettingsDialog`, which is mounted app-wide and holds the optimistic
-   * copy. This prop only decides which sound surfaces the canvas mounts.
-   */
-  soundPrefs: SoundPrefs;
 }) {
   const [selected, setSelected] = useState<SelectionRef | null>(null);
   // The multi-select set; `selected` (above) remains the primary anchor that
@@ -398,10 +403,7 @@ export function MapCanvas({
   const [liveShares, setLiveShares] = useState<LiveShareBadge[]>(initialLiveShares);
   // Captured via ReactFlow's onInit so the manual-add flow can place new nodes
   // at the current viewport centre rather than (0,0).
-  const flowInstance = useRef<ReactFlowInstance<
-    CanvasNode,
-    Edge<ConnectionEdgeData>
-  > | null>(null);
+  const flowInstance = useRef<ReactFlowInstance<CanvasNode, Edge<ConnectionEdgeData>> | null>(null);
   const flowWrapperRef = useRef<HTMLDivElement>(null);
   // Client-space point set by the pane "Add system" action; consumed by the next
   // `onAddSystem` so the added node lands where the user right-clicked rather than
@@ -422,9 +424,7 @@ export function MapCanvas({
 
   // EVE solar-system ids whose read-side data has been loaded or is in flight.
   // Seeded from the load-time intel (one entry per initially-rendered system).
-  const requestedSystemData = useRef<Set<number>>(
-    new Set(Object.keys(initialIntel).map(Number)),
-  );
+  const requestedSystemData = useRef<Set<number>>(new Set(Object.keys(initialIntel).map(Number)));
   // Backfill systems added after the initial render (paste, tracked-pilot jump,
   // manual add): one batched fetch per new id-set, merged into state so their
   // sov/FW/incursion decorators and sidebar modules fill in without a reload.
@@ -587,10 +587,13 @@ export function MapCanvas({
 
   // Flush nothing but cancel a pending debounce on unmount.
   useEffect(() => () => clearTimeout(saveTimer.current ?? undefined), []);
-  useEffect(() => () => {
-    clearTimeout(flashTimer.current ?? undefined);
-    clearTimeout(pasteFlashTimer.current ?? undefined);
-  }, []);
+  useEffect(
+    () => () => {
+      clearTimeout(flashTimer.current ?? undefined);
+      clearTimeout(pasteFlashTimer.current ?? undefined);
+    },
+    [],
+  );
 
   const handleLayoutChange = useCallback(
     (_current: Layout, all: ResponsiveLayouts<Breakpoint>) => {
@@ -901,42 +904,43 @@ export function MapCanvas({
   // same-tick burst (e.g. a wormhole jump's system.added + connection.create +
   // characterUpdate) applies all of them in order — no coalescing drop.
   useRealtimeEvents(
-    useCallback((envelope: Envelope) => {
-      if (envelope.task !== 'mapUpdate') return;
-      const loadResult = mapUpdateLoadSchema.safeParse(envelope.load);
-      if (!loadResult.success || !loadResult.data.data) return;
-      // Belt-and-suspenders: the SharedWorker already routes map-scoped
-      // envelopes only to subscribed ports, but a foreign mapId reaching this
-      // handler (a worker routing regression) must not corrupt this canvas.
-      // Checked against the load's mapId, which the schema makes mandatory —
-      // the envelope-level tag is optional, so a producer that stopped setting
-      // it would leave a guard on it passing everything.
-      if (loadResult.data.mapId !== Number(data.map.id)) return;
-      const payload = loadResult.data.data;
-      if (appliedEventIds.current.has(payload.eventId)) return;
-      appliedEventIds.current.add(payload.eventId);
-      setViewData((prev) => applyEvent(prev, payload));
-      hydrateAddedSystems([payload]);
-      // A watch has the lifetime of its hole, so only an actual delete ends it
-      // — a system removed from the map hides its connections but keeps them.
-      if (payload.kind === 'connection.delete') {
-        dropWatchedConnection(data.map.id, payload.id);
-      }
-      // Share mint/revoke carries no canvas state, so it never reaches
-      // `applyEvent` — the header indicator tracks it directly.
-      if (payload.kind === 'share.created') {
-        const badge: LiveShareBadge = {
-          id: payload.shareId,
-          label: payload.label,
-          expiresAt: payload.expiresAt,
-        };
-        setLiveShares((prev) =>
-          prev.some((s) => s.id === badge.id) ? prev : [badge, ...prev],
-        );
-      } else if (payload.kind === 'share.revoked') {
-        setLiveShares((prev) => prev.filter((s) => s.id !== payload.shareId));
-      }
-    }, [hydrateAddedSystems, data.map.id]),
+    useCallback(
+      (envelope: Envelope) => {
+        if (envelope.task !== 'mapUpdate') return;
+        const loadResult = mapUpdateLoadSchema.safeParse(envelope.load);
+        if (!loadResult.success || !loadResult.data.data) return;
+        // Belt-and-suspenders: the SharedWorker already routes map-scoped
+        // envelopes only to subscribed ports, but a foreign mapId reaching this
+        // handler (a worker routing regression) must not corrupt this canvas.
+        // Checked against the load's mapId, which the schema makes mandatory —
+        // the envelope-level tag is optional, so a producer that stopped setting
+        // it would leave a guard on it passing everything.
+        if (loadResult.data.mapId !== Number(data.map.id)) return;
+        const payload = loadResult.data.data;
+        if (appliedEventIds.current.has(payload.eventId)) return;
+        appliedEventIds.current.add(payload.eventId);
+        setViewData((prev) => applyEvent(prev, payload));
+        hydrateAddedSystems([payload]);
+        // A watch has the lifetime of its hole, so only an actual delete ends it
+        // — a system removed from the map hides its connections but keeps them.
+        if (payload.kind === 'connection.delete') {
+          dropWatchedConnection(data.map.id, payload.id);
+        }
+        // Share mint/revoke carries no canvas state, so it never reaches
+        // `applyEvent` — the header indicator tracks it directly.
+        if (payload.kind === 'share.created') {
+          const badge: LiveShareBadge = {
+            id: payload.shareId,
+            label: payload.label,
+            expiresAt: payload.expiresAt,
+          };
+          setLiveShares((prev) => (prev.some((s) => s.id === badge.id) ? prev : [badge, ...prev]));
+        } else if (payload.kind === 'share.revoked') {
+          setLiveShares((prev) => prev.filter((s) => s.id !== payload.shareId));
+        }
+      },
+      [hydrateAddedSystems, data.map.id],
+    ),
   );
 
   // ---- On-error resync failsafe ------------------------------------------
@@ -1023,28 +1027,31 @@ export function MapCanvas({
   // Apply N event payloads in commit order and register each eventId in the
   // dedupe set — the bulk equivalent of `awaitServer`. Used by signature paste,
   // import, Thera sync, subchain delete, and manual add (system + gate links).
-  const onBulkPaste = useCallback((payloads: MapEventPayload[]) => {
-    if (payloads.length === 0) return;
-    for (const p of payloads) appliedEventIds.current.add(p.eventId);
-    setViewData((prev) => payloads.reduce(applyEvent, prev));
-    hydrateAddedSystems(payloads);
-    // Registering the eventIds above suppresses the realtime echo for this
-    // tab, so the deletes in a bulk result have to end their watches here.
-    for (const p of payloads) {
-      if (p.kind === 'connection.delete') dropWatchedConnection(data.map.id, p.id);
-    }
+  const onBulkPaste = useCallback(
+    (payloads: MapEventPayload[]) => {
+      if (payloads.length === 0) return;
+      for (const p of payloads) appliedEventIds.current.add(p.eventId);
+      setViewData((prev) => payloads.reduce(applyEvent, prev));
+      hydrateAddedSystems(payloads);
+      // Registering the eventIds above suppresses the realtime echo for this
+      // tab, so the deletes in a bulk result have to end their watches here.
+      for (const p of payloads) {
+        if (p.kind === 'connection.delete') dropWatchedConnection(data.map.id, p.id);
+      }
 
-    const flashes: Record<string, 'created' | 'updated'> = {};
-    for (const p of payloads) {
-      if (p.kind === 'signature.create') flashes[p.id] = 'created';
-      else if (p.kind === 'signature.update') flashes[p.id] = 'updated';
-    }
-    if (Object.keys(flashes).length > 0) {
-      if (pasteFlashTimer.current) clearTimeout(pasteFlashTimer.current);
-      setPasteFlash(flashes);
-      pasteFlashTimer.current = setTimeout(() => setPasteFlash({}), 2500);
-    }
-  }, [hydrateAddedSystems, data.map.id]);
+      const flashes: Record<string, 'created' | 'updated'> = {};
+      for (const p of payloads) {
+        if (p.kind === 'signature.create') flashes[p.id] = 'created';
+        else if (p.kind === 'signature.update') flashes[p.id] = 'updated';
+      }
+      if (Object.keys(flashes).length > 0) {
+        if (pasteFlashTimer.current) clearTimeout(pasteFlashTimer.current);
+        setPasteFlash(flashes);
+        pasteFlashTimer.current = setTimeout(() => setPasteFlash({}), 2500);
+      }
+    },
+    [hydrateAddedSystems, data.map.id],
+  );
 
   // ---- xyflow → server callbacks -----------------------------------------
   const mapId = viewData.map.id;
@@ -1056,6 +1063,16 @@ export function MapCanvas({
     engine.setMapId(mapId);
     return () => engine.setMapId(null);
   }, [mapId]);
+
+  // Read from the engine, the one copy of the prefs, so which cue listeners
+  // exist always agrees with what the engine will play.
+  const soundsOn = useSoundCueOn();
+  const pilotArrivedOn = useSoundCueOn('pilotArrived');
+  const pilotLeftOn = useSoundCueOn('pilotLeft');
+  const watchedJumpOn = useSoundCueOn('watchedJump');
+  const killInSystemOn = useSoundCueOn('killInSystem');
+  const rallySetOn = useSoundCueOn('rallySet');
+  const systemPingedOn = useSoundCueOn('systemPinged');
 
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes((nds) => applyNodeChanges(changes, nds));
@@ -1591,9 +1608,7 @@ export function MapCanvas({
           body.leadsToMapSystemId != null
             ? viewData.systems.find((s) => s.id === body.leadsToMapSystemId)
             : undefined;
-        const targetName = far
-          ? far.alias?.trim() || far.name
-          : (body.wormholeCode ?? 'wormhole');
+        const targetName = far ? far.alias?.trim() || far.name : (body.wormholeCode ?? 'wormhole');
         offers.push({ connId, targetName });
       }
       return offers;
@@ -1805,7 +1820,13 @@ export function MapCanvas({
     // re-sync so its decorators (sov/FW/incursion) appear without a systems change.
     lastSync.intel !== intel
   ) {
-    setLastSync({ systems: viewData.systems, notes: viewData.notes, selectedSystemIds, selected, intel });
+    setLastSync({
+      systems: viewData.systems,
+      notes: viewData.notes,
+      selectedSystemIds,
+      selected,
+      intel,
+    });
     setNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]));
       return [
@@ -1987,7 +2008,9 @@ export function MapCanvas({
                   <Trash2 />
                   Remove {deletableSelectedSystemIds.length}
                   {lockedSelectedCount > 0 && (
-                    <span className="ml-1 text-[10px] opacity-80">({lockedSelectedCount} locked)</span>
+                    <span className="ml-1 text-[10px] opacity-80">
+                      ({lockedSelectedCount} locked)
+                    </span>
                   )}
                 </Button>
               )}
@@ -2207,188 +2230,189 @@ export function MapCanvas({
   return (
     <MapPresenceProvider initial={data.presence} mapId={data.map.id}>
       <MapActiveCharProvider viewerCharacters={viewerCharacters} mainCharacterId={mainCharacterId}>
-      <MapTravelProvider>
-        <MapUnderglowProvider>
-        <MapSignatureIndicatorProvider
-          signatures={viewData.signatures}
-          prefs={signatureIndicators}
-        >
-        {travelAnimation && (
-          <TravelBridge systems={viewData.systems} connections={viewData.connections} />
-        )}
-        <MapUnderglowBridge systems={viewData.systems} mapId={data.map.id} />
-        {soundPrefs.enabled &&
-          (soundPrefs.events.pilotArrived.enabled || soundPrefs.events.pilotLeft.enabled) && (
-            <PresenceSoundBridge
-              mapId={mapId}
-              systems={viewData.systems}
-              connections={viewData.connections}
-              viewerCharacterIds={viewerCharacterIds}
-              watchedJumpOn={soundPrefs.events.watchedJump.enabled}
-            />
-          )}
-        {soundPrefs.enabled && soundPrefs.events.watchedJump.enabled && (
-          <WatchedConnectionSoundBridge
-            mapId={mapId}
-            systems={viewData.systems}
-            connections={viewData.connections}
-            viewerCharacterIds={viewerCharacterIds}
-          />
-        )}
-        {soundPrefs.enabled && soundPrefs.events.killInSystem.enabled && (
-          <KillSoundBridge mapId={mapId} systems={viewData.systems} />
-        )}
-        {soundPrefs.enabled && soundPrefs.events.rallySet.enabled && (
-          <RallySoundBridge mapId={mapId} />
-        )}
-        {soundPrefs.enabled && soundPrefs.events.systemPinged.enabled && (
-          <PingSoundBridge mapId={mapId} systems={viewData.systems} />
-        )}
-        <SignaturePasteHotkey
-          mapId={mapId}
-          selectedSystem={selectedSystem}
-          systems={viewData.systems}
-          viewerCharacterIds={viewerCharacterIds}
-          onBulkPaste={onSignaturePasteResult}
-          lazyDelete={lazyDeleteSigs}
-          onLazyDeleteConsume={() => setLazyDeleteSigs(false)}
-          onLazyDeletePasteResult={onLazyDeletePasteResult}
-        />
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-1">
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="min-w-0">
-                <div className="font-heading truncate text-base font-semibold tracking-tight">
-                  {viewData.map.name}
-                </div>
-                <div className="text-muted-foreground truncate text-xs capitalize">
-                  {viewData.map.type} · {viewData.map.scope} · {viewData.systems.length} systems
-                </div>
-              </div>
-              <MapShareIndicator shares={liveShares} />
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <ActiveCharSelector />
-              <PilotRosterButton viewData={viewData} />
-              {soundPrefs.enabled && <SoundToolbarButton />}
-              <SystemOverlayButton viewData={viewData} />
-              <Menu>
-                <MenuTrigger
-                  render={
-                    <Button variant="ghost" size="sm">
-                      <LayoutDashboard />
-                      Panels
-                    </Button>
-                  }
-                />
-                <MenuContent>
-                  {PANELS.map((p) => (
-                    <MenuCheckboxItem
-                      key={p.id}
-                      checked={!layout.hidden.includes(p.id)}
-                      onCheckedChange={() => handleToggleVisible(p.id)}
-                    >
-                      {p.title}
-                    </MenuCheckboxItem>
-                  ))}
-                  <MenuSeparator />
-                  <MenuItem icon={<Download className="size-3.5" />} onClick={handleExportLayout}>
-                    Export layout
-                  </MenuItem>
-                  <MenuItem
-                    icon={<Upload className="size-3.5" />}
-                    onClick={() => importInputRef.current?.click()}
-                  >
-                    Import layout
-                  </MenuItem>
-                  <MenuItem icon={<RotateCcw className="size-3.5" />} onClick={handleResetLayout}>
-                    Reset layout
-                  </MenuItem>
-                </MenuContent>
-              </Menu>
-              <input
-                ref={importInputRef}
-                type="file"
-                accept="application/json,.json"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  // Reset so re-selecting the same file fires `change` again.
-                  e.target.value = '';
-                  if (file) void handleImportFile(file);
-                }}
-              />
-              <Button variant="ghost" size="sm" onClick={() => setMapInfoOpen(true)}>
-                <Info />
-                Map info
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setSettingsOpen(true)}>
-                <Settings />
-                Settings
-              </Button>
-              {capabilities.includes('audit_view') && (
-                <Button variant="ghost" size="sm" onClick={() => setAuditOpen(true)}>
-                  <ScrollText />
-                  Audit log
-                </Button>
-              )}
-            </div>
-          </div>
-          <PanelDndContext onDragEnd={handlePanelDrop}>
-            <MapLayoutGrid
-              layouts={layout.layouts}
-              onLayoutChange={handleLayoutChange}
-              onBreakpointChange={setBreakpoint}
-              onTearOff={tearOffTab}
+        <MapTravelProvider>
+          <MapUnderglowProvider>
+            <MapSignatureIndicatorProvider
+              signatures={viewData.signatures}
+              prefs={signatureIndicators}
             >
-              {visibleGroups.map((g) => (
-                <div key={g.id}>
-                  <MapPanelGroup
-                    group={g}
-                    hidden={layout.hidden}
-                    onSetActive={handleSetActiveTab}
-                    onHideMember={handleHide}
-                    renderContent={panelContent}
-                    renderHeaderRight={panelHeaderRight}
-                    contentClassName={(id) =>
-                      id === 'canvas' ? 'min-h-0 flex-1 overflow-hidden p-0' : undefined
-                    }
-                  />
+              {travelAnimation && (
+                <TravelBridge systems={viewData.systems} connections={viewData.connections} />
+              )}
+              <MapUnderglowBridge systems={viewData.systems} mapId={data.map.id} />
+              {(pilotArrivedOn || pilotLeftOn) && (
+                <PresenceSoundBridge
+                  mapId={mapId}
+                  systems={viewData.systems}
+                  connections={viewData.connections}
+                  viewerCharacterIds={viewerCharacterIds}
+                  watchedJumpOn={watchedJumpOn}
+                />
+              )}
+              {watchedJumpOn && (
+                <WatchedConnectionSoundBridge
+                  mapId={mapId}
+                  systems={viewData.systems}
+                  connections={viewData.connections}
+                  viewerCharacterIds={viewerCharacterIds}
+                />
+              )}
+              {(killInSystemOn || systemPingedOn) && (
+                <SystemNotificationSoundBridge mapId={mapId} systems={viewData.systems} />
+              )}
+              {rallySetOn && <RallySoundBridge mapId={mapId} />}
+              <SignaturePasteHotkey
+                mapId={mapId}
+                selectedSystem={selectedSystem}
+                systems={viewData.systems}
+                viewerCharacterIds={viewerCharacterIds}
+                onBulkPaste={onSignaturePasteResult}
+                lazyDelete={lazyDeleteSigs}
+                onLazyDeleteConsume={() => setLazyDeleteSigs(false)}
+                onLazyDeletePasteResult={onLazyDeletePasteResult}
+              />
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="min-w-0">
+                      <div className="font-heading truncate text-base font-semibold tracking-tight">
+                        {viewData.map.name}
+                      </div>
+                      <div className="text-muted-foreground truncate text-xs capitalize">
+                        {viewData.map.type} · {viewData.map.scope} · {viewData.systems.length}{' '}
+                        systems
+                      </div>
+                    </div>
+                    <MapShareIndicator shares={liveShares} />
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <ActiveCharSelector />
+                    <PilotRosterButton viewData={viewData} />
+                    {soundsOn && <SoundToolbarButton />}
+                    <SystemOverlayButton viewData={viewData} />
+                    <Menu>
+                      <MenuTrigger
+                        render={
+                          <Button variant="ghost" size="sm">
+                            <LayoutDashboard />
+                            Panels
+                          </Button>
+                        }
+                      />
+                      <MenuContent>
+                        {PANELS.map((p) => (
+                          <MenuCheckboxItem
+                            key={p.id}
+                            checked={!layout.hidden.includes(p.id)}
+                            onCheckedChange={() => handleToggleVisible(p.id)}
+                          >
+                            {p.title}
+                          </MenuCheckboxItem>
+                        ))}
+                        <MenuSeparator />
+                        <MenuItem
+                          icon={<Download className="size-3.5" />}
+                          onClick={handleExportLayout}
+                        >
+                          Export layout
+                        </MenuItem>
+                        <MenuItem
+                          icon={<Upload className="size-3.5" />}
+                          onClick={() => importInputRef.current?.click()}
+                        >
+                          Import layout
+                        </MenuItem>
+                        <MenuItem
+                          icon={<RotateCcw className="size-3.5" />}
+                          onClick={handleResetLayout}
+                        >
+                          Reset layout
+                        </MenuItem>
+                      </MenuContent>
+                    </Menu>
+                    <input
+                      ref={importInputRef}
+                      type="file"
+                      accept="application/json,.json"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        // Reset so re-selecting the same file fires `change` again.
+                        e.target.value = '';
+                        if (file) void handleImportFile(file);
+                      }}
+                    />
+                    <Button variant="ghost" size="sm" onClick={() => setMapInfoOpen(true)}>
+                      <Info />
+                      Map info
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setSettingsOpen(true)}>
+                      <Settings />
+                      Settings
+                    </Button>
+                    {capabilities.includes('audit_view') && (
+                      <Button variant="ghost" size="sm" onClick={() => setAuditOpen(true)}>
+                        <ScrollText />
+                        Audit log
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              ))}
-            </MapLayoutGrid>
-          </PanelDndContext>
-        </div>
+                <PanelDndContext onDragEnd={handlePanelDrop}>
+                  <MapLayoutGrid
+                    layouts={layout.layouts}
+                    onLayoutChange={handleLayoutChange}
+                    onBreakpointChange={setBreakpoint}
+                    onTearOff={tearOffTab}
+                  >
+                    {visibleGroups.map((g) => (
+                      <div key={g.id}>
+                        <MapPanelGroup
+                          group={g}
+                          hidden={layout.hidden}
+                          onSetActive={handleSetActiveTab}
+                          onHideMember={handleHide}
+                          renderContent={panelContent}
+                          renderHeaderRight={panelHeaderRight}
+                          contentClassName={(id) =>
+                            id === 'canvas' ? 'min-h-0 flex-1 overflow-hidden p-0' : undefined
+                          }
+                        />
+                      </div>
+                    ))}
+                  </MapLayoutGrid>
+                </PanelDndContext>
+              </div>
 
-        <MapInfoDialog open={mapInfoOpen} onOpenChange={setMapInfoOpen} viewData={viewData} />
-        <MapSettingsDialog
-          open={settingsOpen}
-          onOpenChange={setSettingsOpen}
-          mapId={mapId}
-          settings={settings}
-          canManage={canManage}
-          capabilities={capabilities}
-          systems={manageSystems}
-          onImported={onBulkPaste}
-        />
-        {capabilities.includes('audit_view') && (
-          <MapAuditDialog
-            open={auditOpen}
-            onOpenChange={setAuditOpen}
-            mapId={mapId}
-            mapName={settings.name}
-          />
-        )}
-        <AddSystemDialog
-          open={addSystemOpen}
-          onOpenChange={setAddSystemOpen}
-          mapId={mapId}
-          existingSystemIds={existingSystemIds}
-          onAdd={onAddSystem}
-        />
-        </MapSignatureIndicatorProvider>
-        </MapUnderglowProvider>
-      </MapTravelProvider>
+              <MapInfoDialog open={mapInfoOpen} onOpenChange={setMapInfoOpen} viewData={viewData} />
+              <MapSettingsDialog
+                open={settingsOpen}
+                onOpenChange={setSettingsOpen}
+                mapId={mapId}
+                settings={settings}
+                canManage={canManage}
+                capabilities={capabilities}
+                systems={manageSystems}
+                onImported={onBulkPaste}
+              />
+              {capabilities.includes('audit_view') && (
+                <MapAuditDialog
+                  open={auditOpen}
+                  onOpenChange={setAuditOpen}
+                  mapId={mapId}
+                  mapName={settings.name}
+                />
+              )}
+              <AddSystemDialog
+                open={addSystemOpen}
+                onOpenChange={setAddSystemOpen}
+                mapId={mapId}
+                existingSystemIds={existingSystemIds}
+                onAdd={onAddSystem}
+              />
+            </MapSignatureIndicatorProvider>
+          </MapUnderglowProvider>
+        </MapTravelProvider>
       </MapActiveCharProvider>
     </MapPresenceProvider>
   );

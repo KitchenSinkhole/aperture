@@ -39,18 +39,19 @@ The playback surface the engine drives.
 ---
 
 ### createSoundEngine(deps: SoundEngineDeps): SoundEngine
-Builds an engine. Unless `bindGestures` is `false`, it binds `unlock()` to every `pointerdown` / `keydown` captured on the document. It subscribes to the mute store so a change from any surface is reflected immediately, and to the backend's state changes so a browser-side suspend drops `unlocked` and the next gesture resumes playback. `dispose()` stands down from the current map lock, removes those listeners and drops all subscribers.
+Builds an engine. Unless `bindGestures` is `false`, it binds `unlock()` to every `pointerdown` / `keydown` captured on the document, but only while the master switch is on, so an account with sounds off carries no document-wide listener. It subscribes to the mute store so a change from any surface is reflected immediately, and to the backend's state changes so a browser-side suspend drops `unlocked` and the next gesture resumes playback. `dispose()` stands down from the current map lock, removes those listeners and drops all subscribers.
 
 **The engine's methods:**
 
-- `setPrefs(prefs: SoundPrefs)` — the account's preferences. Until it is called, the defaults apply, which means silence. `AccountSettingsDialog` is the single writer, so the engine always holds the live optimistic blob rather than a stale server copy pushed by a second surface. It also prefetches the files behind every enabled event's sound, so a file-backed cue is ready before it fires rather than falling back to a chime the first time.
+- `setPrefs(prefs: SoundPrefs)` — the account's preferences, and the one copy every sound surface reads. Until it is called, the defaults apply, which means silence. `AccountSettingsDialog` is the single writer. A new blob notifies `subscribe` listeners. It also prefetches the files behind every enabled event's sound, so a file-backed cue is ready before it fires rather than falling back to a chime the first time.
 - `setMapId(mapId: string | null)` — the map this tab is showing. Releases the previous map's lock.
 - **Leadership:** with an election present, the tab claims its map's lock only while it has a map id, audio is unlocked and the master switch is on, and stands down the moment any of those stops holding. A tab that cannot play therefore never holds the lock, so it cannot silence a tab on the same map that can.
 - `play(event, opts?: { variant? })` — plays the event's cue. Silent, with no error and no toast, unless all of these hold: the master switch is on, that event is enabled, the device is not muted, the browser has unlocked audio, this tab holds the map's lock, and no cue of the same event played within `SOUND_COALESCE_MS`. The coalesce window starts only on a cue that actually played, so a cue a gate blocked does not suppress the next one. The sound id is the event's configured one when the backend has it, and that event's default chime otherwise — so a pref naming a sound missing on this device still makes a noise. Falling back also kicks off a load of the wanted sound, so a prefetch the engine missed heals by the next cue. `variant` defaults to `'plain'`.
 - `preview(soundId)` — auditions a sound's `'plain'` line, bypassing the master switch, mute, leadership and coalescing, at the configured volume. A sound the backend does not yet hold is loaded first and played once it arrives; an id it cannot produce at all is dropped. When audio is still locked it unlocks first and plays once granted, so the preview click is itself the unlocking gesture.
 - `unlock()` — asks the browser for playback permission; must be called from a user gesture. A no-op while the master switch is off, so an account with sounds off never starts an `AudioContext` from a gesture.
 - `setMuted(muted)` / `toggleMute()` — writes the device mute through the mute store.
-- `getSnapshot()` / `getServerSnapshot()` / `subscribe(listener)` — the `useSyncExternalStore` triple over `SoundStatus`.
+- `getPrefs()` — the current prefs, reference-stable between `setPrefs` calls.
+- `getSnapshot()` / `getServerSnapshot()` / `subscribe(listener)` — the `useSyncExternalStore` triple over `SoundStatus`. `subscribe` also fires on a prefs change, so it backs `getPrefs` too.
 
 ---
 
@@ -67,3 +68,9 @@ Leader election over the Web Locks API. The lock is held for the tab's lifetime,
 
 ### getSoundEngine(): SoundEngine
 The app-wide engine, created on first use with `createWebLocksElection()` and a `createWebAudioBackend` wired to `getCustomSoundStore()`.
+
+### useSoundPrefs(): SoundPrefs
+The app-wide engine's prefs, re-rendering the caller on every change. `DEFAULT_SOUND_PREFS` on the server.
+
+### useSoundCueOn(event?: SoundEvent): boolean
+Whether the master switch is on and, given an `event`, that event is enabled too. A boolean snapshot, so a volume change does not re-render the caller. `false` on the server.

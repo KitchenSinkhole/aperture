@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
 import { Star, Trash2, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SignatureIndicatorAccountSettings, SoundEvent, SoundId, SoundPrefs } from '@/types';
 import { SOUND_EVENTS } from '@/lib/sounds/prefs';
 import { SOUND_EVENT_LABELS } from '@/lib/sounds/catalog';
 import { getCustomSoundStore, useCustomSounds } from '@/lib/sounds/customStore';
-import { getSoundEngine } from '@/lib/sounds/engine';
+import { getSoundEngine, useSoundPrefs } from '@/lib/sounds/engine';
 import { announceSoundPrefs, subscribeSoundPrefs } from '@/lib/sounds/prefsSync';
 import {
   Dialog,
@@ -129,42 +128,47 @@ export function AccountSettingsDialog({
     });
   }
 
-  // Sound prefs are edited as one blob and persisted whole on every change.
-  // Only `volume` can run ahead of the server (it commits on release, not on
-  // every drag frame), so `committedVolume` is what a rollback restores.
-  const [sounds, setSounds] = useState<SoundPrefs>(soundPrefs);
+  // Sound prefs are edited as one blob and persisted whole on every change. The
+  // engine holds the live copy every sound surface reads; only `volume` can run
+  // ahead of the server (it commits on release, not on every drag frame), so
+  // `committedVolume` is what a rollback restores.
+  const engine = getSoundEngine();
+  const sounds = useSoundPrefs();
   const committedVolume = useRef(soundPrefs.volume);
 
-  // Keep the engine on the on-screen prefs so a preview auditions what the
-  // dialog shows rather than what was last saved.
+  // Adopt the server's copy whenever its content changes (first mount, a save
+  // on another device picked up by any refresh). Comparing content, not
+  // identity, keeps a re-render with the same saved value from clobbering an
+  // optimistic edit that is still in flight.
+  const seededPrefs = useRef<string | null>(null);
   useEffect(() => {
-    getSoundEngine().setPrefs(sounds);
-  }, [sounds]);
+    const key = JSON.stringify(soundPrefs);
+    if (key === seededPrefs.current) return;
+    seededPrefs.current = key;
+    engine.setPrefs(soundPrefs);
+    committedVolume.current = soundPrefs.volume;
+  }, [engine, soundPrefs]);
 
-  // A save in another tab reaches this one without a reload: the engine takes
-  // the new prefs through `sounds`, and the refresh re-renders the map's cue
-  // bridges against them.
-  const router = useRouter();
+  // A save in another tab on this device reaches this one without a reload.
   useEffect(
     () =>
       subscribeSoundPrefs((next) => {
-        setSounds(next);
+        engine.setPrefs(next);
         committedVolume.current = next.volume;
-        router.refresh();
       }),
-    [router],
+    [engine],
   );
 
   function commitSounds(next: SoundPrefs) {
     const prev = { ...sounds, volume: committedVolume.current };
-    setSounds(next);
+    engine.setPrefs(next);
     committedVolume.current = next.volume;
     startTransition(async () => {
       const result = await setSoundPrefsAction(next);
       if (result.ok) {
         announceSoundPrefs(next);
       } else {
-        setSounds(prev);
+        engine.setPrefs(prev);
         committedVolume.current = prev.volume;
         toast.error(result.error);
       }
@@ -176,23 +180,6 @@ export function AccountSettingsDialog({
   // saved even if the dialog closes without the slider ever blurring.
   function commitVolume() {
     if (sounds.volume !== committedVolume.current) commitSounds(sounds);
-  }
-
-  // Imported sound files, held per device in IndexedDB rather than on the
-  // account, so this list is not part of the `SoundPrefs` blob.
-  const customSounds = useCustomSounds();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
-
-  async function onImportFile(file: File) {
-    setImporting(true);
-    const result = await getCustomSoundStore().add(file);
-    setImporting(false);
-    if (!result.ok) {
-      toast.error(result.error);
-      return;
-    }
-    getSoundEngine().preview(result.sound.id);
   }
 
   function commitEvent(event: SoundEvent, patch: { enabled?: boolean; sound?: SoundId }) {
@@ -382,7 +369,9 @@ export function AccountSettingsDialog({
                 className="h-4 flex-1 accent-primary disabled:opacity-50"
                 value={Math.round(sounds.volume * 100)}
                 disabled={pending || !sounds.enabled}
-                onChange={(e) => setSounds({ ...sounds, volume: Number(e.target.value) / 100 })}
+                onChange={(e) =>
+                  engine.setPrefs({ ...sounds, volume: Number(e.target.value) / 100 })
+                }
                 onPointerUp={commitVolume}
                 onKeyUp={commitVolume}
                 onBlur={commitVolume}
@@ -407,7 +396,7 @@ export function AccountSettingsDialog({
                         disabled={pending || !sounds.enabled}
                         onChange={(e) => {
                           commitEvent(event, { enabled: e.target.checked });
-                          if (e.target.checked) getSoundEngine().preview(eventPrefs.sound);
+                          if (e.target.checked) engine.preview(eventPrefs.sound);
                         }}
                         aria-label={label}
                       />
@@ -423,72 +412,16 @@ export function AccountSettingsDialog({
                       disabled={pending}
                       onValueChange={(sound) => {
                         commitEvent(event, { sound });
-                        getSoundEngine().preview(sound);
+                        engine.preview(sound);
                       }}
-                      onPreview={() => getSoundEngine().preview(eventPrefs.sound)}
+                      onPreview={() => engine.preview(eventPrefs.sound)}
                     />
                   </div>
                 );
               })}
             </div>
 
-            <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
-              <div className="flex items-center gap-3 px-1">
-                <div className="flex flex-1 flex-col gap-0.5">
-                  <span className="text-sm">Your sounds</span>
-                  <span className="text-xs text-muted-foreground">
-                    Short audio files kept on this device only, never uploaded.
-                  </span>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={importing}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Add file
-                </Button>
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="audio/*"
-                className="hidden"
-                aria-label="Add sound file"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  // Clear the input so re-picking the same file fires again.
-                  e.target.value = '';
-                  if (file) void onImportFile(file);
-                }}
-              />
-              {customSounds.map((sound) => (
-                <div key={sound.id} className="flex items-center gap-1 px-1 text-sm">
-                  <span className="flex-1 truncate">{sound.label}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => getSoundEngine().preview(sound.id)}
-                    aria-label={`Preview ${sound.label}`}
-                    title="Preview"
-                  >
-                    <Volume2 />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => void getCustomSoundStore().remove(sound.id)}
-                    aria-label={`Remove ${sound.label}`}
-                    title="Remove"
-                  >
-                    <Trash2 />
-                  </Button>
-                </div>
-              ))}
-            </div>
+            <CustomSoundsSection />
           </div>
 
           <div className="mt-2 flex flex-col gap-2 rounded-lg border border-destructive/40 p-3">
@@ -503,5 +436,87 @@ export function AccountSettingsDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Imported sound files, held per device in IndexedDB rather than on the
+ * account. Rendered only inside the open dialog, so the store is read when
+ * someone looks at it rather than on every page load.
+ */
+function CustomSoundsSection() {
+  const customSounds = useCustomSounds();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  async function onImportFile(file: File) {
+    setImporting(true);
+    const result = await getCustomSoundStore().add(file);
+    setImporting(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    getSoundEngine().preview(result.sound.id);
+  }
+
+  return (
+    <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
+      <div className="flex items-center gap-3 px-1">
+        <div className="flex flex-1 flex-col gap-0.5">
+          <span className="text-sm">Your sounds</span>
+          <span className="text-xs text-muted-foreground">
+            Short audio files kept on this device only, never uploaded.
+          </span>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={importing}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          Add file
+        </Button>
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="audio/*"
+        className="hidden"
+        aria-label="Add sound file"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          // Clear the input so re-picking the same file fires again.
+          e.target.value = '';
+          if (file) void onImportFile(file);
+        }}
+      />
+      {customSounds.map((sound) => (
+        <div key={sound.id} className="flex items-center gap-1 px-1 text-sm">
+          <span className="flex-1 truncate">{sound.label}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => getSoundEngine().preview(sound.id)}
+            aria-label={`Preview ${sound.label}`}
+            title="Preview"
+          >
+            <Volume2 />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => void getCustomSoundStore().remove(sound.id)}
+            aria-label={`Remove ${sound.label}`}
+            title="Remove"
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      ))}
+    </div>
   );
 }
