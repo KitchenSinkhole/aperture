@@ -12,6 +12,7 @@
 | mainCharacterId | `string \| null` | yes | The account's main — rendered as a "main" tag and forwarded to Account settings |
 | travelAnimation | boolean | yes | The account's connection-travel-animation toggle, forwarded to Account settings |
 | signatureIndicators | SignatureIndicatorAccountSettings | yes | The account's signature-indicator settings, forwarded to Account settings |
+| soundPrefs | SoundPrefs | yes | The account's sound preferences, forwarded to Account settings |
 
 ### Renders
 A trigger button (active character's portrait + name) opening a right-anchored Sheet: one row per character — with a per-map tracking checkbox **when on a map** (none off-map) — then "Add character", "Account settings", and "Sign out". The description names the open map. Also renders the (initially closed) `AccountSettingsDialog`.

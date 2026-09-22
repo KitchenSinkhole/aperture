@@ -1,0 +1,76 @@
+## engine.ts
+
+**Purpose:** The single owner of audio playback — volume, mute, the browser autoplay unlock, per-map leader election and per-event coalescing.
+**File:** `src/lib/sounds/engine.ts`
+
+Event sources are renderless bridge components that call `play`; nothing else in the app touches Web Audio. The playback backend and the leader election are injected, so unit tests run against fakes.
+
+---
+
+### SOUND_COALESCE_MS
+Leading-edge window: the first cue of a kind plays, repeats of that same event inside the window are dropped.
+
+### SOUND_LOAD_RETRY_MS
+How long the Web Audio backend remembers a failed sound-file fetch before a later load may try it again.
+
+### SOUND_LEADER_LOCK_PREFIX
+`'aperture:sound-leader:'` — the Web Locks name a per-map leader holds is this prefix plus the map id.
+
+---
+
+### SoundBackend (interface)
+The playback surface the engine drives.
+- `isUnlocked(): boolean` — whether the browser currently permits playback.
+- `unlock(): Promise<boolean>` — attempt to obtain permission; resolves with the resulting state.
+- `onStateChange(listener): () => void` — notified whenever `isUnlocked()` may have changed on its own (the browser suspending or interrupting playback); returns an unsubscribe fn.
+- `has(soundId: SoundId): boolean` — whether a buffer for this id can be produced right now, without waiting.
+- `load(soundId: SoundId): Promise<boolean>` — bring this id's buffers in; resolves false when it cannot be produced.
+- `play(soundId: SoundId, gain: number, variant: SoundVariant): void` — play at 0..1 gain; never throws.
+
+### SoundLeaderElection (interface)
+- `claim(key: string, onChange: (isLeader: boolean) => void): () => void` — claim leadership for `key`; `onChange` reports the current standing and every later change. The returned fn stands down.
+
+### SoundStatus (type)
+`{ unlocked: boolean; muted: boolean }`. Reference-stable between changes, so it can back `useSyncExternalStore` directly.
+
+### SoundEngineDeps (type)
+`{ backend, election?, now?, bindGestures? }`. A `null` (or omitted) `election` makes every tab a leader. `bindGestures` defaults to on.
+
+---
+
+### createSoundEngine(deps: SoundEngineDeps): SoundEngine
+Builds an engine. Unless `bindGestures` is `false`, it binds `unlock()` to every `pointerdown` / `keydown` captured on the document, but only while the master switch is on, so an account with sounds off carries no document-wide listener. It subscribes to the mute store so a change from any surface is reflected immediately, and to the backend's state changes so a browser-side suspend drops `unlocked` and the next gesture resumes playback. `dispose()` stands down from the current map lock, removes those listeners and drops all subscribers.
+
+**The engine's methods:**
+
+- `setPrefs(prefs: SoundPrefs)` — the account's preferences, and the one copy every sound surface reads. Until it is called, the defaults apply, which means silence. `AccountSettingsDialog` is the single writer. A new blob notifies `subscribe` listeners. It also prefetches the files behind every enabled event's sound, so a file-backed cue is ready before it fires rather than falling back to a chime the first time.
+- `setMapId(mapId: string | null)` — the map this tab is showing. Releases the previous map's lock.
+- **Leadership:** with an election present, the tab claims its map's lock only while it has a map id, audio is unlocked and the master switch is on, and stands down the moment any of those stops holding. A tab that cannot play therefore never holds the lock, so it cannot silence a tab on the same map that can.
+- `play(event, opts?: { variant? })` — plays the event's cue. Silent, with no error and no toast, unless all of these hold: the master switch is on, that event is enabled, the device is not muted, the browser has unlocked audio, this tab holds the map's lock, and no cue of the same event played within `SOUND_COALESCE_MS`. The coalesce window starts only on a cue that actually played, so a cue a gate blocked does not suppress the next one. The sound id is the event's configured one when the backend has it, and that event's default chime otherwise — so a pref naming a sound missing on this device still makes a noise. Falling back also kicks off a load of the wanted sound, so a prefetch the engine missed heals by the next cue. `variant` defaults to `'plain'`.
+- `preview(soundId)` — auditions a sound's `'plain'` line, bypassing the master switch, mute, leadership and coalescing, at the configured volume. A sound the backend does not yet hold is loaded first and played once it arrives; an id it cannot produce at all is dropped. When audio is still locked it unlocks first and plays once granted, so the preview click is itself the unlocking gesture.
+- `unlock()` — asks the browser for playback permission; must be called from a user gesture. A no-op while the master switch is off, so an account with sounds off never starts an `AudioContext` from a gesture.
+- `setMuted(muted)` / `toggleMute()` — writes the device mute through the mute store.
+- `getPrefs()` — the current prefs, reference-stable between `setPrefs` calls.
+- `getSnapshot()` / `getServerSnapshot()` / `subscribe(listener)` — the `useSyncExternalStore` triple over `SoundStatus`. `subscribe` also fires on a prefs change, so it backs `getPrefs` too.
+
+---
+
+### CustomSoundSource (interface)
+Where the backend gets an imported sound's bytes: `bytesFor(soundId): Promise<ArrayBuffer | null>` plus a `subscribe(listener)` that fires whenever the device's set of imported sounds changes. `getCustomSoundStore()` satisfies it.
+
+### createWebAudioBackend(deps?: { customSounds?: CustomSoundSource }): SoundBackend
+Web Audio playback. Creates one `AudioContext` and one master `GainNode` lazily on first use, and memoizes one `AudioBuffer` per clip: a chime keyed by its sound id and synthesized from the catalog on demand, a voice line keyed by its file path and decoded after a `fetch`, an imported sound keyed by its `custom:` id and decoded from bytes pulled out of `customSounds`. A chime always reports `has`; a voice sound reports it only once every file the catalog names for that id is decoded, so a partly-loaded pack cues the chime rather than a silent gap. A failed file path is not refetched until `SOUND_LOAD_RETRY_MS` has passed, so a transient network failure heals without turning a missing file into a fetch per cue. A failed `custom:` id is remembered, but every `custom:` memo — buffer and failure alike — is dropped whenever `customSounds` reports a change, so a deleted sound stops reporting `has` and a re-imported one is read again. Without a `customSounds` source a `custom:` id is simply unknown. Reports unlocked only while the context state is `running`, and fires `onStateChange` on every context state change. Every failure path — no `AudioContext`, a refused `resume()`, a fetch or decode that throws, a source that will not start — is silent.
+
+### createWebLocksElection(): SoundLeaderElection | null
+Leader election over the Web Locks API. The lock is held for the tab's lifetime, so the next waiter takes over the moment the holder goes. Returns `null` where Web Locks is unavailable, which makes the engine play unconditionally.
+
+---
+
+### getSoundEngine(): SoundEngine
+The app-wide engine, created on first use with `createWebLocksElection()` and a `createWebAudioBackend` wired to `getCustomSoundStore()`.
+
+### useSoundPrefs(): SoundPrefs
+The app-wide engine's prefs, re-rendering the caller on every change. `DEFAULT_SOUND_PREFS` on the server.
+
+### useSoundCueOn(event?: SoundEvent): boolean
+Whether the master switch is on and, given an `event`, that event is enabled too. A boolean snapshot, so a volume change does not re-render the caller. `false` on the server.

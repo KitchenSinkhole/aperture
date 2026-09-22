@@ -1,5 +1,5 @@
 import { bigint, boolean, integer, jsonb, pgTable, timestamp } from 'drizzle-orm/pg-core';
-import type { MapLayoutConfig } from '@/types';
+import type { MapLayoutConfig, SoundPrefs } from '@/types';
 import { routeSafety, whJumpMass } from './enums';
 
 // Auth principal: a user owns one or more characters. One user is created per
@@ -31,6 +31,11 @@ export const apUser = pgTable('ap_user', {
   showUnscannedSignatureIndicator: boolean('show_unscanned_signature_indicator')
     .notNull()
     .default(true),
+  // audio-cues: the account's sound preferences (master switch, volume, and the
+  // enabled flag + chosen sound per cue). Nullable; NULL ⇒ DEFAULT_SOUND_PREFS
+  // (everything off). Read through `resolveSoundPrefs`, which repairs a partial
+  // or stale blob rather than failing.
+  soundPrefs: jsonb('sound_prefs').$type<SoundPrefs>(),
   // routes-module: per-account route-planner settings. Personal config (not map
   // data), applied to every map. `routeSafety` follows EVE autopilot semantics;
   // `routeMinShipClass` NULL ⇒ no minimum (any hole passes); the three avoid
