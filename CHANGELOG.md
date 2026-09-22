@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.1.1
+
+A D-Scan pasted into the overlay reads the friendlies in it as friendlies, and shows you which ones are in range.
+
+### Fixes
+
+- **A friendly is no longer pinned as an unknown pilot** - a hull whose ESI name carries a trailing space, pasted from a tabbed clipboard, missed the exact-name comparison and pinned red. Both sides of the match are compared on a form that ignores outer and repeated whitespace and case. *(Caillou)*
+
+### Improvements
+
+- **A D-Scan shows the pilots it resolves** - the friendlies a scan accounts for lift to just below the enemy rows on a green row, ordered by the column sort, so the panel reads who is in range as well as who is unaccounted for. A row stays green only while that pilot flies the hull the scan listed, each scan line consumes one pilot, and Clear D-SCAN beside the search box drops the whole result. *(Caillou)*
+
+### Upgrading
+
+- No migrations. Deploy as usual.
+
+### Contributors
+
+- **Caillou** - the D-Scan name match and the resolved-pilot rows
+
 ## v1.1.0
 
 Since v1.0.0: the overlay's pilot list gains a search box, a pasted D-Scan pins everything in range that nobody on the map is flying, and an SSO outage no longer untracks every character until people log out and back in.
