@@ -61,7 +61,7 @@
 
 ## Stage 5 — Pilot arrived and pilot left (#215)
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 030ed047
 **Goal:** A tracked pilot moving into or out of the viewer's current system plays the arrive or leave sound.
 **References:** `src/components/map/MapPresenceContext.md` (`useTraversals`, `Traversal`), `src/components/map/MapActiveCharContext.md` (`activeCharSystemId`), `src/components/map/MapTravelContext.md` (`TravelBridge` as the bridge template), `src/components/map/TransitSignaturePrompt.md` (own-character filter), `tests/unit/presence-store.test.ts`.
 **Touches:** new `src/lib/sounds/presenceEvents.ts` (+ `.md`): pure `classifyTraversal(t, mySystemId, viewerCharacterIds): 'pilotArrived' | 'pilotLeft' | null`; new `src/components/map/PresenceSoundBridge.tsx` (+ `.md`): renderless, subscribes to `useTraversals`, reads `useMapActiveChar().activeCharSystemId`, calls `engine.play`; `src/components/map/MapCanvas.tsx` (+ `.md`): mounts the bridge inside `MapActiveCharProvider` only when `soundPrefs.enabled` and either event is enabled, passing `viewerCharacterIds`; tests `tests/unit/presence-sound-events.test.ts`.
