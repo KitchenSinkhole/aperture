@@ -17,7 +17,19 @@ The chimes are generated with Web Audio rather than shipped as files, so they co
 `ChimeSound | VoiceSound`, discriminated by `kind`.
 
 ### CHIME_SOUNDS
-The four chimes in `CHIME_SOUND_IDS` order: `chime-up` ("Chime (rising)", a rising two-tone), `chime-down` ("Chime (falling)", the same pair falling), `tick` ("Tick", one short high blip), `alarm` ("Alarm", a harsher falling square-wave pair). Every event's picker offers all four.
+The chimes in `CHIME_SOUND_IDS` order:
+- `chime-up` ("Chime (rising)"): a rising two-tone
+- `chime-down` ("Chime (falling)"): the same pair falling
+- `arpeggio` ("Arpeggio"): a rising three-note major triad
+- `tick` ("Tick"): one short high blip
+- `tick-loud` ("Tick (loud)"): a louder, fuller double tick at the same pitch
+- `ping` ("Ping"): a single high note with a long ring
+- `bell` ("Bell"): a low bell with inharmonic partials and the longest tail
+- `beeps` ("Beeps"): three quick square-wave beeps
+- `alarm` ("Alarm"): a harsher falling square-wave pair
+- `klaxon` ("Klaxon"): a two-note square-wave siren, alternating twice
+
+Every event's picker offers all of them.
 
 ### BUILT_IN_SOUNDS
 `CHIME_SOUNDS` followed by one `VoiceSound` per pack per event, in `BUILT_IN_SOUND_IDS` order.

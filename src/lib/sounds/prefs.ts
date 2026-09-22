@@ -12,7 +12,18 @@ export const SOUND_EVENTS = ['pilotArrived', 'pilotLeft', 'watchedJump', 'killIn
 export type SoundEvent = (typeof SOUND_EVENTS)[number];
 
 /** Chimes synthesized by `catalog.ts`. */
-export const CHIME_SOUND_IDS = ['chime-up', 'chime-down', 'tick', 'alarm'] as const;
+export const CHIME_SOUND_IDS = [
+  'chime-up',
+  'chime-down',
+  'arpeggio',
+  'tick',
+  'tick-loud',
+  'ping',
+  'bell',
+  'beeps',
+  'alarm',
+  'klaxon',
+] as const;
 
 export type ChimeSoundId = (typeof CHIME_SOUND_IDS)[number];
 

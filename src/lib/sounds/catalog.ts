@@ -107,10 +107,66 @@ export const CHIME_SOUNDS: readonly ChimeSound[] = [
   },
   {
     kind: 'chime',
+    id: 'arpeggio',
+    label: 'Arpeggio',
+    synth: (ctx) =>
+      render(ctx, [
+        { freq: 523.25, startMs: 0, durMs: 220, gain: 0.4, wave: 'sine' },
+        { freq: 659.25, startMs: 90, durMs: 220, gain: 0.4, wave: 'sine' },
+        { freq: 783.99, startMs: 180, durMs: 360, gain: 0.45, wave: 'sine' },
+      ]),
+  },
+  {
+    kind: 'chime',
     id: 'tick',
     label: 'Tick',
     synth: (ctx) =>
       render(ctx, [{ freq: 1480, startMs: 0, durMs: 55, gain: 0.45, wave: 'sine' }]),
+  },
+  {
+    kind: 'chime',
+    id: 'tick-loud',
+    label: 'Tick (loud)',
+    synth: (ctx) =>
+      render(ctx, [
+        { freq: 1480, startMs: 0, durMs: 90, gain: 0.7, wave: 'sine' },
+        { freq: 2960, startMs: 0, durMs: 60, gain: 0.25, wave: 'sine' },
+        { freq: 1480, startMs: 130, durMs: 90, gain: 0.7, wave: 'sine' },
+        { freq: 2960, startMs: 130, durMs: 60, gain: 0.25, wave: 'sine' },
+      ]),
+  },
+  {
+    kind: 'chime',
+    id: 'ping',
+    label: 'Ping',
+    synth: (ctx) =>
+      render(ctx, [
+        { freq: 1318.51, startMs: 0, durMs: 600, gain: 0.5, wave: 'sine' },
+        { freq: 2637.02, startMs: 0, durMs: 350, gain: 0.15, wave: 'sine' },
+      ]),
+  },
+  {
+    // Bell partials are deliberately inharmonic; integer multiples sound like an organ.
+    kind: 'chime',
+    id: 'bell',
+    label: 'Bell',
+    synth: (ctx) =>
+      render(ctx, [
+        { freq: 440, startMs: 0, durMs: 1100, gain: 0.45, wave: 'sine' },
+        { freq: 1214, startMs: 0, durMs: 700, gain: 0.2, wave: 'sine' },
+        { freq: 2376, startMs: 0, durMs: 400, gain: 0.1, wave: 'sine' },
+      ]),
+  },
+  {
+    kind: 'chime',
+    id: 'beeps',
+    label: 'Beeps',
+    synth: (ctx) =>
+      render(ctx, [
+        { freq: 880, startMs: 0, durMs: 70, gain: 0.3, wave: 'square' },
+        { freq: 880, startMs: 110, durMs: 70, gain: 0.3, wave: 'square' },
+        { freq: 880, startMs: 220, durMs: 70, gain: 0.3, wave: 'square' },
+      ]),
   },
   {
     kind: 'chime',
@@ -120,6 +176,18 @@ export const CHIME_SOUNDS: readonly ChimeSound[] = [
       render(ctx, [
         { freq: 320, startMs: 0, durMs: 150, gain: 0.35, wave: 'square' },
         { freq: 244, startMs: 150, durMs: 230, gain: 0.35, wave: 'square' },
+      ]),
+  },
+  {
+    kind: 'chime',
+    id: 'klaxon',
+    label: 'Klaxon',
+    synth: (ctx) =>
+      render(ctx, [
+        { freq: 620, startMs: 0, durMs: 160, gain: 0.35, wave: 'square' },
+        { freq: 465, startMs: 160, durMs: 160, gain: 0.35, wave: 'square' },
+        { freq: 620, startMs: 320, durMs: 160, gain: 0.35, wave: 'square' },
+        { freq: 465, startMs: 480, durMs: 260, gain: 0.35, wave: 'square' },
       ]),
   },
 ];

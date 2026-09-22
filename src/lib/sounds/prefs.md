@@ -14,7 +14,7 @@ Pure — no browser and no server imports — so a Server Action, the session re
 `(typeof SOUND_EVENTS)[number]`.
 
 ### CHIME_SOUND_IDS
-`['chime-up', 'chime-down', 'tick', 'alarm']` — the chimes `catalog.ts` synthesizes.
+`['chime-up', 'chime-down', 'arpeggio', 'tick', 'tick-loud', 'ping', 'bell', 'beeps', 'alarm', 'klaxon']` — the chimes `catalog.ts` synthesizes, in picker order.
 
 ### VOICE_PACKS
 `[{ id: 'ada', label: 'Ada' }, { id: 'cowboy', label: 'Cowboy' }, { id: 'malyx', label: 'Malyx' }]` — the recorded packs shipped under `public/sounds/voice/`.
