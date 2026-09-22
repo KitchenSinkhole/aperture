@@ -136,6 +136,7 @@ import { SignaturePasteHotkey } from './SignaturePasteHotkey';
 import { TransitSignaturePrompt } from './TransitSignaturePrompt';
 import { MapTravelProvider, TravelBridge } from './MapTravelContext';
 import { MapUnderglowProvider } from './MapUnderglowContext';
+import { KillSoundBridge } from './KillSoundBridge';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
 import { PresenceSoundBridge } from './PresenceSoundBridge';
 import { WatchedConnectionSoundBridge } from './WatchedConnectionSoundBridge';
@@ -2225,6 +2226,9 @@ export function MapCanvas({
             connections={viewData.connections}
             viewerCharacterIds={viewerCharacterIds}
           />
+        )}
+        {soundPrefs.enabled && soundPrefs.events.killInSystem.enabled && (
+          <KillSoundBridge mapId={mapId} />
         )}
         <SignaturePasteHotkey
           mapId={mapId}
