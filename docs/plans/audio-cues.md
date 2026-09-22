@@ -53,7 +53,7 @@
 
 ## Stage 4 — Toolbar mute and unlock indicator
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 0719ec5f
 **Goal:** The map toolbar shows whether sounds can play right now and offers a one-click device mute.
 **References:** `src/components/map/MapCanvas.md` (toolbar cluster, `PilotRosterButton` placement, prop threading), `src/components/map/PilotRosterButton.md`, `src/lib/sounds/engine.md`, `src/app/(app)/map/[[...slug]]/page.tsx`.
 **Touches:** new `src/components/map/SoundToolbarButton.tsx` (+ `.md`): ghost icon button subscribing to the engine snapshot (Stage 3's dialog is mounted on every authenticated page and already pushes the account prefs into the engine, so the engine — and its document gesture unlock — exists before a map opens; `MapCanvas` still owns `setMapId`); three states with tooltips: locked ("Click to enable sounds"), muted, live; click unlocks when locked, otherwise toggles mute; hidden entirely when the account's master switch is off. `src/components/map/MapCanvas.tsx` (+ `.md`): new `soundPrefs: SoundPrefs` prop, mounts the button in the toolbar and claims the map's leader lock with `engine.setMapId` in an effect. It must **not** call `engine.setPrefs`: the dialog already owns that write and holds the optimistic blob, and a second writer would let a canvas re-render stamp the server copy back over an unsaved change. `soundPrefs` is read-only here, deciding which sound surfaces mount. `src/app/(app)/map/[[...slug]]/page.tsx` adds `getSoundPrefs` to the parallel preload.
