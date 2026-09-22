@@ -5,6 +5,11 @@ import { createRoot, type Root } from 'react-dom/client';
 
 // Must be called before the imports that depend on them — Vitest hoists vi.mock calls.
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock('@/lib/sounds/prefsSync', () => ({
+  announceSoundPrefs: vi.fn(),
+  subscribeSoundPrefs: () => () => {},
+}));
 vi.mock('@/app/(app)/actions/account', () => ({
   setConnectionTravelAnimationAction: vi.fn(async () => ({ ok: true })),
   setMainCharacterAction: vi.fn(async () => ({ ok: true })),

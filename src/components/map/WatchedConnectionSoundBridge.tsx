@@ -9,6 +9,18 @@ import { useMapActiveChar } from './MapActiveCharContext';
 import { usePresenceStore, useTraversals } from './MapPresenceContext';
 import { resolveTraversalEdges } from './MapTravelContext';
 
+/** Whether a jump crossed a connection this device watches on the map. */
+export function crossesWatchedConnection(
+  t: { fromSystemId: number; toSystemId: number },
+  mapId: string,
+  systems: MapSystemNode[],
+  connections: MapConnectionEdge[],
+): boolean {
+  return resolveTraversalEdges(t, systems, connections).some((e) =>
+    isConnectionWatched(mapId, e.connectionId),
+  );
+}
+
 /**
  * Turns a tracked pilot's jump through a watched wormhole into the
  * `watchedJump` cue. Renders nothing. Mounted only when the account has the
@@ -46,8 +58,7 @@ export function WatchedConnectionSoundBridge({
 
   useTraversals((t) => {
     if (viewerIds.has(t.characterId)) return;
-    const edges = resolveTraversalEdges(t, systemsRef.current, connectionsRef.current);
-    if (!edges.some((e) => isConnectionWatched(mapId, e.connectionId))) return;
+    if (!crossesWatchedConnection(t, mapId, systemsRef.current, connectionsRef.current)) return;
     const mySystemId =
       activeCharId === null ? null : (store?.getSystemForCharacter(activeCharId) ?? null);
     getSoundEngine().play('watchedJump', { variant: watchedJumpVariant(t, mySystemId) });

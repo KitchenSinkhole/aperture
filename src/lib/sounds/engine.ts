@@ -21,6 +21,9 @@ import {
 /** Leading-edge window — the first cue of a kind plays, repeats inside it drop. */
 export const SOUND_COALESCE_MS = 2000;
 
+/** How long a failed sound-file fetch is remembered before a cue may retry it. */
+export const SOUND_LOAD_RETRY_MS = 30_000;
+
 /** Prefix of the Web Locks name the per-map leader holds. */
 export const SOUND_LEADER_LOCK_PREFIX = 'aperture:sound-leader:';
 
@@ -30,6 +33,8 @@ export interface SoundBackend {
   isUnlocked(): boolean;
   /** Attempt to obtain permission; resolves with the resulting state. */
   unlock(): Promise<boolean>;
+  /** Notified whenever `isUnlocked()` may have changed on its own (a suspend, an interruption). */
+  onStateChange(listener: () => void): () => void;
   /** Whether a buffer for this id can be produced right now, without waiting. */
   has(soundId: SoundId): boolean;
   /** Bring this id's buffers in; resolves false when it cannot be produced. */
@@ -60,7 +65,7 @@ export interface SoundEngine {
   play(event: SoundEvent, opts?: { variant?: SoundVariant }): void;
   /** Audition a sound, bypassing the master switch, mute, leadership and coalescing. */
   preview(soundId: SoundId): void;
-  /** Ask the browser for playback permission; call from a user gesture. */
+  /** Ask the browser for playback permission; call from a user gesture. No-op while sounds are off. */
   unlock(): void;
   setMuted(muted: boolean): void;
   toggleMute(): void;
@@ -91,6 +96,7 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
   // Without an election there is nothing to dedupe against, so every tab plays.
   let isLeader = election == null;
   let standDown: (() => void) | null = null;
+  let claimedMapId: string | null = null;
   let unlocked = backend.isUnlocked();
   let muted = readSoundMuted();
   let status: SoundStatus = { unlocked, muted };
@@ -104,13 +110,38 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
     for (const listener of listeners) listener();
   }
 
+  /**
+   * Hold the map's lock only while this tab can actually play it: audio
+   * permitted and sounds on. A tab the browser still blocks would otherwise
+   * win the lock and silence every tab on the map.
+   */
+  function syncLeadership(): void {
+    if (election == null) return;
+    const wanted = mapId != null && unlocked && prefs.enabled ? mapId : null;
+    if (wanted === claimedMapId) return;
+    standDown?.();
+    standDown = null;
+    claimedMapId = wanted;
+    isLeader = false;
+    if (wanted == null) return;
+    standDown = election.claim(`${SOUND_LEADER_LOCK_PREFIX}${wanted}`, (leading) => {
+      if (claimedMapId !== wanted) return;
+      isLeader = leading;
+    });
+  }
+
   function applyUnlockResult(ok: boolean): void {
     unlocked = ok;
     publish();
+    syncLeadership();
   }
 
   function unlock(): void {
-    if (unlocked) return;
+    if (!prefs.enabled) return;
+    if (backend.isUnlocked()) {
+      if (!unlocked) applyUnlockResult(true);
+      return;
+    }
     void backend.unlock().then(applyUnlockResult);
   }
 
@@ -125,6 +156,7 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
   }
 
   teardown.push(
+    backend.onStateChange(() => applyUnlockResult(backend.isUnlocked())),
     subscribeSoundMuted(() => {
       muted = readSoundMuted();
       publish();
@@ -163,23 +195,12 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
     setPrefs(next: SoundPrefs): void {
       prefs = next;
       prefetch(next);
+      syncLeadership();
     },
 
     setMapId(next: string | null): void {
-      if (next === mapId) return;
       mapId = next;
-      standDown?.();
-      standDown = null;
-      if (election == null) {
-        isLeader = true;
-        return;
-      }
-      isLeader = false;
-      if (next == null) return;
-      standDown = election.claim(`${SOUND_LEADER_LOCK_PREFIX}${next}`, (leading) => {
-        if (mapId !== next) return;
-        isLeader = leading;
-      });
+      syncLeadership();
     },
 
     play(event, opts): void {
@@ -228,6 +249,7 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
     dispose(): void {
       standDown?.();
       standDown = null;
+      claimedMapId = null;
       for (const fn of teardown) fn();
       teardown.length = 0;
       listeners.clear();
@@ -254,6 +276,8 @@ export function createWebAudioBackend(
   let master: GainNode | null = null;
   const buffers = new Map<string, AudioBuffer>();
   const failed = new Set<string>();
+  const fileFailedAt = new Map<string, number>();
+  const stateListeners = new Set<() => void>();
   const inflight = new Map<string, Promise<boolean>>();
   // Bumped whenever the device store changes, so a load that started before the
   // change cannot write its result into the cleared memo after it.
@@ -275,6 +299,9 @@ export function createWebAudioBackend(
       master = ctx.createGain();
       master.gain.value = 1;
       master.connect(ctx.destination);
+      ctx.onstatechange = () => {
+        for (const listener of stateListeners) listener();
+      };
     } catch {
       ctx = null;
       master = null;
@@ -304,9 +331,12 @@ export function createWebAudioBackend(
   /** Fetches and decodes one file, memoizing the buffer, the failure and the wait. */
   function loadFile(context: AudioContext, path: string): Promise<boolean> {
     if (buffers.has(path)) return Promise.resolve(true);
-    // A path that already failed is never retried, so a cue-time retry cannot
-    // turn a missing file into a fetch per cue.
-    if (failed.has(path)) return Promise.resolve(false);
+    // A recent failure is not retried, so a cue-time retry cannot turn a
+    // missing file into a fetch per cue; a transient one heals after the window.
+    const failedAt = fileFailedAt.get(path);
+    if (failedAt != null && Date.now() - failedAt < SOUND_LOAD_RETRY_MS) {
+      return Promise.resolve(false);
+    }
     const running = inflight.get(path);
     if (running) return running;
     const task = (async () => {
@@ -314,9 +344,10 @@ export function createWebAudioBackend(
         const response = await fetch(path);
         if (!response.ok) throw new Error(`${response.status}`);
         buffers.set(path, await context.decodeAudioData(await response.arrayBuffer()));
+        fileFailedAt.delete(path);
         return true;
       } catch {
-        failed.add(path);
+        fileFailedAt.set(path, Date.now());
         return false;
       } finally {
         inflight.delete(path);
@@ -366,6 +397,11 @@ export function createWebAudioBackend(
         return false;
       }
       return context.state === 'running';
+    },
+
+    onStateChange(listener) {
+      stateListeners.add(listener);
+      return () => void stateListeners.delete(listener);
     },
 
     has(soundId): boolean {

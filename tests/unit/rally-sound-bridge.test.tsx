@@ -48,6 +48,7 @@ function fakeBackend(): SoundBackend {
   return {
     isUnlocked: () => true,
     unlock: async () => true,
+    onStateChange: () => () => {},
     has: (soundId) => known.has(soundId),
     load: async (soundId) => known.has(soundId),
     play: (soundId) => void played.push(soundId),

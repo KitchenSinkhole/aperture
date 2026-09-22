@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BUILT_IN_SOUNDS,
   SOUND_EVENT_LABELS,
@@ -12,6 +12,7 @@ import {
 } from '@/lib/sounds/catalog';
 import {
   SOUND_COALESCE_MS,
+  SOUND_LOAD_RETRY_MS,
   createSoundEngine,
   createWebAudioBackend,
   type SoundBackend,
@@ -37,9 +38,12 @@ const CUSTOM_ID = 'custom:2f1c9e40-5a3b-4c1d-9e88-77b1a0c3de55';
 type PlayCall = { soundId: SoundId; gain: number; variant: SoundVariant };
 
 type FakeBackend = SoundBackend & {
+  readonly unlocks: number;
   calls: PlayCall[];
   loads: SoundId[];
   register(soundId: SoundId): void;
+  /** The browser suspends or interrupts playback on its own. */
+  suspend(): void;
 };
 
 /**
@@ -52,16 +56,30 @@ function fakeBackend(
   const known = new Set<string>(CHIME_SOUND_IDS);
   const loadable = new Set<string>(opts.loadable ?? []);
   let unlocked = opts.unlocked ?? true;
+  let unlocks = 0;
   const calls: PlayCall[] = [];
   const loads: SoundId[] = [];
+  const stateListeners = new Set<() => void>();
   return {
     calls,
     loads,
+    get unlocks() {
+      return unlocks;
+    },
     register: (soundId) => void known.add(soundId),
+    suspend: () => {
+      unlocked = false;
+      for (const listener of stateListeners) listener();
+    },
     isUnlocked: () => unlocked,
     unlock: async () => {
+      unlocks += 1;
       unlocked = opts.unlockable ?? true;
       return unlocked;
+    },
+    onStateChange: (listener) => {
+      stateListeners.add(listener);
+      return () => void stateListeners.delete(listener);
     },
     has: (soundId) => known.has(soundId),
     load: async (soundId) => {
@@ -174,6 +192,33 @@ describe('sound engine gates', () => {
     const engine = createSoundEngine({ backend });
     engine.setPrefs(allOn());
     expect(engine.getSnapshot().unlocked).toBe(false);
+    document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    await Promise.resolve();
+    expect(engine.getSnapshot().unlocked).toBe(true);
+    engine.play('pilotArrived');
+    expect(backend.calls).toHaveLength(1);
+    engine.dispose();
+  });
+
+  it('does not unlock on a gesture while sounds are off', async () => {
+    const backend = fakeBackend({ unlocked: false });
+    const engine = createSoundEngine({ backend });
+    engine.setPrefs(allOn({ enabled: false }));
+    document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    await Promise.resolve();
+    expect(backend.unlocks).toBe(0);
+    expect(engine.getSnapshot().unlocked).toBe(false);
+    engine.dispose();
+  });
+
+  it('unlocks again on the next gesture after the browser suspends playback', async () => {
+    const backend = fakeBackend();
+    const engine = createSoundEngine({ backend });
+    engine.setPrefs(allOn());
+    backend.suspend();
+    expect(engine.getSnapshot().unlocked).toBe(false);
+    engine.play('pilotArrived');
+    expect(backend.calls).toHaveLength(0);
     document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await Promise.resolve();
     expect(engine.getSnapshot().unlocked).toBe(true);
@@ -349,10 +394,14 @@ describe('leader election', () => {
     writeSoundMuted(false);
   });
 
-  function tab(election: SoundLeaderElection | null, mapId: string | null) {
-    const backend = fakeBackend();
+  function tab(
+    election: SoundLeaderElection | null,
+    mapId: string | null,
+    opts: { unlocked?: boolean; prefs?: SoundPrefs } = {},
+  ) {
+    const backend = fakeBackend({ unlocked: opts.unlocked });
     const engine = createSoundEngine({ backend, election, bindGestures: false });
-    engine.setPrefs(allOn());
+    engine.setPrefs(opts.prefs ?? allOn());
     engine.setMapId(mapId);
     return { backend, engine };
   }
@@ -397,6 +446,62 @@ describe('leader election', () => {
     expect(a.backend.calls).toHaveLength(1);
   });
 
+  it('does not let a tab without audio permission take the map', () => {
+    const election = fakeElection();
+    const blocked = tab(election, 'map-1', { unlocked: false });
+    const live = tab(election, 'map-1');
+    live.engine.play('pilotArrived');
+    expect(live.backend.calls).toHaveLength(1);
+    blocked.engine.dispose();
+    live.engine.dispose();
+  });
+
+  it('does not let a tab with sounds off take the map', () => {
+    const election = fakeElection();
+    const off = tab(election, 'map-1', { prefs: allOn({ enabled: false }) });
+    const on = tab(election, 'map-1');
+    on.engine.play('pilotArrived');
+    expect(on.backend.calls).toHaveLength(1);
+    off.engine.dispose();
+    on.engine.dispose();
+  });
+
+  it('claims the map once audio unlocks', async () => {
+    const election = fakeElection();
+    const a = tab(election, 'map-1', { unlocked: false });
+    a.engine.unlock();
+    await Promise.resolve();
+    const b = tab(election, 'map-1');
+    a.engine.play('pilotArrived');
+    b.engine.play('pilotArrived');
+    expect(a.backend.calls).toHaveLength(1);
+    expect(b.backend.calls).toHaveLength(0);
+    a.engine.dispose();
+    b.engine.dispose();
+  });
+
+  it('hands the map on when the leader loses audio', () => {
+    const election = fakeElection();
+    const a = tab(election, 'map-1');
+    const b = tab(election, 'map-1');
+    a.backend.suspend();
+    b.engine.play('pilotArrived');
+    expect(b.backend.calls).toHaveLength(1);
+    a.engine.dispose();
+    b.engine.dispose();
+  });
+
+  it('hands the map on when the leader turns sounds off', () => {
+    const election = fakeElection();
+    const a = tab(election, 'map-1');
+    const b = tab(election, 'map-1');
+    a.engine.setPrefs(allOn({ enabled: false }));
+    b.engine.play('pilotArrived');
+    expect(b.backend.calls).toHaveLength(1);
+    a.engine.dispose();
+    b.engine.dispose();
+  });
+
   it('plays unconditionally where no election is available', () => {
     const a = tab(null, 'map-1');
     const b = tab(null, 'map-1');
@@ -425,6 +530,7 @@ describe('preview', () => {
   it('plays without leadership', () => {
     const election = fakeElection();
     const holder = createSoundEngine({ backend: fakeBackend(), election, bindGestures: false });
+    holder.setPrefs(allOn());
     holder.setMapId('map-1');
     const backend = fakeBackend();
     const engine = createSoundEngine({ backend, election, bindGestures: false });
@@ -718,5 +824,46 @@ describe('createWebAudioBackend — imported sounds', () => {
     store.deliver(new ArrayBuffer(8));
     expect(await retried).toBe(true);
     expect(store.reads).toBe(2);
+  });
+});
+
+describe('createWebAudioBackend — voice files', () => {
+  const VOICE_ID = VOICE_SOUND_IDS[0] as SoundId;
+  let fetchCalls = 0;
+  let online = false;
+
+  beforeEach(() => {
+    (window as unknown as { AudioContext: unknown }).AudioContext = FakeAudioContext;
+    fetchCalls = 0;
+    online = false;
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', async () => {
+      fetchCalls += 1;
+      if (!online) throw new TypeError('network down');
+      return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('does not refetch a failed file inside the retry window', async () => {
+    const backend = createWebAudioBackend();
+    expect(await backend.load(VOICE_ID)).toBe(false);
+    const afterFirst = fetchCalls;
+    online = true;
+    expect(await backend.load(VOICE_ID)).toBe(false);
+    expect(fetchCalls).toBe(afterFirst);
+  });
+
+  it('retries a failed file once the window has passed', async () => {
+    const backend = createWebAudioBackend();
+    expect(await backend.load(VOICE_ID)).toBe(false);
+    online = true;
+    vi.advanceTimersByTime(SOUND_LOAD_RETRY_MS);
+    expect(await backend.load(VOICE_ID)).toBe(true);
+    expect(backend.has(VOICE_ID)).toBe(true);
   });
 });

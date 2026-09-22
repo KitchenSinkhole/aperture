@@ -12,7 +12,8 @@ vi.mock('@/lib/sounds/engine', () => ({
 import { MapActiveCharProvider } from '@/components/map/MapActiveCharContext';
 import { MapPresenceProvider } from '@/components/map/MapPresenceContext';
 import { PresenceSoundBridge } from '@/components/map/PresenceSoundBridge';
-import type { MapPresenceEntry } from '@/lib/map/loadMap';
+import { toggleConnectionWatch } from '@/lib/connectionWatchPrefs';
+import type { MapConnectionEdge, MapPresenceEntry, MapSystemNode } from '@/lib/map/loadMap';
 import { RealtimeProvider } from '@/lib/realtime/useRealtime';
 
 const MAP_ID = 7;
@@ -21,6 +22,14 @@ const SYSTEM_B = 31000002;
 const SYSTEM_C = 31000003;
 const ME = 100;
 const FOREIGN = 200;
+const HOLE_AC = 'hole-ac';
+
+const SYSTEMS = [
+  { id: 'node-a', systemId: SYSTEM_A },
+  { id: 'node-b', systemId: SYSTEM_B },
+  { id: 'node-c', systemId: SYSTEM_C },
+] as MapSystemNode[];
+const CONNECTIONS = [{ id: HOLE_AC, source: 'node-a', target: 'node-c' }] as MapConnectionEdge[];
 
 class FakePort {
   onmessage: ((e: MessageEvent) => void) | null = null;
@@ -92,7 +101,7 @@ describe('PresenceSoundBridge', () => {
   let container: HTMLDivElement;
   let root: Root;
 
-  function mount(initial: MapPresenceEntry[]) {
+  function mount(initial: MapPresenceEntry[], watchedJumpOn = false) {
     act(() => {
       root.render(
         <RealtimeProvider>
@@ -101,7 +110,13 @@ describe('PresenceSoundBridge', () => {
               viewerCharacters={[{ id: ME, name: 'Me' }]}
               mainCharacterId={ME}
             >
-              <PresenceSoundBridge viewerCharacterIds={[ME]} />
+              <PresenceSoundBridge
+                mapId={String(MAP_ID)}
+                systems={SYSTEMS}
+                connections={CONNECTIONS}
+                viewerCharacterIds={[ME]}
+                watchedJumpOn={watchedJumpOn}
+              />
             </MapActiveCharProvider>
           </MapPresenceProvider>
         </RealtimeProvider>,
@@ -114,6 +129,7 @@ describe('PresenceSoundBridge', () => {
     vi.stubGlobal('SharedWorker', FakeSharedWorker);
     lastPort = null;
     play.mockClear();
+    localStorage.clear();
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -160,5 +176,19 @@ describe('PresenceSoundBridge', () => {
     mount([entry(ME, 'Me', SYSTEM_A)]);
     act(() => lastPort?.onmessage?.(moveFrame(ME, 'Me', SYSTEM_B)));
     expect(play).not.toHaveBeenCalled();
+  });
+
+  it('leaves a jump through a watched hole to the watched-jump cue', () => {
+    toggleConnectionWatch(String(MAP_ID), HOLE_AC);
+    mount([entry(ME, 'Me', SYSTEM_A), entry(FOREIGN, 'Foreign', SYSTEM_C)], true);
+    act(() => lastPort?.onmessage?.(moveFrame(FOREIGN, 'Foreign', SYSTEM_A)));
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it('still plays for a watched hole while the watched-jump cue is off', () => {
+    toggleConnectionWatch(String(MAP_ID), HOLE_AC);
+    mount([entry(ME, 'Me', SYSTEM_A), entry(FOREIGN, 'Foreign', SYSTEM_C)]);
+    act(() => lastPort?.onmessage?.(moveFrame(FOREIGN, 'Foreign', SYSTEM_A)));
+    expect(play.mock.calls).toEqual([['pilotArrived']]);
   });
 });

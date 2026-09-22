@@ -2219,7 +2219,13 @@ export function MapCanvas({
         <MapUnderglowBridge systems={viewData.systems} mapId={data.map.id} />
         {soundPrefs.enabled &&
           (soundPrefs.events.pilotArrived.enabled || soundPrefs.events.pilotLeft.enabled) && (
-            <PresenceSoundBridge viewerCharacterIds={viewerCharacterIds} />
+            <PresenceSoundBridge
+              mapId={mapId}
+              systems={viewData.systems}
+              connections={viewData.connections}
+              viewerCharacterIds={viewerCharacterIds}
+              watchedJumpOn={soundPrefs.events.watchedJump.enabled}
+            />
           )}
         {soundPrefs.enabled && soundPrefs.events.watchedJump.enabled && (
           <WatchedConnectionSoundBridge
@@ -2230,13 +2236,13 @@ export function MapCanvas({
           />
         )}
         {soundPrefs.enabled && soundPrefs.events.killInSystem.enabled && (
-          <KillSoundBridge mapId={mapId} />
+          <KillSoundBridge mapId={mapId} systems={viewData.systems} />
         )}
         {soundPrefs.enabled && soundPrefs.events.rallySet.enabled && (
           <RallySoundBridge mapId={mapId} />
         )}
         {soundPrefs.enabled && soundPrefs.events.systemPinged.enabled && (
-          <PingSoundBridge mapId={mapId} />
+          <PingSoundBridge mapId={mapId} systems={viewData.systems} />
         )}
         <SignaturePasteHotkey
           mapId={mapId}

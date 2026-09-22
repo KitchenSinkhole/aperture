@@ -8,10 +8,10 @@ Imported audio never reaches the server: the account pref carries only the `cust
 ---
 
 ### CUSTOM_SOUND_MAX_BYTES
-`1_048_576` — the largest file accepted on import.
+The largest file accepted on import, in bytes.
 
 ### CUSTOM_SOUND_MAX_MS
-`5_000` — the longest decoded clip accepted on import.
+The longest decoded clip accepted on import, in milliseconds.
 
 ---
 

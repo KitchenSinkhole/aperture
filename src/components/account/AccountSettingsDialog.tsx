@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Star, Trash2, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SignatureIndicatorAccountSettings, SoundEvent, SoundId, SoundPrefs } from '@/types';
@@ -8,6 +9,7 @@ import { SOUND_EVENTS } from '@/lib/sounds/prefs';
 import { SOUND_EVENT_LABELS } from '@/lib/sounds/catalog';
 import { getCustomSoundStore, useCustomSounds } from '@/lib/sounds/customStore';
 import { getSoundEngine } from '@/lib/sounds/engine';
+import { announceSoundPrefs, subscribeSoundPrefs } from '@/lib/sounds/prefsSync';
 import {
   Dialog,
   DialogContent,
@@ -139,13 +141,29 @@ export function AccountSettingsDialog({
     getSoundEngine().setPrefs(sounds);
   }, [sounds]);
 
+  // A save in another tab reaches this one without a reload: the engine takes
+  // the new prefs through `sounds`, and the refresh re-renders the map's cue
+  // bridges against them.
+  const router = useRouter();
+  useEffect(
+    () =>
+      subscribeSoundPrefs((next) => {
+        setSounds(next);
+        committedVolume.current = next.volume;
+        router.refresh();
+      }),
+    [router],
+  );
+
   function commitSounds(next: SoundPrefs) {
     const prev = { ...sounds, volume: committedVolume.current };
     setSounds(next);
     committedVolume.current = next.volume;
     startTransition(async () => {
       const result = await setSoundPrefsAction(next);
-      if (!result.ok) {
+      if (result.ok) {
+        announceSoundPrefs(next);
+      } else {
         setSounds(prev);
         committedVolume.current = prev.volume;
         toast.error(result.error);

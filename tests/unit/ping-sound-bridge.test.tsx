@@ -7,6 +7,7 @@ import {
   type SoundBackend,
   type SoundEngine,
 } from '@/lib/sounds/engine';
+import type { MapSystemNode } from '@/lib/map/loadMap';
 import { BUILT_IN_SOUND_IDS, resolveSoundPrefs, type SoundId } from '@/lib/sounds/prefs';
 
 // The bridge resolves the engine at event time, so the real engine can stand
@@ -24,6 +25,7 @@ import { RealtimeProvider } from '@/lib/realtime/useRealtime';
 const MAP_ID = 7;
 const OTHER_MAP_ID = 8;
 const SYSTEM_ID = 31000001;
+const ON_MAP = [{ systemId: SYSTEM_ID } as MapSystemNode];
 
 class FakePort {
   onmessage: ((e: MessageEvent) => void) | null = null;
@@ -50,6 +52,7 @@ function fakeBackend(): SoundBackend {
   return {
     isUnlocked: () => true,
     unlock: async () => true,
+    onStateChange: () => () => {},
     has: (soundId) => known.has(soundId),
     load: async (soundId) => known.has(soundId),
     play: (soundId) => void played.push(soundId),
@@ -96,11 +99,11 @@ describe('PingSoundBridge', () => {
   let container: HTMLDivElement;
   let root: Root;
 
-  function mount() {
+  function mount(systems: MapSystemNode[] = ON_MAP) {
     act(() => {
       root.render(
         <RealtimeProvider>
-          <PingSoundBridge mapId={String(MAP_ID)} />
+          <PingSoundBridge mapId={String(MAP_ID)} systems={systems} />
         </RealtimeProvider>,
       );
     });
@@ -164,6 +167,12 @@ describe('PingSoundBridge', () => {
   it('stays silent for a notification scoped to another map', () => {
     mount();
     act(() => lastPort?.onmessage?.(pingFrame(OTHER_MAP_ID)));
+    expect(played).toEqual([]);
+  });
+
+  it('stays silent for a system the map no longer shows', () => {
+    mount([]);
+    act(() => lastPort?.onmessage?.(pingFrame()));
     expect(played).toEqual([]);
   });
 });
