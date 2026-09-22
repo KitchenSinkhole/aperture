@@ -43,6 +43,8 @@ const VALID_PREFS: SoundPrefs = {
     pilotLeft: { enabled: false, sound: 'chime-down' },
     watchedJump: { enabled: true, sound: 'alarm' },
     killInSystem: { enabled: false, sound: 'alarm' },
+    rallySet: { enabled: true, sound: 'bell' },
+    systemPinged: { enabled: false, sound: 'ping' },
   },
 };
 

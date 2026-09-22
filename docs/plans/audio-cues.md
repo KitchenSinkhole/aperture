@@ -8,7 +8,7 @@
 **Key design decisions (agreed up front):**
 
 - **One engine, many event sources.** `src/lib/sounds/engine.ts` owns Web Audio, volume, mute, autoplay unlock, cross-tab dedupe and coalescing. Each issue is a renderless bridge component that turns a realtime signal into `engine.play(event)`. Bridges follow the `TravelBridge` pattern: mounted by `MapCanvas` only when the account has that event enabled, so an off setting means the code path is absent, not gated at runtime.
-- **The sound event vocabulary is fixed:** `pilotArrived`, `pilotLeft`, `watchedJump`, `killInSystem`. A future system-of-interest alert (#182) adds a fifth; nothing else does.
+- **The sound event vocabulary is fixed:** `pilotArrived`, `pilotLeft`, `watchedJump`, `killInSystem`, `rallySet`, `systemPinged`. A future system-of-interest alert (#182) adds another.
 - **Account-level preferences, one jsonb column.** `ap_user.sound_prefs` typed `SoundPrefs` (`{ enabled, volume, events: Record<SoundEvent, { enabled, sound }> }`), NULL meaning every default. Follows the `map_layout` precedent (typed jsonb, Zod-validated at the Server Action boundary, threaded to `MapCanvas` as a prop, `revalidatePath('/', 'layout')` on save). Defaults: master off, every event off, volume 0.7, one built-in chime per event. Per-map profiles are deliberately out of scope.
 - **Device-level mute plus unlock indicator on the map toolbar.** A speaker button beside `PilotRosterButton`. Mute is localStorage (`aperture:sounds:muted`), so it survives reload and applies to every tab on the device. The same button shows a locked state while the browser has not yet allowed audio (no user gesture since page load) and clicking it is itself the unlocking gesture.
 - **Built-in chimes are synthesized with Web Audio, not shipped as files.** A soft rising two-tone for arrive, falling for leave, a short tick for a watched jump, a harsher tone for a kill. No assets, no fetch latency, volume via one master `GainNode`. The voice packs (Stage 8) and custom files (Stage 9) are file-backed and decoded into `AudioBuffer`s through the same engine.
@@ -118,6 +118,7 @@ _(worked by the user once, after the run; the plan is not complete until it pass
 - **Stage 9** — Add a custom file, pick it for arrive, hear it; open the same account on another device and confirm arrive falls back to the chime.
 - **Stage 9** — Add a custom file, pick it for an event, reload the map and trigger that event: it still plays the imported file (the real IndexedDB round trip, which the unit tests reach only through an injected double).
 - **Stage 9** — With an event set to an imported sound, delete that sound from Account settings and trigger the event in the same tab without reloading: it chimes rather than going silent.
+- **Rally / ping cues** — Enable "Rally set" and "System pinged"; set a rally from the system overlay and hear the bell, clear it and hear nothing; ping a system from the context menu and hear the ping in this tab and in a second account's tab on the same map. Then pick each pack for both events and preview: every pack speaks its own rally and ping line.
 
 ## Notes
 _(appended by executing sessions; non-obvious findings only)_

@@ -8,7 +8,7 @@ Pure — no browser and no server imports — so a Server Action, the session re
 ---
 
 ### SOUND_EVENTS
-`['pilotArrived', 'pilotLeft', 'watchedJump', 'killInSystem']`. The closed vocabulary of cues the engine plays.
+`['pilotArrived', 'pilotLeft', 'watchedJump', 'killInSystem', 'rallySet', 'systemPinged']`. The closed vocabulary of cues the engine plays.
 
 ### SoundEvent (type)
 `(typeof SOUND_EVENTS)[number]`.
@@ -41,7 +41,7 @@ Every `voice-<pack>-<event>` id, one per pack per event. The watched-jump line s
 `0.7`.
 
 ### DEFAULT_SOUND_PREFS
-Master off, every event off, volume `DEFAULT_SOUND_VOLUME`, and one chime per event: `pilotArrived` → `chime-up`, `pilotLeft` → `chime-down`, `watchedJump` → `tick`, `killInSystem` → `alarm`. Sounds are opt-in.
+Master off, every event off, volume `DEFAULT_SOUND_VOLUME`, and one chime per event: `pilotArrived` → `chime-up`, `pilotLeft` → `chime-down`, `watchedJump` → `tick`, `killInSystem` → `alarm`, `rallySet` → `bell`, `systemPinged` → `ping`. Sounds are opt-in.
 
 ---
 
@@ -51,7 +51,7 @@ Type guard for a built-in id or a well-formed `custom:<uuid>` id (a bare `custom
 ---
 
 ### soundPrefsSchema
-Zod schema for the whole blob: `enabled` boolean, `volume` a number in 0..1, and an `events` object carrying all four events, each `{ enabled: boolean, sound }` with `sound` guarded by `isSoundId`. The id union is load-bearing here: a save naming an id outside `BUILT_IN_SOUND_IDS` (and not a well-formed `custom:` id) is rejected. Strict — a malformed blob is rejected rather than repaired, so a broken client cannot quietly rewrite the account's prefs. Used at the Server Action boundary.
+Zod schema for the whole blob: `enabled` boolean, `volume` a number in 0..1, and an `events` object carrying every event in `SOUND_EVENTS`, each `{ enabled: boolean, sound }` with `sound` guarded by `isSoundId`. The id union is load-bearing here: a save naming an id outside `BUILT_IN_SOUND_IDS` (and not a well-formed `custom:` id) is rejected. Strict — a malformed blob is rejected rather than repaired, so a broken client cannot quietly rewrite the account's prefs. Used at the Server Action boundary.
 
 ---
 

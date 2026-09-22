@@ -7,7 +7,14 @@ import { z } from 'zod';
  */
 
 /** Every cue the engine knows how to play. */
-export const SOUND_EVENTS = ['pilotArrived', 'pilotLeft', 'watchedJump', 'killInSystem'] as const;
+export const SOUND_EVENTS = [
+  'pilotArrived',
+  'pilotLeft',
+  'watchedJump',
+  'killInSystem',
+  'rallySet',
+  'systemPinged',
+] as const;
 
 export type SoundEvent = (typeof SOUND_EVENTS)[number];
 
@@ -87,6 +94,8 @@ export const DEFAULT_SOUND_PREFS: SoundPrefs = {
     pilotLeft: { enabled: false, sound: 'chime-down' },
     watchedJump: { enabled: false, sound: 'tick' },
     killInSystem: { enabled: false, sound: 'alarm' },
+    rallySet: { enabled: false, sound: 'bell' },
+    systemPinged: { enabled: false, sound: 'ping' },
   },
 };
 
@@ -119,6 +128,8 @@ export const soundPrefsSchema = z.object({
     pilotLeft: soundEventPrefsSchema,
     watchedJump: soundEventPrefsSchema,
     killInSystem: soundEventPrefsSchema,
+    rallySet: soundEventPrefsSchema,
+    systemPinged: soundEventPrefsSchema,
   }),
 });
 

@@ -517,6 +517,8 @@ describe('built-in catalog', () => {
       pilotLeft: 'chime-down',
       watchedJump: 'tick',
       killInSystem: 'alarm',
+      rallySet: 'bell',
+      systemPinged: 'ping',
     };
     for (const event of SOUND_EVENTS) {
       expect(DEFAULT_SOUND_PREFS.events[event].sound).toBe(expected[event]);

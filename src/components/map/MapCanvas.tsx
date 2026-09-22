@@ -138,7 +138,9 @@ import { MapTravelProvider, TravelBridge } from './MapTravelContext';
 import { MapUnderglowProvider } from './MapUnderglowContext';
 import { KillSoundBridge } from './KillSoundBridge';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
+import { PingSoundBridge } from './PingSoundBridge';
 import { PresenceSoundBridge } from './PresenceSoundBridge';
+import { RallySoundBridge } from './RallySoundBridge';
 import { WatchedConnectionSoundBridge } from './WatchedConnectionSoundBridge';
 import { SystemNode, type SystemNodeData } from './SystemNode';
 import { MapNoteNode, type MapNoteNodeData } from './MapNoteNode';
@@ -2229,6 +2231,12 @@ export function MapCanvas({
         )}
         {soundPrefs.enabled && soundPrefs.events.killInSystem.enabled && (
           <KillSoundBridge mapId={mapId} />
+        )}
+        {soundPrefs.enabled && soundPrefs.events.rallySet.enabled && (
+          <RallySoundBridge mapId={mapId} />
+        )}
+        {soundPrefs.enabled && soundPrefs.events.systemPinged.enabled && (
+          <PingSoundBridge mapId={mapId} />
         )}
         <SignaturePasteHotkey
           mapId={mapId}

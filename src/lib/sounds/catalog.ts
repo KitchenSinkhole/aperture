@@ -207,6 +207,8 @@ const VOICE_EVENT_STEMS: Record<SoundEvent, string> = {
   pilotLeft: 'leave',
   watchedJump: 'watched',
   killInSystem: 'kill',
+  rallySet: 'rally',
+  systemPinged: 'ping',
 };
 
 const VOICE_VARIANTS: readonly SoundVariant[] = ['plain', 'inbound', 'outbound'];
@@ -282,5 +284,13 @@ export const SOUND_EVENT_LABELS: Record<SoundEvent, { label: string; description
   killInSystem: {
     label: 'Kill on the map',
     description: 'A killmail lands in a system on this map.',
+  },
+  rallySet: {
+    label: 'Rally set',
+    description: 'Someone sets a rally point on a system on this map.',
+  },
+  systemPinged: {
+    label: 'System pinged',
+    description: 'Someone pings a system on this map.',
   },
 };
