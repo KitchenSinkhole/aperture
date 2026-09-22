@@ -8,7 +8,7 @@ import { ShipClassIcon } from '@/components/icons/ShipClassIcon';
 import { ChevronDown, ChevronUp, Flag } from 'lucide-react';
 import { connectionExpiredSinceMs, connectionTimeLeftMs } from '@/lib/map/connectionState';
 import { formatAgoFromMs, formatRelativeFromMs } from '@/lib/map/relativeTime';
-import { parseDscanPaste } from '@/lib/map/dscanParser';
+import { parseDscanPaste, shipNameKey } from '@/lib/map/dscanParser';
 import { resolveShipClass } from '@/lib/eve/shipClass';
 import { fetchScanTypes } from '@/lib/reference/client';
 import { pingSystemOnServer, updateSystemOnServer } from '@/lib/map/client';
@@ -43,8 +43,8 @@ function customShipName(p: MapPresenceEntry): string {
   return p.shipName && p.shipName !== p.shipTypeName ? p.shipName : '';
 }
 
-type PilotSortKey = 'name' | 'ship-type' | 'ship-name';
-type PilotSort = { key: PilotSortKey; dir: 'asc' | 'desc' };
+export type PilotSortKey = 'name' | 'ship-type' | 'ship-name';
+export type PilotSort = { key: PilotSortKey; dir: 'asc' | 'desc' };
 
 function pilotSortValue(p: MapPresenceEntry, key: PilotSortKey): string {
   switch (key) {
@@ -123,13 +123,13 @@ function Header({
     }
 
     setTogglingRally(true);
-    
+
     await updateSystemOnServer({
       mapId,
       mapSystemId: node.id,
       patch: { rallyAt: isStartingRallyPoint ? new Date().toISOString() : null },
     });
-    
+
     setTogglingRally(false);
   }
 
@@ -224,35 +224,65 @@ function PilotCells({ p, highlight }: { p: MapPresenceEntry; highlight?: string 
   );
 }
 
+/** Whether the last D-Scan listed this pilot in the hull the roster still shows them in. */
+function scannedInCurrentHull(
+  scannedHullByChar: ReadonlyMap<number, number>,
+  p: MapPresenceEntry,
+): boolean {
+  return scannedHullByChar.get(p.characterId) === p.shipTypeId;
+}
+
+/**
+ * The pilot table's row order: pilots the last D-Scan resolved in their
+ * current hull lead, then the ones the typed query matches, then everyone
+ * else; the column sort orders within each tier. A pilot both scanned and
+ * typed for sits first of all.
+ */
+export function orderPilots(
+  others: readonly MapPresenceEntry[],
+  needle: string,
+  scannedHullByChar: ReadonlyMap<number, number>,
+  sort: PilotSort,
+): MapPresenceEntry[] {
+  const rank = new Map(
+    others.map((p) => [
+      p.characterId,
+      {
+        hit: needle && pilotMatchesQuery(p, needle) ? 1 : 0,
+        scanned: scannedInCurrentHull(scannedHullByChar, p) ? 1 : 0,
+      },
+    ]),
+  );
+  const none = { hit: 0, scanned: 0 };
+  return [...others].sort((a, b) => {
+    const ra = rank.get(a.characterId) ?? none;
+    const rb = rank.get(b.characterId) ?? none;
+    return rb.scanned - ra.scanned || rb.hit - ra.hit || comparePilots(a, b, sort);
+  });
+}
+
 function Pilots({
   others,
-  enemies,
+  dscan,
   highlight,
 }: {
   others: readonly MapPresenceEntry[];
-  enemies: readonly EnemyShip[];
+  dscan: DscanResult | null;
   highlight: string;
 }) {
   const [sort, setSort] = useState<PilotSort>({ key: 'ship-type', dir: 'asc' });
   const needle = highlight.toLowerCase();
+  const enemies = dscan?.enemies ?? NO_ENEMIES;
+  const scannedHullByChar = dscan?.scannedHullByChar ?? NO_SCANNED_HULLS;
 
   const onSort = (key: PilotSortKey) =>
     setSort((prev) =>
       prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
     );
 
-  // Query matches lead the list; the column sort orders within each half.
   const sorted = useMemo(
-    () =>
-      [...others].sort((a, b) => {
-        if (needle) {
-          const am = pilotMatchesQuery(a, needle);
-          const bm = pilotMatchesQuery(b, needle);
-          if (am !== bm) return am ? -1 : 1;
-        }
-        return comparePilots(a, b, sort);
-      }),
-    [others, sort, needle],
+    () => orderPilots(others, needle, scannedHullByChar, sort),
+    [others, sort, needle, scannedHullByChar],
   );
 
   if (others.length === 0 && enemies.length === 0) {
@@ -304,7 +334,13 @@ function Pilots({
           </tr>
         ))}
         {sorted.map((p) => (
-          <tr key={p.characterId} className="border-t border-foreground/10">
+          <tr
+            key={p.characterId}
+            className={cn(
+              'border-t border-foreground/10',
+              scannedInCurrentHull(scannedHullByChar, p) && 'bg-emerald-900/50',
+            )}
+          >
             <PilotCells p={p} highlight={needle ? highlight : undefined} />
           </tr>
         ))}
@@ -315,6 +351,19 @@ function Pilots({
 
 /** A D-Scanned hull nobody on the roster is flying, pinned atop the pilot list. */
 type EnemyShip = { key: string; name: string; typeName: string; shipClass: ShipClass | null };
+
+/**
+ * One pasted scan: the hulls nobody on the roster flies, and for each pilot in
+ * the table the scan resolved, the hull type it listed them in.
+ */
+type DscanResult = {
+  enemies: readonly EnemyShip[];
+  scannedHullByChar: ReadonlyMap<number, number>;
+};
+
+// Stable fallbacks so the table's memo does not re-run for want of a scan.
+const NO_ENEMIES: readonly EnemyShip[] = [];
+const NO_SCANNED_HULLS: ReadonlyMap<number, number> = new Map();
 
 // The Pilot column is the literal "Unknown pilot", not scanned text, so it is
 // not searchable and a query is never marked in it.
@@ -329,7 +378,9 @@ function EnemyCells({ ship, highlight }: { ship: EnemyShip; highlight?: string }
       <td className="truncate py-0.5 pr-1 text-red-400">
         <Highlight text={ship.name} needle={highlight} />
       </td>
-      <td className="py-0.5 pr-1">{ship.shipClass && <ShipClassIcon shipClass={ship.shipClass} />}</td>
+      <td className="py-0.5 pr-1">
+        {ship.shipClass && <ShipClassIcon shipClass={ship.shipClass} />}
+      </td>
       <td className="truncate py-0.5 text-red-400">
         <Highlight text={ship.typeName} needle={highlight} />
       </td>
@@ -347,12 +398,12 @@ export function matchDscanRow(
   row: ParsedDscanRow,
   roster: readonly MapPresenceEntry[],
 ): MapPresenceEntry | null {
-  const name = row.name.toLowerCase();
+  const name = shipNameKey(row.name);
   const onHull = roster.filter((p) => p.shipTypeId === row.typeId);
 
   // ESI stores the ship's own name, which is the same string D-Scan prints, so
   // an exact match is the dependable path.
-  const named = onHull.find((p) => (p.shipName ?? '').toLowerCase() === name);
+  const named = onHull.find((p) => shipNameKey(p.shipName ?? '') === name);
   if (named) return named;
 
   // Otherwise fall back to the client's default `<Pilot>'s <Type>` naming,
@@ -361,6 +412,34 @@ export function matchDscanRow(
   // attributed to whichever pilot the roster happens to list first.
   const owners = onHull.filter((p) => name.startsWith(`${p.characterName.toLowerCase()}'s `));
   return owners.length === 1 ? (owners[0] ?? null) : null;
+}
+
+/**
+ * Resolves a scan's ship rows against the roster. Each row consumes the pilot
+ * it resolves to, so a second row on the same pilot — a hostile under a copied
+ * name, or a spare hull on grid — comes back unmatched instead of folding into
+ * a clean scan, and two friendlies sharing a hull name each take a row. Only
+ * pilots in `shown` are recorded with the hull the scan listed them in: the
+ * active character resolves so their own hull is not pinned, but has no row.
+ */
+export function resolveDscan(
+  rows: readonly ParsedDscanRow[],
+  roster: readonly MapPresenceEntry[],
+  shown: ReadonlySet<number>,
+): { unmatched: ParsedDscanRow[]; scannedHullByChar: Map<number, number> } {
+  const unmatched: ParsedDscanRow[] = [];
+  const scannedHullByChar = new Map<number, number>();
+  let free = roster;
+  for (const row of rows) {
+    const pilot = matchDscanRow(row, free);
+    if (pilot === null) {
+      unmatched.push(row);
+      continue;
+    }
+    free = free.filter((p) => p !== pilot);
+    if (shown.has(pilot.characterId)) scannedHullByChar.set(pilot.characterId, row.typeId);
+  }
+  return { unmatched, scannedHullByChar };
 }
 
 // The result area is only a couple hundred pixels wide in a PiP window, so a
@@ -381,13 +460,14 @@ function pilotMatchesQuery(p: MapPresenceEntry, needle: string): boolean {
 
 /**
  * Search box over the pilot list, plus the list itself. A typed query lifts the
- * pilots it matches (substring over pilot / ship name / hull type) to the top
- * of the list with the query marked in their cells, live as it is typed; a
+ * pilots it matches (substring over pilot / ship name / hull type) above the
+ * unmatched ones with the query marked in their cells, live as it is typed; a
  * query nobody matches shows a not-found line under the box instead. Pasting
- * D-Scan text resolves each ship line against the roster and pins the
- * unresolved ones atop the list as red enemy rows, which stay until the next
- * scan replaces them or the Clear button drops them. Keyed on the system in
- * SystemOverlay: an enemy set is only in range of the system it was scanned in.
+ * D-Scan text resolves each ship line against the roster: the unresolved ones
+ * pin atop the list as red enemy rows, the resolved pilots lift to just below
+ * them on a green row while they still fly the scanned hull, and both stay
+ * until the next scan replaces them or the Clear button drops them. Keyed on the system in SystemOverlay: a scan is only
+ * in range of the system it was taken in.
  */
 function PilotSection({
   others,
@@ -397,19 +477,19 @@ function PilotSection({
   roster: readonly MapPresenceEntry[];
 }) {
   const [query, setQuery] = useState('');
-  const [enemies, setEnemies] = useState<EnemyShip[]>([]);
+  const [dscan, setDscan] = useState<DscanResult | null>(null);
   // Wrapped rather than a bare string so re-showing the same text is a real
   // state change: the TTL effect keys off identity and restarts its timer.
   const [notice, setNotice] = useState<{ text: string } | null>(null);
-  // Read at paste time only: an enemy set is a snapshot of one scan, so live
+  // Read at paste time only: a scan result is a snapshot of one scan, so live
   // presence churn must not re-resolve it. Matching is against the whole
   // roster, including the active character: a scan taken from one alt's client
   // lists the other's hull, and a pilot missing from the match roster resolves
   // as an enemy.
-  const rosterRef = useRef(roster);
+  const listsRef = useRef({ others, roster });
   useEffect(() => {
-    rosterRef.current = roster;
-  }, [roster]);
+    listsRef.current = { others, roster };
+  }, [others, roster]);
   const scanCount = useRef(0);
 
   useEffect(() => {
@@ -446,7 +526,7 @@ function PilotSection({
       setNotice({ text: 'Ship list unavailable, D-SCAN not read' });
       return;
     }
-    const roster = rosterRef.current;
+    const { others: shown, roster } = listsRef.current;
     // A scan lists everything in range, most of it not a ship at all; only what
     // the SDE files under the Ship category belongs against a ship list.
     // Gating on the parsed rows rather than the ship rows keeps a scan holding
@@ -461,17 +541,22 @@ function PilotSection({
       return;
     }
     setNotice(null);
-    // A scan is a full snapshot of what is in range, so it replaces the pinned
-    // set outright — an all-friendly scan clears it. Scan order is kept.
-    setEnemies(
-      ships
-        .filter((row) => matchDscanRow(row, roster) === null)
-        .map((row, i) => ({
-          key: `d:${scan}:${row.typeId}:${i}`,
-          name: row.name,
-          typeName: row.typeName,
-          shipClass: resolveShipClass(row.typeId, types.get(row.typeId)?.groupId ?? null),
-        })),
+    // A scan is a full snapshot of what is in range, so it replaces the last
+    // result outright — a scan of only the active character's hull leaves
+    // nothing to show or clear. Scan order is kept.
+    const { unmatched, scannedHullByChar } = resolveDscan(
+      ships,
+      roster,
+      new Set(shown.map((p) => p.characterId)),
+    );
+    const enemies = unmatched.map((row, i) => ({
+      key: `d:${scan}:${row.typeId}:${i}`,
+      name: row.name,
+      typeName: row.typeName,
+      shipClass: resolveShipClass(row.typeId, types.get(row.typeId)?.groupId ?? null),
+    }));
+    setDscan(
+      enemies.length > 0 || scannedHullByChar.size > 0 ? { enemies, scannedHullByChar } : null,
     );
   }
 
@@ -480,39 +565,46 @@ function PilotSection({
   const missed =
     needle.length > 0 &&
     !others.some((p) => pilotMatchesQuery(p, lowered)) &&
-    !enemies.some((ship) => enemyMatchesQuery(ship, lowered));
+    !(dscan?.enemies ?? NO_ENEMIES).some((ship) => enemyMatchesQuery(ship, lowered));
 
   return (
     <>
       <div className="flex flex-col gap-1.5">
-        <Input
-          value={query}
-          placeholder="Search or paste D-SCAN"
-          aria-label="Search or paste D-SCAN"
-          className="h-7 text-xs"
-          onPaste={(e) => void handlePaste(e)}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setNotice(null);
-          }}
-        />
+        <div className="flex items-center gap-1.5">
+          <Input
+            value={query}
+            placeholder="Search or paste D-SCAN"
+            aria-label="Search or paste D-SCAN"
+            className="h-7 text-xs"
+            onPaste={(e) => void handlePaste(e)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setNotice(null);
+            }}
+          />
+          {dscan !== null && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 shrink-0 text-[10px]"
+              onClick={() => {
+                // A paste still awaiting its lookup would land after the clear;
+                // counting it out discards it like an overtaken scan.
+                scanCount.current++;
+                setDscan(null);
+              }}
+            >
+              Clear D-SCAN
+            </Button>
+          )}
+        </div>
         {(notice !== null || missed) && (
           <div className="text-[11px] italic text-muted-foreground">
             {notice?.text ?? `"${echoQuery(needle)}" not found`}
           </div>
         )}
       </div>
-      {enemies.length > 0 && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-6 text-[10px]"
-          onClick={() => setEnemies([])}
-        >
-          Clear enemy ships
-        </Button>
-      )}
-      <Pilots others={others} enemies={enemies} highlight={needle} />
+      <Pilots others={others} dscan={dscan} highlight={needle} />
     </>
   );
 }

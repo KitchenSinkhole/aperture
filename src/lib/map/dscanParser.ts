@@ -53,7 +53,8 @@ export function parseDscanPaste(text: string): ParsedDscanRow[] {
     const line = rawLine.replace(/\s+$/, '');
     if (line.length === 0) continue;
 
-    const cells = line.includes('\t') ? line.split('\t') : line.split(/ {2,}/);
+    const tabbed = line.includes('\t');
+    const cells = tabbed ? line.split('\t') : line.split(/ {2,}/);
     // A scan line always carries all four columns. Accepting three would let
     // ordinary tabular text with a numeric first cell pass as a D-Scan, and the
     // caller swallows a paste it recognizes — costing the user their query.
@@ -63,16 +64,28 @@ export function parseDscanPaste(text: string): ParsedDscanRow[] {
     if (!TYPE_ID_RE.test(rawTypeId)) continue;
 
     // The columns are pinned at both ends: Distance is last, Type the one
-    // before it. On the fallback path a run of two or more spaces inside the
-    // Name over-splits it, so the Name is every cell between the id and the
-    // Type rather than a single one. A hull name never holds such a run, so
-    // the tail stays a reliable anchor.
-    const name = cells.slice(1, -2).join('  ').trim();
+    // before it. A tabbed row carries the Name cell verbatim, outer spaces
+    // included, since ESI keeps those in a hull name. On the fallback path the
+    // padding has already merged with them, and a run of two or more spaces
+    // inside the Name over-splits it, so the Name is every cell between the id
+    // and the Type rejoined. A hull name never holds such a run, so the tail
+    // stays a reliable anchor.
+    const name = tabbed ? (cells[1] ?? '') : cells.slice(1, -2).join('  ').trim();
     const typeName = (cells.at(-2) ?? '').trim();
-    if (name.length === 0 || typeName.length === 0) continue;
+    if (name.trim().length === 0 || typeName.length === 0) continue;
 
     out.push({ typeId: Number(rawTypeId), name, typeName });
   }
 
   return out;
+}
+
+/**
+ * The form two ship names are equal on. ESI keeps a hull name's outer spaces
+ * and inner runs; a tab-less paste has lost the outer ones to the column
+ * padding and narrowed the runs, so equality is taken on a form that carries
+ * neither, case folded.
+ */
+export function shipNameKey(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
 }
