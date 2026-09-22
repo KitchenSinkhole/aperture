@@ -19,7 +19,7 @@ Re-exports `SignatureGroupKey` (the `signature_group_key` pgEnum) and `Signature
 
 Re-exports the static-reference dialog types: `SystemEffect` / `SystemEffectBonus` / `SystemEffectKey` (`src/lib/eve/systemEffects.ts`) and `WormholeJumpInfoRow` (`src/lib/eve/wormholeJumpInfo.ts`).
 
-Re-exports the sound-cue types from `src/lib/sounds/prefs.ts`: `SoundEvent` (the closed cue vocabulary `pilotArrived`/`pilotLeft`/`watchedJump`/`killInSystem`), `SoundId` (a built-in chime id or `custom:<uuid>`), `SoundPrefs` (the account-level blob on `ap_user.sound_prefs`) and `SoundVariant` (`'plain' | 'inbound' | 'outbound'`, the viewer's side of a watched wormhole).
+Re-exports the sound-cue types from `src/lib/sounds/prefs.ts`: `SoundEvent` (the closed cue vocabulary `pilotArrived`/`pilotLeft`/`watchedJump`/`killInSystem`), `SoundId` (a chime id, a `voice-<pack>-<event>` id or `custom:<uuid>`), `SoundPrefs` (the account-level blob on `ap_user.sound_prefs`), `SoundVariant` (`'plain' | 'inbound' | 'outbound'`, the viewer's side of a watched wormhole) and `VoicePackId` (`'ada' | 'cowboy' | 'malyx'`).
 
 Re-exports `ApStructure` / `ApStructureEvent` row types, `StructureEventKind` (the `structure_event_kind` pgEnum), `IntelScope` (the `intel_scope` pgEnum — `'private' | 'corp' | 'alliance'`, the tenancy of a manual-intel row), the read-side view-models `StructureIntel` / `UpwellStructureType` (`src/lib/structures/read.ts`), the structure mutation input types, the structure client body shapes (`CreateStructureBody` / `UpdateStructureBody`), and `FetchResult` (the shared no-`eventId` JSON result from `src/lib/http/fetchJson.ts`).
 

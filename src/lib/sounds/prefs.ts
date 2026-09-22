@@ -12,9 +12,35 @@ export const SOUND_EVENTS = ['pilotArrived', 'pilotLeft', 'watchedJump', 'killIn
 export type SoundEvent = (typeof SOUND_EVENTS)[number];
 
 /** Chimes synthesized by `catalog.ts`. */
-export const BUILT_IN_SOUND_IDS = ['chime-up', 'chime-down', 'tick', 'alarm'] as const;
+export const CHIME_SOUND_IDS = ['chime-up', 'chime-down', 'tick', 'alarm'] as const;
 
-export type BuiltInSoundId = (typeof BUILT_IN_SOUND_IDS)[number];
+export type ChimeSoundId = (typeof CHIME_SOUND_IDS)[number];
+
+/** Recorded voice packs shipped under `public/sounds/voice/`. */
+export const VOICE_PACKS = [
+  { id: 'ada', label: 'Ada' },
+  { id: 'cowboy', label: 'Cowboy' },
+  { id: 'malyx', label: 'Malyx' },
+] as const;
+
+export type VoicePack = (typeof VOICE_PACKS)[number];
+
+export type VoicePackId = VoicePack['id'];
+
+/** One recorded line per pack per event; the watched-jump line splits by variant. */
+export type VoiceSoundId = `voice-${VoicePackId}-${SoundEvent}`;
+
+export const VOICE_SOUND_IDS: readonly VoiceSoundId[] = VOICE_PACKS.flatMap((pack) =>
+  SOUND_EVENTS.map((event): VoiceSoundId => `voice-${pack.id}-${event}`),
+);
+
+export type BuiltInSoundId = ChimeSoundId | VoiceSoundId;
+
+/** Every id the app ships, as opposed to a `custom:` id imported on one device. */
+export const BUILT_IN_SOUND_IDS: readonly BuiltInSoundId[] = [
+  ...CHIME_SOUND_IDS,
+  ...VOICE_SOUND_IDS,
+];
 
 /** A sound file the user imported on this device (`customStore.ts`). */
 export type CustomSoundId = `custom:${string}`;

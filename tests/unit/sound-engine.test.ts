@@ -1,9 +1,14 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   BUILT_IN_SOUNDS,
   SOUND_EVENT_LABELS,
   defaultSoundForEvent,
   getBuiltInSound,
+  soundFilesFor,
+  voiceSoundsForEvent,
+  type ChimeSound,
 } from '@/lib/sounds/catalog';
 import {
   SOUND_COALESCE_MS,
@@ -14,8 +19,11 @@ import {
 import { SOUND_MUTED_KEY, writeSoundMuted } from '@/lib/sounds/mutePrefs';
 import {
   BUILT_IN_SOUND_IDS,
+  CHIME_SOUND_IDS,
   DEFAULT_SOUND_PREFS,
   SOUND_EVENTS,
+  VOICE_PACKS,
+  VOICE_SOUND_IDS,
   resolveSoundPrefs,
   type SoundEvent,
   type SoundId,
@@ -29,15 +37,25 @@ type PlayCall = { soundId: SoundId; gain: number; variant: SoundVariant };
 
 type FakeBackend = SoundBackend & {
   calls: PlayCall[];
+  loads: SoundId[];
   register(soundId: SoundId): void;
 };
 
-function fakeBackend(opts: { unlocked?: boolean; unlockable?: boolean } = {}): FakeBackend {
-  const known = new Set<string>(BUILT_IN_SOUND_IDS);
+/**
+ * `loadable` stands in for a file-backed sound: absent until something loads
+ * it, the way a voice line is absent until it is fetched and decoded.
+ */
+function fakeBackend(
+  opts: { unlocked?: boolean; unlockable?: boolean; loadable?: readonly SoundId[] } = {},
+): FakeBackend {
+  const known = new Set<string>(CHIME_SOUND_IDS);
+  const loadable = new Set<string>(opts.loadable ?? []);
   let unlocked = opts.unlocked ?? true;
   const calls: PlayCall[] = [];
+  const loads: SoundId[] = [];
   return {
     calls,
+    loads,
     register: (soundId) => void known.add(soundId),
     isUnlocked: () => unlocked,
     unlock: async () => {
@@ -45,6 +63,15 @@ function fakeBackend(opts: { unlocked?: boolean; unlockable?: boolean } = {}): F
       return unlocked;
     },
     has: (soundId) => known.has(soundId),
+    load: async (soundId) => {
+      loads.push(soundId);
+      if (known.has(soundId)) return true;
+      if (!loadable.has(soundId)) return false;
+      // A file-backed sound lands a tick later, never within the call.
+      await Promise.resolve();
+      known.add(soundId);
+      return true;
+    },
     play: (soundId, gain, variant) => void calls.push({ soundId, gain, variant }),
   };
 }
@@ -454,10 +481,10 @@ describe('built-in catalog', () => {
     expect(BUILT_IN_SOUNDS.map((s) => s.id)).toEqual([...BUILT_IN_SOUND_IDS]);
   });
 
-  it.each([...BUILT_IN_SOUND_IDS])('synthesizes audible, in-range samples for %s', (id) => {
+  it.each([...CHIME_SOUND_IDS])('synthesizes audible, in-range samples for %s', (id) => {
     const entry = getBuiltInSound(id);
-    expect(entry).toBeDefined();
-    const buffer = entry!.synth(fakeAudioContext());
+    expect(entry?.kind).toBe('chime');
+    const buffer = (entry as ChimeSound).synth(fakeAudioContext());
     const samples = buffer.getChannelData(0);
     expect(buffer.length).toBeGreaterThan(0);
     let peak = 0;
@@ -470,14 +497,15 @@ describe('built-in catalog', () => {
   });
 
   it('starts and ends near silence so nothing clicks', () => {
-    const samples = getBuiltInSound('chime-up')!.synth(fakeAudioContext()).getChannelData(0);
+    const chimeUp = getBuiltInSound('chime-up') as ChimeSound;
+    const samples = chimeUp.synth(fakeAudioContext()).getChannelData(0);
     expect(Math.abs(samples[0] ?? 1)).toBeLessThan(0.01);
     expect(Math.abs(samples[samples.length - 1] ?? 1)).toBeLessThan(0.05);
   });
 
-  it('defaults every event to a built-in sound with a label', () => {
+  it('defaults every event to a chime with a label', () => {
     for (const event of SOUND_EVENTS) {
-      expect(getBuiltInSound(defaultSoundForEvent(event))).toBeDefined();
+      expect(getBuiltInSound(defaultSoundForEvent(event))?.kind).toBe('chime');
       expect(SOUND_EVENT_LABELS[event].label.length).toBeGreaterThan(0);
     }
   });
@@ -492,5 +520,113 @@ describe('built-in catalog', () => {
     for (const event of SOUND_EVENTS) {
       expect(DEFAULT_SOUND_PREFS.events[event].sound).toBe(expected[event]);
     }
+  });
+});
+
+/** Lets a deferred `load` and the `.then` that follows it run. */
+function settle(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe('voice packs', () => {
+  const ADA_WATCHED = 'voice-ada-watchedJump' as SoundId;
+  const ADA_ARRIVED = 'voice-ada-pilotArrived' as SoundId;
+
+  beforeEach(() => {
+    localStorage.clear();
+    writeSoundMuted(false);
+  });
+
+  it('offers exactly one option per pack for each event', () => {
+    for (const event of SOUND_EVENTS) {
+      const voices = voiceSoundsForEvent(event);
+      expect(voices.map((v) => v.pack)).toEqual(VOICE_PACKS.map((p) => p.id));
+      for (const voice of voices) {
+        expect(voice.event).toBe(event);
+        expect(voice.label).toBe(VOICE_PACKS.find((p) => p.id === voice.pack)?.label);
+      }
+    }
+  });
+
+  it('catalogues every voice id and ships the file it names', () => {
+    for (const id of VOICE_SOUND_IDS) {
+      const entry = getBuiltInSound(id);
+      expect(entry?.kind).toBe('voice');
+      const files = soundFilesFor(id);
+      expect(files.length).toBeGreaterThan(0);
+      for (const file of files) {
+        expect(existsSync(join(process.cwd(), 'public', file)), file).toBe(true);
+      }
+    }
+  });
+
+  it('splits the watched-jump line by variant and shares one file elsewhere', () => {
+    for (const pack of VOICE_PACKS) {
+      for (const event of SOUND_EVENTS) {
+        const files = soundFilesFor(`voice-${pack.id}-${event}` as SoundId);
+        expect(files).toHaveLength(event === 'watchedJump' ? 3 : 1);
+      }
+    }
+  });
+
+  it('prefetches the sound of every enabled event and nothing else', () => {
+    const backend = fakeBackend({ loadable: VOICE_SOUND_IDS as readonly SoundId[] });
+    const engine = createSoundEngine({ backend, bindGestures: false });
+    const prefs = resolveSoundPrefs(null);
+    prefs.enabled = true;
+    prefs.events.pilotArrived.enabled = true;
+    prefs.events.pilotArrived.sound = ADA_ARRIVED;
+    prefs.events.pilotLeft.sound = 'voice-cowboy-pilotLeft' as SoundId;
+    engine.setPrefs(prefs);
+    expect(backend.loads).toEqual([ADA_ARRIVED]);
+  });
+
+  it('chimes until the file lands, then uses the voice line', async () => {
+    const backend = fakeBackend({ loadable: [ADA_ARRIVED] });
+    let clock = 0;
+    const engine = createSoundEngine({ backend, bindGestures: false, now: () => clock });
+    const prefs = allOn();
+    prefs.events.pilotArrived.sound = ADA_ARRIVED;
+    engine.setPrefs(prefs);
+
+    // A cue landing before the prefetch resolves is what the fallback covers.
+    engine.play('pilotArrived');
+    expect(backend.calls.at(-1)?.soundId).toBe('chime-up');
+    expect(backend.loads).toContain(ADA_ARRIVED);
+
+    await settle();
+    clock += SOUND_COALESCE_MS;
+    engine.play('pilotArrived');
+    expect(backend.calls.at(-1)?.soundId).toBe(ADA_ARRIVED);
+  });
+
+  it('falls back to the event chime for a sound it cannot produce', () => {
+    const backend = fakeBackend();
+    const engine = createSoundEngine({ backend, bindGestures: false });
+    const prefs = allOn();
+    prefs.events.killInSystem.sound = ADA_ARRIVED;
+    engine.setPrefs(prefs);
+    engine.play('killInSystem');
+    expect(backend.calls.at(-1)?.soundId).toBe('alarm');
+  });
+
+  it('passes the watched-jump variant through to the backend', async () => {
+    const backend = fakeBackend({ loadable: [ADA_WATCHED] });
+    const engine = createSoundEngine({ backend, bindGestures: false });
+    const prefs = allOn();
+    prefs.events.watchedJump.sound = ADA_WATCHED;
+    engine.setPrefs(prefs);
+    await settle();
+    engine.play('watchedJump', { variant: 'inbound' });
+    expect(backend.calls.at(-1)).toMatchObject({ soundId: ADA_WATCHED, variant: 'inbound' });
+  });
+
+  it('loads an unfetched sound before previewing it', async () => {
+    const backend = fakeBackend({ loadable: [ADA_WATCHED] });
+    const engine = createSoundEngine({ backend, bindGestures: false });
+    engine.preview(ADA_WATCHED);
+    expect(backend.calls).toHaveLength(0);
+    await settle();
+    expect(backend.calls.at(-1)).toMatchObject({ soundId: ADA_WATCHED, variant: 'plain' });
   });
 });

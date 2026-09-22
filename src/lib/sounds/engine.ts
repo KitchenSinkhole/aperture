@@ -1,9 +1,10 @@
 'use client';
 
-import { getBuiltInSound } from './catalog';
+import { getBuiltInSound, soundFilesFor } from './catalog';
 import { readSoundMuted, subscribeSoundMuted, writeSoundMuted } from './mutePrefs';
 import {
   DEFAULT_SOUND_PREFS,
+  SOUND_EVENTS,
   type SoundEvent,
   type SoundId,
   type SoundPrefs,
@@ -28,8 +29,10 @@ export interface SoundBackend {
   isUnlocked(): boolean;
   /** Attempt to obtain permission; resolves with the resulting state. */
   unlock(): Promise<boolean>;
-  /** Whether a buffer for this id can be produced on this device. */
+  /** Whether a buffer for this id can be produced right now, without waiting. */
   has(soundId: SoundId): boolean;
+  /** Bring this id's buffers in; resolves false when it cannot be produced. */
+  load(soundId: SoundId): Promise<boolean>;
   /** Play at 0..1 gain. Never throws. */
   play(soundId: SoundId, gain: number, variant: SoundVariant): void;
 }
@@ -129,12 +132,36 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
 
   function resolveSoundId(event: SoundEvent): SoundId {
     const wanted = prefs.events[event].sound;
-    return backend.has(wanted) ? wanted : DEFAULT_SOUND_PREFS.events[event].sound;
+    if (backend.has(wanted)) return wanted;
+    // A file-backed sound the prefetch missed, or whose fetch failed: try again
+    // so the next cue can use it, and chime for this one.
+    void backend.load(wanted);
+    return DEFAULT_SOUND_PREFS.events[event].sound;
+  }
+
+  /** Fetch the files every live cue needs before the cue fires. */
+  function prefetch(next: SoundPrefs): void {
+    if (!next.enabled) return;
+    for (const event of SOUND_EVENTS) {
+      const { enabled, sound } = next.events[event];
+      if (enabled && !backend.has(sound)) void backend.load(sound);
+    }
+  }
+
+  function playWhenLoaded(soundId: SoundId): void {
+    if (backend.has(soundId)) {
+      backend.play(soundId, prefs.volume, 'plain');
+      return;
+    }
+    void backend.load(soundId).then((ok) => {
+      if (ok) backend.play(soundId, prefs.volume, 'plain');
+    });
   }
 
   return {
     setPrefs(next: SoundPrefs): void {
       prefs = next;
+      prefetch(next);
     },
 
     setMapId(next: string | null): void {
@@ -168,15 +195,14 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
     },
 
     preview(soundId): void {
-      if (!backend.has(soundId)) return;
       if (unlocked) {
-        backend.play(soundId, prefs.volume, 'plain');
+        playWhenLoaded(soundId);
         return;
       }
       // The preview click is itself the unlocking gesture, so play once granted.
       void backend.unlock().then((ok) => {
         applyUnlockResult(ok);
-        if (ok) backend.play(soundId, prefs.volume, 'plain');
+        if (ok) playWhenLoaded(soundId);
       });
     },
 
@@ -208,11 +234,17 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
   };
 }
 
-/** Web Audio playback: one `AudioContext`, one master gain, buffers memoized per id. */
+/**
+ * Web Audio playback: one `AudioContext`, one master gain, and one memoized
+ * buffer per clip — a chime keyed by its sound id, a voice line by its file
+ * path, an imported sound by its `custom:` id.
+ */
 export function createWebAudioBackend(): SoundBackend {
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
-  const buffers = new Map<SoundId, AudioBuffer>();
+  const buffers = new Map<string, AudioBuffer>();
+  const failed = new Set<string>();
+  const inflight = new Map<string, Promise<boolean>>();
 
   function ensure(): AudioContext | null {
     if (ctx) return ctx;
@@ -229,11 +261,16 @@ export function createWebAudioBackend(): SoundBackend {
     return ctx;
   }
 
-  function bufferFor(context: AudioContext, soundId: SoundId): AudioBuffer | null {
+  function bufferFor(
+    context: AudioContext,
+    soundId: SoundId,
+    variant: SoundVariant,
+  ): AudioBuffer | null {
+    const entry = getBuiltInSound(soundId);
+    if (entry?.kind === 'voice') return buffers.get(entry.files[variant]) ?? null;
     const cached = buffers.get(soundId);
     if (cached) return cached;
-    const entry = getBuiltInSound(soundId);
-    if (!entry) return null;
+    if (entry?.kind !== 'chime') return null;
     try {
       const buffer = entry.synth(context);
       buffers.set(soundId, buffer);
@@ -241,6 +278,31 @@ export function createWebAudioBackend(): SoundBackend {
     } catch {
       return null;
     }
+  }
+
+  /** Fetches and decodes one file, memoizing the buffer, the failure and the wait. */
+  function loadFile(context: AudioContext, path: string): Promise<boolean> {
+    if (buffers.has(path)) return Promise.resolve(true);
+    // A path that already failed is never retried, so a cue-time retry cannot
+    // turn a missing file into a fetch per cue.
+    if (failed.has(path)) return Promise.resolve(false);
+    const running = inflight.get(path);
+    if (running) return running;
+    const task = (async () => {
+      try {
+        const response = await fetch(path);
+        if (!response.ok) throw new Error(`${response.status}`);
+        buffers.set(path, await context.decodeAudioData(await response.arrayBuffer()));
+        return true;
+      } catch {
+        failed.add(path);
+        return false;
+      } finally {
+        inflight.delete(path);
+      }
+    })();
+    inflight.set(path, task);
+    return task;
   }
 
   return {
@@ -257,12 +319,29 @@ export function createWebAudioBackend(): SoundBackend {
       return context.state === 'running';
     },
 
-    has: (soundId) => buffers.has(soundId) || getBuiltInSound(soundId) != null,
+    has(soundId): boolean {
+      const entry = getBuiltInSound(soundId);
+      if (entry?.kind === 'chime') return true;
+      if (entry?.kind === 'voice') return soundFilesFor(soundId).every((f) => buffers.has(f));
+      return buffers.has(soundId);
+    },
 
-    play(soundId, gain): void {
+    async load(soundId): Promise<boolean> {
+      const entry = getBuiltInSound(soundId);
+      if (entry?.kind === 'chime') return true;
+      if (entry?.kind !== 'voice') return buffers.has(soundId);
+      const context = ensure();
+      if (!context) return false;
+      const loaded = await Promise.all(
+        soundFilesFor(soundId).map((path) => loadFile(context, path)),
+      );
+      return loaded.every(Boolean);
+    },
+
+    play(soundId, gain, variant): void {
       const context = ensure();
       if (!context || context.state !== 'running' || !master) return;
-      const buffer = bufferFor(context, soundId);
+      const buffer = bufferFor(context, soundId, variant);
       if (!buffer) return;
       try {
         const source = context.createBufferSource();

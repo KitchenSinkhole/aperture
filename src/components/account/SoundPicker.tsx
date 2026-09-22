@@ -1,12 +1,14 @@
 'use client';
 
 import { Volume2 } from 'lucide-react';
-import type { SoundId } from '@/types';
-import { BUILT_IN_SOUNDS } from '@/lib/sounds/catalog';
+import type { SoundEvent, SoundId } from '@/types';
+import { CHIME_SOUNDS, voiceSoundsForEvent } from '@/lib/sounds/catalog';
 import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
+  SelectGroup,
+  SelectGroupLabel,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -15,42 +17,53 @@ import {
 /** A sound stored on the account but not available on this device. */
 const UNAVAILABLE_LABEL = 'Custom sound';
 
-function labelForSound(id: SoundId): string {
-  return BUILT_IN_SOUNDS.find((s) => s.id === id)?.label ?? UNAVAILABLE_LABEL;
-}
-
 export function SoundPicker({
+  event,
   value,
   onValueChange,
   onPreview,
   disabled = false,
   ariaLabel,
 }: {
+  event: SoundEvent;
   value: SoundId;
   onValueChange: (id: SoundId) => void;
   onPreview: () => void;
   disabled?: boolean;
   ariaLabel: string;
 }) {
-  const known = BUILT_IN_SOUNDS.some((s) => s.id === value);
+  const voices = voiceSoundsForEvent(event);
+  const options = [...CHIME_SOUNDS, ...voices];
+  const selected = options.find((s) => s.id === value);
 
   return (
     <div className="flex items-center gap-1">
       <Select value={value} onValueChange={(v) => onValueChange(v as SoundId)}>
         <SelectTrigger disabled={disabled} aria-label={ariaLabel} className="h-7 w-36">
-          <SelectValue>{labelForSound(value)}</SelectValue>
+          <SelectValue>{selected?.label ?? UNAVAILABLE_LABEL}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {!known && (
+          {!selected && (
             <SelectItem value={value}>
               <span className="text-muted-foreground">{UNAVAILABLE_LABEL}</span>
             </SelectItem>
           )}
-          {BUILT_IN_SOUNDS.map((s) => (
-            <SelectItem key={s.id} value={s.id}>
-              {s.label}
-            </SelectItem>
-          ))}
+          <SelectGroup>
+            <SelectGroupLabel>Chimes</SelectGroupLabel>
+            {CHIME_SOUNDS.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+          <SelectGroup>
+            <SelectGroupLabel>Voice packs</SelectGroupLabel>
+            {voices.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         </SelectContent>
       </Select>
       <Button

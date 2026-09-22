@@ -381,6 +381,7 @@ export function AccountSettingsDialog({
                       </span>
                     </label>
                     <SoundPicker
+                      event={event}
                       value={eventPrefs.sound}
                       ariaLabel={`${label} sound`}
                       disabled={pending}

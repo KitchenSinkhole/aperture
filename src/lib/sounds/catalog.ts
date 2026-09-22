@@ -1,23 +1,42 @@
 import {
   DEFAULT_SOUND_PREFS,
-  type BuiltInSoundId,
+  SOUND_EVENTS,
+  VOICE_PACKS,
+  type ChimeSoundId,
   type SoundEvent,
   type SoundId,
+  type SoundVariant,
+  type VoicePackId,
+  type VoiceSoundId,
 } from './prefs';
 
 /**
- * The built-in chimes, synthesized into an `AudioBuffer` on first use rather
- * than shipped as files — no assets, no fetch latency. Also owns the
- * human-readable labels for every sound and every sound event, so the settings
- * dialog renders from here.
+ * Everything the app can play out of the box: the chimes, synthesized into an
+ * `AudioBuffer` on first use rather than shipped as files, and the recorded
+ * voice packs served from `public/sounds/voice/`. Also owns the human-readable
+ * labels for every sound and every sound event, so the settings dialog renders
+ * from here.
  */
 
-export type BuiltInSound = {
-  id: BuiltInSoundId;
+export type ChimeSound = {
+  kind: 'chime';
+  id: ChimeSoundId;
   label: string;
   /** Renders the chime into a buffer belonging to `ctx`. */
   synth: (ctx: BaseAudioContext) => AudioBuffer;
 };
+
+export type VoiceSound = {
+  kind: 'voice';
+  id: VoiceSoundId;
+  label: string;
+  pack: VoicePackId;
+  event: SoundEvent;
+  /** One file per variant; an event with a single line points all three at it. */
+  files: Record<SoundVariant, string>;
+};
+
+export type BuiltInSound = ChimeSound | VoiceSound;
 
 type Tone = {
   freq: number;
@@ -64,8 +83,10 @@ function render(ctx: BaseAudioContext, tones: Tone[]): AudioBuffer {
   return buffer;
 }
 
-export const BUILT_IN_SOUNDS: readonly BuiltInSound[] = [
+/** The chimes, in catalog order — the options every event's picker offers. */
+export const CHIME_SOUNDS: readonly ChimeSound[] = [
   {
+    kind: 'chime',
     id: 'chime-up',
     label: 'Chime (rising)',
     synth: (ctx) =>
@@ -75,6 +96,7 @@ export const BUILT_IN_SOUNDS: readonly BuiltInSound[] = [
       ]),
   },
   {
+    kind: 'chime',
     id: 'chime-down',
     label: 'Chime (falling)',
     synth: (ctx) =>
@@ -84,12 +106,14 @@ export const BUILT_IN_SOUNDS: readonly BuiltInSound[] = [
       ]),
   },
   {
+    kind: 'chime',
     id: 'tick',
     label: 'Tick',
     synth: (ctx) =>
       render(ctx, [{ freq: 1480, startMs: 0, durMs: 55, gain: 0.45, wave: 'sine' }]),
   },
   {
+    kind: 'chime',
     id: 'alarm',
     label: 'Alarm',
     synth: (ctx) =>
@@ -100,11 +124,72 @@ export const BUILT_IN_SOUNDS: readonly BuiltInSound[] = [
   },
 ];
 
+/**
+ * The recorded files are named by the pack's display directory and a per-event
+ * stem, with the watched-jump line suffixed by its variant.
+ */
+const VOICE_PACK_DIRS: Record<VoicePackId, string> = {
+  ada: 'Ada',
+  cowboy: 'Cowboy',
+  malyx: 'Malyx',
+};
+
+const VOICE_EVENT_STEMS: Record<SoundEvent, string> = {
+  pilotArrived: 'arrive',
+  pilotLeft: 'leave',
+  watchedJump: 'watched',
+  killInSystem: 'kill',
+};
+
+const VOICE_VARIANTS: readonly SoundVariant[] = ['plain', 'inbound', 'outbound'];
+
+function voiceFiles(pack: VoicePackId, event: SoundEvent): Record<SoundVariant, string> {
+  const dir = VOICE_PACK_DIRS[pack];
+  const stem = VOICE_EVENT_STEMS[event];
+  const path = (suffix: string) => `/sounds/voice/${dir}/${dir}-${stem}${suffix}.mp3`;
+  if (event !== 'watchedJump') {
+    const single = path('');
+    return { plain: single, inbound: single, outbound: single };
+  }
+  return {
+    plain: path('_plain'),
+    inbound: path('_inbound'),
+    outbound: path('_outbound'),
+  };
+}
+
+const VOICE_SOUNDS: readonly VoiceSound[] = VOICE_PACKS.flatMap((pack) =>
+  SOUND_EVENTS.map(
+    (event): VoiceSound => ({
+      kind: 'voice',
+      id: `voice-${pack.id}-${event}`,
+      label: pack.label,
+      pack: pack.id,
+      event,
+      files: voiceFiles(pack.id, event),
+    }),
+  ),
+);
+
+export const BUILT_IN_SOUNDS: readonly BuiltInSound[] = [...CHIME_SOUNDS, ...VOICE_SOUNDS];
+
 const BY_ID = new Map<string, BuiltInSound>(BUILT_IN_SOUNDS.map((s) => [s.id, s]));
 
 /** The catalog entry for `id`, or `undefined` for a custom or unknown id. */
 export function getBuiltInSound(id: SoundId): BuiltInSound | undefined {
   return BY_ID.get(id);
+}
+
+/** The one voice entry each pack contributes to `event`'s picker. */
+export function voiceSoundsForEvent(event: SoundEvent): readonly VoiceSound[] {
+  return VOICE_SOUNDS.filter((s) => s.event === event);
+}
+
+/** Every distinct file `id` needs, empty for a chime or an unknown id. */
+export function soundFilesFor(id: SoundId): readonly string[] {
+  const entry = getBuiltInSound(id);
+  if (entry?.kind !== 'voice') return [];
+  return [...new Set(VOICE_VARIANTS.map((v) => entry.files[v]))];
 }
 
 /** The chime an event falls back to when its chosen sound is unavailable. */

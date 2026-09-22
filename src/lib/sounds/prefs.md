@@ -13,11 +13,20 @@ Pure — no browser and no server imports — so a Server Action, the session re
 ### SoundEvent (type)
 `(typeof SOUND_EVENTS)[number]`.
 
-### BUILT_IN_SOUND_IDS
+### CHIME_SOUND_IDS
 `['chime-up', 'chime-down', 'tick', 'alarm']` — the chimes `catalog.ts` synthesizes.
 
-### BuiltInSoundId / CustomSoundId / SoundId (types)
-`SoundId` is a built-in id or `custom:${string}`, the id of a sound file the user imported on this device.
+### VOICE_PACKS
+`[{ id: 'ada', label: 'Ada' }, { id: 'cowboy', label: 'Cowboy' }, { id: 'malyx', label: 'Malyx' }]` — the recorded packs shipped under `public/sounds/voice/`.
+
+### VOICE_SOUND_IDS
+Every `voice-<pack>-<event>` id, one per pack per event. The watched-jump line splits by variant across three files, but all three share the one id.
+
+### BUILT_IN_SOUND_IDS
+`CHIME_SOUND_IDS` followed by `VOICE_SOUND_IDS` — every id the app ships, as opposed to a `custom:` id imported on one device.
+
+### ChimeSoundId / VoicePack / VoicePackId / VoiceSoundId / BuiltInSoundId / CustomSoundId / SoundId (types)
+`VoiceSoundId` is the template literal `voice-${VoicePackId}-${SoundEvent}`. `SoundId` is a built-in id or `custom:${string}`, the id of a sound file the user imported on this device.
 
 ### SoundVariant (type)
 `'plain' | 'inbound' | 'outbound'` — which end of a watched wormhole the viewer sits on. Built-in chimes ignore it; the voice pack speaks a different line per variant.
@@ -42,7 +51,7 @@ Type guard for a built-in id or a well-formed `custom:<uuid>` id (a bare `custom
 ---
 
 ### soundPrefsSchema
-Zod schema for the whole blob: `enabled` boolean, `volume` a number in 0..1, and an `events` object carrying all four events, each `{ enabled: boolean, sound }` with `sound` guarded by `isSoundId`. Strict — a malformed blob is rejected rather than repaired, so a broken client cannot quietly rewrite the account's prefs. Used at the Server Action boundary.
+Zod schema for the whole blob: `enabled` boolean, `volume` a number in 0..1, and an `events` object carrying all four events, each `{ enabled: boolean, sound }` with `sound` guarded by `isSoundId`. The id union is load-bearing here: a save naming an id outside `BUILT_IN_SOUND_IDS` (and not a well-formed `custom:` id) is rejected. Strict — a malformed blob is rejected rather than repaired, so a broken client cannot quietly rewrite the account's prefs. Used at the Server Action boundary.
 
 ---
 
