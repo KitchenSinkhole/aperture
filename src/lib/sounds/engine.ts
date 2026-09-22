@@ -1,6 +1,7 @@
 'use client';
 
 import { getBuiltInSound, soundFilesFor } from './catalog';
+import { getCustomSoundStore } from './customStore';
 import { readSoundMuted, subscribeSoundMuted, writeSoundMuted } from './mutePrefs';
 import {
   DEFAULT_SOUND_PREFS,
@@ -234,17 +235,37 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
   };
 }
 
+/** Where the backend gets the bytes behind an imported `custom:` sound. */
+export interface CustomSoundSource {
+  bytesFor(soundId: SoundId): Promise<ArrayBuffer | null>;
+  subscribe(listener: () => void): () => void;
+}
+
 /**
  * Web Audio playback: one `AudioContext`, one master gain, and one memoized
  * buffer per clip — a chime keyed by its sound id, a voice line by its file
  * path, an imported sound by its `custom:` id.
  */
-export function createWebAudioBackend(): SoundBackend {
+export function createWebAudioBackend(
+  deps: { customSounds?: CustomSoundSource } = {},
+): SoundBackend {
+  const customSounds = deps.customSounds ?? null;
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
   const buffers = new Map<string, AudioBuffer>();
   const failed = new Set<string>();
   const inflight = new Map<string, Promise<boolean>>();
+  // Bumped whenever the device store changes, so a load that started before the
+  // change cannot write its result into the cleared memo after it.
+  let customGeneration = 0;
+
+  // A sound the user deleted must stop answering `has`, and one they re-added
+  // must not stay marked failed, so every `custom:` memo is dropped on a change.
+  customSounds?.subscribe(() => {
+    customGeneration += 1;
+    for (const key of [...buffers.keys()]) if (key.startsWith('custom:')) buffers.delete(key);
+    for (const key of [...failed]) if (key.startsWith('custom:')) failed.delete(key);
+  });
 
   function ensure(): AudioContext | null {
     if (ctx) return ctx;
@@ -305,6 +326,34 @@ export function createWebAudioBackend(): SoundBackend {
     return task;
   }
 
+  /** Pulls an imported sound's bytes out of the device store and decodes them. */
+  function loadCustom(soundId: SoundId): Promise<boolean> {
+    if (buffers.has(soundId)) return Promise.resolve(true);
+    if (!customSounds || failed.has(soundId)) return Promise.resolve(false);
+    const running = inflight.get(soundId);
+    if (running) return running;
+    const context = ensure();
+    if (!context) return Promise.resolve(false);
+    const generation = customGeneration;
+    const task = (async () => {
+      try {
+        const bytes = await customSounds.bytesFor(soundId);
+        if (!bytes) throw new Error('not on this device');
+        const buffer = await context.decodeAudioData(bytes);
+        if (generation !== customGeneration) return false;
+        buffers.set(soundId, buffer);
+        return true;
+      } catch {
+        if (generation === customGeneration) failed.add(soundId);
+        return false;
+      } finally {
+        inflight.delete(soundId);
+      }
+    })();
+    inflight.set(soundId, task);
+    return task;
+  }
+
   return {
     isUnlocked: () => ctx?.state === 'running',
 
@@ -329,7 +378,7 @@ export function createWebAudioBackend(): SoundBackend {
     async load(soundId): Promise<boolean> {
       const entry = getBuiltInSound(soundId);
       if (entry?.kind === 'chime') return true;
-      if (entry?.kind !== 'voice') return buffers.has(soundId);
+      if (entry?.kind !== 'voice') return loadCustom(soundId);
       const context = ensure();
       if (!context) return false;
       const loaded = await Promise.all(
@@ -402,7 +451,7 @@ let singleton: SoundEngine | null = null;
 /** The app-wide engine, created on first use with the real browser backends. */
 export function getSoundEngine(): SoundEngine {
   singleton ??= createSoundEngine({
-    backend: createWebAudioBackend(),
+    backend: createWebAudioBackend({ customSounds: getCustomSoundStore() }),
     election: createWebLocksElection(),
   });
   return singleton;

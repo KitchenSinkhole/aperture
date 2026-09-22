@@ -13,6 +13,7 @@ import {
 import {
   SOUND_COALESCE_MS,
   createSoundEngine,
+  createWebAudioBackend,
   type SoundBackend,
   type SoundLeaderElection,
 } from '@/lib/sounds/engine';
@@ -628,5 +629,92 @@ describe('voice packs', () => {
     expect(backend.calls).toHaveLength(0);
     await settle();
     expect(backend.calls.at(-1)).toMatchObject({ soundId: ADA_WATCHED, variant: 'plain' });
+  });
+});
+
+/**
+ * jsdom has no Web Audio, so the backend's imported-sound path runs against a
+ * context that decodes anything into a stand-in buffer.
+ */
+class FakeAudioContext {
+  state = 'running';
+  destination = {};
+  createGain() {
+    return { gain: { value: 1 }, connect: () => {} };
+  }
+  async decodeAudioData(): Promise<AudioBuffer> {
+    return { duration: 1 } as AudioBuffer;
+  }
+}
+
+/** A device store whose byte reads settle only when the test says so. */
+function customSourceDouble() {
+  const listeners = new Set<() => void>();
+  const waiting: ((bytes: ArrayBuffer | null) => void)[] = [];
+  let reads = 0;
+  return {
+    get reads(): number {
+      return reads;
+    },
+    source: {
+      bytesFor: () => {
+        reads += 1;
+        return new Promise<ArrayBuffer | null>((resolve) => void waiting.push(resolve));
+      },
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => void listeners.delete(listener);
+      },
+    },
+    notify: () => {
+      for (const listener of listeners) listener();
+    },
+    deliver: (bytes: ArrayBuffer | null) => waiting.shift()?.(bytes),
+  };
+}
+
+describe('createWebAudioBackend — imported sounds', () => {
+  beforeEach(() => {
+    (window as unknown as { AudioContext: unknown }).AudioContext = FakeAudioContext;
+  });
+
+  it('caches a load the device store did not change under', async () => {
+    const store = customSourceDouble();
+    const backend = createWebAudioBackend({ customSounds: store.source });
+
+    const loading = backend.load(CUSTOM_ID);
+    store.deliver(new ArrayBuffer(8));
+
+    expect(await loading).toBe(true);
+    expect(backend.has(CUSTOM_ID)).toBe(true);
+  });
+
+  it('discards a load the user deleted the sound under', async () => {
+    const store = customSourceDouble();
+    const backend = createWebAudioBackend({ customSounds: store.source });
+
+    const loading = backend.load(CUSTOM_ID);
+    // The delete lands while the bytes are still in flight.
+    store.notify();
+    store.deliver(new ArrayBuffer(8));
+
+    expect(await loading).toBe(false);
+    expect(backend.has(CUSTOM_ID)).toBe(false);
+  });
+
+  it('does not strand a read as failed when the store changed under it', async () => {
+    const store = customSourceDouble();
+    const backend = createWebAudioBackend({ customSounds: store.source });
+
+    const loading = backend.load(CUSTOM_ID);
+    store.notify();
+    store.deliver(null);
+    expect(await loading).toBe(false);
+
+    // Nothing was memoized against the id, so the next cue reads the store again.
+    const retried = backend.load(CUSTOM_ID);
+    store.deliver(new ArrayBuffer(8));
+    expect(await retried).toBe(true);
+    expect(store.reads).toBe(2);
   });
 });

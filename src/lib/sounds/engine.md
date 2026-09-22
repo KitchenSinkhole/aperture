@@ -49,8 +49,11 @@ Builds an engine. Unless `bindGestures` is `false`, it binds `unlock()` to the f
 
 ---
 
-### createWebAudioBackend(): SoundBackend
-Web Audio playback. Creates one `AudioContext` and one master `GainNode` lazily on first use, and memoizes one `AudioBuffer` per clip: a chime keyed by its sound id and synthesized from the catalog on demand, a voice line keyed by its file path and decoded after a `fetch`, an imported sound keyed by its `custom:` id. A chime always reports `has`; a voice sound reports it only once every file the catalog names for that id is decoded, so a partly-loaded pack cues the chime rather than a silent gap. A failed path is remembered and never refetched. Reports unlocked only while the context state is `running`. Every failure path — no `AudioContext`, a refused `resume()`, a fetch or decode that throws, a source that will not start — is silent.
+### CustomSoundSource (interface)
+Where the backend gets an imported sound's bytes: `bytesFor(soundId): Promise<ArrayBuffer | null>` plus a `subscribe(listener)` that fires whenever the device's set of imported sounds changes. `getCustomSoundStore()` satisfies it.
+
+### createWebAudioBackend(deps?: { customSounds?: CustomSoundSource }): SoundBackend
+Web Audio playback. Creates one `AudioContext` and one master `GainNode` lazily on first use, and memoizes one `AudioBuffer` per clip: a chime keyed by its sound id and synthesized from the catalog on demand, a voice line keyed by its file path and decoded after a `fetch`, an imported sound keyed by its `custom:` id and decoded from bytes pulled out of `customSounds`. A chime always reports `has`; a voice sound reports it only once every file the catalog names for that id is decoded, so a partly-loaded pack cues the chime rather than a silent gap. A failed path or id is remembered and never re-read, but every `custom:` memo — buffer and failure alike — is dropped whenever `customSounds` reports a change, so a deleted sound stops reporting `has` and a re-imported one is read again. Without a `customSounds` source a `custom:` id is simply unknown. Reports unlocked only while the context state is `running`. Every failure path — no `AudioContext`, a refused `resume()`, a fetch or decode that throws, a source that will not start — is silent.
 
 ### createWebLocksElection(): SoundLeaderElection | null
 Leader election over the Web Locks API. The lock is held for the tab's lifetime, so the next waiter takes over the moment the holder goes. Returns `null` where Web Locks is unavailable, which makes the engine play unconditionally.
@@ -58,4 +61,4 @@ Leader election over the Web Locks API. The lock is held for the tab's lifetime,
 ---
 
 ### getSoundEngine(): SoundEngine
-The app-wide engine, created on first use with `createWebAudioBackend()` and `createWebLocksElection()`.
+The app-wide engine, created on first use with `createWebLocksElection()` and a `createWebAudioBackend` wired to `getCustomSoundStore()`.

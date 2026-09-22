@@ -3,6 +3,7 @@
 import { Volume2 } from 'lucide-react';
 import type { SoundEvent, SoundId } from '@/types';
 import { CHIME_SOUNDS, voiceSoundsForEvent } from '@/lib/sounds/catalog';
+import { useCustomSounds } from '@/lib/sounds/customStore';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -33,8 +34,8 @@ export function SoundPicker({
   ariaLabel: string;
 }) {
   const voices = voiceSoundsForEvent(event);
-  const options = [...CHIME_SOUNDS, ...voices];
-  const selected = options.find((s) => s.id === value);
+  const customs = useCustomSounds();
+  const selected = [...CHIME_SOUNDS, ...voices, ...customs].find((s) => s.id === value);
 
   return (
     <div className="flex items-center gap-1">
@@ -64,6 +65,16 @@ export function SoundPicker({
               </SelectItem>
             ))}
           </SelectGroup>
+          {customs.length > 0 && (
+            <SelectGroup>
+              <SelectGroupLabel>Your sounds</SelectGroupLabel>
+              {customs.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          )}
         </SelectContent>
       </Select>
       <Button
