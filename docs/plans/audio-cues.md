@@ -94,7 +94,7 @@ Barrier because the audio files do not exist yet: they are generated outside the
 
 ## Stage 9 — Custom sound files
 **Mode:** Execute
-**Status:** todo
+**Status:** done — e745ba82
 **Goal:** A user can add their own short sound files on this device, pick them per event, and remove them.
 **References:** `src/lib/sounds/engine.md`, `src/lib/sounds/catalog.md`, `src/components/account/AccountSettingsDialog.md`.
 **Touches:** new `src/lib/sounds/customStore.ts` (+ `.md`): IndexedDB store of `{ id: 'custom:<uuid>', label, mime, blob, durationMs }` with `list`, `add(file)`, `remove(id)`, a subscribe/notify surface, and validation on add (decode through the `AudioContext`, reject over `CUSTOM_SOUND_MAX_BYTES` / `CUSTOM_SOUND_MAX_MS` module constants); `src/lib/sounds/engine.ts` (+ `.md`): register decoded custom buffers with `createWebAudioBackend` so its `has` / `load` / `play` answer for `custom:` ids — they read the same buffer map the voice lines use, keyed by the `custom:` id, and the engine core already falls back to the event's default chime for an id the backend lacks, so it needs no change; `src/components/account/AccountSettingsDialog.tsx` (+ `.md`): a "Your sounds" list with file input, preview and delete; `src/components/account/SoundPicker.tsx` (+ `.md`): a third option group holding this device's custom sounds, replacing the single muted "Custom sound" placeholder it shows today for an id this device does not know; tests `tests/unit/custom-sound-store.test.ts` with a fake IndexedDB or the decode step injected.
