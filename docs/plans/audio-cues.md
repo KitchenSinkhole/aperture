@@ -45,7 +45,7 @@
 
 ## Stage 3 — "Sounds" section in Account Settings
 **Mode:** Execute
-**Status:** todo
+**Status:** done — f2d61244
 **Goal:** A user can turn sounds on, set the volume, and pick and preview a built-in sound per event, and the choice follows their account.
 **References:** `src/components/account/AccountSettingsDialog.md` (optimistic state + `startTransition` + rollback toast pattern), `src/components/chrome/CharacterPanel.md`, `src/app/(app)/layout.tsx`, `src/lib/sounds/catalog.md`, `src/lib/sounds/engine.md`.
 **Touches:** `src/components/account/AccountSettingsDialog.tsx` (+ `.md`): new `soundPrefs: SoundPrefs` prop and a "Sounds" section under the signature indicators: master checkbox, volume slider (disabled when master off), one row per `SoundEvent` with an enabled checkbox and a sound select plus a preview button; every commit sends the full `SoundPrefs` through `setSoundPrefsAction` with rollback on failure. `engine.preview` already unlocks on its own when audio is locked, so the dialog needs no separate unlock gesture; it may still preview an event's chime as a checkbox is enabled. New `src/components/account/SoundPicker.tsx` (+ `.md`) if the select+preview row is cleaner extracted. `src/components/chrome/CharacterPanel.tsx` (+ `.md`) threads the prop; `src/app/(app)/layout.tsx` calls `getSoundPrefs`. Event labels live in the catalog, not the dialog.
