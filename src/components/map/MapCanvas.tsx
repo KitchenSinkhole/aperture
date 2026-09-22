@@ -136,6 +136,7 @@ import { TransitSignaturePrompt } from './TransitSignaturePrompt';
 import { MapTravelProvider, TravelBridge } from './MapTravelContext';
 import { MapUnderglowProvider } from './MapUnderglowContext';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
+import { PresenceSoundBridge } from './PresenceSoundBridge';
 import { SystemNode, type SystemNodeData } from './SystemNode';
 import { MapNoteNode, type MapNoteNodeData } from './MapNoteNode';
 import { MapContextMenu } from './MapContextMenu';
@@ -2192,6 +2193,10 @@ export function MapCanvas({
           <TravelBridge systems={viewData.systems} connections={viewData.connections} />
         )}
         <MapUnderglowBridge systems={viewData.systems} mapId={data.map.id} />
+        {soundPrefs.enabled &&
+          (soundPrefs.events.pilotArrived.enabled || soundPrefs.events.pilotLeft.enabled) && (
+            <PresenceSoundBridge viewerCharacterIds={viewerCharacterIds} />
+          )}
         <SignaturePasteHotkey
           mapId={mapId}
           selectedSystem={selectedSystem}
