@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { classifyTraversal, type TraversalLike } from '@/lib/sounds/presenceEvents';
+import {
+  classifyTraversal,
+  watchedJumpVariant,
+  type TraversalLike,
+} from '@/lib/sounds/presenceEvents';
 
 const MY_SYSTEM = 31000005;
 const ELSEWHERE = 30000142;
@@ -42,5 +46,23 @@ describe('classifyTraversal', () => {
     expect(classifyTraversal(jump(100, ELSEWHERE, MY_SYSTEM), MY_SYSTEM, new Set())).toBe(
       'pilotArrived',
     );
+  });
+});
+
+describe('watchedJumpVariant', () => {
+  it('is inbound when the jump ends in my system', () => {
+    expect(watchedJumpVariant(jump(200, ELSEWHERE, MY_SYSTEM), MY_SYSTEM)).toBe('inbound');
+  });
+
+  it('is outbound when the jump starts in my system', () => {
+    expect(watchedJumpVariant(jump(200, MY_SYSTEM, ELSEWHERE), MY_SYSTEM)).toBe('outbound');
+  });
+
+  it('is plain when the jump happens away from me', () => {
+    expect(watchedJumpVariant(jump(200, ELSEWHERE, FAR), MY_SYSTEM)).toBe('plain');
+  });
+
+  it('is plain when I have no located character', () => {
+    expect(watchedJumpVariant(jump(200, ELSEWHERE, MY_SYSTEM), null)).toBe('plain');
   });
 });

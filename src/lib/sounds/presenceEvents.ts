@@ -1,4 +1,4 @@
-import type { SoundEvent } from './prefs';
+import type { SoundEvent, SoundVariant } from './prefs';
 
 /** The structural shape of `MapPresenceContext`'s `Traversal` this module reads. */
 export type TraversalLike = {
@@ -21,4 +21,20 @@ export function classifyTraversal(
   if (t.toSystemId === mySystemId) return 'pilotArrived';
   if (t.fromSystemId === mySystemId) return 'pilotLeft';
   return null;
+}
+
+/**
+ * Which watched-jump cue variant a jump earns, relative to the system the
+ * viewer's active character sits in: `inbound` when the jump ends there,
+ * `outbound` when it starts there, `plain` when the viewer sits elsewhere or
+ * nowhere. Built-in chimes ignore the variant; the voice pack uses it.
+ */
+export function watchedJumpVariant(
+  t: Pick<TraversalLike, 'fromSystemId' | 'toSystemId'>,
+  mySystemId: number | null,
+): SoundVariant {
+  if (mySystemId === null) return 'plain';
+  if (t.toSystemId === mySystemId) return 'inbound';
+  if (t.fromSystemId === mySystemId) return 'outbound';
+  return 'plain';
 }

@@ -108,16 +108,49 @@ export function useTravelForConnection(connectionId: string): TravelPulse | null
   return useSyncExternalStore(subscribe, getSnapshot, () => null);
 }
 
+/** One connection a jump crossed, with the direction relative to its `source`. */
+export type TraversalEdge = {
+  connectionId: string;
+  direction: TravelPulse['direction'];
+};
+
+/**
+ * Every connection on the map whose endpoints match a jump, with the direction
+ * each was crossed in. Presence is keyed by EVE solar-system id and edges by
+ * `ap_map_system.id`, so the jump's endpoints are mapped through `systems`
+ * first; a jump with an endpoint that isn't on this map resolves to nothing.
+ * Parallel holes between one pair both resolve, so both react to the jump.
+ */
+export function resolveTraversalEdges(
+  jump: { fromSystemId: number; toSystemId: number },
+  systems: MapSystemNode[],
+  connections: MapConnectionEdge[],
+): TraversalEdge[] {
+  const solarToMapSystem = new Map<number, string>();
+  for (const s of systems) solarToMapSystem.set(s.systemId, s.id);
+  const fromId = solarToMapSystem.get(jump.fromSystemId);
+  const toId = solarToMapSystem.get(jump.toSystemId);
+  if (fromId === undefined || toId === undefined) return [];
+
+  const edges: TraversalEdge[] = [];
+  for (const c of connections) {
+    if (c.source === fromId && c.target === toId) {
+      edges.push({ connectionId: c.id, direction: 'forward' });
+    } else if (c.source === toId && c.target === fromId) {
+      edges.push({ connectionId: c.id, direction: 'reverse' });
+    }
+  }
+  return edges;
+}
+
 /**
  * Listens for pilot jumps and resolves each to a map edge + direction, then
  * pulses the travel store. Renders nothing. Mounted only when the account has
  * the travel animation enabled — when absent, no pulse ever fires. Lives inside
  * both `MapPresenceProvider` and `MapTravelProvider`.
  *
- * Presence is keyed by EVE solar-system id; edges by `ap_map_system.id`. We map
- * the former to the latter via `systems` (`systemId` → `id`), then match the
- * jump's endpoints against each connection in either direction. `systems` /
- * `connections` are read through refs so the subscription never churns.
+ * `systems` / `connections` are read through refs so the subscription never
+ * churns.
  */
 export function TravelBridge({
   systems,
@@ -137,18 +170,8 @@ export function TravelBridge({
 
   useTraversals((t) => {
     if (!store) return;
-    const solarToMapSystem = new Map<number, string>();
-    for (const s of systemsRef.current) solarToMapSystem.set(s.systemId, s.id);
-    const fromId = solarToMapSystem.get(t.fromSystemId);
-    const toId = solarToMapSystem.get(t.toSystemId);
-    if (fromId === undefined || toId === undefined) return;
-
-    for (const c of connectionsRef.current) {
-      if (c.source === fromId && c.target === toId) {
-        store.pulse(c.id, 'forward');
-      } else if (c.source === toId && c.target === fromId) {
-        store.pulse(c.id, 'reverse');
-      }
+    for (const edge of resolveTraversalEdges(t, systemsRef.current, connectionsRef.current)) {
+      store.pulse(edge.connectionId, edge.direction);
     }
   });
 

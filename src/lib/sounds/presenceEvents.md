@@ -1,9 +1,9 @@
 ## presenceEvents.ts
 
-**Purpose:** Decide which pilot cue a tracked pilot's jump earns, relative to where the viewer's active character is sitting.
+**Purpose:** Decide which cue, and which variant of it, a tracked pilot's jump earns, relative to where the viewer's active character is sitting.
 **File:** `src/lib/sounds/presenceEvents.ts`
 
-Pure — no React and no browser imports — so `PresenceSoundBridge` holds no branching logic of its own.
+Pure — no React and no browser imports — so the sound bridges hold no branching logic of their own.
 
 ---
 
@@ -21,3 +21,14 @@ Pure — no React and no browser imports — so `PresenceSoundBridge` holds no b
 - `viewerCharacterIds` — the viewer's own characters; their jumps never earn a cue
 
 **Returns:** The sound event to play, or `null` for silence.
+
+---
+
+### watchedJumpVariant(t: Pick<TraversalLike, 'fromSystemId' | 'toSystemId'>, mySystemId: number | null): SoundVariant
+`'inbound'` when the jump ends in `mySystemId`, `'outbound'` when it starts there, `'plain'` when the viewer sits elsewhere or has no located character. Unlike `classifyTraversal` an unlocated viewer still gets a cue, just an undirected one.
+
+**Parameters:**
+- `t` — the detected jump, keyed by EVE solar-system id
+- `mySystemId` — the solar system the viewer's active character is located in
+
+**Returns:** The variant to pass to `engine.play('watchedJump', ...)`.

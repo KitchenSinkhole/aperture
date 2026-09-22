@@ -45,6 +45,7 @@ import {
 } from '@/lib/map/enumLabels';
 import { cn } from '@/lib/utils';
 import { SetDestinationItem } from './SetDestinationItem';
+import { WatchConnectionItem } from './WatchConnectionItem';
 import { AddToRoutesItem } from './AddToRoutesItem';
 
 /** Sentinel radio value for "jump mass unknown" — mirrors `InspectorModule.tsx`. */
@@ -114,6 +115,7 @@ function DisabledHintItem({
 export function MapContextMenu({
   target,
   onClose,
+  mapId,
   systems,
   connections,
   homeMapSystemId,
@@ -135,6 +137,8 @@ export function MapContextMenu({
 }: {
   target: MapContextMenuTarget | null;
   onClose: () => void;
+  /** The open map; the wormhole watch store is keyed by it. */
+  mapId: string;
   systems: MapSystemNode[];
   connections: MapConnectionEdge[];
   /** `ap_map_system.id` of the designated Home, or null. Drives the subchain anchor. */
@@ -213,6 +217,7 @@ export function MapContextMenu({
             {renderItems({
               target,
               onClose,
+              mapId,
               systems,
               connections,
               homeMapSystemId,
@@ -242,6 +247,7 @@ export function MapContextMenu({
 function renderItems({
   target,
   onClose,
+  mapId,
   systems,
   connections,
   homeMapSystemId,
@@ -263,6 +269,8 @@ function renderItems({
 }: {
   target: MapContextMenuTarget | null;
   onClose: () => void;
+  /** The open map; the wormhole watch store is keyed by it. */
+  mapId: string;
   systems: MapSystemNode[];
   connections: MapConnectionEdge[];
   homeMapSystemId: string | null;
@@ -348,6 +356,8 @@ function renderItems({
       return (
         <ConnectionItems
           connection={connection}
+          mapId={mapId}
+          onClose={onClose}
           onPatch={(patch) => {
             onConnectionPatch(connection.id, patch);
             onClose();
@@ -711,10 +721,14 @@ function NoteItems({
 
 function ConnectionItems({
   connection,
+  mapId,
+  onClose,
   onPatch,
   onDelete,
 }: {
   connection: MapConnectionEdge;
+  mapId: string;
+  onClose: () => void;
   onPatch: (patch: UpdateConnectionBody) => void;
   onDelete: () => void;
 }) {
@@ -807,6 +821,13 @@ function ConnectionItems({
       >
         Static
       </MenuCheckboxItem>
+
+      <WatchConnectionItem
+        mapId={mapId}
+        connectionId={connection.id}
+        scope={connection.scope}
+        onClose={onClose}
+      />
 
       <MenuSeparator />
 

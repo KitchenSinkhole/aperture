@@ -18,9 +18,17 @@ Wraps the canvas subtree (inside `MapPresenceProvider`). Owns one `TravelStore`.
 
 Hook returning the active pulse for one connection (`ap_map_connection.id`), or null. Stable reference (via `useSyncExternalStore`) until that connection's pulse starts or clears, so the edge only re-renders on its own traversals. Returns null outside a provider. Consumed by `ConnectionEdge`.
 
+### TraversalEdge (type)
+
+`{ connectionId: string; direction: 'forward' | 'reverse' }` — one connection a jump crossed, with the direction relative to that connection's `source`.
+
+### resolveTraversalEdges(jump: { fromSystemId, toSystemId }, systems: MapSystemNode[], connections: MapConnectionEdge[]): TraversalEdge[]
+
+Every connection on the map whose endpoints match the jump. Presence is keyed by EVE solar-system id and edges by `ap_map_system.id`, so the endpoints are mapped through `systems` (`systemId` → `id`) first; a jump with an endpoint that isn't on this map resolves to an empty list. Parallel holes between one pair both resolve. Pure — shared by `TravelBridge` and `WatchedConnectionSoundBridge`.
+
 ### TravelBridge
 
-Renders nothing. Listens to presence traversals (`useTraversals`) and resolves each to a map edge + direction, then calls `store.pulse`. Mounted by `MapCanvas` only when the account has the travel animation enabled — when absent, no pulse ever fires.
+Renders nothing. Listens to presence traversals (`useTraversals`), resolves each through `resolveTraversalEdges`, then calls `store.pulse` per edge. Mounted by `MapCanvas` only when the account has the travel animation enabled — when absent, no pulse ever fires.
 
 **Props:**
 | Prop | Type | Required | Description |
@@ -28,7 +36,7 @@ Renders nothing. Listens to presence traversals (`useTraversals`) and resolves e
 | systems | MapSystemNode[] | yes | Current visible systems; used to map EVE solar-system id → `ap_map_system.id`. |
 | connections | MapConnectionEdge[] | yes | Current connections; matched against the jump's endpoints in either direction. |
 
-Resolution: presence is keyed by solar-system id, edges by `ap_map_system.id`. The bridge builds a `solarSystemId → mapSystemId` map from `systems`, looks up the jump's `from`/`to`, then pulses every connection whose `{source,target}` matches — `forward` when `source === from`, else `reverse`. `systems`/`connections` are read through refs so the traversal subscription never churns. Unknown endpoints (system not on this map) are skipped silently.
+`systems`/`connections` are read through refs so the traversal subscription never churns.
 
 ### TravelPulse (type)
 

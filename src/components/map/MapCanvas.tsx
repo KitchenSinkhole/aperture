@@ -118,6 +118,7 @@ import {
   MenuTrigger,
 } from '@/components/ui/menu';
 import { MapInfoDialog } from '@/components/dialogs/MapInfoDialog';
+import { dropWatchedConnection } from '@/lib/connectionWatchPrefs';
 import { getSoundEngine } from '@/lib/sounds/engine';
 import { PilotRosterButton } from './PilotRosterButton';
 import { SoundToolbarButton } from './SoundToolbarButton';
@@ -137,6 +138,7 @@ import { MapTravelProvider, TravelBridge } from './MapTravelContext';
 import { MapUnderglowProvider } from './MapUnderglowContext';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
 import { PresenceSoundBridge } from './PresenceSoundBridge';
+import { WatchedConnectionSoundBridge } from './WatchedConnectionSoundBridge';
 import { SystemNode, type SystemNodeData } from './SystemNode';
 import { MapNoteNode, type MapNoteNodeData } from './MapNoteNode';
 import { MapContextMenu } from './MapContextMenu';
@@ -912,6 +914,11 @@ export function MapCanvas({
       appliedEventIds.current.add(payload.eventId);
       setViewData((prev) => applyEvent(prev, payload));
       hydrateAddedSystems([payload]);
+      // A watch has the lifetime of its hole, so only an actual delete ends it
+      // — a system removed from the map hides its connections but keeps them.
+      if (payload.kind === 'connection.delete') {
+        dropWatchedConnection(data.map.id, payload.id);
+      }
       // Share mint/revoke carries no canvas state, so it never reaches
       // `applyEvent` — the header indicator tracks it directly.
       if (payload.kind === 'share.created') {
@@ -970,6 +977,9 @@ export function MapCanvas({
       run: () => Promise<
         { ok: true; data: MapEventPayload; eventId: number } | { ok: false; error: string }
       >,
+      // Runs once the server has committed, for the side effects a rollback
+      // could not undo.
+      onCommitted?: () => void,
     ) => {
       let snapshot: MapViewData | null = null;
       setViewData((prev) => {
@@ -979,6 +989,7 @@ export function MapCanvas({
       const result = await run();
       if (result.ok) {
         appliedEventIds.current.add(result.eventId);
+        onCommitted?.();
       } else if (snapshot) {
         // Immediate rollback for responsiveness; resync reconciles deeper drift.
         setViewData(snapshot);
@@ -1014,6 +1025,11 @@ export function MapCanvas({
     for (const p of payloads) appliedEventIds.current.add(p.eventId);
     setViewData((prev) => payloads.reduce(applyEvent, prev));
     hydrateAddedSystems(payloads);
+    // Registering the eventIds above suppresses the realtime echo for this
+    // tab, so the deletes in a bulk result have to end their watches here.
+    for (const p of payloads) {
+      if (p.kind === 'connection.delete') dropWatchedConnection(data.map.id, p.id);
+    }
 
     const flashes: Record<string, 'created' | 'updated'> = {};
     for (const p of payloads) {
@@ -1025,7 +1041,7 @@ export function MapCanvas({
       setPasteFlash(flashes);
       pasteFlashTimer.current = setTimeout(() => setPasteFlash({}), 2500);
     }
-  }, [hydrateAddedSystems]);
+  }, [hydrateAddedSystems, data.map.id]);
 
   // ---- xyflow → server callbacks -----------------------------------------
   const mapId = viewData.map.id;
@@ -1474,8 +1490,12 @@ export function MapCanvas({
 
   const onConnectionDelete = useCallback(
     (connectionId: string) => {
-      runOptimistic({ kind: 'connection.delete', eventId: 0, id: connectionId }, () =>
-        deleteConnectionOnServer({ mapId, connectionId }),
+      runOptimistic(
+        { kind: 'connection.delete', eventId: 0, id: connectionId },
+        () => deleteConnectionOnServer({ mapId, connectionId }),
+        // Only once the delete stands: a rejected delete rolls the edge back
+        // and the watch has to come back with it.
+        () => dropWatchedConnection(mapId, connectionId),
       );
       setSelected(null);
     },
@@ -2052,6 +2072,7 @@ export function MapCanvas({
             <MapContextMenu
               target={contextMenu}
               onClose={() => setContextMenu(null)}
+              mapId={mapId}
               systems={viewData.systems}
               connections={viewData.connections}
               homeMapSystemId={viewData.map.homeMapSystemId}
@@ -2197,6 +2218,14 @@ export function MapCanvas({
           (soundPrefs.events.pilotArrived.enabled || soundPrefs.events.pilotLeft.enabled) && (
             <PresenceSoundBridge viewerCharacterIds={viewerCharacterIds} />
           )}
+        {soundPrefs.enabled && soundPrefs.events.watchedJump.enabled && (
+          <WatchedConnectionSoundBridge
+            mapId={mapId}
+            systems={viewData.systems}
+            connections={viewData.connections}
+            viewerCharacterIds={viewerCharacterIds}
+          />
+        )}
         <SignaturePasteHotkey
           mapId={mapId}
           selectedSystem={selectedSystem}
