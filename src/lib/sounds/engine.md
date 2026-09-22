@@ -38,7 +38,7 @@ Builds an engine. Unless `bindGestures` is `false`, it binds `unlock()` to the f
 
 **The engine's methods:**
 
-- `setPrefs(prefs: SoundPrefs)` — the account's preferences. Until it is called, the defaults apply, which means silence.
+- `setPrefs(prefs: SoundPrefs)` — the account's preferences. Until it is called, the defaults apply, which means silence. `AccountSettingsDialog` is the single writer, so the engine always holds the live optimistic blob rather than a stale server copy pushed by a second surface.
 - `setMapId(mapId: string | null)` — the map this tab is showing. Releases the previous map's lock and claims the new one. With an election present and no map id, the tab is not a leader.
 - `play(event, opts?: { variant? })` — plays the event's cue. Silent, with no error and no toast, unless all of these hold: the master switch is on, that event is enabled, the device is not muted, the browser has unlocked audio, this tab holds the map's lock, and no cue of the same event played within `SOUND_COALESCE_MS`. The coalesce window starts only on a cue that actually played, so a cue a gate blocked does not suppress the next one. The sound id is the event's configured one when the backend has it, and that event's default chime otherwise — so a pref naming a custom sound missing on this device still makes a noise. `variant` defaults to `'plain'`.
 - `preview(soundId)` — auditions a sound, bypassing the master switch, mute, leadership and coalescing, at the configured volume. An id the backend does not have is dropped. When audio is still locked it unlocks first and plays once granted, so the preview click is itself the unlocking gesture.

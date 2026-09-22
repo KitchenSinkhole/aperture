@@ -37,6 +37,7 @@ import type {
   RoutePrefs,
   SignatureIndicatorPrefs,
   SigSearchFilters,
+  SoundPrefs,
   StructureIntel,
 } from '@/types';
 import type { SystemStatsSummary } from '@/lib/map/stats';
@@ -117,7 +118,9 @@ import {
   MenuTrigger,
 } from '@/components/ui/menu';
 import { MapInfoDialog } from '@/components/dialogs/MapInfoDialog';
+import { getSoundEngine } from '@/lib/sounds/engine';
 import { PilotRosterButton } from './PilotRosterButton';
+import { SoundToolbarButton } from './SoundToolbarButton';
 import { SystemOverlayButton } from './SystemOverlayButton';
 import { MapShareIndicator } from './MapShareIndicator';
 import { MapSettingsDialog } from '@/components/dialogs/MapSettingsDialog';
@@ -284,6 +287,7 @@ export function MapCanvas({
   routePrefs,
   routeDestinations,
   mapLayout,
+  soundPrefs,
 }: {
   data: MapViewData;
   stats: Record<number, SystemStatsSummary>;
@@ -329,6 +333,12 @@ export function MapCanvas({
    * `DEFAULT_MAP_LAYOUT`.
    */
   mapLayout?: MapLayoutConfig | null;
+  /**
+   * The account's sound preferences. Read-only here: the engine is fed by
+   * `AccountSettingsDialog`, which is mounted app-wide and holds the optimistic
+   * copy. This prop only decides which sound surfaces the canvas mounts.
+   */
+  soundPrefs: SoundPrefs;
 }) {
   const [selected, setSelected] = useState<SelectionRef | null>(null);
   // The multi-select set; `selected` (above) remains the primary anchor that
@@ -1018,6 +1028,14 @@ export function MapCanvas({
 
   // ---- xyflow → server callbacks -----------------------------------------
   const mapId = viewData.map.id;
+
+  // Only the tab holding this map's lock plays its cues; standing down on
+  // unmount hands the lock to the next waiter.
+  useEffect(() => {
+    const engine = getSoundEngine();
+    engine.setMapId(mapId);
+    return () => engine.setMapId(null);
+  }, [mapId]);
 
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     setNodes((nds) => applyNodeChanges(changes, nds));
@@ -2200,6 +2218,7 @@ export function MapCanvas({
             <div className="flex shrink-0 items-center gap-1">
               <ActiveCharSelector />
               <PilotRosterButton viewData={viewData} />
+              {soundPrefs.enabled && <SoundToolbarButton />}
               <SystemOverlayButton viewData={viewData} />
               <Menu>
                 <MenuTrigger
