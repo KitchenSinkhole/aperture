@@ -319,6 +319,16 @@ export const apertureConfig = {
   WORMHOLE_DEFAULT_LIFETIME_MS: 172_800_000,
 
   /**
+   * How long a device-local wormhole watch survives from the moment it is set:
+   * 4 days. A hole's remaining life when a watch is placed on it can never
+   * exceed one full lifetime (48h nominal plus EVE's ~10% variance), so any
+   * entry older than this belongs to a hole that has collapsed in-game, whether
+   * or not this device was around to observe the delete. Read by
+   * `connectionWatchPrefs` to compact the stored set on load.
+   */
+  WATCHED_CONNECTION_TTL_MS: 345_600_000,
+
+  /**
    * Default TTL applied to a newly created signature (`expires_at = created_at +
    * this`): 48 hours — the maximum a wormhole can stay open in EVE, so a sig
    * nobody has re-scanned in that long is presumed gone.

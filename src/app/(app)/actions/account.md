@@ -27,6 +27,11 @@ Persists the account's free-form map dashboard layout (map-layout-builder) to `a
 
 ---
 
+### setSoundPrefsAction(prefs: unknown): Promise<AccountActionResult>
+Persists the account's audio-cue preferences to `ap_user.sound_prefs`. `prefs` is unknown user JSON (the whole `SoundPrefs` blob sent by the Account Settings dialog) — validated at this boundary with `soundPrefsSchema` (`src/lib/sounds/prefs.ts`); a parse failure returns `{ ok: false, error: 'Invalid sound settings.' }` and writes nothing. On success updates the column + `updated_at`, revalidates the `/` layout, and returns `{ ok: true }`.
+
+---
+
 ### deleteAccountAction(): Promise<AccountActionResult>
 Hard-deletes the `ap_user` row for the current session. The FK cascade removes characters / roles / tracking; `ap_map_event` and `ap_structure_event` rows keep their history with `character_id` set null; owned maps are orphaned (`owner_character_id` set null). No soft-delete grace — irreversible. On success calls `signOut({ redirectTo: '/' })`, which throws a redirect (the trailing `{ ok: true }` is unreachable but satisfies the type). Returns `{ ok: false, error }` only if the delete itself fails.
 

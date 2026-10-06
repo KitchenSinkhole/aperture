@@ -4,7 +4,7 @@
 **File:** `src/components/ui/select.tsx`
 
 ### Exports
-`Select` (Root), `SelectValue`, `SelectTrigger`, `SelectContent`, `SelectItem`.
+`Select` (Root), `SelectValue`, `SelectTrigger`, `SelectContent`, `SelectItem`, `SelectGroup`, `SelectGroupLabel`.
 
 ### Usage
 ```tsx
@@ -22,3 +22,4 @@
 - `SelectTrigger` shows a chevron; `SelectItem` shows a check `ItemIndicator` when selected. Popup is portalled and anchor-positioned (width matches the trigger via `--anchor-width`).
 - `SelectContent` positions with `alignItemWithTrigger={false}` — the popup anchors below the trigger and flips/clamps to the viewport, rather than base-ui's default of overlaying the selected item on the trigger. This keeps long lists fully reachable and gives ordinary overflow (`max-h` + `overflow-y-auto`) wheel scrolling instead of scroll-arrow scrolling.
 - `SelectItem`'s `ItemText` is `flex-1 min-w-0`, so item children fill the row width — a child with `flex justify-between` can push trailing content (e.g. a class/tag) to the right edge.
+- `SelectGroup` wraps a run of items under a `SelectGroupLabel`, rendered as a small muted heading that is not itself selectable.

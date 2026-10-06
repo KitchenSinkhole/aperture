@@ -7,6 +7,7 @@ import {
   getConnectionTravelAnimation,
   getMainCharacterId,
   getSignatureIndicatorAccountSettings,
+  getSoundPrefs,
   requireSession,
 } from '@/lib/session';
 import { AppHeader } from '@/components/chrome/AppHeader';
@@ -29,6 +30,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const mainCharacterId = await getMainCharacterId(session.userId);
   const travelAnimation = await getConnectionTravelAnimation(session.userId);
   const signatureIndicators = await getSignatureIndicatorAccountSettings(session.userId);
+  const soundPrefs = await getSoundPrefs(session.userId);
   const sdeStatus = await getSdeStatus();
 
   return (
@@ -46,6 +48,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             mainCharacterId={mainCharacterId}
             travelAnimation={travelAnimation}
             signatureIndicators={signatureIndicators}
+            soundPrefs={soundPrefs}
           />
           <main className="w-full flex-1 px-4 py-3">
             <ClientErrorBoundary>{children}</ClientErrorBoundary>

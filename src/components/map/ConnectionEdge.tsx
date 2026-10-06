@@ -5,9 +5,10 @@ import { BaseEdge, EdgeLabelRenderer, getBezierPath, getSmoothStepPath, type Edg
 import type { MapConnectionEdge } from '@/lib/map/loadMap';
 import type { ConnectionEnd } from '@/types';
 import { Tooltip } from '@base-ui/react/tooltip';
-import { RefreshCw, Shield, type LucideIcon } from 'lucide-react';
+import { Eye, RefreshCw, Shield, type LucideIcon } from 'lucide-react';
 import { connectionBadges, connectionStyle } from './styling';
 import { useTravelForConnection } from './MapTravelContext';
+import { useIsConnectionWatched } from '@/lib/connectionWatchPrefs';
 import { ConnectionDetailPopover } from './ConnectionDetailPopover';
 import { useEdgeAnchors } from './useEdgeAnchors';
 import { ConnectionBubble } from './ConnectionBubble';
@@ -98,7 +99,8 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
     ? { ...style, strokeWidth: (style.strokeWidth ?? 3) + lineWeight }
     : style;
   const badges = connectionBadges(data);
-  const hasLabel = badges.length > 0 || data.isRolling || data.preserveMass;
+  const watched = useIsConnectionWatched(data.mapId, props.id);
+  const hasLabel = badges.length > 0 || data.isRolling || data.preserveMass || watched;
   const travel = useTravelForConnection(props.id);
 
   const endpointState = (end: ConnectionEnd): ConnectionEndpointState =>
@@ -182,37 +184,50 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
                 )}
               </div>
             )}
-            {badges.length > 0 && (
-              <ConnectionDetailPopover
-                connection={data}
-                mapId={data.mapId}
-                wormholeTypeId={data.wormholeTypeId}
-                wormholeCode={data.wormholeCode}
-              >
-                {badges.map((b) =>
-                  b.tone === 'danger' ? (
-                    <span
-                      key={b.key}
-                      className="rounded-sm bg-red-600 px-1 py-px font-bold text-white"
-                      aria-label="Expired connection — do not jump"
-                    >
-                      {b.label}
-                    </span>
-                  ) : b.tone === 'warn' ? (
-                    <span
-                      key={b.key}
-                      className="rounded-sm bg-amber-400 px-1 py-px font-bold text-black"
-                      aria-label="Small connection — frigate-size ships only"
-                    >
-                      {b.label}
-                    </span>
-                  ) : (
-                    <span key={b.key} style={{ color: style.stroke }}>
-                      {b.label}
-                    </span>
-                  ),
+            {(badges.length > 0 || watched) && (
+              <div className="flex items-center gap-1">
+                {watched && (
+                  <span
+                    className="nodrag nopan pointer-events-auto flex items-center rounded bg-card/90 px-1 py-0.5 ring-1 ring-foreground/10"
+                    title="Watched wormhole: a jump through it plays a cue"
+                    aria-label="Watched wormhole"
+                  >
+                    <Eye className="text-foreground/70 size-3" />
+                  </span>
                 )}
-              </ConnectionDetailPopover>
+                {badges.length > 0 && (
+                  <ConnectionDetailPopover
+                    connection={data}
+                    mapId={data.mapId}
+                    wormholeTypeId={data.wormholeTypeId}
+                    wormholeCode={data.wormholeCode}
+                  >
+                    {badges.map((b) =>
+                      b.tone === 'danger' ? (
+                        <span
+                          key={b.key}
+                          className="rounded-sm bg-red-600 px-1 py-px font-bold text-white"
+                          aria-label="Expired connection — do not jump"
+                        >
+                          {b.label}
+                        </span>
+                      ) : b.tone === 'warn' ? (
+                        <span
+                          key={b.key}
+                          className="rounded-sm bg-amber-400 px-1 py-px font-bold text-black"
+                          aria-label="Small connection — frigate-size ships only"
+                        >
+                          {b.label}
+                        </span>
+                      ) : (
+                        <span key={b.key} style={{ color: style.stroke }}>
+                          {b.label}
+                        </span>
+                      ),
+                    )}
+                  </ConnectionDetailPopover>
+                )}
+              </div>
             )}
           </div>
         </EdgeLabelRenderer>

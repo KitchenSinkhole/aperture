@@ -636,6 +636,15 @@ export type { OpKey, OpDef } from '@/lib/esi/opkeys';
 export type { SystemEffect, SystemEffectBonus, SystemEffectKey } from '@/lib/eve/systemEffects';
 export type { WormholeJumpInfoRow } from '@/lib/eve/wormholeJumpInfo';
 
+// Sound-cue vocabulary and the account-level preference blob (src/lib/sounds/prefs.ts).
+export type {
+  SoundEvent,
+  SoundId,
+  SoundPrefs,
+  SoundVariant,
+  VoicePackId,
+} from '@/lib/sounds/prefs';
+
 // Activity-statistics view-models (computed in src/lib/stats/activity.ts).
 export type {
   ActivityStatScope,

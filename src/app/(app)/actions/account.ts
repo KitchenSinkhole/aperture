@@ -12,6 +12,7 @@ import {
 } from '@/lib/session';
 import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
 import { migrateLayout } from '@/lib/map/layout/panels';
+import { soundPrefsSchema } from '@/lib/sounds/prefs';
 
 // Account self-service. Low-frequency, user-initiated state changes
 // over ap_user — Server Actions per the CLAUDE.md mutation pathways.
@@ -120,6 +121,25 @@ export async function setMapLayoutAction(config: unknown): Promise<AccountAction
   await db
     .update(apUser)
     .set({ mapLayout: layout, updatedAt: new Date() })
+    .where(eq(apUser.id, session.userId));
+  revalidatePath('/', 'layout');
+  return { ok: true };
+}
+
+/**
+ * Persist the account's sound preferences (audio-cues). The payload is unknown
+ * user JSON — validated at this boundary before it reaches the column.
+ * Revalidates the `/` layout so an open map and the chrome pick up the change.
+ */
+export async function setSoundPrefsAction(prefs: unknown): Promise<AccountActionResult> {
+  const session = await requireSession();
+  const parsed = soundPrefsSchema.safeParse(prefs);
+  if (!parsed.success) {
+    return { ok: false, error: 'Invalid sound settings.' };
+  }
+  await db
+    .update(apUser)
+    .set({ soundPrefs: parsed.data, updatedAt: new Date() })
     .where(eq(apUser.id, session.userId));
   revalidatePath('/', 'layout');
   return { ok: true };

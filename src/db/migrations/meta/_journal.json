@@ -491,6 +491,13 @@
       "when": 1787213420021,
       "tag": "0070_intel_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1790033289128,
+      "tag": "0071_user_sound_prefs",
+      "breakpoints": true
     }
   ]
 }

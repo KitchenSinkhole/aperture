@@ -13,7 +13,7 @@ The `<main>` is full-width (no `max-w-*` constraint) so wide pages like the map 
 ### Behaviour & Interactions
 - `requireSession()` redirects to `/` when logged out.
 - `getSdeStatus()` is resolved server-side and passed to `SdeStatusBanner` as its initial value, so a degraded banner is present on first paint rather than appearing after a client fetch.
-- Resolves the active character (`getActiveCharacter`), the account roster (`getAccountCharacters`), the account's main (`getMainCharacterId`), the connection-travel-animation toggle (`getConnectionTravelAnimation`), and the signature-indicator settings (`getSignatureIndicatorAccountSettings`) server-side; redirects to `/` if the active character row is missing. The roster + main id + travel toggle + signature-indicator settings thread through `AppHeader` to the switcher's Account settings dialog.
+- Resolves the active character (`getActiveCharacter`), the account roster (`getAccountCharacters`), the account's main (`getMainCharacterId`), the connection-travel-animation toggle (`getConnectionTravelAnimation`), the signature-indicator settings (`getSignatureIndicatorAccountSettings`), and the sound preferences (`getSoundPrefs`) server-side; redirects to `/` if the active character row is missing. The roster + main id + travel toggle + signature-indicator settings + sound preferences thread through `AppHeader` to the switcher's Account settings dialog.
 - The `RealtimeProvider` boots the SharedWorker once for the whole authenticated tree, so the banner and any `useMapSubscription` share one socket.
 
 ### Depends On
