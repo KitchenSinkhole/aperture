@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.2.0
+
+The map can make sound. Pick the events you want to hear: a pilot jumping in or out of your system, a jump through a wormhole you're watching, a kill on the map, a rally point being set, or a system being pinged. Each one can play a chime, a recorded voice line or a sound file of your own.
+
+### New features
+
+- **Audio cues for map events** - a new Sounds section in Account Settings has a master switch, a volume slider, and a row for each of six events: Pilot arrives, Pilot leaves, Watched wormhole, Kill on the map, Rally set and System pinged. Each row can be switched on, given its own sound and previewed. Everything is off until you turn it on, and your choices follow your account to every device. *(MonoliYoda)* Closes #215, #263
+- **Watch a wormhole** - right-click a connection and pick "Watch this wormhole". The connection gets an eye badge, and when a tracked pilot jumps it you hear a cue. Voice packs say whether the jump was toward your system or away from it. Watches are kept on this device only and end when the hole is deleted or after four days. *(MonoliYoda)* Closes #280
+- **Ten built-in chimes and three voice packs** - pick from rising and falling chimes, Arpeggio, Tick, Tick (loud), Ping, Bell, Beeps, Alarm and Klaxon, or from the Ada, Cowboy and Malyx voice packs, which have a recorded line for every event. You can mix them, using a different chime or pack for each event. *(MonoliYoda)*
+- **Use your own sounds** - import an audio file under 1 MB and 5 seconds long under "Your sounds", then pick it for any event. Imported files stay in this browser and are never uploaded. On another device, an event set to one of your files plays its default chime instead. *(MonoliYoda)*
+- **Mute from the map toolbar** - when sounds are on, a speaker button in the map toolbar shows whether audio is blocked by the browser, muted or live. While audio is blocked, clicking the button allows it to play. After that, a click mutes or unmutes this device without changing your account settings. With the same map open in several tabs, only one tab plays each cue. *(MonoliYoda)*
+
+### Upgrading
+
+- Run `pnpm db:migrate` (migration 0071), which adds a nullable column for sound preferences to `ap_user`. Existing accounts start with sounds off.
+
+### Contributors
+
+- **MonoliYoda** - audio cues, wormhole watching, the chimes and voice packs, and custom sounds
+
 ## v1.1.1
 
 A D-Scan pasted into the overlay reads the friendlies in it as friendlies, and shows you which ones are in range.
