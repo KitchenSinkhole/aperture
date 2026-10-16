@@ -17,7 +17,7 @@ WORKDIR /app
 
 # ---- deps: full dependency install, cached on the lockfile ----
 FROM base AS deps
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
