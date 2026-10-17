@@ -2,8 +2,17 @@ import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { decode } from 'next-auth/jwt';
+import { eq } from 'drizzle-orm';
+import { db } from '@/db/client';
+import { apCharacter } from '@/db/schema';
 import { env } from '@/lib/env';
 import { apertureConfig } from '../../../aperture.config';
+import {
+  getBlackoutState,
+  isBlackedOut,
+  isBlackoutCleared,
+  isPilotHidden,
+} from '@/lib/auth/blackout';
 import { canViewMap } from '@/lib/auth/rights';
 import { getBuildId } from '@/lib/buildId';
 import { clientKeyFromForwardedFor } from '@/lib/http/clientKey';
@@ -11,13 +20,17 @@ import { seedTrackingForMap } from '@/lib/jobs/tracking';
 import { getLogger } from '@/lib/log/logger';
 import { resolveShareToken } from '@/lib/map/share';
 import { recordPublicWsUpgrade } from '@/lib/metrics/registry';
-import type { ShareRedactionProfile } from '@/types';
+import type { BlackoutState, BlackoutViewer, ShareRedactionProfile } from '@/types';
 import { bus } from './bus';
 import { addMapViewer, removeMapViewer } from './mapViewers';
 import { openPresenceSession, touchPresenceSessions } from './presenceSessions';
 import { allowPublicUpgrade, publicSocketCount, registerPublicSocket } from './publicSockets';
 import { decWsConnection, incWsConnection } from './wsConnections';
-import { clientToServerMessageSchema, type ServerToClientMessage } from './protocol';
+import {
+  clientToServerMessageSchema,
+  type BlackoutStatus,
+  type ServerToClientMessage,
+} from './protocol';
 
 const wsLog = getLogger('server');
 
@@ -36,6 +49,11 @@ const wsLog = getLogger('server');
  * (`resolveShareToken`) and pins each socket to that one map. Public sockets
  * never send a meaningful frame and receive only `publicUpdate` — see
  * `handlePublicUpgrade` below.
+ *
+ * Blackout is enforced here, on the way out: a session socket whose account
+ * isn't cleared gets presence only for its own account and no mass log
+ * (`filterSessionMessage`), and public sockets get no presence nudge
+ * (`publicActionFor`). The browser is never trusted to hide anything.
  */
 
 type SessionClaims = { userId: number; characterId: string };
@@ -46,7 +64,15 @@ type ClientState = {
   /** mapId → bus unsubscribe fn. */
   subscriptions: Map<bigint, () => void>;
   presenceSessionId: bigint | null;
+  /** On the Blackout cleared list. False until first resolved, so filtering fails closed. */
+  blackoutCleared: boolean;
+  /** Every character on the account, any status: what a `characterLogout` may name. */
+  ownCharacterIds: ReadonlySet<number>;
+  /** Bumped per standing lookup so a slower, older lookup can't overwrite a newer one. */
+  standingSeq: number;
 };
+
+type AccountStanding = { cleared: boolean; characterIds: Set<number> };
 
 type PublicUpgradeCtx = {
   token: string;
@@ -137,6 +163,70 @@ async function viewableMapIds(
   return new Set(checks.filter((x): x is bigint => x !== null));
 }
 
+async function accountStanding(userId: number): Promise<AccountStanding> {
+  const [cleared, rows] = await Promise.all([
+    isBlackoutCleared(userId),
+    db.select({ id: apCharacter.id }).from(apCharacter).where(eq(apCharacter.userId, userId)),
+  ]);
+  return { cleared, characterIds: new Set(rows.map((r) => Number(r.id))) };
+}
+
+/**
+ * What a session socket receives of one bus message: the message, a narrowed
+ * copy, or null to drop it. While Blackout restricts the viewer, presence passes
+ * only for the viewer's own account and the mass log not at all; every other
+ * task passes unchanged.
+ */
+export function filterSessionMessage(
+  message: ServerToClientMessage,
+  viewer: BlackoutViewer,
+  ownCharacterIds: ReadonlySet<number>,
+): ServerToClientMessage | null {
+  if (!isBlackedOut(viewer)) return message;
+  switch (message.task) {
+    case 'characterUpdate':
+      return isPilotHidden(viewer, message.load.userId) ? null : message;
+    case 'characterLogout': {
+      const characterIds = message.load.characterIds.filter((id) => ownCharacterIds.has(id));
+      if (characterIds.length === 0) return null;
+      if (characterIds.length === message.load.characterIds.length) return message;
+      return { ...message, load: { characterIds } };
+    }
+    case 'connectionMassLog':
+      return null;
+    default:
+      return message;
+  }
+}
+
+/**
+ * How a public socket answers one bus message: `nudge` (a data-free
+ * `publicUpdate`), `close` (the map is gone), or null to drop it. The bus
+ * message itself is never forwarded, so this allowlist is the one place a public
+ * socket could leak map data, and it structurally can't. Presence nudges only
+ * when the share publishes presence and Blackout is off.
+ */
+export function publicActionFor(
+  message: ServerToClientMessage,
+  profile: ShareRedactionProfile,
+  blackoutActive: boolean,
+): 'nudge' | 'close' | null {
+  switch (message.task) {
+    case 'mapUpdate':
+      return 'nudge';
+    case 'characterUpdate':
+    case 'characterLogout':
+      return profile.presenceMode !== 'none' && !blackoutActive ? 'nudge' : null;
+    case 'mapDeleted':
+      return 'close';
+    default:
+      // healthCheck / systemNotification / connectionMassLog / mapAccess /
+      // mapConnectionAccess / logData carry nothing a redacted public view
+      // renders.
+      return null;
+  }
+}
+
 let attached = false;
 
 export function attachWsServer(httpServer: HttpServer): WebSocketServer {
@@ -145,6 +235,88 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
 
   const publicWss = new WebSocketServer({ noServer: true });
   const publicClients = new Map<WebSocket, PublicClientState>();
+
+  // Null until first read. Presence filtering treats an unknown state as on.
+  let blackout: BlackoutState | null = null;
+  let blackoutReadSeq = 0;
+
+  async function refreshBlackout(): Promise<void> {
+    const seq = ++blackoutReadSeq;
+    try {
+      const next = await getBlackoutState();
+      if (seq === blackoutReadSeq) blackout = next;
+    } catch (err) {
+      wsLog.warn('Blackout state read failed', { error: String(err) });
+    }
+  }
+
+  const blackoutLoaded = refreshBlackout();
+
+  function viewerOf(state: ClientState): BlackoutViewer {
+    return {
+      active: blackout?.active ?? true,
+      cleared: state.blackoutCleared,
+      userId: state.session.userId,
+    };
+  }
+
+  function blackoutStatus(state: ClientState): BlackoutStatus | undefined {
+    if (!blackout) return undefined;
+    return {
+      active: blackout.active,
+      since: blackout.since?.toISOString() ?? null,
+      cleared: state.blackoutCleared,
+    };
+  }
+
+  function sendHealthCheck(ws: WebSocket, state: ClientState): void {
+    send(ws, {
+      task: 'healthCheck',
+      load: { ts: Date.now(), ok: true, build: getBuildId(), blackout: blackoutStatus(state) },
+    });
+  }
+
+  /**
+   * Re-resolve clearance and own characters for these sockets, one lookup per
+   * account. A failed lookup keeps the socket's previous standing. Returns the
+   * sockets whose clearance changed.
+   */
+  async function resolveStanding(
+    entries: Array<[WebSocket, ClientState]>,
+  ): Promise<Array<[WebSocket, ClientState]>> {
+    const lookups = new Map<number, Promise<AccountStanding | null>>();
+    const changed: Array<[WebSocket, ClientState]> = [];
+    await Promise.all(
+      entries.map(async (entry) => {
+        const [, state] = entry;
+        const seq = ++state.standingSeq;
+        const { userId } = state.session;
+        let lookup = lookups.get(userId);
+        if (!lookup) {
+          lookup = accountStanding(userId).catch((err: unknown) => {
+            wsLog.warn('Blackout clearance lookup failed', { userId, error: String(err) });
+            return null;
+          });
+          lookups.set(userId, lookup);
+        }
+        const standing = await lookup;
+        if (!standing || seq !== state.standingSeq) return;
+        if (standing.cleared !== state.blackoutCleared) changed.push(entry);
+        state.blackoutCleared = standing.cleared;
+        state.ownCharacterIds = standing.characterIds;
+      }),
+    );
+    return changed;
+  }
+
+  const offInstanceNotify = bus.onInstanceNotify(() => {
+    void (async () => {
+      await refreshBlackout();
+      const entries = [...clients];
+      await resolveStanding(entries);
+      for (const [ws, state] of entries) sendHealthCheck(ws, state);
+    })();
+  });
 
   async function handlePublicUpgrade(
     token: string | null,
@@ -227,24 +399,10 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       }, apertureConfig.PUBLIC_WS_NUDGE_MIN_INTERVAL_MS - elapsed);
     }
 
-    // Translate bus messages to a nudge via an allowlist — the bus message
-    // itself is never forwarded, so this is the one place a public socket
-    // could leak map data, and it structurally can't: `nudge()` only ever
-    // sends `publicUpdate`.
     state.unsubscribeBus = bus.subscribe(ctx.mapId, (message) => {
-      if (message.task === 'mapUpdate') {
-        nudge();
-      } else if (
-        (message.task === 'characterUpdate' || message.task === 'characterLogout') &&
-        ctx.profile.presenceMode !== 'none'
-      ) {
-        nudge();
-      } else if (message.task === 'mapDeleted') {
-        ws.close(4001, 'map deleted');
-      }
-      // healthCheck / systemNotification / connectionMassLog / mapAccess /
-      // mapConnectionAccess / logData carry nothing a redacted public view
-      // renders — dropped.
+      const action = publicActionFor(message, ctx.profile, blackout?.active ?? true);
+      if (action === 'nudge') nudge();
+      else if (action === 'close') ws.close(4001, 'map deleted');
     });
     state.deregister = registerPublicSocket(ctx.token, (code) => ws.close(code));
     publicClients.set(ws, state);
@@ -272,12 +430,18 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       isAlive: true,
       subscriptions: new Map(),
       presenceSessionId: null,
+      blackoutCleared: false,
+      ownCharacterIds: new Set(),
+      standingSeq: 0,
     };
     clients.set(ws, state);
     incWsConnection();
     // The build id rides the heartbeat, but a client that just reconnected
     // through a deploy must not wait a full WS_HEARTBEAT_MS to learn it changed.
-    send(ws, { task: 'healthCheck', load: { ts: Date.now(), ok: true, build: getBuildId() } });
+    // Sent once this socket's Blackout standing is known, since it carries it.
+    void Promise.all([blackoutLoaded, resolveStanding([[ws, state]])]).then(() =>
+      sendHealthCheck(ws, state),
+    );
     void openPresenceSession(BigInt(session.characterId)).then((id) => {
       state.presenceSessionId = id;
     });
@@ -323,7 +487,10 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
     const allowed = await viewableMapIds(characterId, mapIds);
     for (const id of allowed) {
       if (!state.subscriptions.has(id)) {
-        const off = bus.subscribe(id, (message) => send(ws, message));
+        const off = bus.subscribe(id, (message) => {
+          const out = filterSessionMessage(message, viewerOf(state), state.ownCharacterIds);
+          if (out) send(ws, out);
+        });
         state.subscriptions.set(id, off);
         // This account now has the map open — count it toward the viewer roster.
         // Keyed by account, not character: coverage extends to all of the
@@ -358,6 +525,7 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
   // vocabulary beyond `publicUpdate`.
   const heartbeat = setInterval(() => {
     const livePresenceIds: bigint[] = [];
+    const live: Array<[WebSocket, ClientState]> = [];
     for (const [ws, state] of clients) {
       if (!state.isAlive) {
         ws.terminate();
@@ -365,8 +533,17 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       }
       state.isAlive = false;
       ws.ping();
-      send(ws, { task: 'healthCheck', load: { ts: Date.now(), ok: true, build: getBuildId() } });
+      sendHealthCheck(ws, state);
+      live.push([ws, state]);
       if (state.presenceSessionId !== null) livePresenceIds.push(state.presenceSessionId);
+    }
+    if (!blackout) void refreshBlackout();
+    // Grant expiry and title changes from the authz resync send no instance
+    // notify, so while Blackout is on clearance is re-resolved every beat.
+    if (blackout?.active) {
+      void resolveStanding(live).then((changed) => {
+        for (const [ws, state] of changed) sendHealthCheck(ws, state);
+      });
     }
     for (const [ws, state] of publicClients) {
       if (!state.isAlive) {
@@ -380,7 +557,10 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
   }, apertureConfig.WS_HEARTBEAT_MS);
   heartbeat.unref?.();
 
-  wss.on('close', () => clearInterval(heartbeat));
+  wss.on('close', () => {
+    clearInterval(heartbeat);
+    offInstanceNotify();
+  });
   attached = true;
   return wss;
 }

@@ -573,6 +573,7 @@ export type {
   ClientToServerTask,
   ServerToClientMessage,
   ClientToServerMessage,
+  BlackoutStatus,
 } from '@/lib/realtime/protocol';
 
 // Realtime client connection status (provider in src/lib/realtime/useRealtime.tsx).

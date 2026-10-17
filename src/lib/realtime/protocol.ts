@@ -96,6 +96,18 @@ export const subscribeLoadSchema = z.object({
 export const unsubscribeLoadSchema = subscribeLoadSchema;
 
 /**
+ * The receiving socket's standing under Blackout, built per socket: whether
+ * Blackout is on, when it began (ISO), and whether this account is cleared.
+ */
+export const blackoutStatusSchema = z.object({
+  active: z.boolean(),
+  since: z.string().nullable(),
+  cleared: z.boolean(),
+});
+
+export type BlackoutStatus = z.infer<typeof blackoutStatusSchema>;
+
+/**
  * Liveness probe. Client sends `{ ts }`; server echoes it back with status.
  * `build` is the serving process's build id — a client that sees it change has
  * reconnected to a different deployment and is running stale code.
@@ -105,6 +117,7 @@ export const healthCheckLoadSchema = z.object({
   ok: z.boolean().optional(),
   listeners: z.number().int().nonnegative().optional(),
   build: z.string().optional(),
+  blackout: blackoutStatusSchema.optional(),
 });
 
 export const mapDeletedLoadSchema = z.object({
