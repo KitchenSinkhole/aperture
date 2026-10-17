@@ -29,7 +29,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 - **Banner.** Every map view shows a persistent, non-dismissible Blackout banner to every viewer, cleared or not, distinct from the degraded-realtime banner and naming no individual. Two variants: cleared ("members can't see pilots; you can") and not cleared ("pilot locations are hidden; you still see your own characters").
 - **Transport.** The task vocabulary is fixed and has no instance-wide task, so Blackout state rides the control-plane `healthCheck` envelope as an optional per-socket field `blackout: { active, since, cleared }`. The SharedWorker already fans control-plane frames to every tab. Flips and list edits emit a `pg_notify` on a dedicated instance channel; the WS server listens on it and answers with an immediate `healthCheck` to every session socket.
 - **Transitions.** On: each non-cleared client prunes its presence store to its own account when the state arrives, and the server stops sending. Off: pilots reappear within one online poll tick, because every online tick broadcasts. No per-tick signal of any kind may exist for a hidden pilot: even a removal arriving every 5s says "online".
-- **One predicate seam.** Every egress asks one question, "is this pilot hidden from this viewer?", through `src/lib/auth/blackout.ts`. A later per-map mode would change that answer, not every call site.
+- **One predicate seam.** Every egress asks one question, "is this pilot hidden from this viewer?", through `src/lib/auth/blackout.ts`: `isPilotHidden(viewer, pilotUserId)` for per-pilot presence, `isBlackedOut(viewer)` for surfaces hidden wholesale (mass log, audit actors), both over a `BlackoutViewer` (`{ active, cleared, userId }`). A later per-map mode would change that answer, not every call site.
 
 **Accepted costs for members while on:** the overlay's D-Scan recognises only the viewer's own characters as friendly; no "which signature did you jump?" prompt (it needs the auto-created connection); no travel animation or arrive / leave / watched-jump cues for other pilots; an empty roster apart from their own characters.
 
@@ -39,7 +39,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 
 ## Stage 1 — Schema and clearance resolver
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 9cd5f6b1
 **Goal:** Blackout state and the cleared list exist in the database, and one server module answers "is Blackout on?" and "is this account cleared?".
 **References:** `src/db/schema/ap/instance.md`, `src/db/schema/ap/access_grant.md`, `src/db/schema/ap/enums.md`, `src/db/schema/ap/role.md`, `src/lib/auth/resolveAuthz.md`, `src/lib/auth/loginGate.md`, `src/db/migrations/0061_map_share_management.sql` (enum `ADD VALUE` precedent); memory: `db:generate` works, `.rollback.sql` is hand-written.
 **Touches:** `src/db/schema/ap/instance.ts` (+ `.md`): `blackout_since`, `blackout_by_character_id`. `src/db/schema/ap/enums.ts` (+ `.md`): `access_capability` gains `blackout_view`, appended. `src/db/schema/ap/access_grant.ts` (+ `.md`): the capability/scope CHECK admits `blackout_view` at instance scope; a new CHECK limits `blackout_view` rows to `character` / `role` principals. New migration plus hand-written `.rollback.sql`. New `src/lib/auth/blackout.ts` (+ `.md`): `getBlackoutState()` → `{ active, since, byCharacterId }`, `isBlackoutCleared(userId)`, and the shared visibility predicate the later stages call. No `import 'server-only'`: the module is reached from `wsServer.ts` and the location-poll runner. `src/types/index.ts` (+ `.md`) for exported types. DB tests.
@@ -51,7 +51,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 **Goal:** Global admins can turn Blackout on and off and manage the cleared list from `/admin/settings`.
 **References:** `src/app/(admin)/admin/settings/page.md`, `src/app/(admin)/actions/settings.md`, `src/components/admin/StaleThresholdForm.md`, `src/components/setup/InstanceAccessPanel.md` (grant-list precedent), `src/components/map/manage/MapRolesForm.md` (corp-title listing), `src/lib/auth/blackout.md`.
 **Touches:** New `src/app/(admin)/actions/blackout.ts` (+ `.md`): `isAdmin`-gated actions to turn Blackout on / off (sets / clears `blackout_since` + `blackout_by_character_id`), add a `blackout_view` grant (character or corp-title role, optional expiry and note), remove one, plus the loader the panel reads. Every mutation emits the instance-channel `pg_notify` (channel name a constant in `aperture.config.ts`) and revalidates. New `src/components/admin/BlackoutPanel.tsx` (+ `.md`): one card with the switch (state, since, who turned it on), the cleared list (name, kind, corp for titles, expiry, note, remove), and add controls: a picker over characters Aperture knows and a corp → title picker over known `corp_title` roles. Turning Blackout on asks for confirmation; turning it off doesn't. `src/app/(admin)/admin/settings/page.tsx` (+ `.md`) mounts the panel.
-**Done when:** Tests: every action rejects a non-admin; on / off sets and clears `since` + `by`; add rejects `corporation` / `alliance` principals and unknown ids; expiry and note are stored; every mutation emits the notify. CI green.
+**Done when:** Tests: every action rejects a non-admin; on / off sets and clears `since` + `by`; add rejects `corporation` / `alliance` principals and unknown ids; expiry and note are stored; remove refuses an id that names a `login` / `admin` grant (only `blackout_view` rows are removable from this panel); every mutation emits the notify. CI green.
 
 ## Stage 3 — Realtime enforcement
 **Mode:** Execute
@@ -117,7 +117,7 @@ _(worked by the user once, after the run — the plan is not complete until it p
 
 ## Notes
 _(appended by executing sessions — non-obvious findings only)_
-- `0061`'s header records that a new enum label can't be referenced in the transaction that adds it. Both CHECKs in Stage 1 name `blackout_view`, so check how the migrator batches pending migrations before putting the `ADD VALUE` and the CHECKs together; comparing `capability::text` in the CHECKs may sidestep it.
+- Drizzle's migrator applies every pending migration in one transaction, so a migration that might be batched with `0072` must not parse `'blackout_view'` as an enum literal (CHECK, default, seed). `0072` compares `capability::text`; runtime queries are unaffected.
 - `ap_instance` is a singleton and `RUN_DB_TESTS` runs against the live dev DB: any test that flips Blackout must snapshot and restore the row.
 - `loginGate.ts` filters grants to `login` / `admin`; keep it that way so a `blackout_view` grant never lets anyone log in.
 - Until Stage 3, no `healthCheck` carries per-socket state. The `blackout` field makes it per-socket, so it has to be built for each socket, not once and broadcast.

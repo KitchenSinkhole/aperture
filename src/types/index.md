@@ -45,6 +45,8 @@ The delete-subchain feature re-exports `DeleteSubchainInput`, `SubchainDeleteSum
 
 Permissions-overhaul adds `ApInstance` / `ApInstanceOwner` / `ApAccessGrant` row types (`+ New*`) and the enum unions `AccessMode`, `AccessPrincipal`, `AccessScope`, `AccessCapability` (from `src/db/schema/ap/enums.ts`).
 
+Blackout types (directly defined): `BlackoutState` (`{ active, since, byCharacterId }` — the instance-wide switch on `ap_instance`) and `BlackoutViewer` (`{ active, cleared, userId }` — one viewer's standing, the input to the `isBlackedOut` / `isPilotHidden` predicates). Produced and consumed by `src/lib/auth/blackout.ts`.
+
 SDE self-refresh adds `ApSdeState` / `NewApSdeState` row types (the `ap_sde_state` singleton, `src/db/schema/ap/sde_state.ts`) — which SDE build the database holds and how the refresh job is going.
 
 Derived-authority (permissions multi-tenant, stage 1) adds `ApAlliance` / `NewApAlliance` row types (the `ap_alliance` executor-corp cache). `ApCharacter` gains the `isDirector` boolean. Both back the `canManageMap` / `canCreateMap` gates in `src/lib/auth/rights.ts`.

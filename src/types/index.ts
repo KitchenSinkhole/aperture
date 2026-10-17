@@ -248,6 +248,25 @@ export type AccessScope = (typeof accessScope.enumValues)[number];
 export type AccessCapability = (typeof accessCapability.enumValues)[number];
 export type ErrorLevel = (typeof errorLevel.enumValues)[number];
 export type ErrorSource = (typeof errorSource.enumValues)[number];
+
+/** The instance-wide Blackout switch, read from the `ap_instance` singleton. */
+export type BlackoutState = {
+  active: boolean;
+  /** When the current Blackout began; null while off. */
+  since: Date | null;
+  /** The admin who turned it on; null while off or once that character is erased. */
+  byCharacterId: bigint | null;
+};
+
+/** One viewer's standing under Blackout: the input to the presence predicate. */
+export type BlackoutViewer = {
+  active: boolean;
+  /** The viewer's account is on the cleared list (or holds a global admin). */
+  cleared: boolean;
+  /** The viewer's account (`ap_user.id`). */
+  userId: number;
+};
+
 /**
  * The redaction flags a resolved share token carries, keyed off `ap_map_share`'s
  * per-token columns. `loadPublicMapView` (Stage 2) branches on exactly this and
