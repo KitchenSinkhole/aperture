@@ -45,7 +45,7 @@ The delete-subchain feature re-exports `DeleteSubchainInput`, `SubchainDeleteSum
 
 Permissions-overhaul adds `ApInstance` / `ApInstanceOwner` / `ApAccessGrant` row types (`+ New*`) and the enum unions `AccessMode`, `AccessPrincipal`, `AccessScope`, `AccessCapability` (from `src/db/schema/ap/enums.ts`).
 
-Blackout types (directly defined): `BlackoutState` (`{ active, since, byCharacterId }` — the instance-wide switch on `ap_instance`) and `BlackoutViewer` (`{ active, cleared, userId }` — one viewer's standing, the input to the `isBlackedOut` / `isPilotHidden` predicates). Produced and consumed by `src/lib/auth/blackout.ts`.
+Blackout types (directly defined): `BlackoutState` (`{ active, since, byCharacterId }` — the instance-wide switch on `ap_instance`) and `BlackoutViewer` (`{ active, cleared, userId }` — one viewer's standing, the input to the `isBlackedOut` / `isPilotHidden` predicates). Produced and consumed by `src/lib/auth/blackout.ts`. The admin panel's view-models: `BlackoutClearance` (one `blackout_view` grant with its resolved character name or title label, a title's corp, expiry, an `expired` flag and note), `BlackoutTitleOption` (a `corp_title` role the cleared list can name) and `BlackoutPanelData` (switch state with who turned it on, the cleared list, and the character / title picker options; ids and dates as strings). Produced by `src/app/(admin)/actions/blackout.ts`.
 
 SDE self-refresh adds `ApSdeState` / `NewApSdeState` row types (the `ap_sde_state` singleton, `src/db/schema/ap/sde_state.ts`) — which SDE build the database holds and how the refresh job is going.
 

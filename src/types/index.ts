@@ -267,6 +267,41 @@ export type BlackoutViewer = {
   userId: number;
 };
 
+/** One Blackout cleared-list entry (a `blackout_view` grant) as the admin panel lists it. */
+export type BlackoutClearance = {
+  grantId: string;
+  principalKind: 'character' | 'role';
+  principalId: string;
+  /** Character name, or the title's label; null when the principal is no longer known. */
+  name: string | null;
+  /** A title's issuing corporation; null for a character. */
+  corporationName: string | null;
+  expiresAt: string | null;
+  /** Past its expiry, so it no longer clears anyone. */
+  expired: boolean;
+  note: string | null;
+};
+
+/** A corp title the cleared list can name (`ap_role`, `source='corp_title'`). */
+export type BlackoutTitleOption = {
+  roleId: string;
+  label: string;
+  corporationId: string;
+  corporationName: string;
+};
+
+/** Everything `/admin/settings` renders for Blackout. Ids and dates are strings. */
+export type BlackoutPanelData = {
+  active: boolean;
+  since: string | null;
+  /** The admin who turned the current Blackout on; null while off or once erased. */
+  byCharacterName: string | null;
+  clearances: BlackoutClearance[];
+  /** Active characters Aperture knows, for the by-name picker. */
+  characters: { id: string; name: string }[];
+  titles: BlackoutTitleOption[];
+};
+
 /**
  * The redaction flags a resolved share token carries, keyed off `ap_map_share`'s
  * per-token columns. `loadPublicMapView` (Stage 2) branches on exactly this and
