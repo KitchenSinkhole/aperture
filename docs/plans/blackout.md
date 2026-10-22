@@ -84,7 +84,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 
 ## Stage 6 — Attribution
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 0a71f7f5
 **Goal:** While Blackout is on, Discord history posts carry no actor and the in-map audit console hides actors from viewers who aren't cleared.
 **References:** `src/lib/webhooks/dispatcher.md`, `src/lib/webhooks/formatters.md`, `src/lib/map/audit.md`, `src/app/api/map/[mapId]/audit/route.md`, `src/components/map/manage/MapAuditBrowser.md`, `src/lib/auth/blackout.md`.
 **Touches:** `src/lib/webhooks/dispatcher.ts` / `formatters.ts` (+ `.md`): the history message drops its leading actor when Blackout is on at dispatch time. `src/lib/map/audit.ts` and the audit route (+ `.md`): for a non-cleared viewer while on (`isBlackedOut(await getBlackoutStatus(session.userId))`, the pattern the Stage 4 routes use), rows carry no actor and the actor list and per-actor drill-down are unavailable. `src/components/map/manage/MapAuditBrowser.tsx` (+ `.md`): renders the hidden-actor state. Tests.
@@ -126,4 +126,6 @@ _(appended by executing sessions — non-obvious findings only)_
 - Every Blackout DB test file flips the `ap_instance` switch, so any two run in parallel collide: `admin-blackout` + `blackout-clearance` already fail together and pass alone, and `realtime-blackout` and `blackout-read-paths` join that set. Triage these one file at a time; later stages' switch-flipping tests join it too.
 - `loadMapForView` also backs `GET /api/map/[mapId]`, the client's on-error resync snapshot, so that route is a presence egress too and passes the viewer's account like the page does. Its payload also carries `blackout`.
 - The location poll reads the live switch on every wormhole / abyssal tick, so the pre-existing `location-poll-jumps` / `connection-mass-log`-style fold assertions now fail if any switch-flipping Blackout file runs in parallel and leaves it on. `location-poll-blackout` holds the location-poll suite lock, which serializes it against the other `location-poll*` files but not against the other Blackout files.
+- Hiding audit actors takes more than stripping the row fields: the `characterId` filter and `q`'s actor-name match would each let a restricted viewer attribute commits by narrowing the feed, so `hideActors` disables both. Rally embeds name their setter too, so `hideActor` covers them as well as history posts.
+- `blackout-attribution` flips the switch, so it joins the parallel-collision set above. `webhook-dispatch` asserts no message text, so it is unaffected by a switch left on.
 - A `/live` spectator page already open when Blackout turns on keeps the presence it last fetched until its next refetch: clearing the snapshot cache stops new reads, but nothing nudges public sockets on a flip, and Blackout itself suppresses the presence nudges. The frozen roster is pre-Blackout and goes no further; a `publicUpdate` on the flip would clear it but is outside every stage as written.

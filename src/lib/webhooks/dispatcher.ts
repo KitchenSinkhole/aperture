@@ -13,6 +13,7 @@ import {
   type DiscordDispatchResult,
   type DiscordWebhookPayload,
 } from '@/lib/integrations/discord';
+import { getBlackoutState } from '@/lib/auth/blackout';
 import { recordWebhookDelivery } from '@/lib/metrics/registry';
 import { mapEventPayloadSchema, type MapEventPayload } from '@/lib/realtime/protocol';
 import type { WebhookOutcome } from '@/types';
@@ -236,8 +237,10 @@ async function resolveContext(
   const [mapRow] = await db.select({ name: apMap.name }).from(apMap).where(eq(apMap.id, mapId));
   if (!mapRow) return null;
 
+  // Blackout is read at dispatch time; the actor's name is never loaded while it is on.
+  const hideActor = (await getBlackoutState()).active;
   let characterName: string | null = null;
-  if (characterId !== null) {
+  if (characterId !== null && !hideActor) {
     const [charRow] = await db
       .select({ name: apCharacter.name })
       .from(apCharacter)
@@ -256,6 +259,7 @@ async function resolveContext(
   return {
     mapName: mapRow.name,
     characterName,
+    hideActor,
     systemName:
       payloadSystemName ??
       (refs.primaryMapSystemId

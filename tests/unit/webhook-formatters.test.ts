@@ -117,6 +117,18 @@ describe('formatHistoryMessage', () => {
     expect(payload?.content).toBe('**Test Map** — Aperture removed **Jita** from the map.');
   });
 
+  it('names no actor while Blackout hides it', () => {
+    const event: MapEventPayload = {
+      kind: 'system.removed',
+      eventId: 4,
+      id: '42',
+    };
+    const payload = formatHistoryMessage(event, { ...baseCtx, hideActor: true });
+    expect(payload?.content).toBe('**Test Map** — Removed **Jita** from the map.');
+    expect(payload?.content).not.toContain('Pilot Foo');
+    expect(payload?.content).not.toContain('Aperture');
+  });
+
   it('returns null for a position-only update (nothing worth saying)', () => {
     const event: MapEventPayload = {
       kind: 'system.updated',
@@ -404,6 +416,17 @@ describe('formatRallyMessage', () => {
     expect(embed.description).toBe('Set by **Pilot Foo** on **Test Map**.');
     expect(embed.color).toBe(0xe74c3c);
     expect(embed.timestamp).toBe('2026-05-27T12:00:00.000Z');
+  });
+
+  it('names no setter while Blackout hides it', () => {
+    const event: MapEventPayload = {
+      kind: 'system.updated',
+      eventId: 9,
+      id: '42',
+      rallyAt: '2026-05-27T12:00:00.000Z',
+    };
+    const embed = formatRallyMessage(event, { ...baseCtx, hideActor: true })!.embeds![0]!;
+    expect(embed.description).toBe('Set on **Test Map**.');
   });
 
   it('returns null when the event is not a rally-set event', () => {

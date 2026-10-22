@@ -43,9 +43,9 @@ export interface AuditEventRow {
   occurredAt: string;
   kind: MapEventKind;
   category: AuditEventCategory;
-  /** Acting character id; `null` for job-driven / automation events. */
-  characterId: string | null;
-  characterName: string | null;
+  /** Acting character id; `null` for job-driven / automation events. Absent when actors are hidden. */
+  characterId?: string | null;
+  characterName?: string | null;
   /** Sentence-cased action with no actor ("Set Jita status to `friendly`."). Never null. */
   summary: string;
   /** A destroy-shaped action (system/connection/signature removal, map delete/purge). */
@@ -78,6 +78,8 @@ export interface AuditQueryParams {
   q?: string;
   cursor?: string | null;
   limit?: number;
+  /** Blackout restricts the viewer: rows carry no actor, and actor filters and actor-name search are ignored. */
+  hideActors?: boolean;
 }
 
 export interface AuditPage {
@@ -191,7 +193,9 @@ function filterClauses(params: AuditQueryParams): SQL[] {
     excludePositionOnly,
     excludeNotePositionOnly,
   ];
-  if (params.characterId === 'none') {
+  if (params.hideActors) {
+    // No actor filter: a filtered page would reveal who made which commit.
+  } else if (params.characterId === 'none') {
     clauses.push(isNull(apMapEvent.characterId));
   } else if (params.characterId !== undefined) {
     // The id is an account main; match every commit by any character in that account.
@@ -206,8 +210,7 @@ function filterClauses(params: AuditQueryParams): SQL[] {
     const pat = `%${params.q.trim()}%`;
     clauses.push(
       or(
-        ilike(apCharacter.name, pat),
-        ilike(auditMainChar.name, pat),
+        ...(params.hideActors ? [] : [ilike(apCharacter.name, pat), ilike(auditMainChar.name, pat)]),
         ilike(apMapEvent.kind, pat),
         sql`(${apMapEvent.payload} ->> 'sigId') ilike ${pat}`,
         sql`(${apMapEvent.payload} ->> 'name') ilike ${pat}`,
@@ -283,8 +286,9 @@ export async function queryAuditEvents(params: AuditQueryParams): Promise<AuditP
       occurredAt: r.occurredAt.toISOString(),
       kind,
       category: kindCategory(kind),
-      characterId: actorId?.toString() ?? null,
-      characterName: actorName,
+      ...(params.hideActors
+        ? {}
+        : { characterId: actorId?.toString() ?? null, characterName: actorName }),
       // The actor lives in its own column — the summary is the action alone, with
       // the first letter capitalized so it reads as a standalone log line.
       summary: capitalize(action ?? fallbackSummary(kind)),
