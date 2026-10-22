@@ -4,7 +4,7 @@
 **File:** `src/app/api/map/[mapId]/route.ts`
 
 ### GET
-**Response:** `{ ok: true, data: MapViewData }` — `data` is the output of `loadMapForView(mapId, viewerCharacterId)` (map header, visible systems, connections, signatures, presence).
+**Response:** `{ ok: true, data: MapViewData }` — `data` is the output of `loadMapForView(mapId, viewerCharacterId, viewerUserId)` (map header, visible systems, connections, signatures, presence as this viewer may see it under Blackout, and the viewer's Blackout standing).
 
 **Responses:** 200 ok, 400 invalid map id, 401 unauthenticated, 403 no view right, 404 map not found / soft-deleted / not visible to viewer.
 

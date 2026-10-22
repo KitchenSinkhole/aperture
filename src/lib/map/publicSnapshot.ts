@@ -25,6 +25,8 @@ interface SnapshotState {
   inflight: Map<string, Promise<PublicMapViewData | null>>;
   global: RateWindow;
   perIp: Map<string, RateWindow>;
+  /** Bumped by `clearPublicSnapshots`; a load begun under an older value is not cached. */
+  generation: number;
 }
 
 declare global {
@@ -37,6 +39,7 @@ function freshState(): SnapshotState {
     inflight: new Map(),
     global: { count: 0, start: 0 },
     perIp: new Map(),
+    generation: 0,
   };
 }
 
@@ -67,8 +70,10 @@ export async function getPublicSnapshot(
   const inflight = state.inflight.get(token);
   if (inflight) return inflight;
 
+  const generation = state.generation;
   const pending = load(token)
     .then((value) => {
+      if (generation !== state.generation) return value;
       state.cache.delete(token);
       state.cache.set(token, {
         value,
@@ -78,7 +83,7 @@ export async function getPublicSnapshot(
       return value;
     })
     .finally(() => {
-      state.inflight.delete(token);
+      if (state.inflight.get(token) === pending) state.inflight.delete(token);
     });
 
   state.inflight.set(token, pending);
@@ -88,6 +93,16 @@ export async function getPublicSnapshot(
 /** Drops `token`'s cached snapshot so the next read reloads it. */
 export function invalidatePublicSnapshot(token: string): void {
   state.cache.delete(token);
+}
+
+/**
+ * Drops every cached snapshot, and stops any load already in flight from
+ * caching its result, so nothing read before this call is served after it.
+ */
+export function clearPublicSnapshots(): void {
+  state.generation += 1;
+  state.cache.clear();
+  state.inflight.clear();
 }
 
 function evictOverflow(): void {

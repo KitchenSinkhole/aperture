@@ -43,7 +43,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     );
   }
 
-  const data = await loadMapForView(mapId, BigInt(session.characterId));
+  const data = await loadMapForView(mapId, BigInt(session.characterId), session.userId);
   if (!data) {
     return (
       <EmptyState title="Map not found" description="This map doesn't exist or has been deleted." />

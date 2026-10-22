@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apertureConfig } from '../../aperture.config';
 import {
   allowPublicSnapshotRequest,
+  clearPublicSnapshots,
   getPublicSnapshot,
   invalidatePublicSnapshot,
   __resetPublicSnapshotState,
@@ -114,6 +115,38 @@ describe('getPublicSnapshot', () => {
 
     await getPublicSnapshot('t1', T, load);
     expect(load).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('clearPublicSnapshots', () => {
+  it('drops every cached token', async () => {
+    const load = vi.fn(async (t: string) => snapshot(t));
+    await getPublicSnapshot('a', T, load);
+    await getPublicSnapshot('b', T, load);
+
+    clearPublicSnapshots();
+    await getPublicSnapshot('a', T + 1, load);
+    await getPublicSnapshot('b', T + 1, load);
+
+    expect(load).toHaveBeenCalledTimes(4);
+  });
+
+  it('keeps a load already in flight from caching its result', async () => {
+    let release!: (v: PublicMapViewData) => void;
+    const slow = vi.fn(
+      () => new Promise<PublicMapViewData>((resolve) => { release = resolve; }),
+    );
+    const stale = getPublicSnapshot('tok', T, slow);
+
+    clearPublicSnapshots();
+    const fresh = vi.fn(async () => snapshot('fresh'));
+    const next = getPublicSnapshot('tok', T, fresh);
+    release(snapshot('stale'));
+
+    expect((await stale)!.map.name).toBe('stale');
+    expect((await next)!.map.name).toBe('fresh');
+    expect((await getPublicSnapshot('tok', T + 1, fresh))!.map.name).toBe('fresh');
+    expect(fresh).toHaveBeenCalledTimes(1);
   });
 });
 

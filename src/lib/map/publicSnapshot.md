@@ -28,6 +28,11 @@ Drops `token`'s cached snapshot so the next read reloads it.
 
 ---
 
+### clearPublicSnapshots(): void
+Drops every cached snapshot and the in-flight map, and stops any load already in flight from caching its result, so nothing read before the call is served after it. Called by the Blackout on / off actions.
+
+---
+
 ### allowPublicSnapshotRequest(clientKey: string, now?: number): boolean
 Whether a snapshot request from `clientKey` (a best-effort client IP) is accepted. Fixed-window counters: when the global window elapses it rolls and the per-IP map is cleared, bounding memory regardless of how many distinct addresses called. Returns `false` — the caller answers 429 — once either `PUBLIC_SNAPSHOT_MAX_PER_IP` or `PUBLIC_SNAPSHOT_MAX_GLOBAL` is exceeded for the window.
 

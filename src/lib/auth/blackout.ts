@@ -4,7 +4,7 @@
 import { and, eq, exists, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apAccessGrant, apCharacter, apCharacterRole, apInstance } from '@/db/schema';
-import type { BlackoutState, BlackoutViewer } from '@/types';
+import type { BlackoutState, BlackoutStatus, BlackoutViewer } from '@/types';
 
 /**
  * Blackout: an instance-wide switch that hides every tracked pilot's presence
@@ -77,6 +77,15 @@ export async function isBlackoutCleared(userId: number): Promise<boolean> {
     )
     .limit(1);
   return row !== undefined;
+}
+
+/**
+ * One account's standing under Blackout, in the shape `healthCheck.blackout`
+ * carries. `cleared` is resolved whether or not Blackout is on.
+ */
+export async function getBlackoutStatus(userId: number): Promise<BlackoutStatus> {
+  const [state, cleared] = await Promise.all([getBlackoutState(), isBlackoutCleared(userId)]);
+  return { active: state.active, since: state.since?.toISOString() ?? null, cleared };
 }
 
 /** Whether Blackout currently restricts what this viewer sees. */

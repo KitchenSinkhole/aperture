@@ -9,6 +9,7 @@ each with a chronological running cumulative mass (see `listConnectionMassLog` i
 `src/lib/map/connectionMassLog.ts`).
 
 - **Access:** `requireMapView` (view right on the map). 400 on bad ids, 401/403/404 per the guard.
+- **Blackout:** while Blackout restricts the viewer (`isBlackedOut(getBlackoutStatus(userId))`), returns `{ ok: true, data: [], hidden: true }` and reads no log; the inspector renders `hidden` as "hidden during Blackout". A cleared viewer, and everyone once Blackout is off, gets the full log, entries written during Blackout included. `hidden` is absent otherwise.
 - **No POST/DELETE.** The log is server-derived from the location-poll; clients never write it. Live
   updates arrive over the `connectionMassLog` realtime task, on which the UI refetches.
 - `runtime = 'nodejs'`.

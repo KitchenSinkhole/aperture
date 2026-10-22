@@ -27,6 +27,11 @@ Kicked and banned characters never count, so neither their grants nor their titl
 
 ---
 
+### getBlackoutStatus(userId: number): Promise<BlackoutStatus>
+One account's standing under Blackout, the shape `healthCheck.blackout` carries: `{ active, since (ISO or null), cleared }`. `cleared` is resolved whether or not Blackout is on. Spread with the account's `userId` it is a `BlackoutViewer`, which is how the read paths (`loadMapForView`, the viewers and mass-log routes) build theirs.
+
+---
+
 ### isBlackedOut(viewer: Pick<BlackoutViewer, 'active' | 'cleared'>): boolean
 `active && !cleared`: Blackout restricts what this viewer sees. The gate for surfaces hidden wholesale (mass log, audit actors).
 
@@ -39,4 +44,4 @@ The presence rule: true when `isBlackedOut(viewer)` and the pilot's account is n
 
 ### Depends On
 - Schema: `ap_instance` (switch), `ap_access_grant` (`blackout_view` grants), `ap_character` (account membership, status, `authz_level`), `ap_character_role` (title membership).
-- Types: `BlackoutState`, `BlackoutViewer` (`src/types/index.ts`).
+- Types: `BlackoutState`, `BlackoutStatus`, `BlackoutViewer` (`src/types/index.ts`).

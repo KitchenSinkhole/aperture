@@ -7,6 +7,7 @@ import { db } from '@/db/client';
 import { apAccessGrant, apCharacter, apCorporation, apInstance, apRole } from '@/db/schema';
 import { auth } from '@/lib/auth';
 import { isAdmin } from '@/lib/auth/rights';
+import { clearPublicSnapshots } from '@/lib/map/publicSnapshot';
 import type { BlackoutPanelData } from '@/types';
 import { apertureConfig } from '../../../../aperture.config';
 
@@ -53,6 +54,7 @@ export async function adminStartBlackout(): Promise<ActionResult> {
     await tx.execute(notifyInstance());
   });
 
+  clearPublicSnapshots();
   revalidatePath('/admin/settings');
   return { ok: true };
 }
@@ -69,6 +71,7 @@ export async function adminEndBlackout(): Promise<ActionResult> {
     await tx.execute(notifyInstance());
   });
 
+  clearPublicSnapshots();
   revalidatePath('/admin/settings');
   return { ok: true };
 }

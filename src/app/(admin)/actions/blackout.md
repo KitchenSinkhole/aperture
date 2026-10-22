@@ -9,11 +9,12 @@ Every action is gated by `isAdmin` and returns `{ ok: false, error: 'Forbidden.'
 
 ### adminStartBlackout(): Promise<ActionResult>
 Turns Blackout on: sets `blackout_since = now()` and `blackout_by_character_id` to the acting admin, creating the `ap_instance` singleton if it is missing. Already on, the original start time and admin are kept.
+Then clears every cached public share snapshot (`clearPublicSnapshots`), so a `/live` link never serves presence read before the switch.
 
 ---
 
 ### adminEndBlackout(): Promise<ActionResult>
-Turns Blackout off: clears `blackout_since` and `blackout_by_character_id`.
+Turns Blackout off: clears `blackout_since` and `blackout_by_character_id`, then clears every cached public share snapshot.
 
 ---
 
@@ -42,4 +43,5 @@ Everything the panel renders: the switch state and the name of the admin who tur
 - `auth`, `isAdmin` — `@/lib/auth/rights`.
 - Schema: `ap_instance`, `ap_access_grant`, `ap_character`, `ap_role`, `ap_corporation`.
 - `apertureConfig.INSTANCE_NOTIFY_CHANNEL`.
+- `clearPublicSnapshots` — `@/lib/map/publicSnapshot`.
 - Types: `BlackoutPanelData` (`src/types/index.ts`).
