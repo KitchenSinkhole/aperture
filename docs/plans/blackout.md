@@ -76,7 +76,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 
 ## Stage 5 — Location poll
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 0d8f7fd5
 **Goal:** While Blackout is on, a tracked jump never changes any map, but a jump through a hole already on the map still lands in its mass log.
 **References:** `src/lib/jobs/tasks/locationPoll.md`, `src/lib/jobs/locationCommit.md`, `src/lib/map/connectionMassLog.md`, `src/lib/auth/blackout.md`; memory: runner modules must not import `server-only`; location-poll success-path tests need a `Math.random` pin (job-run sampling).
 **Touches:** `src/lib/jobs/tasks/locationPoll.ts` (+ `.md`): reads the Blackout state each tick (no new cadence knob); while on, skips `foldJumpOntoMap` on every tracked map, resolves the traversed connection read-only instead, and logs mass when that connection is `wh`-scoped; `PollNotes` records the skip. `src/lib/jobs/locationCommit.ts` (+ `.md`): exports the read-only lookup (a confirmed connection between two visible systems, either direction, no writes). Tests.
@@ -125,4 +125,5 @@ _(appended by executing sessions — non-obvious findings only)_
 - Until Stage 3, no `healthCheck` carries per-socket state. The `blackout` field makes it per-socket, so it has to be built for each socket, not once and broadcast.
 - Every Blackout DB test file flips the `ap_instance` switch, so any two run in parallel collide: `admin-blackout` + `blackout-clearance` already fail together and pass alone, and `realtime-blackout` and `blackout-read-paths` join that set. Triage these one file at a time; later stages' switch-flipping tests join it too.
 - `loadMapForView` also backs `GET /api/map/[mapId]`, the client's on-error resync snapshot, so that route is a presence egress too and passes the viewer's account like the page does. Its payload also carries `blackout`.
+- The location poll reads the live switch on every wormhole / abyssal tick, so the pre-existing `location-poll-jumps` / `connection-mass-log`-style fold assertions now fail if any switch-flipping Blackout file runs in parallel and leaves it on. `location-poll-blackout` holds the location-poll suite lock, which serializes it against the other `location-poll*` files but not against the other Blackout files.
 - A `/live` spectator page already open when Blackout turns on keeps the presence it last fetched until its next refetch: clearing the snapshot cache stops new reads, but nothing nudges public sockets on a flip, and Blackout itself suppresses the presence nudges. The frozen roster is pre-Blackout and goes no further; a `publicUpdate` on the flip would clear it but is outside every stage as written.

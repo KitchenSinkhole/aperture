@@ -1,4 +1,4 @@
-import { and, eq, or, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apMapConnection, apMapSystem } from '@/db/schema';
 import { commitMapEvent } from '@/lib/map/mutations/core';
@@ -127,6 +127,48 @@ export async function foldJumpOntoMap(args: FoldArgs): Promise<FoldResult> {
     connectionCreated: connection.created,
     connectionId: connection.connectionId,
   };
+}
+
+export interface TraversedConnection {
+  connectionId: bigint;
+  scope: (typeof apMapConnection.$inferSelect)['scope'];
+}
+
+/**
+ * The confirmed connection a jump between two systems traversed on this map,
+ * read-only: both systems must already be visible and joined by a confirmed
+ * connection in either direction. `null` otherwise. Never writes.
+ */
+export async function findTraversedConnection(
+  mapId: bigint,
+  fromSystemId: number,
+  toSystemId: number,
+): Promise<TraversedConnection | null> {
+  const fromMapSystemId = await visibleMapSystemId(mapId, fromSystemId);
+  if (fromMapSystemId === null) return null;
+  const toMapSystemId = await visibleMapSystemId(mapId, toSystemId);
+  if (toMapSystemId === null) return null;
+  const [row] = await db
+    .select({ connectionId: apMapConnection.id, scope: apMapConnection.scope })
+    .from(apMapConnection)
+    .where(
+      and(
+        eq(apMapConnection.mapId, mapId),
+        isNotNull(apMapConnection.confirmedAt),
+        or(
+          and(
+            eq(apMapConnection.sourceMapSystemId, fromMapSystemId),
+            eq(apMapConnection.targetMapSystemId, toMapSystemId),
+          ),
+          and(
+            eq(apMapConnection.sourceMapSystemId, toMapSystemId),
+            eq(apMapConnection.targetMapSystemId, fromMapSystemId),
+          ),
+        ),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 /** The `ap_map_system.id` for a system already visible on the map, or `null` if it isn't placed/visible. */
