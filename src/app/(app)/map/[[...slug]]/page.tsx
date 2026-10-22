@@ -114,6 +114,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
         viewerCharacterIds={viewerCharacterIds}
         viewerCharacters={viewerCharacters}
         mainCharacterId={mainCharacterId == null ? null : Number(mainCharacterId)}
+        viewerUserId={session.userId}
         routePrefs={routeConfig.prefs}
         routeDestinations={routeConfig.destinations}
         mapLayout={mapLayout}

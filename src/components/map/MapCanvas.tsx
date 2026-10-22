@@ -84,6 +84,7 @@ import {
 } from '@/lib/structures/client';
 import { mapUpdateLoadSchema, type Envelope } from '@/lib/realtime/protocol';
 import {
+  useBlackoutStatus,
   useMapSubscription,
   useRealtimeEvents,
   useReconnectResync,
@@ -302,6 +303,7 @@ export function MapCanvas({
   viewerCharacterIds,
   viewerCharacters,
   mainCharacterId,
+  viewerUserId,
   routePrefs,
   routeDestinations,
   mapLayout,
@@ -341,6 +343,8 @@ export function MapCanvas({
   viewerCharacters: { id: number; name: string }[];
   /** The account's main character id (route planner's default source), or null. */
   mainCharacterId: number | null;
+  /** The viewer's account id: the account Blackout restricts presence to. */
+  viewerUserId: number;
   /** Per-account route-planner settings (routes-module). */
   routePrefs: RoutePrefs;
   /** The account's saved route destinations (routes-module). */
@@ -401,6 +405,7 @@ export function MapCanvas({
   const [lazyDeleteSigs, setLazyDeleteSigs] = useState(false);
   const [viewData, setViewData] = useState<MapViewData>(data);
   const [liveShares, setLiveShares] = useState<LiveShareBadge[]>(initialLiveShares);
+  const blackout = useBlackoutStatus(viewData.blackout);
   // Captured via ReactFlow's onInit so the manual-add flow can place new nodes
   // at the current viewport centre rather than (0,0).
   const flowInstance = useRef<ReactFlowInstance<CanvasNode, Edge<ConnectionEdgeData>> | null>(null);
@@ -2228,7 +2233,12 @@ export function MapCanvas({
   };
 
   return (
-    <MapPresenceProvider initial={data.presence} mapId={data.map.id}>
+    <MapPresenceProvider
+      initial={data.presence}
+      mapId={data.map.id}
+      blackout={blackout}
+      viewerUserId={viewerUserId}
+    >
       <MapActiveCharProvider viewerCharacters={viewerCharacters} mainCharacterId={mainCharacterId}>
         <MapTravelProvider>
           <MapUnderglowProvider>

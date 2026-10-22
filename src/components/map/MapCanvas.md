@@ -22,6 +22,7 @@
 | viewerCharacterIds | number[] | yes | The viewer's account character ids; passed to `SignaturePasteHotkey` for the CTRL+V fast-paste location check. |
 | viewerCharacters | { id: number; name: string }[] | yes | The viewer's active characters (id + name); passed to `MapActiveCharProvider` to seed the active-character selector. |
 | mainCharacterId | number \| null | yes | The account's main character id (fallback when no character is explicitly picked), or null. |
+| viewerUserId | number | yes | The viewer's account id; passed to `MapPresenceProvider` as the account Blackout restricts presence to. |
 | routePrefs | RoutePrefs | yes | Per-account route-planner settings (routes-module); seeds `RoutePlannerModule`. |
 | routeDestinations | RouteDestinationView[] | yes | The account's saved route destinations (routes-module). |
 | mapLayout | MapLayoutConfig \| null | no | The viewer's saved per-account dashboard layout (map-layout-builder). Seeds the live layout state, run through `migrateLayout` (pre-v2 → singleton groups) → `dedupeGroups` (heal duplicated members) → `ensurePanelsPlaced` (forward-compat); `null` ⇒ `DEFAULT_MAP_LAYOUT`. |
@@ -83,7 +84,7 @@ A free-form dashboard (the page scrolls). A full-width toolbar row sits above a 
 - `applyEvent` — pure reducer applied for every event and every optimistic patch.
 - `@/lib/map/client` — all the mutation wrappers (system / connection / signature / subchain / disconnected) + `fetchWormholeTypes` (via the inspector) + `fetchSystemData` (the read-side backfill for live-added systems) + `fetchMapSnapshot` (via the `resync()` failsafe).
 
-- Wraps the canvas subtree in `MapPresenceProvider` seeded from `data.presence` (`MapPresenceContext`) so each `SystemNode` can pull its system's online-pilot slice via `usePresenceForSystem` without prop-drilling. The provider also folds incoming `characterUpdate` envelopes onto that store.
+- Wraps the canvas subtree in `MapPresenceProvider` seeded from `data.presence` (`MapPresenceContext`) so each `SystemNode` can pull its system's online-pilot slice via `usePresenceForSystem` without prop-drilling. The provider also folds incoming `characterUpdate` envelopes onto that store. It receives the viewer's live Blackout standing (`useBlackoutStatus(viewData.blackout)`, so the page load or a resync snapshot seeds it until the first `healthCheck`) and `viewerUserId`, and prunes presence to the viewer's account while Blackout restricts them.
 - Inside that, wraps the subtree in `MapActiveCharProvider` (passing `viewerCharacters` and `mainCharacterId`) so the `ActiveCharSelector` toolbar element and `RoutePlannerModule` can read the active character via `useMapActiveChar()`. The provider builds `locatedChars` (only characters in the presence roster) and manages `activeCharId` (user pick → main → first located).
 - Inside that, wraps the subtree in `MapTravelProvider` (`MapTravelContext`) so `ConnectionEdge` can read its own travel pulse. When `travelAnimation` is true, mounts `TravelBridge` (passing `viewData.systems` + `viewData.connections`) which listens to presence traversals and pulses the matching edge; when false the bridge is absent so no animation ever plays.
 - Inside that, wraps the subtree in `MapUnderglowProvider` (`MapUnderglowContext`) so each `SystemNode` can read its own underglow slice, and always mounts `MapUnderglowBridge` (passing `viewData.systems` and the map id) which turns incoming `systemNotification` realtime events into a per-node glow pulse (kind `killmail` from the zKB feed, kind `ping` from a user ping). `SystemNotificationSoundBridge` listens for the same `killmail` and `ping` envelopes and sounds their cues. `PresenceSoundBridge` and `WatchedConnectionSoundBridge` sit alongside them, inside the active-char provider they read the viewer's system from.
@@ -119,7 +120,7 @@ A free-form dashboard (the page scrolls). A full-width toolbar row sits above a 
 - `applyEvent` (`@/lib/map/applyEvent`)
 - `@/lib/map/placement` — `GRID_SIZE`, `MANUAL_SLOT`, `findOpenPosition`, `overlaps`, `snapToGrid` (aliased `snapPointToGrid` to avoid clashing with the ReactFlow `snapToGrid` prop) for manual-add anchoring (default auto gap), drag nudge (`MANUAL_SLOT` gap), and live grid snap.
 - `mapUpdateLoadSchema`, `Envelope` (`@/lib/realtime/protocol`)
-- `useMapSubscription`, `useRealtimeEvents`, `useReconnectResync` (`@/lib/realtime/useRealtime`)
+- `useMapSubscription`, `useRealtimeEvents`, `useReconnectResync`, `useBlackoutStatus` (`@/lib/realtime/useRealtime`)
 - All mutation wrappers in `@/lib/map/client`
 - `lucide-react` — `User` icon for the character selector
 

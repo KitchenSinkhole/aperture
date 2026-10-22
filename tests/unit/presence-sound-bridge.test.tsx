@@ -105,7 +105,12 @@ describe('PresenceSoundBridge', () => {
     act(() => {
       root.render(
         <RealtimeProvider>
-          <MapPresenceProvider initial={initial} mapId={String(MAP_ID)}>
+          <MapPresenceProvider
+            initial={initial}
+            mapId={String(MAP_ID)}
+            blackout={{ active: false, since: null, cleared: false }}
+            viewerUserId={ME}
+          >
             <MapActiveCharProvider
               viewerCharacters={[{ id: ME, name: 'Me' }]}
               mainCharacterId={ME}
