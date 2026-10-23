@@ -51,10 +51,11 @@ PATCH / DELETE on `/api/map/{mapId}/connections/{connectionId}`. Optimistic.
 ### restoreConnectionOnServer({ mapId, connectionId }): Promise<ActionResult<RestoreConnectionResult>>
 POST `/api/map/{mapId}/connections/{connectionId}/restore` (no body). Re-confirm a dormant wormhole connection and re-activate any hidden endpoint (Stage 4 sig-memory restore). Returns `{ payloads }` (`system.added` per re-activated endpoint, then `connection.create`); the caller iterates `payloads` to register each `eventId` and apply each locally (wrapper-level `eventId` is always `0` — N-events). Used by `MapCanvas`'s restore-connection prompt.
 
-### fetchConnectionMassLog({ mapId, connectionId }): Promise<FetchResult<ConnectionMassLogEntry[]>>
+### fetchConnectionMassLog({ mapId, connectionId }): Promise<{ ok: true; data: ConnectionMassLogEntry[]; hidden?: true } | { ok: false; error: string }>
 GET `/api/map/{mapId}/connections/{connectionId}/mass-log` (view rights). Lists the connection's
 per-jump mass-log oldest-first with a running cumulative mass. Read-only — the log is server-derived;
 the `ConnectionMassLog` inspector module refetches on the `connectionMassLog` realtime task.
+`hidden: true` beside an empty `data` means Blackout withholds the log from this viewer.
 
 ### deleteSubchainOnServer({ mapId, headMapSystemId, anchorMapSystemId? }): Promise<ActionResult<SubchainDeleteResult>>
 POST `/api/map/{mapId}/subchain`. Delete a head system and everything orphaned from the keep-side anchor by removing it. The server recomputes the set authoritatively from `headMapSystemId` (+ `anchorMapSystemId`, the neighbour to keep, only when the map has no Home). Returns `{ summary, payloads }`; the caller iterates `payloads` to register each `eventId` and apply each locally (wrapper-level `eventId` is always `0` — N-events). Used by `MapCanvas`'s delete-subchain handler.

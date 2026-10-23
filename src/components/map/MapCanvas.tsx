@@ -135,6 +135,7 @@ import { MapInfoDialog } from '@/components/dialogs/MapInfoDialog';
 import { dropWatchedConnection } from '@/lib/connectionWatchPrefs';
 import { getSoundEngine, useSoundCueOn } from '@/lib/sounds/engine';
 import { PilotRosterButton } from './PilotRosterButton';
+import { BlackoutBanner } from './BlackoutBanner';
 import { SoundToolbarButton } from './SoundToolbarButton';
 import { SystemOverlayButton } from './SystemOverlayButton';
 import { MapShareIndicator } from './MapShareIndicator';
@@ -2282,6 +2283,7 @@ export function MapCanvas({
                 onLazyDeletePasteResult={onLazyDeletePasteResult}
               />
               <div className="flex flex-col gap-2">
+                <BlackoutBanner blackout={blackout} />
                 <div className="flex items-center justify-between gap-1">
                   <div className="flex min-w-0 items-center gap-2">
                     <div className="min-w-0">
@@ -2297,7 +2299,10 @@ export function MapCanvas({
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <ActiveCharSelector />
-                    <PilotRosterButton viewData={viewData} />
+                    <PilotRosterButton
+                      viewData={viewData}
+                      pilotsHidden={blackout.active && !blackout.cleared}
+                    />
                     {soundsOn && <SoundToolbarButton />}
                     <SystemOverlayButton viewData={viewData} />
                     <Menu>

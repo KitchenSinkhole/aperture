@@ -13,7 +13,8 @@
 ### Renders
 A bordered block under the connection inspector's expiry hint: a "Mass log" header (with the
 `jumpMassClass` ship-size hint), one row per logged jump (pilot · ship · time-ago · mass in kt),
-and a cumulative total. Loading / failed / empty states are inline text.
+and a cumulative total. Loading / failed / empty states are inline text, as is "The mass log is hidden
+during Blackout." when the server marks the log `hidden`.
 
 ### Behaviour & Interactions
 - **Read-only.** The log is server-derived from the location-poll; there is no add/delete control.
@@ -26,6 +27,10 @@ and a cumulative total. Loading / failed / empty states are inline text.
   `connectionId` matches the open connection, it **refetches** the list. A monotonic `reqSeq` ref makes the latest
   refetch win, so a burst of jump events (each delivered exactly once, no `lastEvent` coalescing)
   can't land an older response after a newer one.
+- Reads the viewer's Blackout standing from `useRealtime().blackout` and refetches whenever a known standing
+  (restricted or not) disagrees with the `hidden` state on screen, including when the first `healthCheck`
+  disagrees, since a restricted viewer receives no `connectionMassLog` frames to prompt one. Nothing fires
+  while the standing is unknown, the log is loading, or the load failed.
 - Mass is shown in kilotonnes (1 kt = 1e6 kg), matching `JumpInfoDialog`.
 - Entries arrive newest-first from the server; `cumulative` reads `entries[0].cumulativeMass` (the most recent entry carries the highest running total).
 
@@ -36,6 +41,7 @@ so this shows the cumulative absolute + the `jumpMassClass` ceiling only.
 ### Emits / Calls
 - `fetchConnectionMassLog({ mapId, connectionId })` — `src/lib/map/client.ts`.
 - `useRealtimeEvents()` — for the `connectionMassLog` refetch trigger.
+- `useRealtime()` — for the Blackout standing refetch trigger.
 
 ### Depends On
 - `connectionMassLogLoadSchema`, `Envelope` (`src/lib/realtime/protocol.ts`) — validates the realtime load.
