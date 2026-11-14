@@ -167,7 +167,6 @@ import { ExperimentalPanelGearProvider } from './experimentalPanelGear';
 import { pushKspaceWaypointsForCharacter } from '@/lib/character/pushRouteWaypoints';
 import { ExperimentalCombatRingProvider } from './ExperimentalCombatRingContext';
 import { ExperimentalCombatKillBridge } from './ExperimentalCombatKillBridge';
-import { ExperimentalCombatSoundBridge } from './ExperimentalCombatSoundBridge';
 import { ExperimentalSoundGateProvider } from './ExperimentalSoundGate';
 import { ExperimentalFollowPilotBridge } from './ExperimentalFollowPilotBridge';
 import {
@@ -237,11 +236,8 @@ import {
   requestExperimentalPanelAdd,
   subscribeExperimentalPanelAdd,
 } from '@/lib/experimentalPanelActionBus';
-import {
-  readExperimentalAutoMassFromLog,
-  readKeepMapSelection,
-  writeKeepMapSelection,
-} from '@/lib/experimentalQolPrefs';
+import { readExperimentalAutoMassFromLog, readKeepMapSelection } from '@/lib/experimentalQolPrefs';
+import { experimentalSettingLabel } from '@/lib/experimentalSettingLabel';
 import {
   readExperimentalIncludeJumpBridge,
   subscribeExperimentalRoutePrefs,
@@ -528,7 +524,6 @@ export function MapCanvas({
   const [lazyDeleteSigs, setLazyDeleteSigs] = useState(false);
   const [sigCleanupOpen, setSigCleanupOpen] = useState(false);
   const [panelGearJumpBridge, setPanelGearJumpBridge] = useState(readExperimentalIncludeJumpBridge);
-  const [panelGearKeepSelection, setPanelGearKeepSelection] = useState(readKeepMapSelection);
 
   useEffect(
     () => subscribeExperimentalRoutePrefs(() => setPanelGearJumpBridge(readExperimentalIncludeJumpBridge())),
@@ -3168,19 +3163,6 @@ export function MapCanvas({
       switch (id) {
         case 'canvas':
           return (
-            <div className="flex flex-col gap-2">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                className="size-4 accent-primary"
-                checked={panelGearKeepSelection}
-                onChange={(e) => {
-                  setPanelGearKeepSelection(e.target.checked);
-                  writeKeepMapSelection(e.target.checked);
-                }}
-              />
-              Keep map selection on paste
-            </label>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -3193,26 +3175,8 @@ export function MapCanvas({
                   });
                 }}
               />
-              Follow selected pilot
+              {experimentalSettingLabel('Follow selected pilot')}
             </label>
-            </div>
-          );
-        case 'signatures':
-          return (
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
-                  checked={lazyDeleteSigs}
-                  onChange={(e) => setLazyDeleteSigs(e.target.checked)}
-                />
-                Lazy delete on paste
-              </label>
-              <Button type="button" size="sm" variant="outline" onClick={() => setSigCleanupOpen(true)}>
-                Signature clean up…
-              </Button>
-            </div>
           );
         case 'route':
           return (
@@ -3226,27 +3190,20 @@ export function MapCanvas({
                   writeExperimentalIncludeJumpBridge(e.target.checked);
                 }}
               />
-              Include jump bridges
+              {experimentalSettingLabel('Include jump bridges')}
             </label>
           );
         case 'pilots':
           return (
             <p className="text-muted-foreground">
-              Card hover uses the account <strong>Hover delay</strong> setting.
+              Card hover uses the account {experimentalSettingLabel('Hover delay (ms)')} setting.
             </p>
           );
         default:
           return null;
       }
     },
-    [
-      experimentalActive,
-      lazyDeleteSigs,
-      panelGearJumpBridge,
-      panelGearKeepSelection,
-      persistSoundLayoutSettings,
-      soundLayoutSettings,
-    ],
+    [experimentalActive, panelGearJumpBridge, persistSoundLayoutSettings, soundLayoutSettings],
   );
 
   const panelHeaderRight = (id: PanelId): ReactNode => {
@@ -3360,9 +3317,6 @@ export function MapCanvas({
                 />
               ) : null}
               {experimentalActive ? <ExperimentalUndoHotkeys /> : null}
-              {experimentalActive ? (
-                <ExperimentalCombatSoundBridge mapId={mapId} systems={viewData.systems} />
-              ) : null}
               {experimentalActive ? (
                 <ExperimentalCombatKillBridge mapId={mapId} systems={viewData.systems} />
               ) : null}
@@ -3573,6 +3527,19 @@ export function MapCanvas({
                 capabilities={capabilities}
                 systems={manageSystems}
                 onImported={onBulkPaste}
+                experimentalSoundMutes={
+                  experimentalActive
+                    ? {
+                        settings: soundLayoutSettings,
+                        onSettingsChange: persistSoundLayoutSettings,
+                        mapSystems: viewData.systems.map((s) => ({
+                          id: s.id,
+                          name: s.name,
+                          alias: s.alias,
+                        })),
+                      }
+                    : undefined
+                }
               />
               {capabilities.includes('audit_view') && (
                 <MapAuditDialog

@@ -4,8 +4,6 @@ import { readExperimentalUiFromHtml, isExperimentalUiActive } from '@/lib/experi
 
 const RALLY_TOAST_KEY = 'aperture:experimental:alert-rally-toast';
 const RALLY_DESKTOP_KEY = 'aperture:experimental:alert-rally-desktop';
-const COMBAT_SOUND_KEY = 'aperture:experimental:alert-combat-sound';
-const COMBAT_DESKTOP_KEY = 'aperture:experimental:alert-combat-desktop';
 const ROUTE_OFFROUTE_KEY = 'aperture:experimental:alert-route-offroute-toast';
 const ROUTE_HAZARD_KEY = 'aperture:experimental:alert-route-hazard-toast';
 
@@ -49,26 +47,6 @@ export function readExperimentalRallyDesktopNotification(): boolean {
 export function writeExperimentalRallyDesktopNotification(on: boolean): void {
   if (!isExperimentalUiActive(readExperimentalUiFromHtml())) return;
   writeFlag(RALLY_DESKTOP_KEY, on);
-}
-
-/** Reserved for combat alert chime (experimental build); off until wired. */
-export function readExperimentalCombatAlertSound(): boolean {
-  return experimentalOnly(() => readFlag(COMBAT_SOUND_KEY), false);
-}
-
-export function writeExperimentalCombatAlertSound(on: boolean): void {
-  if (!isExperimentalUiActive(readExperimentalUiFromHtml())) return;
-  writeFlag(COMBAT_SOUND_KEY, on);
-}
-
-/** Reserved for combat desktop notification (experimental build); off until wired. */
-export function readExperimentalCombatAlertDesktop(): boolean {
-  return experimentalOnly(() => readFlag(COMBAT_DESKTOP_KEY), false);
-}
-
-export function writeExperimentalCombatAlertDesktop(on: boolean): void {
-  if (!isExperimentalUiActive(readExperimentalUiFromHtml())) return;
-  writeFlag(COMBAT_DESKTOP_KEY, on);
 }
 
 export function readExperimentalRouteOffRouteToast(): boolean {

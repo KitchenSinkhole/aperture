@@ -38,17 +38,16 @@ import {
 import { useExperimentalHoverDelayContext } from '@/lib/experimentalHoverDelay.client';
 import { isExperimentalUiActive } from '@/lib/experimentalUi';
 import {
-  readExperimentalCombatAlertSound,
   readExperimentalRallyDesktopNotification,
   readExperimentalRallyToast,
   readExperimentalRouteHazardToast,
   readExperimentalRouteOffRouteToast,
-  writeExperimentalCombatAlertSound,
   writeExperimentalRallyDesktopNotification,
   writeExperimentalRallyToast,
   writeExperimentalRouteHazardToast,
   writeExperimentalRouteOffRouteToast,
 } from '@/lib/experimentalAlertPrefs';
+import { experimentalSettingLabel } from '@/lib/experimentalSettingLabel';
 import {
   readExperimentalAutoMassFromLog,
   readExperimentalPointerCursor,
@@ -122,7 +121,6 @@ export function AccountSettingsDialog({
   const [pastePreview, setPastePreview] = useState(readPastePreviewOnCtrlV);
   const [rallyToast, setRallyToast] = useState(readExperimentalRallyToast);
   const [rallyDesktop, setRallyDesktop] = useState(readExperimentalRallyDesktopNotification);
-  const [combatSound, setCombatSound] = useState(readExperimentalCombatAlertSound);
   const [routeOffRouteToast, setRouteOffRouteToast] = useState(readExperimentalRouteOffRouteToast);
   const [routeHazardToast, setRouteHazardToast] = useState(readExperimentalRouteHazardToast);
   const [autoMass, setAutoMass] = useState(readExperimentalAutoMassFromLog);
@@ -369,7 +367,7 @@ export function AccountSettingsDialog({
             {experimentalOn && experimentalSectionVisible('hover delay') ? (
               <div className="mt-1 flex flex-col gap-1">
                 <label htmlFor="experimental-hover-delay" className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  Hover delay (ms)
+                  {experimentalSettingLabel('Hover delay (ms)')}
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
                     Device
                   </span>
@@ -409,7 +407,7 @@ export function AccountSettingsDialog({
             {experimentalOn && experimentalSectionVisible('qol', 'selection', 'pointer', 'paste', 'mass') ? (
               <div className="mt-2 flex flex-col gap-2 border-t border-border pt-2">
                 <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  Quality of life
+                  {experimentalSettingLabel('Quality of life')}
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
                     Device
                   </span>
@@ -424,7 +422,7 @@ export function AccountSettingsDialog({
                       writeKeepMapSelection(e.target.checked);
                     }}
                   />
-                  Keep selection when clicking empty map
+                  {experimentalSettingLabel('Keep selection when clicking empty map')}
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -436,7 +434,7 @@ export function AccountSettingsDialog({
                       writeExperimentalPointerCursor(e.target.checked);
                     }}
                   />
-                  Pointer cursor on buttons
+                  {experimentalSettingLabel('Pointer cursor on buttons')}
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -448,7 +446,7 @@ export function AccountSettingsDialog({
                       writePastePreviewOnCtrlV(e.target.checked);
                     }}
                   />
-                  Preview signature paste on Ctrl+V
+                  {experimentalSettingLabel('Preview signature paste on Ctrl+V')}
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -460,82 +458,7 @@ export function AccountSettingsDialog({
                       writeExperimentalAutoMassFromLog(e.target.checked);
                     }}
                   />
-                  Auto-set link mass from jump log
-                </label>
-              </div>
-            ) : null}
-            {experimentalOn && experimentalSectionVisible('alerts', 'rally', 'combat', 'sound') ? (
-              <div className="mt-2 flex flex-col gap-2 border-t border-border pt-2">
-                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  Experimental alerts
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
-                    Device
-                  </span>
-                </p>
-                <p className="text-xs text-muted-foreground">Off by default. Stored on this device.</p>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={rallyToast}
-                    onChange={(e) => {
-                      setRallyToast(e.target.checked);
-                      writeExperimentalRallyToast(e.target.checked);
-                    }}
-                  />
-                  Rally toast
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={rallyDesktop}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      setRallyDesktop(on);
-                      writeExperimentalRallyDesktopNotification(on);
-                      if (on && typeof Notification !== 'undefined' && Notification.permission === 'default') {
-                        void Notification.requestPermission();
-                      }
-                    }}
-                  />
-                  Rally desktop notification
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={combatSound}
-                    onChange={(e) => {
-                      setCombatSound(e.target.checked);
-                      writeExperimentalCombatAlertSound(e.target.checked);
-                    }}
-                  />
-                  Combat kill alert sound
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={routeOffRouteToast}
-                    onChange={(e) => {
-                      setRouteOffRouteToast(e.target.checked);
-                      writeExperimentalRouteOffRouteToast(e.target.checked);
-                    }}
-                  />
-                  Active route off-route toast
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={routeHazardToast}
-                    onChange={(e) => {
-                      setRouteHazardToast(e.target.checked);
-                      writeExperimentalRouteHazardToast(e.target.checked);
-                    }}
-                  />
-                  Active route link / EOL alert toast
+                  {experimentalSettingLabel('Auto-set link mass from jump log')}
                 </label>
               </div>
             ) : null}
@@ -696,6 +619,72 @@ export function AccountSettingsDialog({
                 );
               })}
             </div>
+
+            {experimentalOn &&
+            experimentalSectionVisible('rally', 'route', 'toast', 'notification', 'alerts') ? (
+              <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+                <p className="text-xs text-muted-foreground">
+                  Extra notifications on this device (off by default). Kill alerts use the Kill in
+                  system sound row above.
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={rallyToast}
+                    onChange={(e) => {
+                      setRallyToast(e.target.checked);
+                      writeExperimentalRallyToast(e.target.checked);
+                    }}
+                  />
+                  {experimentalSettingLabel('Rally toast')}
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={rallyDesktop}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setRallyDesktop(on);
+                      writeExperimentalRallyDesktopNotification(on);
+                      if (
+                        on &&
+                        typeof Notification !== 'undefined' &&
+                        Notification.permission === 'default'
+                      ) {
+                        void Notification.requestPermission();
+                      }
+                    }}
+                  />
+                  {experimentalSettingLabel('Rally desktop notification')}
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={routeOffRouteToast}
+                    onChange={(e) => {
+                      setRouteOffRouteToast(e.target.checked);
+                      writeExperimentalRouteOffRouteToast(e.target.checked);
+                    }}
+                  />
+                  {experimentalSettingLabel('Active route off-route toast')}
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={routeHazardToast}
+                    onChange={(e) => {
+                      setRouteHazardToast(e.target.checked);
+                      writeExperimentalRouteHazardToast(e.target.checked);
+                    }}
+                  />
+                  {experimentalSettingLabel('Active route link / EOL alert toast')}
+                </label>
+              </div>
+            ) : null}
 
             <CustomSoundsSection />
           </div>
