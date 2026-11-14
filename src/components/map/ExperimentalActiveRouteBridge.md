@@ -16,5 +16,5 @@
 | onRouteUpdated | () => void | no | Called after a successful reroute save (e.g. `router.refresh`). |
 
 ### Behaviour
-- Off-route toasts when `readExperimentalRouteOffRouteToast` is on (default off); deduped per character and off-route system until they rejoin the hop list.
-- Hazard toasts when `readExperimentalRouteHazardToast` is on (default off) for route wormhole links entering `eolStage === 'critical'` or disappearing from the map; optional **Recompute** action calls `route-plan` and `setMapActiveRouteAction`.
+- Off-route toasts and `activeRouteOffRoute` cue when that account sound event is enabled (default off); deduped per character and off-route system until they rejoin the hop list.
+- Hazard toasts and `activeRouteLinkAlert` cue when enabled for route wormhole links entering `eolStage === 'critical'` or disappearing from the map; optional **Recompute** calls `route-plan` and `setMapActiveRouteAction`.

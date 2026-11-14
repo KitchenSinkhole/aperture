@@ -4,11 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { setMapActiveRouteAction } from '@/app/(app)/actions/mapActiveRoute';
 import { pushKspaceWaypointsForCharacter } from '@/lib/character/pushRouteWaypoints';
-import {
-  EXPERIMENTAL_ALERT_EVT,
-  readExperimentalRouteHazardToast,
-  readExperimentalRouteOffRouteToast,
-} from '@/lib/experimentalAlertPrefs';
+import { getSoundEngine, useSoundCueOn } from '@/lib/sounds/engine';
 import {
   activeRouteConnectionIds,
   followersOffRoute,
@@ -41,18 +37,8 @@ export function ExperimentalActiveRouteBridge({
   primaryCharacterId: number | null;
   onRouteUpdated?: () => void;
 }) {
-  const [offRouteOn, setOffRouteOn] = useState(readExperimentalRouteOffRouteToast);
-  const [hazardOn, setHazardOn] = useState(readExperimentalRouteHazardToast);
-
-  useEffect(() => {
-    const sync = () => {
-      setOffRouteOn(readExperimentalRouteOffRouteToast());
-      setHazardOn(readExperimentalRouteHazardToast());
-    };
-    sync();
-    window.addEventListener(EXPERIMENTAL_ALERT_EVT, sync);
-    return () => window.removeEventListener(EXPERIMENTAL_ALERT_EVT, sync);
-  }, []);
+  const offRouteOn = useSoundCueOn('activeRouteOffRoute');
+  const hazardOn = useSoundCueOn('activeRouteLinkAlert');
 
   const offRouteNotified = useRef(new Set<string>());
   const offRouteBaseline = useRef(false);
@@ -135,6 +121,7 @@ export function ExperimentalActiveRouteBridge({
       toast.message('Off active route', {
         description: `${row.characterName} is not on the planned path.`,
       });
+      getSoundEngine().play('activeRouteOffRoute');
     }
     for (const fid of activeRoute.followerCharacterIds) {
       const p = presence.find((x) => x.characterId === fid);
@@ -176,6 +163,7 @@ export function ExperimentalActiveRouteBridge({
             onClick: () => void recomputeAndSave(),
           },
         });
+        getSoundEngine().play('activeRouteLinkAlert');
         continue;
       }
       if (edge.eolStage === 'critical' && prevStage !== 'critical') {
@@ -189,6 +177,7 @@ export function ExperimentalActiveRouteBridge({
             onClick: () => void recomputeAndSave(),
           },
         });
+        getSoundEngine().play('activeRouteLinkAlert');
       }
     }
 

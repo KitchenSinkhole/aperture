@@ -8,7 +8,10 @@ Pure — no browser and no server imports — so a Server Action, the session re
 ---
 
 ### SOUND_EVENTS
-`['pilotArrived', 'pilotLeft', 'watchedJump', 'killInSystem', 'rallySet', 'systemPinged']`. The closed vocabulary of cues the engine plays.
+The closed vocabulary of cues the engine plays, including experimental-only `activeRouteOffRoute` and `activeRouteLinkAlert`.
+
+### EXPERIMENTAL_SOUND_EVENTS
+`Set` of events shown in account Sounds only when experimental UI is on.
 
 ### SoundEvent (type)
 `(typeof SOUND_EVENTS)[number]`.
@@ -32,7 +35,7 @@ Every `voice-<pack>-<event>` id, one per pack per event. The watched-jump line s
 `'plain' | 'inbound' | 'outbound'` — which end of a watched wormhole the viewer sits on. Built-in chimes ignore it; the voice pack speaks a different line per variant.
 
 ### SoundEventPrefs (type)
-`{ enabled: boolean; sound: SoundId }`.
+`{ enabled: boolean; sound: SoundId; desktopNotification?: boolean }` — `desktopNotification` applies to `rallySet` (experimental desktop alert alongside the in-app toast).
 
 ### SoundPrefs (type)
 `{ enabled: boolean; volume: number; events: Record<SoundEvent, SoundEventPrefs> }`. `volume` is master gain, 0..1.
@@ -41,7 +44,7 @@ Every `voice-<pack>-<event>` id, one per pack per event. The watched-jump line s
 `0.7`.
 
 ### DEFAULT_SOUND_PREFS
-Master off, every event off, volume `DEFAULT_SOUND_VOLUME`, and one chime per event: `pilotArrived` → `chime-up`, `pilotLeft` → `chime-down`, `watchedJump` → `tick`, `killInSystem` → `alarm`, `rallySet` → `bell`, `systemPinged` → `ping`. Sounds are opt-in.
+Master off, every event off, volume `DEFAULT_SOUND_VOLUME`, and one default chime per event (`activeRouteOffRoute` → `beeps`, `activeRouteLinkAlert` → `tick-loud`, others as before). Sounds are opt-in.
 
 ---
 

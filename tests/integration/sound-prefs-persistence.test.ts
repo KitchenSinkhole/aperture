@@ -39,6 +39,7 @@ const VALID_PREFS: SoundPrefs = {
   enabled: true,
   volume: 0.4,
   events: {
+    ...DEFAULT_SOUND_PREFS.events,
     pilotArrived: { enabled: true, sound: 'tick' },
     pilotLeft: { enabled: false, sound: 'chime-down' },
     watchedJump: { enabled: true, sound: 'alarm' },

@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import { Star, Trash2, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SignatureIndicatorAccountSettings, SoundEvent, SoundId, SoundPrefs } from '@/types';
-import { SOUND_EVENTS } from '@/lib/sounds/prefs';
+import { EXPERIMENTAL_SOUND_EVENTS, SOUND_EVENTS } from '@/lib/sounds/prefs';
+import { migrateLegacyExperimentalAlerts } from '@/lib/sounds/migrateLegacyExperimentalAlerts';
 import { SOUND_EVENT_LABELS } from '@/lib/sounds/catalog';
 import { getCustomSoundStore, useCustomSounds } from '@/lib/sounds/customStore';
 import { getSoundEngine, useSoundPrefs } from '@/lib/sounds/engine';
@@ -37,16 +38,6 @@ import {
 } from '@/lib/experimentalHoverDelay';
 import { useExperimentalHoverDelayContext } from '@/lib/experimentalHoverDelay.client';
 import { isExperimentalUiActive } from '@/lib/experimentalUi';
-import {
-  readExperimentalRallyDesktopNotification,
-  readExperimentalRallyToast,
-  readExperimentalRouteHazardToast,
-  readExperimentalRouteOffRouteToast,
-  writeExperimentalRallyDesktopNotification,
-  writeExperimentalRallyToast,
-  writeExperimentalRouteHazardToast,
-  writeExperimentalRouteOffRouteToast,
-} from '@/lib/experimentalAlertPrefs';
 import { experimentalSettingLabel } from '@/lib/experimentalSettingLabel';
 import {
   readExperimentalAutoMassFromLog,
@@ -119,10 +110,6 @@ export function AccountSettingsDialog({
   const [keepSelection, setKeepSelection] = useState(readKeepMapSelection);
   const [pointerCursor, setPointerCursor] = useState(readExperimentalPointerCursor);
   const [pastePreview, setPastePreview] = useState(readPastePreviewOnCtrlV);
-  const [rallyToast, setRallyToast] = useState(readExperimentalRallyToast);
-  const [rallyDesktop, setRallyDesktop] = useState(readExperimentalRallyDesktopNotification);
-  const [routeOffRouteToast, setRouteOffRouteToast] = useState(readExperimentalRouteOffRouteToast);
-  const [routeHazardToast, setRouteHazardToast] = useState(readExperimentalRouteHazardToast);
   const [autoMass, setAutoMass] = useState(readExperimentalAutoMassFromLog);
   const [experimentalSettingsQuery, setExperimentalSettingsQuery] = useState('');
 
@@ -194,6 +181,7 @@ export function AccountSettingsDialog({
   const engine = getSoundEngine();
   const sounds = useSoundPrefs();
   const committedVolume = useRef(soundPrefs.volume);
+  const migratedLegacyAlerts = useRef(false);
 
   // Adopt the server's copy whenever its content changes (first mount, a save
   // on another device picked up by any refresh). Comparing content, not
@@ -218,6 +206,15 @@ export function AccountSettingsDialog({
     [engine],
   );
 
+  useEffect(() => {
+    if (!open || migratedLegacyAlerts.current) return;
+    migratedLegacyAlerts.current = true;
+    const migrated = migrateLegacyExperimentalAlerts(engine.getPrefs());
+    if (JSON.stringify(migrated) !== JSON.stringify(engine.getPrefs())) {
+      commitSounds(migrated);
+    }
+  }, [engine, open]);
+
   function commitSounds(next: SoundPrefs) {
     const prev = { ...sounds, volume: committedVolume.current };
     engine.setPrefs(next);
@@ -241,12 +238,19 @@ export function AccountSettingsDialog({
     if (sounds.volume !== committedVolume.current) commitSounds(sounds);
   }
 
-  function commitEvent(event: SoundEvent, patch: { enabled?: boolean; sound?: SoundId }) {
+  function commitEvent(
+    event: SoundEvent,
+    patch: { enabled?: boolean; sound?: SoundId; desktopNotification?: boolean },
+  ) {
     commitSounds({
       ...sounds,
       events: { ...sounds.events, [event]: { ...sounds.events[event], ...patch } },
     });
   }
+
+  const accountSoundEvents = SOUND_EVENTS.filter(
+    (event) => experimentalOn || !EXPERIMENTAL_SOUND_EVENTS.has(event),
+  );
 
   function onSetMain(id: string) {
     if (id === mainId) return;
@@ -582,28 +586,52 @@ export function AccountSettingsDialog({
             </div>
 
             <div className="mt-1 flex flex-col gap-1">
-              {SOUND_EVENTS.map((event) => {
+              {accountSoundEvents.map((event) => {
                 const { label, description } = SOUND_EVENT_LABELS[event];
                 const eventPrefs = sounds.events[event];
                 return (
                   <div key={event} className="flex items-center gap-3 rounded-lg px-1 py-1 text-sm">
-                    <label className="flex flex-1 cursor-pointer items-start gap-3">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 size-4 accent-primary"
-                        checked={eventPrefs.enabled}
-                        disabled={pending || !sounds.enabled}
-                        onChange={(e) => {
-                          commitEvent(event, { enabled: e.target.checked });
-                          if (e.target.checked) engine.preview(eventPrefs.sound);
-                        }}
-                        aria-label={label}
-                      />
-                      <span className="flex flex-col gap-0.5">
-                        <span>{label}</span>
-                        <span className="text-xs text-muted-foreground">{description}</span>
-                      </span>
-                    </label>
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <label className="flex cursor-pointer items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 size-4 accent-primary"
+                          checked={eventPrefs.enabled}
+                          disabled={pending || !sounds.enabled}
+                          onChange={(e) => {
+                            commitEvent(event, { enabled: e.target.checked });
+                            if (e.target.checked) engine.preview(eventPrefs.sound);
+                          }}
+                          aria-label={label}
+                        />
+                        <span className="flex flex-col gap-0.5">
+                          <span>{label}</span>
+                          <span className="text-xs text-muted-foreground">{description}</span>
+                        </span>
+                      </label>
+                      {experimentalOn && event === 'rallySet' ? (
+                        <label className="ml-7 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            className="size-3.5 accent-primary"
+                            checked={eventPrefs.desktopNotification === true}
+                            disabled={pending || !sounds.enabled || !eventPrefs.enabled}
+                            onChange={(e) => {
+                              const on = e.target.checked;
+                              commitEvent(event, { desktopNotification: on });
+                              if (
+                                on &&
+                                typeof Notification !== 'undefined' &&
+                                Notification.permission === 'default'
+                              ) {
+                                void Notification.requestPermission();
+                              }
+                            }}
+                          />
+                          {experimentalSettingLabel('Desktop notification')}
+                        </label>
+                      ) : null}
+                    </div>
                     <SoundPicker
                       event={event}
                       value={eventPrefs.sound}
@@ -619,72 +647,6 @@ export function AccountSettingsDialog({
                 );
               })}
             </div>
-
-            {experimentalOn &&
-            experimentalSectionVisible('rally', 'route', 'toast', 'notification', 'alerts') ? (
-              <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
-                <p className="text-xs text-muted-foreground">
-                  Extra notifications on this device (off by default). Kill alerts use the Kill in
-                  system sound row above.
-                </p>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={rallyToast}
-                    onChange={(e) => {
-                      setRallyToast(e.target.checked);
-                      writeExperimentalRallyToast(e.target.checked);
-                    }}
-                  />
-                  {experimentalSettingLabel('Rally toast')}
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={rallyDesktop}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      setRallyDesktop(on);
-                      writeExperimentalRallyDesktopNotification(on);
-                      if (
-                        on &&
-                        typeof Notification !== 'undefined' &&
-                        Notification.permission === 'default'
-                      ) {
-                        void Notification.requestPermission();
-                      }
-                    }}
-                  />
-                  {experimentalSettingLabel('Rally desktop notification')}
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={routeOffRouteToast}
-                    onChange={(e) => {
-                      setRouteOffRouteToast(e.target.checked);
-                      writeExperimentalRouteOffRouteToast(e.target.checked);
-                    }}
-                  />
-                  {experimentalSettingLabel('Active route off-route toast')}
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={routeHazardToast}
-                    onChange={(e) => {
-                      setRouteHazardToast(e.target.checked);
-                      writeExperimentalRouteHazardToast(e.target.checked);
-                    }}
-                  />
-                  {experimentalSettingLabel('Active route link / EOL alert toast')}
-                </label>
-              </div>
-            ) : null}
 
             <CustomSoundsSection />
           </div>

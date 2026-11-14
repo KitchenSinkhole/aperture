@@ -655,6 +655,8 @@ describe('built-in catalog', () => {
       killInSystem: 'alarm',
       rallySet: 'bell',
       systemPinged: 'ping',
+      activeRouteOffRoute: 'beeps',
+      activeRouteLinkAlert: 'tick-loud',
     };
     for (const event of SOUND_EVENTS) {
       expect(DEFAULT_SOUND_PREFS.events[event].sound).toBe(expected[event]);

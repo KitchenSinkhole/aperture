@@ -16,8 +16,7 @@ All features below require the experimental UI (`ap_ui` cookie). Legacy UI is un
 ## Pilots & alerts
 
 - Pilot standing badge tint and shared hover delay on pilot cards (Account **Hover delay**, default 100 ms).
-- Combat ring (10 m) and rally notifications — **off by default**; rally toasts under Account → Sounds (experimental).
-- **Route / off-route / hazard** toasts — **off by default**; toggles under Account → Sounds (experimental).
+- Combat ring (10 m). Rally and active-route alerts are **off by default** sound events under Account → Sounds (same rows as core cues).
 
 ## QoL
 

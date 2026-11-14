@@ -161,7 +161,6 @@ import { MapUnderglowProvider } from './MapUnderglowContext';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
 import { PresenceSoundBridge } from './PresenceSoundBridge';
 import { RallySoundBridge } from './RallySoundBridge';
-import { ExperimentalRallyNotify } from './ExperimentalRallyNotify';
 import { ExperimentalActiveRouteBridge } from './ExperimentalActiveRouteBridge';
 import { ExperimentalPanelGearProvider } from './experimentalPanelGear';
 import { pushKspaceWaypointsForCharacter } from '@/lib/character/pushRouteWaypoints';
@@ -3304,7 +3303,6 @@ export function MapCanvas({
                   systems={viewData.systems}
                 />
               ) : null}
-              {experimentalActive ? <ExperimentalRallyNotify mapId={mapId} /> : null}
               {experimentalActive ? (
                 <ExperimentalActiveRouteBridge
                   mapId={mapId}

@@ -209,6 +209,8 @@ const VOICE_EVENT_STEMS: Record<SoundEvent, string> = {
   killInSystem: 'kill',
   rallySet: 'rally',
   systemPinged: 'ping',
+  activeRouteOffRoute: 'ping',
+  activeRouteLinkAlert: 'kill',
 };
 
 const VOICE_VARIANTS: readonly SoundVariant[] = ['plain', 'inbound', 'outbound'];
@@ -287,10 +289,21 @@ export const SOUND_EVENT_LABELS: Record<SoundEvent, { label: string; description
   },
   rallySet: {
     label: 'Rally set',
-    description: 'Someone sets a rally point on a system on this map.',
+    description:
+      'Someone sets a rally point on a system on this map. With experimental UI, shows an in-app toast when enabled.',
   },
   systemPinged: {
     label: 'System pinged',
     description: 'Someone pings a system on this map.',
+  },
+  activeRouteOffRoute: {
+    label: 'Active route off-route (Experimental)',
+    description:
+      'A tracked follower is not on the active route hop list — plays a cue and shows an in-app toast.',
+  },
+  activeRouteLinkAlert: {
+    label: 'Active route link alert (Experimental)',
+    description:
+      'A wormhole on the active route is deleted or reaches critical EOL — plays a cue and shows an in-app toast.',
   },
 };
