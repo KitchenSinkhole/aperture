@@ -6,7 +6,7 @@
 Gated on `RUN_DB_TESTS=1` (skipped otherwise). Snapshots the live `ap_instance` Blackout switch in `beforeAll` and restores it in `afterAll`. Seeds ids in the `9723xxxx` block.
 
 ### Covers
-- The connect `healthCheck` carries the socket's standing (`{ active: false, since: null, cleared: false }` while off).
+- The first `healthCheck` after connect that carries `blackout` reports the socket's standing (`{ active: false, since: null, cleared: false }` while off).
 - Turning the switch on plus an instance notify sends every session socket an immediate `healthCheck` with `active: true`, the start time and its own `cleared`, and the `full` share's public socket one data-free `publicUpdate`; the `none` share's socket receives nothing.
 - While on, a non-cleared socket subscribed to a map receives its own account's `characterUpdate` and not another account's.
 - Adding a `blackout_view` grant plus an instance notify re-resolves each socket separately (the granted account reads `cleared: true`, the other `false`), and the granted socket then receives the other account's `characterUpdate`.

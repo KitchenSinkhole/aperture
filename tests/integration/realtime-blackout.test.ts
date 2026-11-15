@@ -209,7 +209,9 @@ describe.skipIf(!run)('Blackout over realtime (WS + bus)', () => {
     other = await open(baseUrl, await sessionCookie(OTHER_CHAR, otherUserId));
     spectatorFull = await open(`${publicBaseUrl}rt-blackout-full`);
     spectatorNone = await open(`${publicBaseUrl}rt-blackout-none`);
-    const first = await waitFor(member, (m) => m.task === 'healthCheck', 1000);
+    // The bus's on-connect instance notify can unsettle the standing mid-connect,
+    // and a healthCheck sent while unsettled omits `blackout`.
+    const first = await waitFor(member, (m) => blackoutOf(m) !== undefined, 1000);
     expect(blackoutOf(first)).toEqual({ active: false, since: null, cleared: false });
   });
 

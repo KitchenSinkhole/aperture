@@ -107,10 +107,11 @@ interface PollNotes {
    */
   abyssalMapsSkipped?: number;
   /**
-   * Set on a wormhole / abyssal tick while Blackout is on: the fold was skipped
-   * on every tracked map (`mapsSkipped`), and `massLogged` counts the maps where
-   * the jump matched a confirmed `wh` connection already on the map and was
-   * logged.
+   * Set on a wormhole / abyssal tick that saw Blackout on: `mapsSkipped` counts
+   * the tracked maps whose fold was skipped, and `massLogged` the maps where the
+   * jump matched a confirmed `wh` connection already on the map and was logged.
+   * A tick that saw Blackout start mid-fan-out carries `folds` for the maps
+   * folded before it, and `blackout` for the rest.
    */
   blackout?: { mapsSkipped: number; massLogged: number };
 }
@@ -256,71 +257,77 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
         // Blackout: a tracked jump must not reveal where pilots are by changing
         // any map. Only a jump through a hole already on the map still feeds
         // its mass log, which the egress hides from non-cleared viewers.
-        if ((await getBlackoutState()).active) {
-          blackout = { mapsSkipped: trackedMaps.length, massLogged: 0 };
-          if (scope === 'wh') {
-            for (const { mapId } of trackedMaps) {
-              const traversed = await findTraversedConnection(
-                mapId,
-                character.lastSystemId,
-                location.solar_system_id,
-              );
-              if (traversed?.scope !== 'wh') continue;
-              await logConnectionJump({
-                mapId,
-                connectionId: traversed.connectionId,
-                characterId,
-                shipTypeId: ship.ship_type_id,
-                mass: jumpMass,
-              });
-              blackout.massLogged += 1;
-            }
-          }
+        let blackedOut = (await getBlackoutState()).active;
+        if (blackedOut) {
+          blackout = { mapsSkipped: 0, massLogged: 0 };
         } else {
           folds = [];
           if (scope === 'abyssal') abyssalMapsSkipped = 0;
-          for (const { mapId, trackAbyssalJumps } of trackedMaps) {
-            // A map that hasn't opted in to `track_abyssal_jumps` sees nothing
-            // for an abyssal transition.
-            if (scope === 'abyssal' && !trackAbyssalJumps) {
-              abyssalMapsSkipped = (abyssalMapsSkipped ?? 0) + 1;
-              continue;
-            }
-            // A jump may add a system not already on the map only when the moving
-            // pilot's account currently has *this* map open in a live tab. The WS
-            // viewer roster is in-process (`server.ts` runs the worker beside the
-            // WS server) and account-keyed. With the map closed, the fold records
-            // movement only between systems already placed — so a pilot
-            // day-tripping with Aperture closed doesn't pollute a dormant map.
-            const addNewSystems = getMapViewerUserIds(mapId).includes(character.userId);
-            const result = await foldJumpOntoMap({
+        }
+        for (const [i, { mapId, trackAbyssalJumps }] of trackedMaps.entries()) {
+          // Re-read before every fold after the first: Blackout may start while
+          // this fan-out runs, and no fold may commit once it has.
+          if (!blackedOut && i > 0) blackedOut = (await getBlackoutState()).active;
+          if (blackedOut) {
+            blackout ??= { mapsSkipped: 0, massLogged: 0 };
+            blackout.mapsSkipped += 1;
+            if (scope !== 'wh') continue;
+            const traversed = await findTraversedConnection(
               mapId,
+              character.lastSystemId,
+              location.solar_system_id,
+            );
+            if (traversed?.scope !== 'wh') continue;
+            await logConnectionJump({
+              mapId,
+              connectionId: traversed.connectionId,
               characterId,
-              fromSystemId: character.lastSystemId,
-              toSystemId: location.solar_system_id,
-              addNewSystems,
-              scope,
+              shipTypeId: ship.ship_type_id,
+              mass: jumpMass,
             });
-            // No connection means the jump was suppressed (map closed, endpoint
-            // off-map) — nothing to log a jump's mass against. Abyssal jumps never
-            // log mass regardless — a filament has no mass budget and can't collapse.
-            if (result.connectionId !== null && scope === 'wh') {
-              await logConnectionJump({
-                mapId,
-                connectionId: result.connectionId,
-                characterId,
-                shipTypeId: ship.ship_type_id,
-                mass: jumpMass,
-              });
-            }
-            folds.push({
-              mapId: mapId.toString(),
-              fromSystemAdded: result.fromSystemAdded,
-              toSystemAdded: result.toSystemAdded,
-              connectionCreated: result.connectionCreated,
-              addNewSystems,
+            blackout.massLogged += 1;
+            continue;
+          }
+          // A map that hasn't opted in to `track_abyssal_jumps` sees nothing
+          // for an abyssal transition.
+          if (scope === 'abyssal' && !trackAbyssalJumps) {
+            abyssalMapsSkipped = (abyssalMapsSkipped ?? 0) + 1;
+            continue;
+          }
+          // A jump may add a system not already on the map only when the moving
+          // pilot's account currently has *this* map open in a live tab. The WS
+          // viewer roster is in-process (`server.ts` runs the worker beside the
+          // WS server) and account-keyed. With the map closed, the fold records
+          // movement only between systems already placed — so a pilot
+          // day-tripping with Aperture closed doesn't pollute a dormant map.
+          const addNewSystems = getMapViewerUserIds(mapId).includes(character.userId);
+          const result = await foldJumpOntoMap({
+            mapId,
+            characterId,
+            fromSystemId: character.lastSystemId,
+            toSystemId: location.solar_system_id,
+            addNewSystems,
+            scope,
+          });
+          // No connection means the jump was suppressed (map closed, endpoint
+          // off-map) — nothing to log a jump's mass against. Abyssal jumps never
+          // log mass regardless — a filament has no mass budget and can't collapse.
+          if (result.connectionId !== null && scope === 'wh') {
+            await logConnectionJump({
+              mapId,
+              connectionId: result.connectionId,
+              characterId,
+              shipTypeId: ship.ship_type_id,
+              mass: jumpMass,
             });
           }
+          (folds ??= []).push({
+            mapId: mapId.toString(),
+            fromSystemAdded: result.fromSystemAdded,
+            toSystemAdded: result.toSystemAdded,
+            connectionCreated: result.connectionCreated,
+            addNewSystems,
+          });
         }
       }
     }

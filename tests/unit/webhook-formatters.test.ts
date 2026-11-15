@@ -80,7 +80,7 @@ describe('formatHistoryMessage', () => {
       positionY: 0,
     };
     const payload = formatHistoryMessage(event, baseCtx);
-    expect(payload?.content).toBe('**Test Map** — Pilot Foo added **Jita** to the map.');
+    expect(payload?.content).toBe('**Test Map**: Pilot Foo added **Jita** to the map.');
   });
 
   it('renders a rally-set update with the rally phrasing', () => {
@@ -91,7 +91,7 @@ describe('formatHistoryMessage', () => {
       rallyAt: '2026-05-27T12:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo set a rally point in **Jita**.',
+      '**Test Map**: Pilot Foo set a rally point in **Jita**.',
     );
   });
 
@@ -103,7 +103,7 @@ describe('formatHistoryMessage', () => {
       rallyAt: null,
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo cleared the rally point in **Jita**.',
+      '**Test Map**: Pilot Foo cleared the rally point in **Jita**.',
     );
   });
 
@@ -114,7 +114,7 @@ describe('formatHistoryMessage', () => {
       id: '42',
     };
     const payload = formatHistoryMessage(event, { ...baseCtx, characterName: null });
-    expect(payload?.content).toBe('**Test Map** — Aperture removed **Jita** from the map.');
+    expect(payload?.content).toBe('**Test Map**: Aperture removed **Jita** from the map.');
   });
 
   it('names no actor while Blackout hides it', () => {
@@ -124,7 +124,7 @@ describe('formatHistoryMessage', () => {
       id: '42',
     };
     const payload = formatHistoryMessage(event, { ...baseCtx, hideActor: true });
-    expect(payload?.content).toBe('**Test Map** — Removed **Jita** from the map.');
+    expect(payload?.content).toBe('**Test Map**: Removed **Jita** from the map.');
     expect(payload?.content).not.toContain('Pilot Foo');
     expect(payload?.content).not.toContain('Aperture');
   });
@@ -160,7 +160,7 @@ describe('formatHistoryMessage', () => {
       createdAt: '2026-05-27T12:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo connected **Jita** ↔ **Amarr**.',
+      '**Test Map**: Pilot Foo connected **Jita** ↔ **Amarr**.',
     );
   });
 
@@ -174,7 +174,7 @@ describe('formatHistoryMessage', () => {
       eolStage: 'eol',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated **Jita** ↔ **Amarr** (EOL → ~4h).',
+      '**Test Map**: Pilot Foo updated **Jita** ↔ **Amarr** (EOL → ~4h).',
     );
   });
 
@@ -188,7 +188,7 @@ describe('formatHistoryMessage', () => {
       eolStage: 'critical',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated **Jita** ↔ **Amarr** (EOL → critical (~1h)).',
+      '**Test Map**: Pilot Foo updated **Jita** ↔ **Amarr** (EOL → critical (~1h)).',
     );
   });
 
@@ -202,7 +202,7 @@ describe('formatHistoryMessage', () => {
       jumpMassClass: 'l',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated **Jita** ↔ **Amarr** (max ship size → large).',
+      '**Test Map**: Pilot Foo updated **Jita** ↔ **Amarr** (max ship size → large).',
     );
   });
 
@@ -217,7 +217,7 @@ describe('formatHistoryMessage', () => {
       isRolling: true,
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated **Jita** ↔ **Amarr** (mass → `critical`, rolling started).',
+      '**Test Map**: Pilot Foo updated **Jita** ↔ **Amarr** (mass → `critical`, rolling started).',
     );
   });
 
@@ -253,7 +253,7 @@ describe('formatHistoryMessage', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo added signature `ABC-123` in **Jita**.',
+      '**Test Map**: Pilot Foo added signature `ABC-123` in **Jita**.',
     );
   });
 
@@ -269,7 +269,7 @@ describe('formatHistoryMessage', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated signature `AUQ` in **Jita** (type → `B274`).',
+      '**Test Map**: Pilot Foo updated signature `AUQ` in **Jita** (type → `B274`).',
     );
   });
 
@@ -283,7 +283,7 @@ describe('formatHistoryMessage', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated signature `AUQ` in **Jita**.',
+      '**Test Map**: Pilot Foo updated signature `AUQ` in **Jita**.',
     );
   });
 
@@ -302,7 +302,7 @@ describe('formatHistoryMessage', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated signature `AUQ` in **Jita** (type → `B274`).',
+      '**Test Map**: Pilot Foo updated signature `AUQ` in **Jita** (type → `B274`).',
     );
   });
 
@@ -318,7 +318,7 @@ describe('formatHistoryMessage', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated signature `AUQ` in **Jita** (unlinked from **Amarr**).',
+      '**Test Map**: Pilot Foo updated signature `AUQ` in **Jita** (unlinked from **Amarr**).',
     );
   });
 
@@ -344,7 +344,7 @@ describe('formatHistoryMessage', () => {
       leadsToMapSystemId: '7', // → 'Amarr'
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo added signature `LBS-432` in **Jita** (wormhole `C008`, leads to **Amarr**).',
+      '**Test Map**: Pilot Foo added signature `LBS-432` in **Jita** (wormhole `C008`, leads to **Amarr**).',
     );
   });
 
@@ -370,7 +370,7 @@ describe('formatHistoryMessage', () => {
       leadsToMapSystemId: null,
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo added signature `XYZ-111` in **Jita** (relic site).',
+      '**Test Map**: Pilot Foo added signature `XYZ-111` in **Jita** (relic site).',
     );
   });
 
@@ -383,7 +383,7 @@ describe('formatHistoryMessage', () => {
       target: '2',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo removed the connection **Jita** ↔ **Amarr**.',
+      '**Test Map**: Pilot Foo removed the connection **Jita** ↔ **Amarr**.',
     );
   });
 
@@ -396,7 +396,7 @@ describe('formatHistoryMessage', () => {
       sigId: 'ABC-123',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo removed signature `ABC-123` from **Jita**.',
+      '**Test Map**: Pilot Foo removed signature `ABC-123` from **Jita**.',
     );
   });
 });

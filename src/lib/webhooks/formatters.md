@@ -29,14 +29,14 @@ Returns true when `event.kind === 'system.updated'` AND `event.rallyAt` is a non
 ---
 
 ### formatHistoryMessage(event, ctx, mapName?): DiscordWebhookPayload | null
-Build a Discord payload (single-line `content`) describing the event for a `history` webhook. Composes `**<map>** — <who> <action>.` from `describeMapEvent` (which omits the actor) — `<who>` is `ctx.characterName ?? 'Aperture'`. With `ctx.hideActor` it names no actor at all: `**<map>** — <Action>.`, the action sentence-cased. Returns `null` for events that are nothing but cosmetic position updates / no-op updates (skip silently).
+Build a Discord payload (single-line `content`) describing the event for a `history` webhook. Composes `**<map>**: <who> <action>.` from `describeMapEvent` (which omits the actor) — `<who>` is `ctx.characterName ?? 'Aperture'`. With `ctx.hideActor` it names no actor at all: `**<map>**: <Action>.`, the action sentence-cased. Returns `null` for events that are nothing but cosmetic position updates / no-op updates (skip silently).
 
 **Parameters:**
 - `event` — the `ap_map_event.payload` validated against `mapEventPayloadSchema`.
 - `ctx` — pre-resolved names (`mapName`, `characterName`, `systemName`, `sourceSystemName`, `targetSystemName`).
 - `mapName` — defaults to `ctx.mapName`; override only for special cases.
 
-**Returns:** `{ content: '**<map>** — <who> added **<system>** to the map.' }` shape.
+**Returns:** `{ content: '**<map>**: <who> added **<system>** to the map.' }` shape.
 
 ---
 

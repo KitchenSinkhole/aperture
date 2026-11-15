@@ -189,7 +189,7 @@ describe.skipIf(!run)('Blackout attribution (real Postgres)', () => {
       const event = await insertEvent('system.removed', OWNER_CHAR, { id: mapSystemA.toString() });
       const notes = await runWebhookDispatch(mapId, event.id, event.occurredAt);
       expect(notes).toMatchObject({ attempted: 1, succeeded: 1 });
-      expect(posted[0]!.content).toBe(`**${MAP_NAME}** — ${OWNER_NAME} removed **BAT A** from the map.`);
+      expect(posted[0]!.content).toBe(`**${MAP_NAME}**: ${OWNER_NAME} removed **BAT A** from the map.`);
     });
 
     it('carry no character name while Blackout is on', async () => {
@@ -198,7 +198,7 @@ describe.skipIf(!run)('Blackout attribution (real Postgres)', () => {
       const event = await insertEvent('system.removed', OWNER_CHAR, { id: mapSystemA.toString() });
       const notes = await runWebhookDispatch(mapId, event.id, event.occurredAt);
       expect(notes).toMatchObject({ attempted: 1, succeeded: 1 });
-      expect(posted[0]!.content).toBe(`**${MAP_NAME}** — Removed **BAT A** from the map.`);
+      expect(posted[0]!.content).toBe(`**${MAP_NAME}**: Removed **BAT A** from the map.`);
       expect(JSON.stringify(posted[0])).not.toContain(OWNER_NAME);
     });
   });

@@ -170,7 +170,7 @@ export async function runTestWebhookDispatch(
   const mapName = mapRow?.name ?? `map ${wh.mapId.toString()}`;
 
   const payload: DiscordWebhookPayload = {
-    content: `**${mapName}** — [test] Aperture webhook test fired at ${sentAt.toISOString()}.`,
+    content: `**${mapName}**: [test] Aperture webhook test fired at ${sentAt.toISOString()}.`,
   };
   if (wh.username) payload.username = wh.username;
 

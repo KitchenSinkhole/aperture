@@ -6,7 +6,7 @@
 ---
 
 ### bus.subscribe(mapId: bigint, listener: (message: ServerToClientMessage) => void): () => void
-Registers a listener for one map's events. First subscriber on a map issues `LISTEN "map:<id>"`; the returned unsubscribe drops the listener and `UNLISTEN`s when the last one leaves. Lazily connects the dedicated client on first use.
+Registers a listener for one map's events. First subscriber on a map issues `LISTEN "map:<id>"`; the returned unsubscribe drops the listener and `UNLISTEN`s when the last one leaves. Connects the dedicated client if it isn't already.
 
 **Returns:** an unsubscribe function.
 
@@ -25,7 +25,12 @@ Whether the dedicated LISTEN connection is currently live. Used by the WS health
 ---
 
 ### bus.subscriberCount(): number
-Total active map subscriptions across all channels (instance listeners not counted). Lets the health probe (`src/lib/health/probe.ts`) distinguish an **idle** bus (zero subscribers ⇒ the lazy connection is intentionally not open) from a connection that dropped while subscribers expect it.
+Total active map subscriptions across all channels (instance listeners not counted).
+
+---
+
+### bus.instanceListenerCount(): number
+Registered `onInstanceNotify` listeners. The connection opens on the first map subscription or instance listener and is held while either exists; the WS server registers an instance listener at attach, so in the running app the connection is open from startup whether or not any map is. The health probe (`src/lib/health/probe.ts`) reads this with `subscriberCount` to tell an idle bus from a dropped connection.
 
 ---
 
@@ -40,7 +45,7 @@ Total active map subscriptions across all channels (instance listeners not count
 - Every connect LISTENs on the instance channel alongside the live map channels, for the bus's lifetime. An instance notify only calls the `onInstanceNotify` listeners.
 - **Metrics (Phase 8):** every received notification increments `pg_notify_received_total{channel}`: `'map'` (the `map:<id>` channel collapsed to a bounded class) or `'instance'`. After building an envelope, the listener-delivery loop is timed and `recordRealtimeBroadcast(message.task, durationMs)` tallies `realtime_broadcasts_total{task}` + observes `realtime_fanout_duration_ms` (the in-process dispatch→deliver span). Malformed envelopes that drop before delivery are counted as received but not broadcast.
 - Reconnects with exponential backoff (`WS_RECONNECT_BASE_MS`/`WS_RECONNECT_MAX_MS`) while any map or instance listener remains, and re-issues LISTEN for all live channels on reconnect.
-- Singleton across HMR via a `globalThis` guard (mirrors `db/client.ts`).
+- Pinned on `globalThis` in every environment: one instance per process, shared by the `server.ts` module graph (WS server) and Next's bundled graph (health probe), and surviving HMR.
 - No `import 'server-only'`: this module is loaded by the custom `server.ts` outside Next's bundler (where the `server-only` shim doesn't resolve). It is only imported by `wsServer.ts` and tests — never by a client component.
 
 ### Depends On

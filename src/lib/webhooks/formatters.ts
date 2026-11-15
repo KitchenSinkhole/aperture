@@ -41,12 +41,12 @@ export function formatHistoryMessage(
   const line = describeMapEvent(event, ctx);
   if (!line) return null;
   if (ctx.hideActor) {
-    return { content: `**${mapName}** — ${line.charAt(0).toUpperCase()}${line.slice(1)}.` };
+    return { content: `**${mapName}**: ${line.charAt(0).toUpperCase()}${line.slice(1)}.` };
   }
   const who = ctx.characterName ?? 'Aperture';
   // Discord has no actor column, so the name leads the sentence here. The audit
   // console (its own actor column) renders `describeMapEvent` without this prefix.
-  return { content: `**${mapName}** — ${who} ${line}.` };
+  return { content: `**${mapName}**: ${who} ${line}.` };
 }
 
 /** Build the Discord payload for a `rally` webhook. Caller should only invoke for `isRallySetEvent`. */

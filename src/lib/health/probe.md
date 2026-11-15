@@ -19,7 +19,7 @@ Probes five components and folds them into one overall status (the worst compone
 
 Components:
 - `db` — `SELECT 1` on `pool`; `down` on failure.
-- `realtimeBus` — `ok` when `bus.isHealthy()` **or** `bus.subscriberCount() === 0` (an idle bus is lazily disconnected, not unhealthy); `degraded` when subscribers exist but the LISTEN dropped.
+- `realtimeBus` — `ok` when `bus.isHealthy()`, or when the bus is idle (`bus.subscriberCount() === 0` **and** `bus.instanceListenerCount() === 0`: nothing needs the connection); `degraded` when anything listens but the LISTEN connection is down. The WS server's instance listener counts, so a dropped connection reads degraded even with no map open.
 - `worker` — `latestFinishedRun()` within `HEALTH_WORKER_STALE_MS`; `down` if stale or no job has ever finished.
 - `esi` — `openBreakerCount()`; `degraded` when any breaker is open, else `ok`.
 - `migrations` — compares `max(created_at)` in `drizzle.__drizzle_migrations` against the latest `when` in `meta/_journal.json` (drizzle stores `created_at` = the journal `when`); `down` if behind, missing, or the table is unreadable.

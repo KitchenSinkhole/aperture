@@ -25,6 +25,7 @@ import { bus } from './bus';
 import { addMapViewer, removeMapViewer } from './mapViewers';
 import { openPresenceSession, touchPresenceSessions } from './presenceSessions';
 import { allowPublicUpgrade, publicSocketCount, registerPublicSocket } from './publicSockets';
+import { ReadSequence } from './readSequence';
 import { decWsConnection, incWsConnection } from './wsConnections';
 import {
   clientToServerMessageSchema,
@@ -64,12 +65,12 @@ type ClientState = {
   /** mapId → bus unsubscribe fn. */
   subscriptions: Map<bigint, () => void>;
   presenceSessionId: bigint | null;
-  /** On the Blackout cleared list. False until first resolved, so filtering fails closed. */
+  /** On the Blackout cleared list, as of the last applied standing lookup. */
   blackoutCleared: boolean;
   /** Every character on the account, any status: what a `characterLogout` may name. */
   ownCharacterIds: ReadonlySet<number>;
-  /** Bumped per standing lookup so a slower, older lookup can't overwrite a newer one. */
-  standingSeq: number;
+  /** Orders standing lookups; unsettled until the first one succeeds. */
+  standing: ReadSequence;
 };
 
 type AccountStanding = { cleared: boolean; characterIds: Set<number> };
@@ -252,44 +253,67 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
   const publicWss = new WebSocketServer({ noServer: true });
   const publicClients = new Map<WebSocket, PublicClientState>();
 
-  // Null until first read. Presence filtering treats an unknown state as on.
+  // The last applied read of the switch, null until one succeeds. Filtering
+  // counts the switch as on whenever `switchRead` is unsettled.
   let blackout: BlackoutState | null = null;
-  let blackoutReadSeq = 0;
+  const switchRead = new ReadSequence();
+  switchRead.invalidate();
 
   async function refreshBlackout(): Promise<void> {
-    const seq = ++blackoutReadSeq;
+    const ticket = switchRead.begin();
+    let next: BlackoutState;
     try {
-      const next = await getBlackoutState();
-      if (seq !== blackoutReadSeq) return;
-      const wasActive = blackout?.active ?? true;
-      blackout = next;
-      // Blackout suppresses presence nudges, so without this a spectator page
-      // keeps the presence it last fetched across the flip.
-      for (const state of publicClients.values()) {
-        if (publicNudgeOnBlackoutFlip(state.ctx.profile, wasActive, next.active)) state.nudge();
-      }
+      next = await getBlackoutState();
     } catch (err) {
       wsLog.warn('Blackout state read failed', { error: String(err) });
+      return;
+    }
+    if (!switchRead.succeed(ticket)) return;
+    const wasActive = blackout?.active ?? true;
+    blackout = next;
+    // Blackout suppresses presence nudges, so without this a spectator page
+    // keeps the presence it last fetched across the flip.
+    for (const state of publicClients.values()) {
+      if (publicNudgeOnBlackoutFlip(state.ctx.profile, wasActive, next.active)) state.nudge();
     }
   }
 
   const blackoutLoaded = refreshBlackout();
 
+  function knownSwitch(): BlackoutState | null {
+    return switchRead.settled ? blackout : null;
+  }
+
+  function switchActive(): boolean {
+    return knownSwitch()?.active ?? true;
+  }
+
+  function knownCleared(state: ClientState): boolean | null {
+    return state.standing.settled ? state.blackoutCleared : null;
+  }
+
   function viewerOf(state: ClientState): BlackoutViewer {
     return {
-      active: blackout?.active ?? true,
-      cleared: state.blackoutCleared,
+      active: switchActive(),
+      cleared: knownCleared(state) ?? false,
       userId: state.session.userId,
     };
   }
 
   function blackoutStatus(state: ClientState): BlackoutStatus | undefined {
-    if (!blackout) return undefined;
+    const known = knownSwitch();
+    const cleared = knownCleared(state);
+    // Omitted rather than guessed: the client keeps its current value.
+    if (!known || cleared === null) return undefined;
     return {
-      active: blackout.active,
-      since: blackout.since?.toISOString() ?? null,
-      cleared: state.blackoutCleared,
+      active: known.active,
+      since: known.since?.toISOString() ?? null,
+      cleared,
     };
+  }
+
+  function blackoutStatusKey(state: ClientState): string {
+    return JSON.stringify(blackoutStatus(state) ?? null);
   }
 
   function sendHealthCheck(ws: WebSocket, state: ClientState): void {
@@ -301,18 +325,14 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
 
   /**
    * Re-resolve clearance and own characters for these sockets, one lookup per
-   * account. A failed lookup keeps the socket's previous standing. Returns the
-   * sockets whose clearance changed.
+   * account. A failed lookup leaves the socket's standing unsettled until a
+   * later one succeeds.
    */
-  async function resolveStanding(
-    entries: Array<[WebSocket, ClientState]>,
-  ): Promise<Array<[WebSocket, ClientState]>> {
+  async function resolveStanding(entries: Array<[WebSocket, ClientState]>): Promise<void> {
     const lookups = new Map<number, Promise<AccountStanding | null>>();
-    const changed: Array<[WebSocket, ClientState]> = [];
     await Promise.all(
-      entries.map(async (entry) => {
-        const [, state] = entry;
-        const seq = ++state.standingSeq;
+      entries.map(async ([, state]) => {
+        const ticket = state.standing.begin();
         const { userId } = state.session;
         let lookup = lookups.get(userId);
         if (!lookup) {
@@ -323,20 +343,26 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
           lookups.set(userId, lookup);
         }
         const standing = await lookup;
-        if (!standing || seq !== state.standingSeq) return;
-        if (standing.cleared !== state.blackoutCleared) changed.push(entry);
+        if (!standing) {
+          state.standing.fail(ticket);
+          return;
+        }
+        if (!state.standing.succeed(ticket)) return;
         state.blackoutCleared = standing.cleared;
         state.ownCharacterIds = standing.characterIds;
       }),
     );
-    return changed;
   }
 
   const offInstanceNotify = bus.onInstanceNotify(() => {
+    // The bus dispatches the presence notifies committed after this one
+    // synchronously, before any re-read can return, so the switch and every
+    // standing are unsettled (filtered as restricted) from this moment.
+    switchRead.invalidate();
+    const entries = [...clients];
+    for (const [, state] of entries) state.standing.invalidate();
     void (async () => {
-      await refreshBlackout();
-      const entries = [...clients];
-      await resolveStanding(entries);
+      await Promise.all([refreshBlackout(), resolveStanding(entries)]);
       for (const [ws, state] of entries) sendHealthCheck(ws, state);
     })();
   });
@@ -424,7 +450,7 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
     }
 
     state.unsubscribeBus = bus.subscribe(ctx.mapId, (message) => {
-      const action = publicActionFor(message, ctx.profile, blackout?.active ?? true);
+      const action = publicActionFor(message, ctx.profile, switchActive());
       if (action === 'nudge') state.nudge();
       else if (action === 'close') ws.close(4001, 'map deleted');
     });
@@ -456,8 +482,9 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       presenceSessionId: null,
       blackoutCleared: false,
       ownCharacterIds: new Set(),
-      standingSeq: 0,
+      standing: new ReadSequence(),
     };
+    state.standing.invalidate();
     clients.set(ws, state);
     incWsConnection();
     // The build id rides the heartbeat, but a client that just reconnected
@@ -561,14 +588,19 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       live.push([ws, state]);
       if (state.presenceSessionId !== null) livePresenceIds.push(state.presenceSessionId);
     }
-    if (!blackout) void refreshBlackout();
-    // Grant expiry and title changes from the authz resync send no instance
-    // notify, so while Blackout is on clearance is re-resolved every beat.
-    if (blackout?.active) {
-      void resolveStanding(live).then((changed) => {
-        for (const [ws, state] of changed) sendHealthCheck(ws, state);
-      });
-    }
+    void (async () => {
+      const reported = new Map(live.map(([ws, state]) => [ws, blackoutStatusKey(state)]));
+      // Settles a switch left unsettled by a failed read after an instance notify.
+      await refreshBlackout();
+      // Grant expiry and title changes from the authz resync send no instance
+      // notify, so while Blackout is on clearance is re-resolved every beat.
+      await resolveStanding(
+        switchActive() ? live : live.filter(([, state]) => !state.standing.settled),
+      );
+      for (const [ws, state] of live) {
+        if (blackoutStatusKey(state) !== reported.get(ws)) sendHealthCheck(ws, state);
+      }
+    })();
     for (const [ws, state] of publicClients) {
       if (!state.isAlive) {
         ws.terminate();

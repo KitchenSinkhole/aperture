@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Job, JobHelpers } from 'graphile-worker';
 import type { Notification, PoolClient } from 'pg';
 import { apertureConfig } from '../../../aperture.config';
@@ -36,8 +36,15 @@ vi.mock('@/lib/realtime/mapViewers', () => ({
   getMapViewerUserIds: vi.fn((): number[] => []),
 }));
 
+// Passthrough, so a case can flip the switch from inside the poll's own read.
+vi.mock('@/lib/auth/blackout', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth/blackout')>();
+  return { ...actual, getBlackoutState: vi.fn(actual.getBlackoutState) };
+});
+
 import { esiCall } from '@/lib/esi/client';
 import { getMapViewerUserIds } from '@/lib/realtime/mapViewers';
+import { getBlackoutState } from '@/lib/auth/blackout';
 import { locationPoll } from '@/lib/jobs/tasks/locationPoll';
 import {
   acquireLocationPollSuiteLock,
@@ -68,6 +75,8 @@ const CATEGORY = 97250001;
 const GROUP = 97250001;
 const SHIP = 97250020;
 const SHIP_MASS_KG = 1_000_000;
+const MAP_NAME = 'blackout-poll-map';
+const SECOND_MAP_NAME = 'blackout-poll-map-2';
 
 let userId = 0;
 let mapId = 0n;
@@ -182,7 +191,7 @@ describe.skipIf(!run)('location-poll under Blackout (real Postgres)', () => {
 
     const [m] = await db
       .insert(apMap)
-      .values({ scope: 'all', type: 'private', name: 'blackout-poll-map', trackAbyssalJumps: true })
+      .values({ scope: 'all', type: 'private', name: MAP_NAME, trackAbyssalJumps: true })
       .returning({ id: apMap.id });
     mapId = m!.id;
     const systems = await db
@@ -246,6 +255,7 @@ describe.skipIf(!run)('location-poll under Blackout (real Postgres)', () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.mocked(getBlackoutState).mockReset();
     vi.mocked(getMapViewerUserIds).mockReturnValue([userId]);
     await setSwitch(false);
     await db.delete(apMapConnectionLog).where(eq(apMapConnectionLog.connectionId, connAC));
@@ -330,12 +340,71 @@ describe.skipIf(!run)('location-poll under Blackout (real Postgres)', () => {
     );
     await db.delete(apMapSystem).where(eq(apMapSystem.systemId, SYS_E));
   });
+
+  it('stops folding on the remaining maps when Blackout starts mid-tick', async () => {
+    const [m2] = await db
+      .insert(apMap)
+      .values({ scope: 'all', type: 'private', name: SECOND_MAP_NAME, trackAbyssalJumps: true })
+      .returning({ id: apMap.id });
+    const secondMapId = m2!.id;
+    await db
+      .insert(apMapSystem)
+      .values({ mapId: secondMapId, systemId: SYS_C, visible: true, positionX: 0, positionY: 0 });
+    await db.insert(apMapCharacterTracking).values({ mapId: secondMapId, characterId: CHAR_ID });
+    await setSwitch(false);
+
+    // An admin starts Blackout while the first map folds, so only the poll's
+    // read before the second map sees it.
+    const actual = await vi.importActual<typeof import('@/lib/auth/blackout')>('@/lib/auth/blackout');
+    vi.mocked(getBlackoutState)
+      .mockImplementationOnce(actual.getBlackoutState)
+      .mockImplementationOnce(async () => {
+        await setSwitch(true);
+        return actual.getBlackoutState();
+      });
+
+    try {
+      await jump(SYS_C, SYS_E);
+
+      const outcomes = await Promise.all(
+        [mapId, secondMapId].map(async (id) => {
+          const added = await db
+            .select({ id: apMapSystem.id })
+            .from(apMapSystem)
+            .where(and(eq(apMapSystem.mapId, id), eq(apMapSystem.systemId, SYS_E)));
+          const events = await db
+            .select({ id: apMapEvent.id })
+            .from(apMapEvent)
+            .where(eq(apMapEvent.mapId, id));
+          return { added: added.length > 0, events: events.length };
+        }),
+      );
+      // Tracked maps come back unordered, so either map may be the one folded.
+      expect(outcomes.filter((o) => o.added)).toHaveLength(1);
+      const skipped = outcomes.find((o) => !o.added)!;
+      expect(skipped.events).toBe(0);
+      expect(vi.mocked(getBlackoutState)).toHaveBeenCalledTimes(2);
+
+      const notes = await lastNotes();
+      expect(notes!.folds).toHaveLength(1);
+      expect(notes!.blackout).toEqual({ mapsSkipped: 1, massLogged: 0 });
+    } finally {
+      await db.delete(apMap).where(eq(apMap.id, secondMapId));
+      await db.delete(apMapConnection).where(
+        inArray(
+          apMapConnection.targetMapSystemId,
+          db.select({ id: apMapSystem.id }).from(apMapSystem).where(eq(apMapSystem.systemId, SYS_E)),
+        ),
+      );
+      await db.delete(apMapSystem).where(eq(apMapSystem.systemId, SYS_E));
+    }
+  });
 });
 
 async function cleanup() {
   await db.delete(apJobRun).where(eq(apJobRun.name, 'location-poll'));
   await db.delete(apMapCharacterTracking).where(eq(apMapCharacterTracking.characterId, CHAR_ID));
-  await db.delete(apMap).where(eq(apMap.name, 'blackout-poll-map'));
+  await db.delete(apMap).where(inArray(apMap.name, [MAP_NAME, SECOND_MAP_NAME]));
   await db.delete(apCharacter).where(eq(apCharacter.id, CHAR_ID));
   await db.delete(universeType).where(eq(universeType.id, SHIP));
   await db.delete(universeGroup).where(eq(universeGroup.id, GROUP));

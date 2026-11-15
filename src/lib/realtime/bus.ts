@@ -96,15 +96,16 @@ class RealtimeBus {
     return this.connected;
   }
 
-  /**
-   * Total active map subscriptions across all channels. Lets the health probe
-   * tell an *idle* bus (zero subscribers ⇒ intentionally not connected, since
-   * the connection is lazy) apart from a dropped connection that should exist.
-   */
+  /** Total active map subscriptions across all channels. */
   subscriberCount(): number {
     let total = 0;
     for (const set of this.listeners.values()) total += set.size;
     return total;
+  }
+
+  /** Registered `onInstanceNotify` listeners. */
+  instanceListenerCount(): number {
+    return this.instanceListeners.size;
   }
 
   private channel(mapId: bigint): string {
@@ -300,10 +301,10 @@ declare global {
   var __apertureRealtimeBus: RealtimeBus | undefined;
 }
 
+// Pinned in production too: the WS server (`server.ts` graph) owns the
+// connection, and the health probe (Next's bundled graph) must read that same
+// instance, not an unused copy.
 export const bus = globalThis.__apertureRealtimeBus ?? new RealtimeBus();
-
-if (env.NODE_ENV !== 'production') {
-  globalThis.__apertureRealtimeBus = bus;
-}
+globalThis.__apertureRealtimeBus = bus;
 
 export type { Listener };
