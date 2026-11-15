@@ -14,10 +14,36 @@ vi.mock('@/lib/realtime/useRealtime', () => ({
   useRealtime: () => ({ blackout: realtimeBlackout }),
   useRealtimeEvents: () => {},
 }));
+// Base UI's tooltip needs portals and contexts jsdom can't provide: the stub
+// opens on mount and renders the popup inline.
+vi.mock('@base-ui/react/tooltip', async () => {
+  const { createElement, Fragment, useEffect } = await import('react');
+  const passthrough = ({ children }: { children?: React.ReactNode }) =>
+    createElement(Fragment, null, children);
+  return {
+    Tooltip: {
+      Root: ({
+        children,
+        onOpenChange,
+      }: {
+        children?: React.ReactNode;
+        onOpenChange?: (open: boolean) => void;
+      }) => {
+        useEffect(() => onOpenChange?.(true), []); // eslint-disable-line react-hooks/exhaustive-deps
+        return createElement(Fragment, null, children);
+      },
+      Trigger: passthrough,
+      Portal: passthrough,
+      Positioner: passthrough,
+      Popup: passthrough,
+    },
+  };
+});
 
 const { BlackoutBanner } = await import('@/components/map/BlackoutBanner');
 const { PilotRoster } = await import('@/components/map/PilotRoster');
 const { ConnectionMassLog } = await import('@/components/sidebar/ConnectionMassLog');
+const { ConnectionDetailPopover } = await import('@/components/map/ConnectionDetailPopover');
 
 const SINCE = '2026-10-23T18:42:00.000Z';
 const OFF: BlackoutStatus = { active: false, since: null, cleared: false };
@@ -199,5 +225,37 @@ describe('ConnectionMassLog hidden state', () => {
     await render(<ConnectionMassLog mapId="7" connection={connection} />);
     expect(fetchConnectionMassLog).toHaveBeenCalledTimes(2);
     expect(container.textContent).toContain('hidden during Blackout');
+  });
+});
+
+describe('ConnectionDetailPopover mass-log hidden state', () => {
+  const connection = {
+    id: '5',
+    jumpMassClass: null,
+    eolStage: 'none',
+  } as unknown as MapConnectionEdge;
+  const popover = (
+    <ConnectionDetailPopover
+      connection={connection}
+      mapId="7"
+      wormholeTypeId={null}
+      wormholeCode={null}
+    >
+      <span>badge</span>
+    </ConnectionDetailPopover>
+  );
+
+  it('shows the mass logged as hidden instead of zero', async () => {
+    fetchConnectionMassLog.mockResolvedValue({ ok: true, data: [], hidden: true });
+    await render(popover);
+    expect(container.textContent).toContain('Mass loggedHidden during Blackout');
+    expect(container.textContent).not.toContain('—');
+  });
+
+  it('shows the cumulative when the server does not mark it hidden', async () => {
+    fetchConnectionMassLog.mockResolvedValue({ ok: true, data: [] });
+    await render(popover);
+    expect(container.textContent).toContain('Mass logged');
+    expect(container.textContent).not.toContain('Blackout');
   });
 });
