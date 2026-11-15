@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { setMapActiveRouteAction } from '@/app/(app)/actions/mapActiveRoute';
 import { pushKspaceWaypointsForCharacter } from '@/lib/character/pushRouteWaypoints';

@@ -910,7 +910,6 @@ function SignatureDraftTableRow({
   tagScheme,
   onCreateWithId,
   onPatch,
-  onConnectionPatch,
   syncConnectionSize,
   syncConnectionEol,
 }: {
@@ -922,7 +921,6 @@ function SignatureDraftTableRow({
   tagScheme: TagScheme;
   onCreateWithId: (body: CreateSignatureBody) => Promise<string | null>;
   onPatch: (signatureId: string, patch: UpdateSignatureBody) => void;
-  onConnectionPatch: (connectionId: string, patch: UpdateConnectionBody) => void;
   syncConnectionSize: (typeId: number | null, connectionId: string | null) => void;
   syncConnectionEol: (stage: EolStage, connectionId: string | null) => void;
 }) {
@@ -1404,7 +1402,6 @@ function SignaturePanelBody({
                 tagScheme={tagScheme}
                 onCreateWithId={onCreateWithId}
                 onPatch={onPatch}
-                onConnectionPatch={onConnectionPatch}
                 syncConnectionSize={syncConnectionSize}
                 syncConnectionEol={syncConnectionEol}
               />

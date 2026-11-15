@@ -41,11 +41,13 @@ export function MapCommandPalette({
 }) {
   const [query, setQuery] = useState('');
 
-  useEffect(() => {
-    if (!open) {
-      setQuery('');
-    }
-  }, [open]);
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      if (!next) setQuery('');
+      onOpenChange(next);
+    },
+    [onOpenChange],
+  );
 
   const filtered = useMemo(() => {
     const raw = query.trim();
@@ -61,14 +63,14 @@ export function MapCommandPalette({
 
   const run = useCallback(
     (action: MapCommandAction) => {
-      onOpenChange(false);
+      handleOpenChange(false);
       action.run();
     },
-    [onOpenChange],
+    [handleOpenChange],
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-lg gap-3 p-4">
         <DialogHeader className="gap-1">
           <DialogTitle>Command palette</DialogTitle>

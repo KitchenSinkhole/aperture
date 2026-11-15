@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { Star, Trash2, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SignatureIndicatorAccountSettings, SoundEvent, SoundId, SoundPrefs } from '@/types';
@@ -206,6 +206,25 @@ export function AccountSettingsDialog({
     [engine],
   );
 
+  const commitSounds = useCallback(
+    (next: SoundPrefs) => {
+      const prev = { ...engine.getPrefs(), volume: committedVolume.current };
+      engine.setPrefs(next);
+      committedVolume.current = next.volume;
+      startTransition(async () => {
+        const result = await setSoundPrefsAction(next);
+        if (result.ok) {
+          announceSoundPrefs(next);
+        } else {
+          engine.setPrefs(prev);
+          committedVolume.current = prev.volume;
+          toast.error(result.error);
+        }
+      });
+    },
+    [engine, startTransition],
+  );
+
   useEffect(() => {
     if (!open || migratedLegacyAlerts.current) return;
     migratedLegacyAlerts.current = true;
@@ -213,23 +232,7 @@ export function AccountSettingsDialog({
     if (JSON.stringify(migrated) !== JSON.stringify(engine.getPrefs())) {
       commitSounds(migrated);
     }
-  }, [engine, open]);
-
-  function commitSounds(next: SoundPrefs) {
-    const prev = { ...sounds, volume: committedVolume.current };
-    engine.setPrefs(next);
-    committedVolume.current = next.volume;
-    startTransition(async () => {
-      const result = await setSoundPrefsAction(next);
-      if (result.ok) {
-        announceSoundPrefs(next);
-      } else {
-        engine.setPrefs(prev);
-        committedVolume.current = prev.volume;
-        toast.error(result.error);
-      }
-    });
-  }
+  }, [commitSounds, engine, open]);
 
   // The slider drags (and arrows) ahead of the server; every gesture that can
   // end a volume change funnels through here so a keyboard-only adjustment is

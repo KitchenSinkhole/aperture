@@ -1,7 +1,6 @@
 'use client';
 
 import { SOUND_EVENTS } from '@/lib/sounds/prefs';
-import { experimentalSettingLabel } from '@/lib/experimentalSettingLabel';
 import {
   mutedSystemsForMap,
   setSystemMuteAll,

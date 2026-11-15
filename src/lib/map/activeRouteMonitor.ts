@@ -19,7 +19,7 @@ export function activeRouteProgressIndex(
   currentSystemId: number | null,
 ): number {
   if (hops.length === 0) return 0;
-  let idx = Math.min(Math.max(0, waypointCursor), hops.length - 1);
+  const idx = Math.min(Math.max(0, waypointCursor), hops.length - 1);
   if (currentSystemId == null) return idx;
   let onPath = -1;
   for (let i = 0; i < hops.length; i++) {

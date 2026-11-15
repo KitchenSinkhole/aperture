@@ -13,7 +13,6 @@ import React, {
 import { createPortal } from 'react-dom';
 import { ChevronRight, Copy, Loader2, Plus, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { Tooltip } from '@base-ui/react/tooltip';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
@@ -77,7 +76,6 @@ import type {
   MapSystemNode,
   RouteInstructionToken,
   RouteDestinationView,
-  RouteHop,
   RoutePlan,
   RoutePrefs,
   RouteSafety,
@@ -351,11 +349,11 @@ export function RoutePlannerModule({
   }, [plans, onPlanHighlight, highlightedPlan, planHighlightSuppressed]);
 
   const compareDestId = destinations[0]?.systemId ?? null;
+  const shouldExitCompare =
+    experimentalRoutes && compareDestId != null && exitCompareOrigins.length >= 2;
 
   useEffect(() => {
-    if (!experimentalRoutes || compareDestId == null || exitCompareOrigins.length < 2) {
-      setExitComparePlans([]);
-      setExitCompareBusy(false);
+    if (!shouldExitCompare) {
       return;
     }
     const seq = ++exitCompareSeq.current;
@@ -392,7 +390,7 @@ export function RoutePlannerModule({
     }, COMPUTE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [
-    experimentalRoutes,
+    shouldExitCompare,
     compareDestId,
     exitCompareOrigins,
     mapId,
@@ -783,7 +781,7 @@ export function RoutePlannerModule({
                 Turnur
               </ShortcutChip>
             </div>
-            {compareDestId != null && exitCompareOrigins.length >= 2 ? (
+            {shouldExitCompare ? (
               <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground">Exit compare → {destinations[0]?.name}</span>
                 {exitCompareBusy ? (

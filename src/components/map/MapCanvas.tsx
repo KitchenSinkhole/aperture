@@ -708,60 +708,94 @@ export function MapCanvas({
       variant,
     };
   }, [experimentalActive, experimentalUi]);
-  const [routeHighlightConnectionIds, setRouteHighlightConnectionIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [routeHighlightMapSystemIds, setRouteHighlightMapSystemIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [routeFocusMapSystemId, setRouteFocusMapSystemId] = useState<string | null>(null);
-  const [activeRouteLocallyCleared, setActiveRouteLocallyCleared] = useState(false);
-  const [planHighlightSuppressed, setPlanHighlightSuppressed] = useState(false);
-  const router = useRouter();
-  const [pilotHoverSystemId, setPilotHoverSystemId] = useState<string | null>(null);
-  const [signatureHoverFarSystemId, setSignatureHoverFarSystemId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setActiveRouteLocallyCleared(false);
-    setPlanHighlightSuppressed(false);
-  }, [mapActiveRoute?.id]);
-
-  useEffect(() => {
-    if (!experimentalActive || activeRouteLocallyCleared || !mapActiveRoute) return;
+  const emptyHighlightSet = useMemo(() => new Set<string>(), []);
+  const activeRouteId = mapActiveRoute?.id ?? null;
+  const [highlightClearedRouteId, setHighlightClearedRouteId] = useState<string | null>(null);
+  const activeRouteLocallyCleared =
+    activeRouteId != null && highlightClearedRouteId === activeRouteId;
+  const [planHighlightSuppressedRouteId, setPlanHighlightSuppressedRouteId] =
+    useState<string | null>(null);
+  const planHighlightSuppressed =
+    activeRouteId != null && planHighlightSuppressedRouteId === activeRouteId;
+  const [planRouteHighlightConnectionIds, setPlanRouteHighlightConnectionIds] =
+    useState<ReadonlySet<string>>(() => new Set());
+  const [planRouteHighlightMapSystemIds, setPlanRouteHighlightMapSystemIds] =
+    useState<ReadonlySet<string>>(() => new Set());
+  const activeRouteHighlight = useMemo(() => {
+    if (!experimentalActive || !mapActiveRoute || activeRouteLocallyCleared) {
+      return { connections: emptyHighlightSet, systems: emptyHighlightSet };
+    }
     const byEve = new Map(viewData.systems.map((s) => [s.systemId, s.id]));
-    setRouteHighlightConnectionIds(new Set(activeRouteConnectionIds(mapActiveRoute.hops)));
-    setRouteHighlightMapSystemIds(
-      new Set(
+    return {
+      connections: new Set(activeRouteConnectionIds(mapActiveRoute.hops)),
+      systems: new Set(
         mapActiveRoute.hops
           .map((h) => byEve.get(h.systemId))
           .filter((id): id is string => id != null),
       ),
-    );
-  }, [experimentalActive, mapActiveRoute, activeRouteLocallyCleared, viewData.systems]);
-
-  const onRoutePlanHighlight = useCallback((plan: RoutePlan | null) => {
-    if (mapActiveRoute && !activeRouteLocallyCleared) return;
-    if (!plan?.reachable) {
-      setRouteHighlightConnectionIds(new Set());
-      setRouteHighlightMapSystemIds(new Set());
-      return;
+    };
+  }, [
+    activeRouteLocallyCleared,
+    emptyHighlightSet,
+    experimentalActive,
+    mapActiveRoute,
+    viewData.systems,
+  ]);
+  const routeHighlightConnectionIds = useMemo(() => {
+    if (experimentalActive && mapActiveRoute && !activeRouteLocallyCleared) {
+      return activeRouteHighlight.connections;
     }
-    const byEve = new Map(viewData.systems.map((s) => [s.systemId, s.id]));
-    setRouteHighlightConnectionIds(
-      new Set(
-        plan.hops
-          .filter((h) => h.connectionId != null)
-          .map((h) => String(h.connectionId)),
-      ),
-    );
-    setRouteHighlightMapSystemIds(
-      new Set(
-        plan.hops
-          .map((h) => byEve.get(h.systemId))
-          .filter((id): id is string => id != null),
-      ),
-    );
-  }, [viewData.systems, mapActiveRoute, activeRouteLocallyCleared]);
+    return planRouteHighlightConnectionIds;
+  }, [
+    activeRouteHighlight.connections,
+    activeRouteLocallyCleared,
+    experimentalActive,
+    mapActiveRoute,
+    planRouteHighlightConnectionIds,
+  ]);
+  const routeHighlightMapSystemIds = useMemo(() => {
+    if (experimentalActive && mapActiveRoute && !activeRouteLocallyCleared) {
+      return activeRouteHighlight.systems;
+    }
+    return planRouteHighlightMapSystemIds;
+  }, [
+    activeRouteHighlight.systems,
+    activeRouteLocallyCleared,
+    experimentalActive,
+    mapActiveRoute,
+    planRouteHighlightMapSystemIds,
+  ]);
+  const [routeFocusMapSystemId, setRouteFocusMapSystemId] = useState<string | null>(null);
+  const router = useRouter();
+  const [pilotHoverSystemId, setPilotHoverSystemId] = useState<string | null>(null);
+  const [signatureHoverFarSystemId, setSignatureHoverFarSystemId] = useState<string | null>(null);
+
+  const onRoutePlanHighlight = useCallback(
+    (plan: RoutePlan | null) => {
+      if (mapActiveRoute && !activeRouteLocallyCleared) return;
+      if (!plan?.reachable) {
+        setPlanRouteHighlightConnectionIds(new Set());
+        setPlanRouteHighlightMapSystemIds(new Set());
+        return;
+      }
+      const byEve = new Map(viewData.systems.map((s) => [s.systemId, s.id]));
+      setPlanRouteHighlightConnectionIds(
+        new Set(
+          plan.hops
+            .filter((h) => h.connectionId != null)
+            .map((h) => String(h.connectionId)),
+        ),
+      );
+      setPlanRouteHighlightMapSystemIds(
+        new Set(
+          plan.hops
+            .map((h) => byEve.get(h.systemId))
+            .filter((id): id is string => id != null),
+        ),
+      );
+    },
+    [activeRouteLocallyCleared, mapActiveRoute, viewData.systems],
+  );
 
   const focusMapSystemByEveId = useCallback(
     (eveSystemId: number) => {
@@ -1362,13 +1396,13 @@ export function MapCanvas({
       return;
     }
     toast.success('Active route stopped.');
-    setActiveRouteLocallyCleared(true);
-    setPlanHighlightSuppressed(true);
-    setRouteHighlightConnectionIds(new Set());
-    setRouteHighlightMapSystemIds(new Set());
+    setHighlightClearedRouteId(mapActiveRoute?.id ?? null);
+    setPlanHighlightSuppressedRouteId(mapActiveRoute?.id ?? null);
+    setPlanRouteHighlightConnectionIds(new Set());
+    setPlanRouteHighlightMapSystemIds(new Set());
     setRouteFocusMapSystemId(null);
     router.refresh();
-  }, [mapId, router]);
+  }, [mapActiveRoute?.id, mapId, router]);
 
   const mapMutedSystems = useMemo(
     () => mutedSystemsForMap(soundLayoutSettings, mapId),
@@ -3074,7 +3108,7 @@ export function MapCanvas({
             onPlanHighlight={experimentalActive ? onRoutePlanHighlight : undefined}
             planHighlightSuppressed={experimentalActive ? planHighlightSuppressed : undefined}
             onPlanHighlightEngaged={
-              experimentalActive ? () => setPlanHighlightSuppressed(false) : undefined
+              experimentalActive ? () => setPlanHighlightSuppressedRouteId(null) : undefined
             }
             onHopClick={experimentalActive ? focusMapSystemByEveId : undefined}
             mapRouteFavourites={experimentalActive ? mapRouteFavourites : undefined}

@@ -55,7 +55,7 @@ export function SystemNotificationSoundBridge({
 
         getSoundEngine().play(event);
       },
-      [mapId],
+      [mapId, soundGate],
     ),
   );
 
