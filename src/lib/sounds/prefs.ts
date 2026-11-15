@@ -26,6 +26,12 @@ export const EXPERIMENTAL_SOUND_EVENTS = new Set<SoundEvent>([
   'activeRouteLinkAlert',
 ]);
 
+/** Events that only offer chimes (no dedicated voice lines). */
+export const SOUND_EVENTS_WITHOUT_VOICE = new Set<SoundEvent>([
+  'activeRouteOffRoute',
+  'activeRouteLinkAlert',
+]);
+
 /** Chimes synthesized by `catalog.ts`. */
 export const CHIME_SOUND_IDS = [
   'chime-up',
@@ -106,8 +112,8 @@ export const DEFAULT_SOUND_PREFS: SoundPrefs = {
     killInSystem: { enabled: false, sound: 'alarm' },
     rallySet: { enabled: false, sound: 'bell', desktopNotification: false },
     systemPinged: { enabled: false, sound: 'ping' },
-    activeRouteOffRoute: { enabled: false, sound: 'beeps' },
-    activeRouteLinkAlert: { enabled: false, sound: 'tick-loud' },
+    activeRouteOffRoute: { enabled: false, sound: 'beeps', desktopNotification: false },
+    activeRouteLinkAlert: { enabled: false, sound: 'tick-loud', desktopNotification: false },
   },
 };
 
@@ -164,7 +170,11 @@ function resolveEventPrefs(raw: unknown, event: SoundEvent): SoundEventPrefs {
     enabled: typeof raw.enabled === 'boolean' ? raw.enabled : fallback.enabled,
     sound: isSoundId(raw.sound) ? raw.sound : fallback.sound,
   };
-  if (event === 'rallySet') {
+  if (
+    event === 'rallySet' ||
+    event === 'activeRouteOffRoute' ||
+    event === 'activeRouteLinkAlert'
+  ) {
     base.desktopNotification =
       typeof raw.desktopNotification === 'boolean'
         ? raw.desktopNotification

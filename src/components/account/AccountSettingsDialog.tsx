@@ -36,6 +36,14 @@ import {
   EXPERIMENTAL_HOVER_DELAY_MIN_MS,
   clampExperimentalHoverDelayMs,
 } from '@/lib/experimentalHoverDelay';
+import {
+  DEFAULT_EXPERIMENTAL_COMBAT_RING_MINUTES,
+  EXPERIMENTAL_COMBAT_RING_MAX_MINUTES,
+  EXPERIMENTAL_COMBAT_RING_MIN_MINUTES,
+  clampExperimentalCombatRingMinutes,
+  readExperimentalCombatRingMinutes,
+  writeExperimentalCombatRingMinutes,
+} from '@/lib/experimentalCombatRingDuration';
 import { useExperimentalHoverDelayContext } from '@/lib/experimentalHoverDelay.client';
 import { isExperimentalUiActive } from '@/lib/experimentalUi';
 import { experimentalSettingLabel } from '@/lib/experimentalSettingLabel';
@@ -106,6 +114,8 @@ export function AccountSettingsDialog({
   const [experimentalUi, setExperimentalUi] = useExperimentalUi();
   const { delayMs: hoverDelayMs, setDelayMs: setHoverDelayMs } = useExperimentalHoverDelayContext();
   const [hoverDelayInput, setHoverDelayInput] = useState(String(hoverDelayMs));
+  const [combatRingMinutes, setCombatRingMinutes] = useState(readExperimentalCombatRingMinutes);
+  const [combatRingInput, setCombatRingInput] = useState(String(combatRingMinutes));
   const experimentalOn = isExperimentalUiActive(experimentalUi);
   const [keepSelection, setKeepSelection] = useState(readKeepMapSelection);
   const [pointerCursor, setPointerCursor] = useState(readExperimentalPointerCursor);
@@ -205,6 +215,17 @@ export function AccountSettingsDialog({
       }),
     [engine],
   );
+
+  useEffect(() => {
+    if (!open) return;
+    const onCombatRing = () => {
+      const next = readExperimentalCombatRingMinutes();
+      setCombatRingMinutes(next);
+      setCombatRingInput(String(next));
+    };
+    window.addEventListener('aperture:experimental-combat-ring-duration', onCombatRing);
+    return () => window.removeEventListener('aperture:experimental-combat-ring-duration', onCombatRing);
+  }, [open]);
 
   const commitSounds = useCallback(
     (next: SoundPrefs) => {
@@ -411,6 +432,51 @@ export function AccountSettingsDialog({
                 />
               </div>
             ) : null}
+            {experimentalOn && experimentalSectionVisible('combat', 'ring') ? (
+              <div className="mt-1 flex flex-col gap-1">
+                <label
+                  htmlFor="experimental-combat-ring"
+                  className="flex items-center gap-2 text-sm font-medium text-foreground"
+                >
+                  {experimentalSettingLabel('Combat ring duration (minutes)')}
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                    Device
+                  </span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  After a kill on a map system, highlight it for this many minutes. 0 turns the ring off.
+                </p>
+                <input
+                  id="experimental-combat-ring"
+                  type="number"
+                  min={EXPERIMENTAL_COMBAT_RING_MIN_MINUTES}
+                  max={EXPERIMENTAL_COMBAT_RING_MAX_MINUTES}
+                  step={1}
+                  className="border-input bg-background h-9 w-full max-w-[8rem] rounded-md border px-2 text-sm"
+                  value={combatRingInput}
+                  onChange={(e) => setCombatRingInput(e.target.value)}
+                  onBlur={() => {
+                    const trimmed = combatRingInput.trim();
+                    if (trimmed === '') {
+                      setCombatRingInput(String(DEFAULT_EXPERIMENTAL_COMBAT_RING_MINUTES));
+                      setCombatRingMinutes(DEFAULT_EXPERIMENTAL_COMBAT_RING_MINUTES);
+                      writeExperimentalCombatRingMinutes(DEFAULT_EXPERIMENTAL_COMBAT_RING_MINUTES);
+                      return;
+                    }
+                    const parsed = Number(trimmed);
+                    if (!Number.isFinite(parsed)) {
+                      setCombatRingInput(String(combatRingMinutes));
+                      toast.error('Enter a number of minutes.');
+                      return;
+                    }
+                    const next = clampExperimentalCombatRingMinutes(parsed);
+                    setCombatRingInput(String(next));
+                    setCombatRingMinutes(next);
+                    writeExperimentalCombatRingMinutes(next);
+                  }}
+                />
+              </div>
+            ) : null}
             {experimentalOn && experimentalSectionVisible('qol', 'selection', 'pointer', 'paste', 'mass') ? (
               <div className="mt-2 flex flex-col gap-2 border-t border-border pt-2">
                 <p className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -429,7 +495,7 @@ export function AccountSettingsDialog({
                       writeKeepMapSelection(e.target.checked);
                     }}
                   />
-                  {experimentalSettingLabel('Keep selection when clicking empty map')}
+                  Keep selection when clicking empty map
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -441,7 +507,7 @@ export function AccountSettingsDialog({
                       writeExperimentalPointerCursor(e.target.checked);
                     }}
                   />
-                  {experimentalSettingLabel('Pointer cursor on buttons')}
+                  Pointer cursor on buttons
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -453,7 +519,7 @@ export function AccountSettingsDialog({
                       writePastePreviewOnCtrlV(e.target.checked);
                     }}
                   />
-                  {experimentalSettingLabel('Preview signature paste on Ctrl+V')}
+                  Preview signature paste on Ctrl+V
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -465,7 +531,7 @@ export function AccountSettingsDialog({
                       writeExperimentalAutoMassFromLog(e.target.checked);
                     }}
                   />
-                  {experimentalSettingLabel('Auto-set link mass from jump log')}
+                  Auto-set link mass from jump log
                 </label>
               </div>
             ) : null}
@@ -612,7 +678,10 @@ export function AccountSettingsDialog({
                           <span className="text-xs text-muted-foreground">{description}</span>
                         </span>
                       </label>
-                      {experimentalOn && event === 'rallySet' ? (
+                      {experimentalOn &&
+                      (event === 'rallySet' ||
+                        event === 'activeRouteOffRoute' ||
+                        event === 'activeRouteLinkAlert') ? (
                         <label className="ml-7 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                           <input
                             type="checkbox"

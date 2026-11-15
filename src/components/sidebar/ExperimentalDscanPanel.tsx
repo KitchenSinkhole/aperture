@@ -1,7 +1,6 @@
 'use client';
 
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Link2 } from 'lucide-react';
 import { subscribeExperimentalPanelAdd } from '@/lib/experimentalPanelActionBus';
 import { parseDscanPaste } from '@/lib/map/dscanParser';
 import type { MapSystemNode } from '@/types';
@@ -9,12 +8,15 @@ import { Button } from '@/components/ui/button';
 
 export function ExperimentalDscanPanel({
   system,
+  attachedText,
   onAttach,
 }: {
   system: MapSystemNode | undefined;
+  /** Saved paste from layout `panelSettings.dscan` for the selected system. */
+  attachedText?: string;
   onAttach?: (text: string) => void;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState(attachedText ?? '');
   const [prev, setPrev] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -25,6 +27,7 @@ export function ExperimentalDscanPanel({
       }),
     [],
   );
+
   const rows = useMemo(() => (text.trim() ? parseDscanPaste(text) : []), [text]);
   const diff = useMemo(() => {
     if (!prev.trim() || !text.trim()) return { added: new Set<string>(), removed: new Set<string>() };
@@ -42,10 +45,6 @@ export function ExperimentalDscanPanel({
     }
     return [...byType.entries()].sort((a, b) => b[1] - a[1]);
   }, [rows]);
-
-  const fleetLinkStub = system
-    ? `aperture://dscan?mapSystem=${system.id}&rows=${rows.length}`
-    : null;
 
   return (
     <div className="flex flex-col gap-2 p-2 text-xs">
@@ -67,21 +66,6 @@ export function ExperimentalDscanPanel({
         {system && onAttach ? (
           <Button type="button" size="sm" onClick={() => onAttach(text)}>
             Attach to {system.alias ?? system.name}
-          </Button>
-        ) : null}
-        {fleetLinkStub ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="gap-1"
-            title="Fleet broadcast link (stub — copy to clipboard)"
-            onClick={() => {
-              void navigator.clipboard?.writeText(fleetLinkStub);
-            }}
-          >
-            <Link2 className="size-3" />
-            Fleet link
           </Button>
         ) : null}
       </div>

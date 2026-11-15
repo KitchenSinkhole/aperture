@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import {
   Background,
   ConnectionMode,
@@ -238,11 +246,20 @@ import {
 import { readExperimentalAutoMassFromLog, readKeepMapSelection } from '@/lib/experimentalQolPrefs';
 import { experimentalSettingLabel } from '@/lib/experimentalSettingLabel';
 import {
-  readExperimentalIncludeJumpBridge,
+  readExperimentalFightMapSystemId,
   subscribeExperimentalRoutePrefs,
-  writeExperimentalIncludeJumpBridge,
+  writeExperimentalFightMapSystemId,
 } from '@/lib/experimentalRoutePrefs';
 import { massStatusFromCumulative } from '@/lib/experimentalAutoMass';
+import {
+  clearManualConnectionMassLock,
+  isManualConnectionMassLocked,
+  lockManualConnectionMass,
+} from '@/lib/experimentalManualMass';
+import {
+  mergeDscanAttach,
+  parseExperimentalDscanPanelSettings,
+} from '@/lib/experimentalDscanLayout';
 import { fetchWormholeJumpInfo } from '@/lib/reference/client';
 import type { WormholeJumpInfoRow } from '@/types';
 import { useExperimentalUi } from '@/lib/experimentalUi.client';
@@ -522,12 +539,6 @@ export function MapCanvas({
   // direct scanner paste also removes missing sigs, then disarms itself.
   const [lazyDeleteSigs, setLazyDeleteSigs] = useState(false);
   const [sigCleanupOpen, setSigCleanupOpen] = useState(false);
-  const [panelGearJumpBridge, setPanelGearJumpBridge] = useState(readExperimentalIncludeJumpBridge);
-
-  useEffect(
-    () => subscribeExperimentalRoutePrefs(() => setPanelGearJumpBridge(readExperimentalIncludeJumpBridge())),
-    [],
-  );
   const [viewData, setViewData] = useState<MapViewData>(data);
   const [liveShares, setLiveShares] = useState<LiveShareBadge[]>(initialLiveShares);
   // Captured via ReactFlow's onInit so the manual-add flow can place new nodes
@@ -696,6 +707,12 @@ export function MapCanvas({
   // current and complete).
   const [experimentalUi, setExperimentalUi] = useExperimentalUi(initialExperimentalUi);
   const experimentalActive = isExperimentalUiActive(experimentalUi);
+  const fightMapSystemId = useSyncExternalStore(
+    subscribeExperimentalRoutePrefs,
+    readExperimentalFightMapSystemId,
+    () => null,
+  );
+  const resolvedFightMapSystemId = experimentalActive ? fightMapSystemId : null;
   const mapStyleOpts = useMemo<MapStyleOptions>(() => {
     if (!experimentalActive) {
       return { palette: 'default', theme: 'dark' };
@@ -907,6 +924,11 @@ export function MapCanvas({
 
   const soundLayoutSettings = useMemo(
     () => parseExperimentalSoundLayoutSettings(layout),
+    [layout],
+  );
+
+  const dscanPanelSettings = useMemo(
+    () => parseExperimentalDscanPanelSettings(layout),
     [layout],
   );
 
@@ -1897,7 +1919,14 @@ export function MapCanvas({
   }, [mapId, runOptimistic, deletableSelectedSystemIds]);
 
   const onConnectionPatch = useCallback(
-    (connectionId: string, patch: UpdateConnectionBody) => {
+    (
+      connectionId: string,
+      patch: UpdateConnectionBody,
+      options?: { fromAutoMass?: boolean },
+    ) => {
+      if (patch.massStatus !== undefined && !options?.fromAutoMass) {
+        lockManualConnectionMass(connectionId);
+      }
       const opt: MapEventPayload = {
         kind: 'connection.update',
         eventId: 0,
@@ -1952,7 +1981,8 @@ export function MapCanvas({
           if (!status) return;
           const conn = viewData.connections.find((c) => c.id === connectionId);
           if (!conn || conn.massStatus === status) return;
-          onConnectionPatch(connectionId, { massStatus: status });
+          if (isManualConnectionMassLocked(connectionId)) return;
+          onConnectionPatch(connectionId, { massStatus: status }, { fromAutoMass: true });
         })();
       },
       [experimentalActive, mapId, onConnectionPatch, viewData.connections, viewData.signatures],
@@ -1968,6 +1998,7 @@ export function MapCanvas({
         // and the watch has to come back with it.
         () => dropWatchedConnection(mapId, connectionId),
       );
+      clearManualConnectionMassLock(connectionId);
       setSelected(null);
     },
     [mapId, runOptimistic],
@@ -2578,6 +2609,19 @@ export function MapCanvas({
     return viewData.systems.find((s) => s.id === selected.id) ?? null;
   }, [selected, viewData.systems]);
 
+  const onDscanAttach = useCallback(
+    (text: string) => {
+      if (!selectedSystem) return;
+      setLayout((prev) => {
+        const next = mergeDscanAttach(prev, selectedSystem.id, text);
+        saveLayout(next);
+        return next;
+      });
+      toast.success(`D-Scan attached to ${selectedSystem.alias?.trim() || selectedSystem.name}`);
+    },
+    [saveLayout, selectedSystem],
+  );
+
   // EVE solar-system ids already placed — lets the add dialog flag duplicates.
   const existingSystemIds = useMemo(
     () => new Set(viewData.systems.map((s) => s.systemId)),
@@ -2888,6 +2932,7 @@ export function MapCanvas({
     onOpenChange: setCommandOpen,
     onFitView: fitMapView,
     onFocusPanel: focusPanelByShortcut,
+    blockFitKey: selected?.kind === 'connection',
   });
 
   // The JSX for one panel's body. The canvas keeps its own positioned wrapper
@@ -3029,6 +3074,15 @@ export function MapCanvas({
               onNotePatch={onNotePatch}
               onNoteRemove={onNoteRemove}
               experimentalSound={experimentalContextMenuSound}
+              experimentalFightMapSystemId={resolvedFightMapSystemId ?? undefined}
+              onSetFightMapSystem={
+                experimentalActive
+                  ? (id) => {
+                      writeExperimentalFightMapSystemId(id);
+                      toast.message(id ? 'Fight system set' : 'Fight system cleared');
+                    }
+                  : undefined
+              }
             />
           </div>
         );
@@ -3186,57 +3240,42 @@ export function MapCanvas({
       case 'kills':
         return experimentalActive ? <ExperimentalKillsPanel system={selectedSystem ?? undefined} /> : null;
       case 'dscan':
-        return experimentalActive ? <ExperimentalDscanPanel system={selectedSystem ?? undefined} /> : null;
+        return experimentalActive ? (
+          <ExperimentalDscanPanel
+            key={selectedSystem?.id ?? 'no-system'}
+            system={selectedSystem ?? undefined}
+            attachedText={
+              selectedSystem
+                ? dscanPanelSettings.attachedBySystemId[selectedSystem.id]
+                : undefined
+            }
+            onAttach={selectedSystem ? onDscanAttach : undefined}
+          />
+        ) : null;
     }
   };
 
   const renderPanelGearBody = useCallback(
     (id: PanelId): ReactNode => {
-      if (!experimentalActive) return null;
-      switch (id) {
-        case 'canvas':
-          return (
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                className="size-4 accent-primary"
-                checked={soundLayoutSettings.followSelectedPilot === true}
-                onChange={(e) => {
-                  persistSoundLayoutSettings({
-                    ...soundLayoutSettings,
-                    followSelectedPilot: e.target.checked,
-                  });
-                }}
-              />
-              {experimentalSettingLabel('Follow selected pilot')}
-            </label>
-          );
-        case 'route':
-          return (
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                className="size-4 accent-primary"
-                checked={panelGearJumpBridge}
-                onChange={(e) => {
-                  setPanelGearJumpBridge(e.target.checked);
-                  writeExperimentalIncludeJumpBridge(e.target.checked);
-                }}
-              />
-              {experimentalSettingLabel('Include jump bridges')}
-            </label>
-          );
-        case 'pilots':
-          return (
-            <p className="text-muted-foreground">
-              Card hover uses the account {experimentalSettingLabel('Hover delay (ms)')} setting.
-            </p>
-          );
-        default:
-          return null;
-      }
+      if (!experimentalActive || id !== 'canvas') return null;
+      return (
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            className="size-4 accent-primary"
+            checked={soundLayoutSettings.followSelectedPilot === true}
+            onChange={(e) => {
+              persistSoundLayoutSettings({
+                ...soundLayoutSettings,
+                followSelectedPilot: e.target.checked,
+              });
+            }}
+          />
+          {experimentalSettingLabel('Follow selected pilot')}
+        </label>
+      );
     },
-    [experimentalActive, panelGearJumpBridge, persistSoundLayoutSettings, soundLayoutSettings],
+    [experimentalActive, persistSoundLayoutSettings, soundLayoutSettings],
   );
 
   const panelHeaderRight = (id: PanelId): ReactNode => {
@@ -3355,7 +3394,7 @@ export function MapCanvas({
               <SignaturePasteHotkey
                 mapId={mapId}
                 selectedSystem={selectedSystem}
-                fallbackSystem={lastPrimarySystem}
+                fallbackSystem={experimentalActive ? lastPrimarySystem : null}
                 systems={viewData.systems}
                 signatures={viewData.signatures}
                 viewerCharacterIds={viewerCharacterIds}
@@ -3435,12 +3474,14 @@ export function MapCanvas({
                             <MenuSeparator />
                           </>
                         ) : null}
-                        <MenuItem
-                          icon={<Copy className="size-3.5" />}
-                          onClick={handleCopyLayout}
-                        >
-                          Copy layout JSON
-                        </MenuItem>
+                        {experimentalActive ? (
+                          <MenuItem
+                            icon={<Copy className="size-3.5" />}
+                            onClick={handleCopyLayout}
+                          >
+                            Copy layout JSON
+                          </MenuItem>
+                        ) : null}
                         <MenuItem
                           icon={<Download className="size-3.5" />}
                           onClick={handleExportLayout}

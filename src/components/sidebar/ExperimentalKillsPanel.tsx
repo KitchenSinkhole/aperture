@@ -17,7 +17,7 @@ export function ExperimentalKillsPanel({ system }: { system: MapSystemNode | und
   if (!system) {
     return (
       <div className="p-3 text-xs text-muted-foreground">
-        Select a chain system to load recent kills (configure nearby radius in panel ⚙).
+        Select a chain system to load its killboard for this map.
       </div>
     );
   }

@@ -11,7 +11,10 @@
 
 ### `useMapCommandPaletteKeyboard(...)`
 
-Registers document-level shortcuts when `enabled`: `Ctrl/Cmd+K` toggles the palette (including while the palette search field is focused), `?` opens it, `f` fits the map view, `1`–`4` focus panels, `Esc` closes. Other shortcuts are ignored while focus is in an editable field.
+Registers document-level shortcuts when `enabled`: `Ctrl/Cmd+K` toggles the palette (including while the palette search field is focused), `?` opens it, `f` fits the map view (skipped when `blockFitKey` is true, e.g. a wormhole is selected and `f` sets Fresh mass), `1`–`4` focus panels, `Esc` closes. Other shortcuts are ignored while focus is in an editable field.
+
+### `shouldMapFitOnFKey(event, blockFitKey)`
+Pure helper for whether bare `f` should trigger a map fit.
 
 ### `MapCommandAction`
 

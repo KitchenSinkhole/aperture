@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
-import { COMBAT_RING_MS } from '@/lib/experimentalCombat';
+import { readExperimentalCombatRingMs } from '@/lib/experimentalCombatRingDuration';
 
 type Store = {
   /** mapSystemId → expiry timestamp (ms) */
@@ -44,7 +44,9 @@ export function useExperimentalCombatRingActions(): { markKill: (mapSystemId: st
     () => ({
       markKill: (mapSystemId: string) => {
         if (!store) return;
-        store.rings.set(mapSystemId, Date.now() + COMBAT_RING_MS);
+        const durationMs = readExperimentalCombatRingMs();
+        if (durationMs <= 0) return;
+        store.rings.set(mapSystemId, Date.now() + durationMs);
         for (const l of store.listeners) l();
       },
     }),

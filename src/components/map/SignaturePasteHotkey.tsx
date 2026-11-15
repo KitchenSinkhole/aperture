@@ -22,6 +22,14 @@ import { SignaturePasteDialog } from '@/components/dialogs/SignaturePasteDialog'
 import { readPastePreviewOnCtrlV } from '@/lib/experimentalQolPrefs';
 import type { MapEventPayload, MapSignature, MapSystemNode, ParsedSigRow } from '@/types';
 
+/** Target system for a paste: explicit selection, else optional experimental fallback. */
+export function resolveSignaturePasteTargetSystem(
+  selectedSystem: MapSystemNode | null,
+  fallbackSystem?: MapSystemNode | null,
+): MapSystemNode | null {
+  return selectedSystem ?? fallbackSystem ?? null;
+}
+
 /**
  * Fast-scanning CTRL+V: a document-level `paste` listener that applies in-game
  * probe-scanner clipboard data straight to the selected system via the bulk
@@ -136,7 +144,10 @@ export function SignaturePasteHotkey({
       e.preventDefault();
 
       const { selectedSystem, fallbackSystem, systems, viewerCharacterIds, store } = latest.current;
-      const targetSystem = selectedSystem ?? fallbackSystem;
+      const targetSystem = resolveSignaturePasteTargetSystem(
+        selectedSystem,
+        fallbackSystem,
+      );
       if (!targetSystem) {
         toast.info('Select a system on the map to paste scanned signatures into it.');
         return;

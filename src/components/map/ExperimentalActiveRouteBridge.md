@@ -16,5 +16,5 @@
 | onRouteUpdated | () => void | no | Called after a successful reroute save (e.g. `router.refresh`). |
 
 ### Behaviour
-- Off-route toasts and `activeRouteOffRoute` cue when that account sound event is enabled (default off); deduped per character and off-route system until they rejoin the hop list.
-- Hazard toasts and `activeRouteLinkAlert` cue when enabled for route wormhole links entering `eolStage === 'critical'` or disappearing from the map; optional **Recompute** calls `route-plan` and `setMapActiveRouteAction`.
+- Off-route toasts when the `activeRouteOffRoute` event row is enabled (independent of the master sound switch); the chime plays only when master + event are on. Optional desktop notification from that row’s `desktopNotification` pref.
+- Hazard toasts when the `activeRouteLinkAlert` event is enabled, with the same sound/master/desktop split; optional **Recompute** calls `route-plan` and `setMapActiveRouteAction`.

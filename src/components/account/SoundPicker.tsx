@@ -3,6 +3,7 @@
 import { Volume2 } from 'lucide-react';
 import type { SoundEvent, SoundId } from '@/types';
 import { CHIME_SOUNDS, voiceSoundsForEvent } from '@/lib/sounds/catalog';
+import { SOUND_EVENTS_WITHOUT_VOICE } from '@/lib/sounds/prefs';
 import { useCustomSounds } from '@/lib/sounds/customStore';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,7 +34,7 @@ export function SoundPicker({
   disabled?: boolean;
   ariaLabel: string;
 }) {
-  const voices = voiceSoundsForEvent(event);
+  const voices = SOUND_EVENTS_WITHOUT_VOICE.has(event) ? [] : voiceSoundsForEvent(event);
   const customs = useCustomSounds();
   const selected = [...CHIME_SOUNDS, ...voices, ...customs].find((s) => s.id === value);
 
@@ -57,14 +58,16 @@ export function SoundPicker({
               </SelectItem>
             ))}
           </SelectGroup>
-          <SelectGroup>
-            <SelectGroupLabel>Voice packs</SelectGroupLabel>
-            {voices.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.label}
-              </SelectItem>
-            ))}
-          </SelectGroup>
+          {voices.length > 0 ? (
+            <SelectGroup>
+              <SelectGroupLabel>Voice packs</SelectGroupLabel>
+              {voices.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          ) : null}
           {customs.length > 0 && (
             <SelectGroup>
               <SelectGroupLabel>Your sounds</SelectGroupLabel>

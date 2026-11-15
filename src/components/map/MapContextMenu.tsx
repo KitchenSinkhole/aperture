@@ -138,6 +138,8 @@ export function MapContextMenu({
   onNotePatch,
   onNoteRemove,
   experimentalSound,
+  experimentalFightMapSystemId,
+  onSetFightMapSystem,
 }: {
   target: MapContextMenuTarget | null;
   onClose: () => void;
@@ -177,6 +179,9 @@ export function MapContextMenu({
     onMuteAll: (mute: boolean) => void;
     onToggleEventMute: (event: SoundEvent, muted: boolean) => void;
   };
+  /** Experimental route shortcut: persisted fight map-system id. */
+  experimentalFightMapSystemId?: string | null;
+  onSetFightMapSystem?: (mapSystemId: string | null) => void;
 }) {
   // A zero-size virtual element at the cursor point; recreated per render so the
   // rect tracks the current target's coordinates.
@@ -247,6 +252,8 @@ export function MapContextMenu({
               onNotePatch,
               onNoteRemove,
               experimentalSound,
+              experimentalFightMapSystemId,
+              onSetFightMapSystem,
             })}
           </MenuPrimitive.Popup>
         </MenuPrimitive.Positioner>
@@ -278,6 +285,8 @@ function renderItems({
   onNotePatch,
   onNoteRemove,
   experimentalSound,
+  experimentalFightMapSystemId,
+  onSetFightMapSystem,
 }: {
   target: MapContextMenuTarget | null;
   onClose: () => void;
@@ -307,6 +316,9 @@ function renderItems({
     onMuteAll: (mute: boolean) => void;
     onToggleEventMute: (event: SoundEvent, muted: boolean) => void;
   };
+  /** Experimental route shortcut: persisted fight map-system id. */
+  experimentalFightMapSystemId?: string | null;
+  onSetFightMapSystem?: (mapSystemId: string | null) => void;
 }) {
   if (!target) return null;
 
@@ -349,6 +361,8 @@ function renderItems({
             onClose();
           }}
           experimentalSound={experimentalSound}
+          experimentalFightMapSystemId={experimentalFightMapSystemId}
+          onSetFightMapSystem={onSetFightMapSystem}
         />
       );
     }
@@ -478,6 +492,8 @@ function SystemItems({
   onPing,
   onClose,
   experimentalSound,
+  experimentalFightMapSystemId,
+  onSetFightMapSystem,
 }: {
   system: MapSystemNode;
   systems: MapSystemNode[];
@@ -500,8 +516,11 @@ function SystemItems({
     onMuteAll: (mute: boolean) => void;
     onToggleEventMute: (event: SoundEvent, muted: boolean) => void;
   };
+  experimentalFightMapSystemId?: string | null;
+  onSetFightMapSystem?: (mapSystemId: string | null) => void;
 }) {
   const isHome = homeMapSystemId === system.id;
+  const isFight = experimentalFightMapSystemId === system.id;
   const hasHome = homeMapSystemId !== null;
   const byId = new Map(systems.map((s) => [s.id, s]));
 
@@ -565,6 +584,18 @@ function SystemItems({
       <AddToRoutesItem system={system} onClose={onClose} />
 
       <RouteHereItem system={system} onClose={onClose} />
+
+      {onSetFightMapSystem ? (
+        <MenuItem
+          inset
+          onClick={() => {
+            onSetFightMapSystem(isFight ? null : system.id);
+            onClose();
+          }}
+        >
+          {isFight ? 'Clear fight' : 'Set fight'}
+        </MenuItem>
+      ) : null}
 
       <MenuSubmenu>
         <MenuSubmenuTrigger inset>Status</MenuSubmenuTrigger>

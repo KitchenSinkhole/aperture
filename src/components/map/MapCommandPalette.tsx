@@ -115,6 +115,15 @@ export function MapCommandPalette({
   );
 }
 
+/** Whether bare `f` should fit the map (not when a link is selected and `f` means Fresh mass). */
+export function shouldMapFitOnFKey(
+  e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey'>,
+  blockFitKey: boolean,
+): boolean {
+  if (blockFitKey) return false;
+  return e.key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey;
+}
+
 export function useMapCommandPaletteKeyboard({
   enabled,
   open,
@@ -122,6 +131,7 @@ export function useMapCommandPaletteKeyboard({
   onOpenChange,
   onFitView,
   onFocusPanel,
+  blockFitKey = false,
 }: {
   enabled: boolean;
   open: boolean;
@@ -129,6 +139,8 @@ export function useMapCommandPaletteKeyboard({
   onOpenChange: (open: boolean) => void;
   onFitView: () => void;
   onFocusPanel: (panelIndex: 0 | 1 | 2 | 3) => void;
+  /** When true, `f` does not trigger fit (e.g. selected wormhole uses `f` for Fresh mass). */
+  blockFitKey?: boolean;
 }) {
   useEffect(() => {
     if (!enabled) return;
@@ -144,7 +156,7 @@ export function useMapCommandPaletteKeyboard({
         onOpenChange(true);
         return;
       }
-      if (e.key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (shouldMapFitOnFKey(e, blockFitKey)) {
         e.preventDefault();
         onFitView();
         return;
@@ -160,5 +172,5 @@ export function useMapCommandPaletteKeyboard({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [enabled, open, onFitView, onFocusPanel, onOpenChange, actions]);
+  }, [blockFitKey, enabled, open, onFitView, onFocusPanel, onOpenChange, actions]);
 }

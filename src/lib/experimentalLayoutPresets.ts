@@ -1,29 +1,63 @@
-import type { ExperimentalLayoutPreset, MapLayoutConfig } from '@/types';
-import { EXPERIMENTAL_DEFAULT_MAP_LAYOUT, LAYOUT_CONFIG_VERSION } from '@/lib/map/layout/panels';
+import type { ExperimentalLayoutPreset, MapLayoutConfig, PanelId } from '@/types';
+import {
+  EXPERIMENTAL_DEFAULT_MAP_LAYOUT,
+  LAYOUT_CONFIG_VERSION,
+  PANELS,
+  removePanelFromLayout,
+} from '@/lib/map/layout/panels';
 
-/** Experimental layout presets — shallow copies of the default with geometry tweaks. */
+function keepForPreset(preset: ExperimentalLayoutPreset): Set<PanelId> {
+  const canvas = 'canvas' as PanelId;
+  if (preset === 'scanning') {
+    return new Set([canvas, 'signatures', 'inspector', 'intel']);
+  }
+  if (preset === 'combat') {
+    return new Set([canvas, 'pilots', 'kills']);
+  }
+  return new Set([canvas, 'route', 'currentRoute']);
+}
+
+function applyPanelVisibility(config: MapLayoutConfig, keep: Set<PanelId>): MapLayoutConfig {
+  let next = { ...config };
+  const hidden: PanelId[] = [];
+  for (const p of PANELS) {
+    if (keep.has(p.id)) continue;
+    next = removePanelFromLayout(next, p.id);
+    hidden.push(p.id);
+  }
+  return { ...next, hidden };
+}
+
+function setHeights(config: MapLayoutConfig, sizes: Partial<Record<PanelId, number>>): MapLayoutConfig {
+  const layouts = { ...config.layouts };
+  for (const bp of ['lg', 'md', 'sm'] as const) {
+    const items = layouts[bp]?.map((item) => {
+      const id = item.i as PanelId;
+      const h = sizes[id];
+      return h != null ? { ...item, h } : item;
+    });
+    if (items) layouts[bp] = items;
+  }
+  return { ...config, layouts };
+}
+
+/** Experimental layout presets — geometry, visibility, and `hidden` for one-click focus modes. */
 export function experimentalLayoutPreset(preset: ExperimentalLayoutPreset): MapLayoutConfig {
-  const base = structuredClone(EXPERIMENTAL_DEFAULT_MAP_LAYOUT);
+  let base = structuredClone(EXPERIMENTAL_DEFAULT_MAP_LAYOUT);
   base.version = LAYOUT_CONFIG_VERSION;
   base.layoutPreset = preset;
-  const lg = base.layouts.lg.map((item) => ({ ...item }));
-  const setH = (id: string, h: number) => {
-    const row = lg.find((i) => i.i === id);
-    if (row) row.h = h;
-  };
+
+  const keep = keepForPreset(preset);
+  base = applyPanelVisibility(base, keep);
+
   if (preset === 'scanning') {
-    setH('signatures', 12);
-    setH('inspector', 8);
-    setH('canvas', 10);
+    base = setHeights(base, { signatures: 14, inspector: 10, canvas: 8 });
   } else if (preset === 'combat') {
-    setH('canvas', 16);
-    setH('pilots', 8);
-    setH('signatures', 4);
+    base = setHeights(base, { canvas: 18, pilots: 10 });
   } else if (preset === 'travel') {
-    setH('route', 8);
-    setH('canvas', 12);
+    base = setHeights(base, { canvas: 10, route: 10 });
   }
-  base.layouts = { ...base.layouts, lg, md: lg, sm: base.layouts.sm };
+
   return base;
 }
 

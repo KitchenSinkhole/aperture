@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { setMapActiveRouteAction } from '@/app/(app)/actions/mapActiveRoute';
 import { pushKspaceWaypointsForCharacter } from '@/lib/character/pushRouteWaypoints';
-import { getSoundEngine, useSoundCueOn } from '@/lib/sounds/engine';
+import { getSoundEngine, useSoundCueOn, useSoundPrefs } from '@/lib/sounds/engine';
 import {
   activeRouteConnectionIds,
   followersOffRoute,
@@ -37,8 +37,13 @@ export function ExperimentalActiveRouteBridge({
   primaryCharacterId: number | null;
   onRouteUpdated?: () => void;
 }) {
-  const offRouteOn = useSoundCueOn('activeRouteOffRoute');
-  const hazardOn = useSoundCueOn('activeRouteLinkAlert');
+  const soundPrefs = useSoundPrefs();
+  const offRoutePrefs = soundPrefs.events.activeRouteOffRoute;
+  const hazardPrefs = soundPrefs.events.activeRouteLinkAlert;
+  const offRouteAlertEnabled = offRoutePrefs.enabled;
+  const hazardAlertEnabled = hazardPrefs.enabled;
+  const offRouteSoundOn = useSoundCueOn('activeRouteOffRoute');
+  const hazardSoundOn = useSoundCueOn('activeRouteLinkAlert');
 
   const offRouteNotified = useRef(new Set<string>());
   const offRouteBaseline = useRef(false);
@@ -46,6 +51,19 @@ export function ExperimentalActiveRouteBridge({
   const prevConnSnapshot = useRef(new Map<string, string>());
   const hazardBaseline = useRef(false);
   const rerouteBusy = useRef(false);
+
+  const notifyDesktop = useCallback(
+    (title: string, body: string, tag: string, desktop?: boolean) => {
+      if (desktop !== true) return;
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      try {
+        new Notification(title, { body, tag });
+      } catch {
+        return;
+      }
+    },
+    [],
+  );
 
   const recomputeAndSave = useCallback(async () => {
     if (!activeRoute || primaryCharacterId == null || rerouteBusy.current) return;
@@ -96,7 +114,7 @@ export function ExperimentalActiveRouteBridge({
   }, [activeRoute, mapId, onRouteUpdated, presence, primaryCharacterId, routePrefs]);
 
   useEffect(() => {
-    if (!offRouteOn || !activeRoute) return;
+    if (!offRouteAlertEnabled || !activeRoute) return;
     if (!offRouteBaseline.current) {
       const seed = followersOffRoute(
         activeRoute.hops,
@@ -121,7 +139,13 @@ export function ExperimentalActiveRouteBridge({
       toast.message('Off active route', {
         description: `${row.characterName} is not on the planned path.`,
       });
-      getSoundEngine().play('activeRouteOffRoute');
+      if (offRouteSoundOn) getSoundEngine().play('activeRouteOffRoute');
+      notifyDesktop(
+        'Off active route',
+        `${row.characterName} is not on the planned path.`,
+        `off-route-${row.characterId}`,
+        offRoutePrefs.desktopNotification,
+      );
     }
     for (const fid of activeRoute.followerCharacterIds) {
       const p = presence.find((x) => x.characterId === fid);
@@ -131,10 +155,17 @@ export function ExperimentalActiveRouteBridge({
         }
       }
     }
-  }, [activeRoute, offRouteOn, presence]);
+  }, [
+    activeRoute,
+    notifyDesktop,
+    offRouteAlertEnabled,
+    offRoutePrefs.desktopNotification,
+    offRouteSoundOn,
+    presence,
+  ]);
 
   useEffect(() => {
-    if (!hazardOn || !activeRoute) return;
+    if (!hazardAlertEnabled || !activeRoute) return;
     const routeConnIds = new Set(activeRouteConnectionIds(activeRoute.hops));
     const byId = routeConnectionsById(activeRoute.hops, connections);
 
@@ -163,7 +194,13 @@ export function ExperimentalActiveRouteBridge({
             onClick: () => void recomputeAndSave(),
           },
         });
-        getSoundEngine().play('activeRouteLinkAlert');
+        if (hazardSoundOn) getSoundEngine().play('activeRouteLinkAlert');
+        notifyDesktop(
+          'Route link removed',
+          'A wormhole on your active route is gone.',
+          `route-hazard-${id}`,
+          hazardPrefs.desktopNotification,
+        );
         continue;
       }
       if (edge.eolStage === 'critical' && prevStage !== 'critical') {
@@ -177,14 +214,28 @@ export function ExperimentalActiveRouteBridge({
             onClick: () => void recomputeAndSave(),
           },
         });
-        getSoundEngine().play('activeRouteLinkAlert');
+        if (hazardSoundOn) getSoundEngine().play('activeRouteLinkAlert');
+        notifyDesktop(
+          'Route link EOL critical',
+          'A wormhole on your active route is in critical EOL.',
+          `route-hazard-critical-${id}`,
+          hazardPrefs.desktopNotification,
+        );
       }
     }
 
     for (const key of prevConnSnapshot.current.keys()) {
       if (!routeConnIds.has(key)) prevConnSnapshot.current.delete(key);
     }
-  }, [activeRoute, connections, hazardOn, recomputeAndSave]);
+  }, [
+    activeRoute,
+    connections,
+    hazardAlertEnabled,
+    hazardPrefs.desktopNotification,
+    hazardSoundOn,
+    notifyDesktop,
+    recomputeAndSave,
+  ]);
 
   useEffect(() => {
     if (!activeRoute) {

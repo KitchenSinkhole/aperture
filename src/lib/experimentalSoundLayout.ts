@@ -18,8 +18,8 @@ export const SOUND_EVENT_MENU_LABELS: Record<SoundEvent, string> = {
   killInSystem: 'Kill in system',
   rallySet: 'Rally set',
   systemPinged: 'System pinged',
-  activeRouteOffRoute: 'Active route off-route',
-  activeRouteLinkAlert: 'Active route link alert',
+  activeRouteOffRoute: 'Active route off-route (Experimental)',
+  activeRouteLinkAlert: 'Active route link alert (Experimental)',
 };
 
 export function parseExperimentalSoundLayoutSettings(
