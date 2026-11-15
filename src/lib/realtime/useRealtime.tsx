@@ -11,7 +11,12 @@ import {
   type ReactNode,
 } from 'react';
 import { apertureConfig } from '../../../aperture.config';
-import { envelopeSchema, type Envelope } from './protocol';
+import {
+  envelopeSchema,
+  healthCheckLoadSchema,
+  type BlackoutStatus,
+  type Envelope,
+} from './protocol';
 
 /**
  * Client-side realtime façade. Boots the SharedWorker (one socket per origin),
@@ -36,6 +41,8 @@ export type RealtimeStatus = 'connecting' | 'open' | 'closed' | 'degraded';
 
 type RealtimeContextValue = {
   status: RealtimeStatus;
+  /** The latest `healthCheck.blackout` this tab has received; null until the first one. */
+  blackout: BlackoutStatus | null;
   subscribe: (mapId: number) => void;
   unsubscribe: (mapId: number) => void;
   /** Register an envelope listener; returns an unsubscribe fn. Stable identity. */
@@ -50,6 +57,7 @@ type WorkerOutbound =
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<RealtimeStatus>('connecting');
+  const [blackout, setBlackout] = useState<BlackoutStatus | null>(null);
   // Envelope listeners, invoked synchronously per inbound frame. Kept off React
   // state so a same-tick burst delivers every event, not just the last.
   const listenersRef = useRef<Set<(env: Envelope) => void>>(new Set());
@@ -86,7 +94,14 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         setStatus(data.status);
       } else {
         const result = envelopeSchema.safeParse(data.envelope);
-        if (result.success) for (const l of listenersRef.current) l(result.data);
+        if (!result.success) return;
+        if (result.data.task === 'healthCheck') {
+          const health = healthCheckLoadSchema.safeParse(result.data.load);
+          // A healthCheck without `blackout` keeps the current value.
+          const next = health.success ? health.data.blackout : undefined;
+          if (next) setBlackout((prev) => (sameBlackout(prev, next) ? prev : next));
+        }
+        for (const l of listenersRef.current) l(result.data);
       }
     };
     port.start();
@@ -125,11 +140,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Value changes only when `status` changes — consumers no longer re-render
+  // Value changes only when `status` or the Blackout standing changes, never
   // per envelope (events flow through the listener registry instead).
   const value = useMemo<RealtimeContextValue>(
-    () => ({ status, subscribe, unsubscribe, subscribeToEvents }),
-    [status, subscribe, unsubscribe, subscribeToEvents],
+    () => ({ status, blackout, subscribe, unsubscribe, subscribeToEvents }),
+    [status, blackout, subscribe, unsubscribe, subscribeToEvents],
   );
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
@@ -140,6 +155,20 @@ export function useRealtime(): RealtimeContextValue {
   const ctx = useContext(RealtimeContext);
   if (!ctx) throw new Error('useRealtime must be used within a RealtimeProvider');
   return ctx;
+}
+
+function sameBlackout(a: BlackoutStatus | null, b: BlackoutStatus): boolean {
+  return a !== null && a.active === b.active && a.since === b.since && a.cleared === b.cleared;
+}
+
+/**
+ * The viewer's live standing under Blackout: the latest `healthCheck.blackout`,
+ * or `initial` (the page load's / resync snapshot's value) until the first one
+ * arrives. A tab joining an already-running SharedWorker otherwise waits a
+ * full heartbeat for it.
+ */
+export function useBlackoutStatus(initial: BlackoutStatus): BlackoutStatus {
+  return useRealtime().blackout ?? initial;
 }
 
 /** Subscribe to one map for the lifetime of the calling component. */

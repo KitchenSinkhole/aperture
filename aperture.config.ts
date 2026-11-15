@@ -120,6 +120,12 @@ export const apertureConfig = {
   /** `pg_notify` channel prefix for `ap_map_event` fanout. */
   MAP_EVENT_NOTIFY_CHANNEL_PREFIX: 'map:',
 
+  /**
+   * `pg_notify` channel for instance-wide state changes: the Blackout switch
+   * and its cleared list. Not a map channel; it carries no map envelope.
+   */
+  INSTANCE_NOTIFY_CHANNEL: 'instance',
+
   /** Path the WebSocket upgrade handler listens on (same Next.js deployment). */
   WS_PATH: '/ws/map/update',
 

@@ -30,8 +30,9 @@ import {
   whMass,
 } from '@/db/schema';
 import { canViewMap, viewableMapPredicate } from '@/lib/auth/rights';
+import { getBlackoutStatus, isPilotHidden } from '@/lib/auth/blackout';
 import { resolveShipClass } from '@/lib/eve/shipClass';
-import type { ShipClass } from '@/types';
+import type { BlackoutStatus, BlackoutViewer, ShipClass } from '@/types';
 import { loadSignaturesForSystems } from './systemNode';
 import { apertureConfig } from '../../../aperture.config';
 
@@ -219,8 +220,10 @@ export type MapViewData = {
   connections: MapConnectionEdge[];
   signatures: MapSignature[];
   notes: MapNote[];
-  /** Tracked characters online + located on this map at load time. Realtime updates fold on top of this on the client. */
+  /** Tracked characters online + located on this map at load time, as this viewer may see them. Realtime updates fold on top of this on the client. */
   presence: MapPresenceEntry[];
+  /** The viewer's standing under Blackout at load time; `healthCheck.blackout` carries the same shape live. */
+  blackout: BlackoutStatus;
 };
 
 /** A map row for the maps list. */
@@ -275,11 +278,13 @@ export type AdminMapListItem = {
  * Load one map for the read-only view. Returns `null` when the map does not
  * exist, is soft-deleted, or the viewer is not allowed to see it
  * (`canViewMap`). The viewer-id parameter is required — passing the wrong id
- * is an access-control bug that the type system should catch.
+ * is an access-control bug that the type system should catch. `viewerUserId`
+ * is the viewer's account, which Blackout scopes the presence roster to.
  */
 export async function loadMapForView(
   mapId: bigint,
   viewerCharacterId: bigint,
+  viewerUserId: number,
 ): Promise<MapViewData | null> {
   if (!(await canViewMap(viewerCharacterId, mapId))) return null;
 
@@ -397,7 +402,8 @@ export async function loadMapForView(
     .where(eq(apMapNote.mapId, mapId))
     .orderBy(apMapNote.id);
 
-  const presence = await loadMapPresence(mapId);
+  const blackout = await getBlackoutStatus(viewerUserId);
+  const presence = await loadMapPresence(mapId, { ...blackout, userId: viewerUserId });
 
   return {
     map: {
@@ -472,6 +478,7 @@ export async function loadMapForView(
       updatedAt: n.updatedAt.toISOString(),
     })),
     presence,
+    blackout,
   };
 }
 
@@ -516,8 +523,14 @@ export async function loadMapSettings(
  * system need not be placed on the map). Filters to
  * `last_online = true AND last_system_id IS NOT NULL` — offline pilots are hidden
  * per the presence-badge UX (see SystemNode).
+ *
+ * `viewer` applies the Blackout rule (`isPilotHidden`); `null` returns every
+ * pilot, for a caller that has already decided Blackout doesn't apply.
  */
-export async function loadMapPresence(mapId: bigint): Promise<MapPresenceEntry[]> {
+export async function loadMapPresence(
+  mapId: bigint,
+  viewer: BlackoutViewer | null,
+): Promise<MapPresenceEntry[]> {
   // Self-join on ap_character to resolve the account's main character name from
   // ap_user.main_character_id (so the roster can label an alt's owner).
   const mainCharacter = alias(apCharacter, 'main_character');
@@ -563,6 +576,7 @@ export async function loadMapPresence(mapId: bigint): Promise<MapPresenceEntry[]
     // nullable; the locationAt invariant follows from `lastOnline = true`
     // because the online branch of the poll stamps both atomically.
     if (r.systemId === null || r.locationAt === null) return [];
+    if (viewer && isPilotHidden(viewer, r.userId)) return [];
     return [{
       characterId: Number(r.characterId),
       characterName: r.characterName,

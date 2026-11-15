@@ -1,6 +1,7 @@
 import 'server-only';
 import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
+import { getBlackoutStatus, isBlackedOut } from '@/lib/auth/blackout';
 import {
   auditActorSummary,
   listAuditActors,
@@ -26,6 +27,9 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
  *
  * The first page (no `cursor`) also carries `actors` (the full actor list for
  * the filter dropdown), so the browser is self-contained inside its dialog.
+ *
+ * While Blackout restricts the viewer, rows carry no actor, `actors` and
+ * `actorSummary` are withheld, and `actorsHidden: true` is set.
  */
 
 export const runtime = 'nodejs';
@@ -49,7 +53,8 @@ export const GET = withApiMetrics('/api/map/:mapId/audit', async function GET(_r
 
   const sp = _request.nextUrl.searchParams;
 
-  const query: AuditQueryParams = { mapId: guard.mapId };
+  const actorsHidden = isBlackedOut(await getBlackoutStatus(session!.userId));
+  const query: AuditQueryParams = { mapId: guard.mapId, hideActors: actorsHidden };
 
   const rawCharacter = sp.get('characterId');
   if (rawCharacter === 'none') {
@@ -79,6 +84,10 @@ export const GET = withApiMetrics('/api/map/:mapId/audit', async function GET(_r
   if (rawLimit && /^\d+$/.test(rawLimit)) query.limit = Number(rawLimit);
 
   const page = await queryAuditEvents(query);
+
+  if (actorsHidden) {
+    return Response.json({ ok: true, data: { ...page, actorSummary: null, actorsHidden: true } });
+  }
 
   // On the first page of a single-actor drill-down, attach the actor's aggregate
   // for the header. Omitted on "load more" (cursor present) and for the all-actors

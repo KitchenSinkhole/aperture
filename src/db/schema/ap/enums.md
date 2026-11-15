@@ -81,7 +81,7 @@
 `pgEnum('access_scope', ['instance', 'map'])` — the reach of an `ap_access_grant` row. `instance` grants carry NULL `map_id` (login/admin); `map` grants carry a non-NULL `map_id` (view/edit — reserved for the sharing feature). A CHECK ties scope to `map_id` nullness.
 
 ### accessCapability
-`pgEnum('access_capability', ['login', 'admin', 'view', 'edit'])` — what an `ap_access_grant` row permits. `login`/`admin` are instance-scoped (allowlist entry / super-admin); `view`/`edit` are map-scoped and reserved for the temporary-sharing feature (declared to avoid a future `ALTER TYPE`). A CHECK pairs capability with scope. The `manage` capability (the old manager hand-grant) was retired in migration 0041.
+`pgEnum('access_capability', ['login', 'admin', 'view', 'edit', 'blackout_view'])` — what an `ap_access_grant` row permits. `login`/`admin` are instance-scoped (allowlist entry / super-admin); `blackout_view` (migration 0072) is instance-scoped and puts a character or title on the Blackout cleared list; `view`/`edit` are map-scoped and reserved for the temporary-sharing feature (declared to avoid a future `ALTER TYPE`). A CHECK pairs capability with scope. The `manage` capability (the old manager hand-grant) was retired in migration 0041.
 
 ### sharePresenceMode
 `pgEnum('share_presence_mode', ['none', 'anonymous', 'full'])` — roster disclosure level for a public map share on `ap_map_share.presence_mode`. `none` omits the roster entirely; `anonymous` emits per-system pilot counts with no names or character ids; `full` emits the roster minus account linkage (`userId`, `mainCharacterId`).

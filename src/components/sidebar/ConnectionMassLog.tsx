@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ConnectionMassLogEntry, MapConnectionEdge } from '@/types';
 import { fetchConnectionMassLog } from '@/lib/map/client';
-import { useRealtimeEvents } from '@/lib/realtime/useRealtime';
+import { useRealtime, useRealtimeEvents } from '@/lib/realtime/useRealtime';
 import { connectionMassLogLoadSchema, type Envelope } from '@/lib/realtime/protocol';
 import { formatAgoFromMs } from '@/lib/map/relativeTime';
 import { formatWormholeMass } from '@/lib/eve/wormholeFormat';
@@ -31,6 +31,8 @@ export function ConnectionMassLog({
   const [entries, setEntries] = useState<ConnectionMassLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  // Blackout withholds the log from this viewer: the server sent no entries.
+  const [hidden, setHidden] = useState(false);
 
   // Lazy fetch on mount. setState happens only after the await (so it doesn't
   // trigger the synchronous-setState-in-effect cascade).
@@ -40,6 +42,7 @@ export function ConnectionMassLog({
       const result = await fetchConnectionMassLog({ mapId, connectionId });
       if (cancelled) return;
       setEntries(result.ok ? result.data : []);
+      setHidden(result.ok && result.hidden === true);
       setFailed(!result.ok);
       setLoading(false);
     })();
@@ -48,10 +51,33 @@ export function ConnectionMassLog({
     };
   }, [mapId, connectionId]);
 
-  // Refetch when a peer logs a jump on this connection. A monotonic request
-  // sequence makes the latest refetch win, so a burst of jump events can't land
-  // an older response after a newer one.
+  // A monotonic request sequence makes the latest refetch win, so a burst of
+  // jump events can't land an older response after a newer one.
   const reqSeq = useRef(0);
+  const refetch = useCallback(() => {
+    const seq = ++reqSeq.current;
+    void (async () => {
+      const result = await fetchConnectionMassLog({ mapId, connectionId });
+      if (!result.ok || seq !== reqSeq.current) return;
+      setEntries(result.data);
+      setHidden(result.hidden === true);
+    })();
+  }, [mapId, connectionId]);
+
+  // A restricted viewer receives no `connectionMassLog` frames, so the Blackout
+  // standing is the only cue that the log became visible (or hidden). Keyed to
+  // what is shown rather than to the previous standing: the standing is null
+  // until this tab's first `healthCheck`, and the flip can arrive as that first
+  // value. A refetch that returns the same `hidden` leaves the deps unchanged,
+  // so a persistent disagreement costs one request, not a loop.
+  const { blackout } = useRealtime();
+  const restricted = blackout ? blackout.active && !blackout.cleared : null;
+  useEffect(() => {
+    if (loading || failed || restricted === null || restricted === hidden) return;
+    refetch();
+  }, [loading, failed, restricted, hidden, refetch]);
+
+  // Refetch when a peer logs a jump on this connection.
   useRealtimeEvents(
     useCallback(
       (envelope: Envelope) => {
@@ -65,14 +91,9 @@ export function ConnectionMassLog({
         // the envelope-level tag is optional, so a producer that stopped setting
         // it would leave a guard on it passing everything.
         if (parsed.data.mapId !== Number(mapId)) return;
-        const seq = ++reqSeq.current;
-        void (async () => {
-          const result = await fetchConnectionMassLog({ mapId, connectionId });
-          if (!result.ok || seq !== reqSeq.current) return;
-          setEntries(result.data);
-        })();
+        refetch();
       },
-      [mapId, connectionId],
+      [mapId, connectionId, refetch],
     ),
   );
 
@@ -93,6 +114,10 @@ export function ConnectionMassLog({
         <span className="text-[10px] text-muted-foreground">Loading…</span>
       ) : failed ? (
         <span className="text-[10px] text-destructive">Couldn’t load the mass log.</span>
+      ) : hidden ? (
+        <span className="text-[10px] text-muted-foreground">
+          The mass log is hidden during Blackout.
+        </span>
       ) : entries.length === 0 ? (
         <span className="text-[10px] text-muted-foreground">No jumps logged yet.</span>
       ) : (

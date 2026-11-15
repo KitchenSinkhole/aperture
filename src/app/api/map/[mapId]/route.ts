@@ -24,7 +24,7 @@ export const GET = withApiMetrics('/api/map/:mapId', async function GET(_request
     return Response.json({ ok: false, error: guard.error }, { status: guard.status });
   }
 
-  const data = await loadMapForView(guard.mapId, guard.characterId);
+  const data = await loadMapForView(guard.mapId, guard.characterId, session!.userId);
   if (!data) {
     return Response.json({ ok: false, error: 'Map not found.' }, { status: 404 });
   }
