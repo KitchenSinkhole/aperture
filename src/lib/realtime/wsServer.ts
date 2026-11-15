@@ -87,6 +87,8 @@ type PublicClientState = {
   deregister: () => void;
   lastNudgeAt: number;
   pendingNudge: NodeJS.Timeout | null;
+  /** Sends a `publicUpdate`, at most one per `PUBLIC_WS_NUDGE_MIN_INTERVAL_MS`. */
+  nudge: () => void;
 };
 
 // Auth.js v5 session-cookie names. The salt passed to `decode` is the cookie
@@ -227,6 +229,20 @@ export function publicActionFor(
   }
 }
 
+/**
+ * Whether a public socket gets a `publicUpdate` when the server's Blackout
+ * switch is re-read: only when `active` changed, and only when the share
+ * publishes presence, since presence is the one thing a flip changes in its
+ * snapshot.
+ */
+export function publicNudgeOnBlackoutFlip(
+  profile: ShareRedactionProfile,
+  wasActive: boolean,
+  isActive: boolean,
+): boolean {
+  return wasActive !== isActive && profile.presenceMode !== 'none';
+}
+
 let attached = false;
 
 export function attachWsServer(httpServer: HttpServer): WebSocketServer {
@@ -244,7 +260,14 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
     const seq = ++blackoutReadSeq;
     try {
       const next = await getBlackoutState();
-      if (seq === blackoutReadSeq) blackout = next;
+      if (seq !== blackoutReadSeq) return;
+      const wasActive = blackout?.active ?? true;
+      blackout = next;
+      // Blackout suppresses presence nudges, so without this a spectator page
+      // keeps the presence it last fetched across the flip.
+      for (const state of publicClients.values()) {
+        if (publicNudgeOnBlackoutFlip(state.ctx.profile, wasActive, next.active)) state.nudge();
+      }
     } catch (err) {
       wsLog.warn('Blackout state read failed', { error: String(err) });
     }
@@ -380,6 +403,7 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
       deregister: () => {},
       lastNudgeAt: 0,
       pendingNudge: null,
+      nudge,
     };
 
     function nudge(): void {
@@ -401,7 +425,7 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
 
     state.unsubscribeBus = bus.subscribe(ctx.mapId, (message) => {
       const action = publicActionFor(message, ctx.profile, blackout?.active ?? true);
-      if (action === 'nudge') nudge();
+      if (action === 'nudge') state.nudge();
       else if (action === 'close') ws.close(4001, 'map deleted');
     });
     state.deregister = registerPublicSocket(ctx.token, (code) => ws.close(code));

@@ -7,7 +7,7 @@ import { encode } from 'next-auth/jwt';
 import { WebSocket } from 'ws';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db, pool } from '@/db/client';
-import { apAccessGrant, apCharacter, apInstance, apMap, apUser } from '@/db/schema';
+import { apAccessGrant, apCharacter, apInstance, apMap, apMapShare, apUser } from '@/db/schema';
 import { env } from '@/lib/env';
 import { apertureConfig } from '../../aperture.config';
 import { attachWsServer } from '@/lib/realtime/wsServer';
@@ -17,7 +17,8 @@ import type { BlackoutStatus, ServerToClientMessage } from '@/lib/realtime/proto
  * Blackout over the real WS + bus: an instance notify answers every session
  * socket with an immediate `healthCheck` carrying that socket's re-resolved
  * standing, and the session forward drops other accounts' presence while the
- * socket isn't cleared.
+ * socket isn't cleared. A flip of the switch nudges every public socket whose
+ * share publishes presence.
  *
  * `ap_instance` is a live singleton, so the switch is snapshotted in `beforeAll`
  * and restored in `afterAll`. Ids use a 9723xxxx block.
@@ -43,8 +44,8 @@ async function sessionCookie(characterId: bigint, userId: number): Promise<strin
 /** A socket plus every frame it has received, collected from the moment it is created. */
 type Probe = { ws: WebSocket; frames: ServerToClientMessage[] };
 
-function open(url: string, cookie: string): Promise<Probe> {
-  const ws = new WebSocket(url, { headers: { Cookie: cookie } });
+function open(url: string, cookie?: string): Promise<Probe> {
+  const ws = new WebSocket(url, cookie ? { headers: { Cookie: cookie } } : {});
   const probe: Probe = { ws, frames: [] };
   ws.on('message', (raw) => probe.frames.push(JSON.parse(raw.toString()) as ServerToClientMessage));
   return new Promise((resolve, reject) => {
@@ -106,8 +107,11 @@ describe.skipIf(!run)('Blackout over realtime (WS + bus)', () => {
   let mapId: bigint;
   let memberUserId: number;
   let otherUserId: number;
+  let publicBaseUrl: string;
   let member: Probe;
   let other: Probe;
+  let spectatorFull: Probe;
+  let spectatorNone: Probe;
 
   async function broadcastPresence(characterId: bigint, userId: number): Promise<void> {
     const envelope = JSON.stringify({
@@ -167,17 +171,24 @@ describe.skipIf(!run)('Blackout over realtime (WS + bus)', () => {
       .values({ scope: 'wh', type: 'private', name: 'rt-blackout-map', ownerCharacterId: MEMBER_CHAR })
       .returning({ id: apMap.id });
     mapId = m!.id;
+    await db.insert(apMapShare).values([
+      { mapId, token: 'rt-blackout-full', label: 'full', presenceMode: 'full' },
+      { mapId, token: 'rt-blackout-none', label: 'none', presenceMode: 'none' },
+    ]);
 
     server = createServer();
     attachWsServer(server);
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const { port } = server.address() as AddressInfo;
     baseUrl = `ws://127.0.0.1:${port}${apertureConfig.WS_PATH}`;
+    publicBaseUrl = `ws://127.0.0.1:${port}${apertureConfig.WS_PUBLIC_PATH}?token=`;
   });
 
   afterAll(async () => {
     member?.ws.close();
     other?.ws.close();
+    spectatorFull?.ws.close();
+    spectatorNone?.ws.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await db.delete(apMap).where(eq(apMap.id, mapId));
     await cleanup();
@@ -196,6 +207,8 @@ describe.skipIf(!run)('Blackout over realtime (WS + bus)', () => {
   it('sends the connect healthCheck with the socket standing while off', async () => {
     member = await open(baseUrl, await sessionCookie(MEMBER_CHAR, memberUserId));
     other = await open(baseUrl, await sessionCookie(OTHER_CHAR, otherUserId));
+    spectatorFull = await open(`${publicBaseUrl}rt-blackout-full`);
+    spectatorNone = await open(`${publicBaseUrl}rt-blackout-none`);
     const first = await waitFor(member, (m) => m.task === 'healthCheck', 1000);
     expect(blackoutOf(first)).toEqual({ active: false, since: null, cleared: false });
   });
@@ -209,6 +222,12 @@ describe.skipIf(!run)('Blackout over realtime (WS + bus)', () => {
       const hc = await waitFor(probe, healthCheckWith({ active: true }), 1000);
       expect(blackoutOf(hc)).toEqual({ active: true, since: since.toISOString(), cleared: false });
     }
+  });
+
+  it('nudges a presence-publishing public socket when Blackout turns on, and no other', async () => {
+    const nudge = await waitFor(spectatorFull, (m) => m.task === 'publicUpdate', 1000);
+    expect(Object.keys(nudge.load)).toEqual(['ts']);
+    expect(spectatorNone.frames).toEqual([]);
   });
 
   it("drops another account's presence to a socket that isn't cleared, and keeps its own", async () => {
@@ -245,15 +264,24 @@ describe.skipIf(!run)('Blackout over realtime (WS + bus)', () => {
   });
 
   it('reports off to everyone once Blackout lifts', async () => {
+    spectatorFull.frames.length = 0;
     await setSwitch(null);
     await notifyInstance();
 
     const hc = await waitFor(other, healthCheckWith({ active: false }), 1000);
     expect(blackoutOf(hc)).toEqual({ active: false, since: null, cleared: false });
   });
+
+  it('nudges the presence-publishing public socket again when Blackout lifts', async () => {
+    // Inside the per-socket nudge interval of the earlier nudge, so this one may trail.
+    await waitFor(spectatorFull, (m) => m.task === 'publicUpdate', 2000);
+    expect(spectatorFull.frames.filter((m) => m.task === 'publicUpdate')).toHaveLength(1);
+    expect(spectatorNone.frames).toEqual([]);
+  });
 });
 
 async function cleanup(): Promise<void> {
+  await db.delete(apMapShare).where(inArray(apMapShare.token, ['rt-blackout-full', 'rt-blackout-none']));
   await db
     .delete(apAccessGrant)
     .where(

@@ -18,11 +18,13 @@ Wires two `noServer` `ws` servers onto the HTTP server's `upgrade` event, routed
 - **Connection gauge:** `incWsConnection()` on connect / `decWsConnection()` on close keep the process-wide live-socket count (`wsConnections.ts`) current for the `ws_connections` metrics gauge.
 - **Blackout:** the server holds the switch in memory (`getBlackoutState`), read at attach and on every `bus.onInstanceNotify`. Each socket holds its account's standing: `isBlackoutCleared(userId)` plus every character id on the account (any status). Standing is resolved on connect, on every instance notify, and on every heartbeat while Blackout is on (grant expiry and title changes send no notify), with one lookup per account per pass; a failed lookup keeps the previous standing, and a newer lookup always wins over a slower older one. Every bus message on the session forward goes through `filterSessionMessage` with that standing. Filtering fails closed: until the switch is first read it counts as on, and until standing resolves the socket counts as not cleared.
 - **Instance notify:** after re-reading the switch and re-resolving every socket, sends each session socket an immediate `healthCheck` with its own state.
+- **Switch flip:** whenever a read of the switch changes `active` (an unread switch counts as on), every public socket whose share publishes presence gets a `publicUpdate` through its coalesced nudge (`publicNudgeOnBlackoutFlip`), so an open spectator page refetches with presence hidden or restored.
 
 **Public connections** (`WS_PUBLIC_PATH`, share token as the `?token=` query param):
 - **Admission at upgrade, in order:** `allowPublicUpgrade` (per-IP + global rate limit) → `429`; `resolveShareToken(token)` → `401` on any failure (missing token, garbage, unknown, expired, revoked — all identical, no disclosure); `publicSocketCount(token) >= PUBLIC_WS_MAX_PER_TOKEN` → `503`. A rejected upgrade is how the client learns to degrade to polling. Each of the four outcomes tallies `public_ws_upgrades_total{outcome}` (`recordPublicWsUpgrade`), which is what distinguishes an audience that connected from one that was bounced to polling.
 - The resolved `{ mapId, profile }` pins the socket for its lifetime — invariant 3 of the public-share design: a public socket's channel is never chosen by anything the client sends.
 - Subscribes once to `bus.subscribe(mapId, …)` and translates messages through `publicActionFor` into at most a `publicUpdate` nudge: `mapUpdate` always nudges; `characterUpdate`/`characterLogout` nudge only when the token's `presenceMode !== 'none'` and Blackout is off (an unread switch counts as on); `mapDeleted` closes the socket (code `4001`); everything else (`healthCheck`, `systemNotification`, `connectionMassLog`, `mapAccess`, `mapConnectionAccess`, `logData`) is dropped. The bus message itself is never forwarded — `publicUpdate`'s load (`{ ts }`) cannot carry map data by construction, which is what keeps `loadPublicMapView` the only code path emitting public map data.
+- A Blackout switch flip also nudges the socket when its `presenceMode !== 'none'` (see "Switch flip" above).
 - **Nudge coalescing:** at most one `publicUpdate` per `PUBLIC_WS_NUDGE_MIN_INTERVAL_MS`, trailing — a burst of edits collapses to one frame per interval instead of one per edit.
 - Registered in the `publicSockets.ts` registry (`registerPublicSocket`) keyed by token, so `revokeShareToken` (`src/lib/map/share.ts`) can close every live socket for a revoked token (also code `4001`).
 - Receives no client frame: `subscribe`/`unsubscribe` don't apply, and any inbound data is dropped. Opens no presence session and touches neither `mapViewers` nor tracking — those are account concepts a public socket has none of.
@@ -42,6 +44,11 @@ Pure. What a session socket receives of one bus message. When `isBlackedOut(view
 
 ### publicActionFor(message: ServerToClientMessage, profile: ShareRedactionProfile, blackoutActive: boolean): 'nudge' | 'close' | null
 Pure. How a public socket answers one bus message, per the translation table above. The bus message itself is never forwarded: `nudge` sends a data-free `publicUpdate`.
+
+---
+
+### publicNudgeOnBlackoutFlip(profile: ShareRedactionProfile, wasActive: boolean, isActive: boolean): boolean
+Pure. Whether a public socket gets a `publicUpdate` when the server re-reads the Blackout switch: true only when `active` changed and the share's `presenceMode !== 'none'`.
 
 ---
 

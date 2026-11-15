@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { filterSessionMessage, publicActionFor } from '@/lib/realtime/wsServer';
+import {
+  filterSessionMessage,
+  publicActionFor,
+  publicNudgeOnBlackoutFlip,
+} from '@/lib/realtime/wsServer';
 import type { CharacterUpdateLoad, ServerToClientMessage } from '@/lib/realtime/protocol';
 import type { BlackoutViewer, SharePresenceMode, ShareRedactionProfile } from '@/types';
 
@@ -182,5 +186,26 @@ describe('publicActionFor', () => {
     ['healthCheck', { task: 'healthCheck', load: { ts: 1 } } satisfies ServerToClientMessage],
   ])('drops %s', (_name, message) => {
     expect(publicActionFor(message, profile('full'), false)).toBeNull();
+  });
+});
+
+describe('publicNudgeOnBlackoutFlip', () => {
+  it.each([
+    ['on', false, true],
+    ['off', true, false],
+  ])('nudges a presence-publishing share when Blackout turns %s', (_label, was, is) => {
+    expect(publicNudgeOnBlackoutFlip(profile('full'), was, is)).toBe(true);
+    expect(publicNudgeOnBlackoutFlip(profile('anonymous'), was, is)).toBe(true);
+  });
+
+  it.each([true, false])('does not nudge when the switch reads unchanged (on: %s)', (on) => {
+    expect(publicNudgeOnBlackoutFlip(profile('full'), on, on)).toBe(false);
+  });
+
+  it.each([
+    [false, true],
+    [true, false],
+  ])('never nudges a presence-none share (%s to %s)', (was, is) => {
+    expect(publicNudgeOnBlackoutFlip(profile('none'), was, is)).toBe(false);
   });
 });
