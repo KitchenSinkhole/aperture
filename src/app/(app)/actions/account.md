@@ -28,7 +28,7 @@ Persists the account's free-form map dashboard layout (map-layout-builder) to `a
 ---
 
 ### setSoundPrefsAction(prefs: unknown): Promise<AccountActionResult>
-Persists the account's audio-cue preferences to `ap_user.sound_prefs`. `prefs` is unknown user JSON (the whole `SoundPrefs` blob sent by the Account Settings dialog) — validated at this boundary with `soundPrefsSchema` (`src/lib/sounds/prefs.ts`); a parse failure returns `{ ok: false, error: 'Invalid sound settings.' }` and writes nothing. On success updates the column + `updated_at`, revalidates the `/` layout, and returns `{ ok: true }`.
+Persists the account's audio-cue preferences to `ap_user.sound_prefs`. `prefs` is unknown user JSON (the whole `SoundPrefs` blob, sent through `saveSoundPrefs` by the Account Settings dialog or the map's system menu) — validated at this boundary with `soundPrefsSchema` (`src/lib/sounds/prefs.ts`); a parse failure returns `{ ok: false, error: 'Invalid sound settings.' }` and writes nothing. On success updates the column + `updated_at`, revalidates the `/` layout, and returns `{ ok: true }`.
 
 ---
 

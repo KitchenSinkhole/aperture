@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import type { MapSystemNode } from '@/lib/map/loadMap';
 import { mapUpdateLoadSchema, type Envelope } from '@/lib/realtime/protocol';
 import { useRealtimeEvents } from '@/lib/realtime/useRealtime';
 import { getSoundEngine } from '@/lib/sounds/engine';
@@ -14,7 +15,21 @@ import { getSoundEngine } from '@/lib/sounds/engine';
  * rally is silent. The canvas's own-echo dedupe does not apply here, so the
  * viewer who set the rally hears it too.
  */
-export function RallySoundBridge({ mapId }: { mapId: string }) {
+export function RallySoundBridge({
+  mapId,
+  systems,
+  homeMapSystemId,
+}: {
+  mapId: string;
+  systems: MapSystemNode[];
+  /** `ap_map_system.id` of the map's Home, or null. */
+  homeMapSystemId: string | null;
+}) {
+  const systemsRef = useRef(systems);
+  useEffect(() => {
+    systemsRef.current = systems;
+  });
+
   useRealtimeEvents(
     useCallback(
       (envelope: Envelope) => {
@@ -24,9 +39,15 @@ export function RallySoundBridge({ mapId }: { mapId: string }) {
         const payload = parsed.data.data;
         if (payload?.kind !== 'system.updated' || payload.rallyAt == null) return;
 
-        getSoundEngine().play('rallySet');
+        const system = systemsRef.current.find((s) => s.id === payload.id);
+        getSoundEngine().play(
+          'rallySet',
+          system && {
+            system: { systemId: system.systemId, isHome: system.id === homeMapSystemId },
+          },
+        );
       },
-      [mapId],
+      [mapId, homeMapSystemId],
     ),
   );
 

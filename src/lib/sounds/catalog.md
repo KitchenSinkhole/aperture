@@ -58,3 +58,6 @@ The chime an event falls back to when its chosen sound is unavailable on this de
 
 ### SOUND_EVENT_LABELS
 `Record<SoundEvent, { label: string; description: string }>` — the title and one-line explanation for each event's row in the account settings dialog.
+
+### SOUND_MUTE_GROUP_LABELS
+`Record<SoundMuteGroup, { label: string; description: string }>` — the short name (`Kills`, `Pilots`, `Rally & ping`) and the cues each group covers, for the settings dialog's mute chips, the map menu's mute items and the node's muted badge.
