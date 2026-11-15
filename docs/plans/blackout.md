@@ -39,7 +39,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 
 ## Stage 1 — Schema and clearance resolver
 **Mode:** Execute
-**Status:** done — 9cd5f6b1
+**Status:** done — 9f2df903
 **Goal:** Blackout state and the cleared list exist in the database, and one server module answers "is Blackout on?" and "is this account cleared?".
 **References:** `src/db/schema/ap/instance.md`, `src/db/schema/ap/access_grant.md`, `src/db/schema/ap/enums.md`, `src/db/schema/ap/role.md`, `src/lib/auth/resolveAuthz.md`, `src/lib/auth/loginGate.md`, `src/db/migrations/0061_map_share_management.sql` (enum `ADD VALUE` precedent); memory: `db:generate` works, `.rollback.sql` is hand-written.
 **Touches:** `src/db/schema/ap/instance.ts` (+ `.md`): `blackout_since`, `blackout_by_character_id`. `src/db/schema/ap/enums.ts` (+ `.md`): `access_capability` gains `blackout_view`, appended. `src/db/schema/ap/access_grant.ts` (+ `.md`): the capability/scope CHECK admits `blackout_view` at instance scope; a new CHECK limits `blackout_view` rows to `character` / `role` principals. New migration plus hand-written `.rollback.sql`. New `src/lib/auth/blackout.ts` (+ `.md`): `getBlackoutState()` → `{ active, since, byCharacterId }`, `isBlackoutCleared(userId)`, and the shared visibility predicate the later stages call. No `import 'server-only'`: the module is reached from `wsServer.ts` and the location-poll runner. `src/types/index.ts` (+ `.md`) for exported types. DB tests.
@@ -47,7 +47,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 
 ## Stage 2 — Admin switch and cleared list
 **Mode:** Execute
-**Status:** done — 2d945c82
+**Status:** done — 2fca429d
 **Goal:** Global admins can turn Blackout on and off and manage the cleared list from `/admin/settings`.
 **References:** `src/app/(admin)/admin/settings/page.md`, `src/app/(admin)/actions/settings.md`, `src/components/admin/StaleThresholdForm.md`, `src/components/setup/InstanceAccessPanel.md` (grant-list precedent), `src/components/map/manage/MapRolesForm.md` (corp-title listing), `src/lib/auth/blackout.md`.
 **Touches:** New `src/app/(admin)/actions/blackout.ts` (+ `.md`): `isAdmin`-gated actions to turn Blackout on / off (sets / clears `blackout_since` + `blackout_by_character_id`), add a `blackout_view` grant (character or corp-title role, optional expiry and note), remove one, plus the loader the panel reads. Every mutation emits the instance-channel `pg_notify` (channel name a constant in `aperture.config.ts`) and revalidates. New `src/components/admin/BlackoutPanel.tsx` (+ `.md`): one card with the switch (state, since, who turned it on), the cleared list (name, kind, corp for titles, expiry, note, remove), and add controls: a picker over characters Aperture knows and a corp → title picker over known `corp_title` roles. Turning Blackout on asks for confirmation; turning it off doesn't. `src/app/(admin)/admin/settings/page.tsx` (+ `.md`) mounts the panel.
@@ -55,7 +55,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 
 ## Stage 3 — Realtime enforcement
 **Mode:** Execute
-**Status:** done — afecedd6
+**Status:** done — 87ef79e0
 **Goal:** While Blackout is on, a session socket that isn't cleared receives no presence or mass-log frame about pilots outside its own account, public sockets receive no presence nudge, and every open tab learns the Blackout state live.
 **References:** `src/lib/realtime/wsServer.md`, `src/lib/realtime/bus.md`, `src/lib/realtime/protocol.md`, `src/lib/realtime/sharedWorker.md`, `src/lib/auth/blackout.md`.
 **Touches:** `src/lib/realtime/protocol.ts` (+ `.md`): `healthCheckLoadSchema` gains optional `blackout: { active, since, cleared }`. `src/lib/realtime/bus.ts` (+ `.md`): LISTEN on the instance channel (`apertureConfig.INSTANCE_NOTIFY_CHANNEL`, empty payload) for the bus's lifetime and expose a subscription to it; it is not a map channel and produces no map envelope. `src/lib/realtime/wsServer.ts` (+ `.md`):
@@ -68,7 +68,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 
 ## Stage 4 — Read paths
 **Mode:** Execute
-**Status:** done — 8f9e4fcd
+**Status:** done — e7589b79
 **Goal:** The map page load, the viewers endpoint, the mass-log endpoint and public share links apply the same rule as the socket.
 **References:** `src/lib/map/loadMap.md`, `src/lib/map/loadPublicMap.md`, `src/lib/map/publicSnapshot.md`, `src/app/api/map/[mapId]/viewers/route.md`, `src/app/api/map/[mapId]/connections/[connId]/mass-log/route.md`, `src/app/(app)/map/[[...slug]]/page.md`, `src/lib/auth/blackout.md`.
 **Touches:** `src/lib/map/loadMap.ts` (+ `.md`): `loadMapPresence` becomes viewer-aware and, while on and not cleared, returns only the viewer's account's pilots; the page's load also carries the viewer's initial Blackout state for Stage 7 to seed from, typed as `BlackoutStatus` (`{ active, since: ISO string | null, cleared }`, from `@/types`), the same shape `healthCheck.blackout` carries. `src/lib/map/loadPublicMap.ts` (+ `.md`): presence is `{ mode: 'none' }` while on; `PublicMapViewData` gains no Blackout field. `src/lib/map/publicSnapshot.ts` (+ `.md`): a flip must not leave presence in a cached snapshot: clear the cache from the flip actions, `adminStartBlackout` / `adminEndBlackout` in `src/app/(admin)/actions/blackout.ts` (+ `.md`). Not from `bus.onInstanceNotify`: the bus is a `globalThis` singleton only outside production, so in production a Next-side subscriber would get its own bus instance and a second LISTEN connection. `invalidatePublicSnapshot` is per-token, so this needs a clear-all. `src/app/api/map/[mapId]/viewers/route.ts` (+ `.md`): while on and not cleared, only the viewer's own character ids. `src/app/api/map/[mapId]/connections/[connId]/mass-log/route.ts` (+ `.md`): while on and not cleared, no entries plus a marker the inspector can render as "hidden during Blackout". `src/app/(app)/map/[[...slug]]/page.tsx` (+ `.md`) threads the viewer.
@@ -76,7 +76,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 
 ## Stage 5 — Location poll
 **Mode:** Execute
-**Status:** done — 0d8f7fd5
+**Status:** done — 104b91c4
 **Goal:** While Blackout is on, a tracked jump never changes any map, but a jump through a hole already on the map still lands in its mass log.
 **References:** `src/lib/jobs/tasks/locationPoll.md`, `src/lib/jobs/locationCommit.md`, `src/lib/map/connectionMassLog.md`, `src/lib/auth/blackout.md`; memory: runner modules must not import `server-only`; location-poll success-path tests need a `Math.random` pin (job-run sampling).
 **Touches:** `src/lib/jobs/tasks/locationPoll.ts` (+ `.md`): reads the Blackout state each tick (no new cadence knob); while on, skips `foldJumpOntoMap` on every tracked map, resolves the traversed connection read-only instead, and logs mass when that connection is `wh`-scoped; `PollNotes` records the skip. `src/lib/jobs/locationCommit.ts` (+ `.md`): exports the read-only lookup (a confirmed connection between two visible systems, either direction, no writes). Tests.
@@ -84,7 +84,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 
 ## Stage 6 — Attribution
 **Mode:** Execute
-**Status:** done — 0a71f7f5
+**Status:** done — 6746c7b2
 **Goal:** While Blackout is on, Discord history posts carry no actor and the in-map audit console hides actors from viewers who aren't cleared.
 **References:** `src/lib/webhooks/dispatcher.md`, `src/lib/webhooks/formatters.md`, `src/lib/map/audit.md`, `src/app/api/map/[mapId]/audit/route.md`, `src/components/map/manage/MapAuditBrowser.md`, `src/lib/auth/blackout.md`.
 **Touches:** `src/lib/webhooks/dispatcher.ts` / `formatters.ts` (+ `.md`): the history message drops its leading actor when Blackout is on at dispatch time. `src/lib/map/audit.ts` and the audit route (+ `.md`): for a non-cleared viewer while on (`isBlackedOut(await getBlackoutStatus(session.userId))`, the pattern the Stage 4 routes use), rows carry no actor and the actor list and per-actor drill-down are unavailable. `src/components/map/manage/MapAuditBrowser.tsx` (+ `.md`): renders the hidden-actor state. Tests.
@@ -92,7 +92,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 
 ## Stage 7 — Client state and presence pruning
 **Mode:** Execute
-**Status:** done — f2f7d686
+**Status:** done — fac16881
 **Goal:** The map client knows the viewer's Blackout state from first paint and live, and a non-cleared viewer's presence collapses to their own account the moment Blackout applies to them.
 **References:** `src/lib/realtime/useRealtime.md`, `src/components/map/MapPresenceContext.md`, `src/components/map/MapActiveCharContext.md`, `src/components/map/MapCanvas.md`, `src/app/(app)/map/[[...slug]]/page.md`.
 **Touches:** `src/lib/realtime/useRealtime.tsx` (+ `.md`): surfaces the latest `healthCheck.blackout` (`BlackoutStatus`) through a hook, seeded from the page's initial state (`MapViewData.blackout`, which Stage 4 put on the map payload; the `/api/map/[mapId]` resync snapshot carries it too) until the first `healthCheck` arrives (a tab joining an already-running SharedWorker otherwise waits a full heartbeat). A `healthCheck` without `blackout` (the server hasn't read the switch yet) keeps the current value. `src/components/map/MapPresenceContext.tsx` (+ `.md`): when the state becomes on and not cleared, drops every entry outside the viewer's account. `src/components/map/MapCanvas.tsx` (+ `.md`) and `src/app/(app)/map/[[...slug]]/page.tsx` thread the initial state and the viewer's account identity. Tests.
@@ -100,7 +100,7 @@ The viewer's own location has no separate path: the client picks the viewer's ch
 
 ## Stage 8 — Blackout UI surfaces
 **Mode:** Execute
-**Status:** done — 61489e47
+**Status:** done — eefce7f8
 **Goal:** Every map view shows an unmissable Blackout banner, and the roster and mass-log inspector say why they're empty.
 **References:** `src/components/RealtimeStatusBanner.md` (banner precedent), `src/components/map/MapCanvas.md`, `src/components/map/PilotRoster.md`, `src/components/map/PilotRosterButton.md`, `src/components/sidebar/ConnectionMassLog.md`; the `frontend-design` skill for the banner.
 **Touches:** New `src/components/map/BlackoutBanner.tsx` (+ `.md`): full-width, persistent, non-dismissible, high-contrast strip at the top of the map view, visually distinct from the degraded-realtime banner; the two variants from the design decisions; names no individual; may show the start time. Copy has no em-dashes. Starting copy: not cleared "Blackout in effect. Pilot locations are hidden. You can still see your own characters."; cleared "Blackout in effect. Members can't see pilot locations. You can." `src/components/map/MapCanvas.tsx` (+ `.md`) mounts it, feeding it the `blackout` value the canvas already derives (`useBlackoutStatus(viewData.blackout)` from `@/lib/realtime/useRealtime`); the roster's "pilots are hidden" condition is that same value's `active && !cleared`, threaded or read the same way rather than re-derived. `src/components/map/PilotRoster.tsx` / `PilotRosterButton.tsx` (+ `.md`): an empty-state line while pilots are hidden. `src/components/sidebar/ConnectionMassLog.tsx` (+ `.md`): renders Stage 4's marker. The marker is `hidden: true` beside `data: []` on the mass-log route's `{ ok: true, … }` body; `fetchConnectionMassLog` in `src/lib/map/client.ts` (+ `.md`) types its result as a plain `FetchResult<ConnectionMassLogEntry[]>`, so it has to be widened to carry `hidden` (the field already survives at runtime). The public `/live` page is untouched.
