@@ -35,7 +35,7 @@ Every `voice-<pack>-<event>` id, one per pack per event. The watched-jump line s
 `'plain' | 'inbound' | 'outbound'` — which end of a watched wormhole the viewer sits on. Built-in chimes ignore it; the voice pack speaks a different line per variant.
 
 ### SoundEventPrefs (type)
-`{ enabled: boolean; sound: SoundId; desktopNotification?: boolean }` — `desktopNotification` applies to `rallySet` (experimental desktop alert alongside the in-app toast).
+`{ enabled: boolean; sound: SoundId; toast?: boolean; desktopNotification?: boolean }` — experimental alert rows (`rallySet`, `activeRouteOffRoute`, `activeRouteLinkAlert`) use `toast` and `desktopNotification` independently of master sound mutes.
 
 ### SoundPrefs (type)
 `{ enabled: boolean; volume: number; events: Record<SoundEvent, SoundEventPrefs> }`. `volume` is master gain, 0..1.

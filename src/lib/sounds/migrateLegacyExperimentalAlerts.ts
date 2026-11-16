@@ -49,7 +49,7 @@ export function migrateLegacyExperimentalAlerts(prefs: SoundPrefs): SoundPrefs {
   if (rallyToast || rallyDesktop) {
     events.rallySet = {
       ...events.rallySet,
-      enabled: events.rallySet.enabled || rallyToast,
+      toast: events.rallySet.toast === true || rallyToast,
       desktopNotification: events.rallySet.desktopNotification === true || rallyDesktop,
     };
   }

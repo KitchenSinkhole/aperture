@@ -11,10 +11,11 @@ describe('migrateLegacyExperimentalAlerts', () => {
     expect(migrateLegacyExperimentalAlerts(DEFAULT_SOUND_PREFS)).toEqual(DEFAULT_SOUND_PREFS);
   });
 
-  it('maps rally toast to rallySet.enabled and clears keys', () => {
+  it('maps rally toast legacy key to rallySet.toast and clears keys', () => {
     localStorage.setItem('aperture:experimental:alert-rally-toast', '1');
     const next = migrateLegacyExperimentalAlerts(DEFAULT_SOUND_PREFS);
-    expect(next.events.rallySet.enabled).toBe(true);
+    expect(next.events.rallySet.enabled).toBe(false);
+    expect(next.events.rallySet.toast).toBe(true);
     expect(localStorage.getItem('aperture:experimental:alert-rally-toast')).toBeNull();
   });
 

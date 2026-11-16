@@ -85,10 +85,18 @@ export type SoundId = BuiltInSoundId | CustomSoundId;
  */
 export type SoundVariant = 'plain' | 'inbound' | 'outbound';
 
+export const EXPERIMENTAL_ALERT_TOAST_EVENTS = new Set<SoundEvent>([
+  'rallySet',
+  'activeRouteOffRoute',
+  'activeRouteLinkAlert',
+]);
+
 export type SoundEventPrefs = {
   enabled: boolean;
   sound: SoundId;
-  /** Rally row only (experimental): browser `Notification` alongside the in-app toast. */
+  /** Experimental alert rows: in-app toast (opt-in, independent of master/system mutes). */
+  toast?: boolean;
+  /** Experimental alert rows: browser `Notification`. */
   desktopNotification?: boolean;
 };
 
@@ -110,10 +118,20 @@ export const DEFAULT_SOUND_PREFS: SoundPrefs = {
     pilotLeft: { enabled: false, sound: 'chime-down' },
     watchedJump: { enabled: false, sound: 'tick' },
     killInSystem: { enabled: false, sound: 'alarm' },
-    rallySet: { enabled: false, sound: 'bell', desktopNotification: false },
+    rallySet: { enabled: false, sound: 'bell', toast: false, desktopNotification: false },
     systemPinged: { enabled: false, sound: 'ping' },
-    activeRouteOffRoute: { enabled: false, sound: 'beeps', desktopNotification: false },
-    activeRouteLinkAlert: { enabled: false, sound: 'tick-loud', desktopNotification: false },
+    activeRouteOffRoute: {
+      enabled: false,
+      sound: 'beeps',
+      toast: false,
+      desktopNotification: false,
+    },
+    activeRouteLinkAlert: {
+      enabled: false,
+      sound: 'tick-loud',
+      toast: false,
+      desktopNotification: false,
+    },
   },
 };
 
@@ -133,6 +151,7 @@ const soundIdSchema = z.custom<SoundId>(isSoundId, { message: 'unknown sound id'
 const soundEventPrefsSchema = z.object({
   enabled: z.boolean(),
   sound: soundIdSchema,
+  toast: z.boolean().optional(),
   desktopNotification: z.boolean().optional(),
 });
 
@@ -170,11 +189,9 @@ function resolveEventPrefs(raw: unknown, event: SoundEvent): SoundEventPrefs {
     enabled: typeof raw.enabled === 'boolean' ? raw.enabled : fallback.enabled,
     sound: isSoundId(raw.sound) ? raw.sound : fallback.sound,
   };
-  if (
-    event === 'rallySet' ||
-    event === 'activeRouteOffRoute' ||
-    event === 'activeRouteLinkAlert'
-  ) {
+  if (EXPERIMENTAL_ALERT_TOAST_EVENTS.has(event)) {
+    base.toast =
+      typeof raw.toast === 'boolean' ? raw.toast : (fallback.toast ?? false);
     base.desktopNotification =
       typeof raw.desktopNotification === 'boolean'
         ? raw.desktopNotification

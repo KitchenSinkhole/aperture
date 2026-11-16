@@ -6,7 +6,7 @@ import type { PanelId } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
-const GEAR_PANELS: ReadonlySet<PanelId> = new Set(['canvas']);
+const GEAR_PANELS: ReadonlySet<PanelId> = new Set(['canvas', 'route']);
 
 export type ExperimentalPanelGearSlotProps = {
   panelId: PanelId;

@@ -247,19 +247,12 @@ import { readExperimentalAutoMassFromLog, readKeepMapSelection } from '@/lib/exp
 import { experimentalSettingLabel } from '@/lib/experimentalSettingLabel';
 import {
   readExperimentalFightMapSystemId,
+  readExperimentalIncludeJumpBridge,
   subscribeExperimentalRoutePrefs,
   writeExperimentalFightMapSystemId,
+  writeExperimentalIncludeJumpBridge,
 } from '@/lib/experimentalRoutePrefs';
 import { massStatusFromCumulative } from '@/lib/experimentalAutoMass';
-import {
-  clearManualConnectionMassLock,
-  isManualConnectionMassLocked,
-  lockManualConnectionMass,
-} from '@/lib/experimentalManualMass';
-import {
-  mergeDscanAttach,
-  parseExperimentalDscanPanelSettings,
-} from '@/lib/experimentalDscanLayout';
 import { fetchWormholeJumpInfo } from '@/lib/reference/client';
 import type { WormholeJumpInfoRow } from '@/types';
 import { useExperimentalUi } from '@/lib/experimentalUi.client';
@@ -539,6 +532,14 @@ export function MapCanvas({
   // direct scanner paste also removes missing sigs, then disarms itself.
   const [lazyDeleteSigs, setLazyDeleteSigs] = useState(false);
   const [sigCleanupOpen, setSigCleanupOpen] = useState(false);
+  const [panelGearJumpBridge, setPanelGearJumpBridge] = useState(readExperimentalIncludeJumpBridge);
+  useEffect(
+    () =>
+      subscribeExperimentalRoutePrefs(() =>
+        setPanelGearJumpBridge(readExperimentalIncludeJumpBridge()),
+      ),
+    [],
+  );
   const [viewData, setViewData] = useState<MapViewData>(data);
   const [liveShares, setLiveShares] = useState<LiveShareBadge[]>(initialLiveShares);
   // Captured via ReactFlow's onInit so the manual-add flow can place new nodes
@@ -924,11 +925,6 @@ export function MapCanvas({
 
   const soundLayoutSettings = useMemo(
     () => parseExperimentalSoundLayoutSettings(layout),
-    [layout],
-  );
-
-  const dscanPanelSettings = useMemo(
-    () => parseExperimentalDscanPanelSettings(layout),
     [layout],
   );
 
@@ -1924,18 +1920,23 @@ export function MapCanvas({
       patch: UpdateConnectionBody,
       options?: { fromAutoMass?: boolean },
     ) => {
-      if (patch.massStatus !== undefined && !options?.fromAutoMass) {
-        lockManualConnectionMass(connectionId);
+      let body = patch;
+      if (
+        experimentalActive &&
+        patch.massStatus !== undefined &&
+        !options?.fromAutoMass
+      ) {
+        body = { ...patch, preserveMass: true };
       }
       const opt: MapEventPayload = {
         kind: 'connection.update',
         eventId: 0,
         id: connectionId,
-        ...patch,
+        ...body,
       };
-      runOptimistic(opt, () => updateConnectionOnServer({ mapId, connectionId, patch }));
+      runOptimistic(opt, () => updateConnectionOnServer({ mapId, connectionId, patch: body }));
     },
-    [mapId, runOptimistic],
+    [experimentalActive, mapId, runOptimistic],
   );
 
   useEffect(() => {
@@ -1981,7 +1982,7 @@ export function MapCanvas({
           if (!status) return;
           const conn = viewData.connections.find((c) => c.id === connectionId);
           if (!conn || conn.massStatus === status) return;
-          if (isManualConnectionMassLocked(connectionId)) return;
+          if (conn.preserveMass) return;
           onConnectionPatch(connectionId, { massStatus: status }, { fromAutoMass: true });
         })();
       },
@@ -1998,7 +1999,6 @@ export function MapCanvas({
         // and the watch has to come back with it.
         () => dropWatchedConnection(mapId, connectionId),
       );
-      clearManualConnectionMassLock(connectionId);
       setSelected(null);
     },
     [mapId, runOptimistic],
@@ -2608,19 +2608,6 @@ export function MapCanvas({
     if (selected?.kind !== 'system') return null;
     return viewData.systems.find((s) => s.id === selected.id) ?? null;
   }, [selected, viewData.systems]);
-
-  const onDscanAttach = useCallback(
-    (text: string) => {
-      if (!selectedSystem) return;
-      setLayout((prev) => {
-        const next = mergeDscanAttach(prev, selectedSystem.id, text);
-        saveLayout(next);
-        return next;
-      });
-      toast.success(`D-Scan attached to ${selectedSystem.alias?.trim() || selectedSystem.name}`);
-    },
-    [saveLayout, selectedSystem],
-  );
 
   // EVE solar-system ids already placed — lets the add dialog flag duplicates.
   const existingSystemIds = useMemo(
@@ -3240,42 +3227,56 @@ export function MapCanvas({
       case 'kills':
         return experimentalActive ? <ExperimentalKillsPanel system={selectedSystem ?? undefined} /> : null;
       case 'dscan':
-        return experimentalActive ? (
-          <ExperimentalDscanPanel
-            key={selectedSystem?.id ?? 'no-system'}
-            system={selectedSystem ?? undefined}
-            attachedText={
-              selectedSystem
-                ? dscanPanelSettings.attachedBySystemId[selectedSystem.id]
-                : undefined
-            }
-            onAttach={selectedSystem ? onDscanAttach : undefined}
-          />
-        ) : null;
+        return experimentalActive ? <ExperimentalDscanPanel /> : null;
     }
   };
 
   const renderPanelGearBody = useCallback(
     (id: PanelId): ReactNode => {
-      if (!experimentalActive || id !== 'canvas') return null;
-      return (
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            className="size-4 accent-primary"
-            checked={soundLayoutSettings.followSelectedPilot === true}
-            onChange={(e) => {
-              persistSoundLayoutSettings({
-                ...soundLayoutSettings,
-                followSelectedPilot: e.target.checked,
-              });
-            }}
-          />
-          {experimentalSettingLabel('Follow selected pilot')}
-        </label>
-      );
+      if (!experimentalActive) return null;
+      switch (id) {
+        case 'canvas':
+          return (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={soundLayoutSettings.followSelectedPilot === true}
+                onChange={(e) => {
+                  persistSoundLayoutSettings({
+                    ...soundLayoutSettings,
+                    followSelectedPilot: e.target.checked,
+                  });
+                }}
+              />
+              {experimentalSettingLabel('Follow selected pilot')}
+            </label>
+          );
+        case 'route':
+          return (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={panelGearJumpBridge}
+                onChange={(e) => {
+                  setPanelGearJumpBridge(e.target.checked);
+                  writeExperimentalIncludeJumpBridge(e.target.checked);
+                }}
+              />
+              {experimentalSettingLabel('Include jump bridges')}
+            </label>
+          );
+        default:
+          return null;
+      }
     },
-    [experimentalActive, persistSoundLayoutSettings, soundLayoutSettings],
+    [
+      experimentalActive,
+      panelGearJumpBridge,
+      persistSoundLayoutSettings,
+      soundLayoutSettings,
+    ],
   );
 
   const panelHeaderRight = (id: PanelId): ReactNode => {

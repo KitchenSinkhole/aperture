@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { setMapActiveRouteAction } from '@/app/(app)/actions/mapActiveRoute';
 import { pushKspaceWaypointsForCharacter } from '@/lib/character/pushRouteWaypoints';
 import { getSoundEngine, useSoundCueOn, useSoundPrefs } from '@/lib/sounds/engine';
+import { shouldShowExperimentalAlertToast } from '@/lib/sounds/alertToast';
 import {
   activeRouteConnectionIds,
   followersOffRoute,
@@ -136,9 +137,11 @@ export function ExperimentalActiveRouteBridge({
       const key = `${row.characterId}:${row.systemId}`;
       if (offRouteNotified.current.has(key)) continue;
       offRouteNotified.current.add(key);
-      toast.message('Off active route', {
-        description: `${row.characterName} is not on the planned path.`,
-      });
+      if (shouldShowExperimentalAlertToast(offRoutePrefs)) {
+        toast.message('Off active route', {
+          description: `${row.characterName} is not on the planned path.`,
+        });
+      }
       if (offRouteSoundOn) getSoundEngine().play('activeRouteOffRoute');
       notifyDesktop(
         'Off active route',
@@ -159,7 +162,7 @@ export function ExperimentalActiveRouteBridge({
     activeRoute,
     notifyDesktop,
     offRouteAlertEnabled,
-    offRoutePrefs.desktopNotification,
+    offRoutePrefs,
     offRouteSoundOn,
     presence,
   ]);
@@ -187,13 +190,15 @@ export function ExperimentalActiveRouteBridge({
         const alertKey = `deleted:${id}`;
         if (hazardNotified.current.has(alertKey)) continue;
         hazardNotified.current.add(alertKey);
-        toast.message('Route link removed', {
-          description: 'A wormhole on your active route is gone.',
-          action: {
-            label: 'Recompute',
-            onClick: () => void recomputeAndSave(),
-          },
-        });
+        if (shouldShowExperimentalAlertToast(hazardPrefs)) {
+          toast.message('Route link removed', {
+            description: 'A wormhole on your active route is gone.',
+            action: {
+              label: 'Recompute',
+              onClick: () => void recomputeAndSave(),
+            },
+          });
+        }
         if (hazardSoundOn) getSoundEngine().play('activeRouteLinkAlert');
         notifyDesktop(
           'Route link removed',
@@ -207,13 +212,15 @@ export function ExperimentalActiveRouteBridge({
         const alertKey = `critical:${id}`;
         if (hazardNotified.current.has(alertKey)) continue;
         hazardNotified.current.add(alertKey);
-        toast.message('Route link EOL critical', {
-          description: 'A wormhole on your active route is in critical EOL.',
-          action: {
-            label: 'Recompute',
-            onClick: () => void recomputeAndSave(),
-          },
-        });
+        if (shouldShowExperimentalAlertToast(hazardPrefs)) {
+          toast.message('Route link EOL critical', {
+            description: 'A wormhole on your active route is in critical EOL.',
+            action: {
+              label: 'Recompute',
+              onClick: () => void recomputeAndSave(),
+            },
+          });
+        }
         if (hazardSoundOn) getSoundEngine().play('activeRouteLinkAlert');
         notifyDesktop(
           'Route link EOL critical',
@@ -231,7 +238,7 @@ export function ExperimentalActiveRouteBridge({
     activeRoute,
     connections,
     hazardAlertEnabled,
-    hazardPrefs.desktopNotification,
+    hazardPrefs,
     hazardSoundOn,
     notifyDesktop,
     recomputeAndSave,

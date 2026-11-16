@@ -3,20 +3,10 @@
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { subscribeExperimentalPanelAdd } from '@/lib/experimentalPanelActionBus';
 import { parseDscanPaste } from '@/lib/map/dscanParser';
-import type { MapSystemNode } from '@/types';
 import { Button } from '@/components/ui/button';
 
-export function ExperimentalDscanPanel({
-  system,
-  attachedText,
-  onAttach,
-}: {
-  system: MapSystemNode | undefined;
-  /** Saved paste from layout `panelSettings.dscan` for the selected system. */
-  attachedText?: string;
-  onAttach?: (text: string) => void;
-}) {
-  const [text, setText] = useState(attachedText ?? '');
+export function ExperimentalDscanPanel() {
+  const [text, setText] = useState('');
   const [prev, setPrev] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -63,11 +53,6 @@ export function ExperimentalDscanPanel({
         <Button type="button" size="sm" variant="ghost" onClick={() => setText('')}>
           Clear
         </Button>
-        {system && onAttach ? (
-          <Button type="button" size="sm" onClick={() => onAttach(text)}>
-            Attach to {system.alias ?? system.name}
-          </Button>
-        ) : null}
       </div>
       {rows.length > 0 ? (
         <p className="text-muted-foreground">

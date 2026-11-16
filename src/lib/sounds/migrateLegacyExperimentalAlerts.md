@@ -4,4 +4,4 @@
 **File:** `src/lib/sounds/migrateLegacyExperimentalAlerts.ts`
 
 ### migrateLegacyExperimentalAlerts(prefs): SoundPrefs
-Reads legacy `localStorage` flags once, merges into `rallySet`, `activeRouteOffRoute`, and `activeRouteLinkAlert`, removes keys, and returns the updated prefs (unchanged when no legacy flags were set).
+Reads legacy `localStorage` flags once. Rally toast maps to `rallySet.toast`; rally desktop to `desktopNotification`. Route legacy keys enable the matching event rows. Clears keys; returns prefs unchanged when none were set.

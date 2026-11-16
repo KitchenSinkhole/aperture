@@ -4,7 +4,11 @@ import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { Star, Trash2, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SignatureIndicatorAccountSettings, SoundEvent, SoundId, SoundPrefs } from '@/types';
-import { EXPERIMENTAL_SOUND_EVENTS, SOUND_EVENTS } from '@/lib/sounds/prefs';
+import {
+  EXPERIMENTAL_ALERT_TOAST_EVENTS,
+  EXPERIMENTAL_SOUND_EVENTS,
+  SOUND_EVENTS,
+} from '@/lib/sounds/prefs';
 import { migrateLegacyExperimentalAlerts } from '@/lib/sounds/migrateLegacyExperimentalAlerts';
 import { SOUND_EVENT_LABELS } from '@/lib/sounds/catalog';
 import { getCustomSoundStore, useCustomSounds } from '@/lib/sounds/customStore';
@@ -264,7 +268,12 @@ export function AccountSettingsDialog({
 
   function commitEvent(
     event: SoundEvent,
-    patch: { enabled?: boolean; sound?: SoundId; desktopNotification?: boolean },
+    patch: {
+      enabled?: boolean;
+      sound?: SoundId;
+      toast?: boolean;
+      desktopNotification?: boolean;
+    },
   ) {
     commitSounds({
       ...sounds,
@@ -617,7 +626,9 @@ export function AccountSettingsDialog({
 
           <div className="mt-2 flex flex-col gap-1 rounded-lg border border-border p-3">
             <label className="flex items-center gap-3 text-sm">
-              <span className="flex-1 font-medium text-foreground">Sounds</span>
+              <span className="flex-1 font-medium text-foreground">
+                {experimentalOn ? 'Sounds & notifications' : 'Sounds'}
+              </span>
               <input
                 type="checkbox"
                 className="size-4 accent-primary"
@@ -628,7 +639,9 @@ export function AccountSettingsDialog({
               />
             </label>
             <span className="text-xs text-muted-foreground">
-              Audio cues for things happening off-screen. Preview works even with sounds off.
+              {experimentalOn
+                ? 'Per-event sounds, in-app toasts, and desktop notifications. Preview works even with master sound off.'
+                : 'Audio cues for things happening off-screen. Preview works even with sounds off.'}
             </span>
 
             <div className="mt-2 flex items-center gap-3 px-1 text-sm">
@@ -658,57 +671,92 @@ export function AccountSettingsDialog({
               {accountSoundEvents.map((event) => {
                 const { label, description } = SOUND_EVENT_LABELS[event];
                 const eventPrefs = sounds.events[event];
+                const alertRow = experimentalOn && EXPERIMENTAL_ALERT_TOAST_EVENTS.has(event);
                 return (
                   <div key={event} className="flex items-center gap-3 rounded-lg px-1 py-1 text-sm">
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      <label className="flex cursor-pointer items-start gap-3">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 size-4 accent-primary"
-                          checked={eventPrefs.enabled}
-                          disabled={pending || !sounds.enabled}
-                          onChange={(e) => {
-                            commitEvent(event, { enabled: e.target.checked });
-                            if (e.target.checked) engine.preview(eventPrefs.sound);
-                          }}
-                          aria-label={label}
-                        />
-                        <span className="flex flex-col gap-0.5">
-                          <span>{label}</span>
-                          <span className="text-xs text-muted-foreground">{description}</span>
-                        </span>
-                      </label>
-                      {experimentalOn &&
-                      (event === 'rallySet' ||
-                        event === 'activeRouteOffRoute' ||
-                        event === 'activeRouteLinkAlert') ? (
-                        <label className="ml-7 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                      {alertRow ? (
+                        <>
+                          <div className="flex flex-col gap-0.5 pl-1">
+                            <span>{label}</span>
+                            <span className="text-xs text-muted-foreground">{description}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 pl-1 text-xs text-muted-foreground">
+                            <label className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="checkbox"
+                                className="size-3.5 accent-primary"
+                                checked={eventPrefs.enabled}
+                                disabled={pending}
+                                onChange={(e) => {
+                                  commitEvent(event, { enabled: e.target.checked });
+                                  if (e.target.checked) engine.preview(eventPrefs.sound);
+                                }}
+                                aria-label={`${label} sound`}
+                              />
+                              Sound
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="checkbox"
+                                className="size-3.5 accent-primary"
+                                checked={eventPrefs.toast === true}
+                                disabled={pending || !eventPrefs.enabled}
+                                onChange={(e) => {
+                                  commitEvent(event, { toast: e.target.checked });
+                                }}
+                                aria-label={`${label} toast`}
+                              />
+                              {experimentalSettingLabel('Toast')}
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="checkbox"
+                                className="size-3.5 accent-primary"
+                                checked={eventPrefs.desktopNotification === true}
+                                disabled={pending}
+                                onChange={(e) => {
+                                  const on = e.target.checked;
+                                  commitEvent(event, { desktopNotification: on });
+                                  if (
+                                    on &&
+                                    typeof Notification !== 'undefined' &&
+                                    Notification.permission === 'default'
+                                  ) {
+                                    void Notification.requestPermission();
+                                  }
+                                }}
+                                aria-label={`${label} desktop notification`}
+                              />
+                              {experimentalSettingLabel('Desktop notification')}
+                            </label>
+                          </div>
+                        </>
+                      ) : (
+                        <label className="flex cursor-pointer items-start gap-3">
                           <input
                             type="checkbox"
-                            className="size-3.5 accent-primary"
-                            checked={eventPrefs.desktopNotification === true}
-                            disabled={pending || !sounds.enabled || !eventPrefs.enabled}
+                            className="mt-0.5 size-4 accent-primary"
+                            checked={eventPrefs.enabled}
+                            disabled={pending || !sounds.enabled}
                             onChange={(e) => {
-                              const on = e.target.checked;
-                              commitEvent(event, { desktopNotification: on });
-                              if (
-                                on &&
-                                typeof Notification !== 'undefined' &&
-                                Notification.permission === 'default'
-                              ) {
-                                void Notification.requestPermission();
-                              }
+                              commitEvent(event, { enabled: e.target.checked });
+                              if (e.target.checked) engine.preview(eventPrefs.sound);
                             }}
+                            aria-label={label}
                           />
-                          {experimentalSettingLabel('Desktop notification')}
+                          <span className="flex flex-col gap-0.5">
+                            <span>{label}</span>
+                            <span className="text-xs text-muted-foreground">{description}</span>
+                          </span>
                         </label>
-                      ) : null}
+                      )}
                     </div>
                     <SoundPicker
                       event={event}
                       value={eventPrefs.sound}
                       ariaLabel={`${label} sound`}
-                      disabled={pending}
+                      disabled={pending || (!alertRow && !sounds.enabled)}
                       onValueChange={(sound) => {
                         commitEvent(event, { sound });
                         engine.preview(sound);

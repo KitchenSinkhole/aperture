@@ -16,5 +16,5 @@
 | onRouteUpdated | () => void | no | Called after a successful reroute save (e.g. `router.refresh`). |
 
 ### Behaviour
-- Off-route toasts when the `activeRouteOffRoute` event row is enabled (independent of the master sound switch); the chime plays only when master + event are on. Optional desktop notification from that row’s `desktopNotification` pref.
-- Hazard toasts when the `activeRouteLinkAlert` event is enabled, with the same sound/master/desktop split; optional **Recompute** calls `route-plan` and `setMapActiveRouteAction`.
+- Off-route monitoring when the `activeRouteOffRoute` row is enabled; in-app toast when `toast` is on (`shouldShowExperimentalAlertToast`); chime when master + event are on. Optional desktop notification from `desktopNotification`.
+- Hazard path when `activeRouteLinkAlert` is enabled, with the same toast/sound/desktop split; optional **Recompute** calls `route-plan` and `setMapActiveRouteAction`.
