@@ -35,6 +35,9 @@ Serves `getUserApiProjection(record.map.id, resource, record.access.blackout)` u
 ### serveUserApiMassLog: UserApiServe
 The `mass_log` projection; with `?connection=<id>` its `data` is narrowed to that connection's entries (an id matching nothing gives an empty list), `hidden: true` is carried through, and the narrowed payload gets its own ETag.
 
+### serveUserApiKills: UserApiServe
+The `kills` projection narrowed per request: kills at or after `?since=<ISO>` (default `USER_API_KILLS_DEFAULT_SINCE_MS` back, floored at `USER_API_KILLS_MAX_AGE_DAYS` back, capped at now), newest first, at most `?limit=` (default and maximum `USER_API_KILLS_MAX_LIMIT`, minimum 1). An unparseable value takes its default and an out-of-range one its nearest bound; neither is refused. The narrowed payload gets its own envelope and ETag.
+
 ### serveUserApiToken: UserApiServe
 `UserApiTokenInfo`: the token's map (`id`, `name`), its granted scopes and its effective scopes (`effectiveUserApiScopes`), both in enum order, its expiry, and the per-token and per-account caps with the window in seconds.
 
@@ -49,4 +52,4 @@ The `mass_log` projection; with `?connection=<id>` its `data` is narrowed to tha
 - `./instance`, `./rateLimit`, `./authorize`, `./abuse` (`applyUserApiStrike`), `./usage` (`recordUserApiUsage`), `./cache` (`getUserApiProjection`).
 - `@/lib/http/clientKey`, `@/lib/metrics/httpInstrumentation` (`withApiMetrics`), `@/lib/metrics/registry` (`recordUserApiRequest`).
 - Schema: `ap_map` (the liveness check on a failed serve), `api_scope`.
-- `aperture.config` (`USER_API_MAX_PER_TOKEN`, `USER_API_MAX_PER_ACCOUNT`, `USER_API_RATE_WINDOW_MS`).
+- `aperture.config` (`USER_API_MAX_PER_TOKEN`, `USER_API_MAX_PER_ACCOUNT`, `USER_API_RATE_WINDOW_MS`, `USER_API_KILLS_DEFAULT_SINCE_MS`, `USER_API_KILLS_MAX_AGE_DAYS`, `USER_API_KILLS_MAX_LIMIT`).

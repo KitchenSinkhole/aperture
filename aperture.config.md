@@ -55,6 +55,7 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 **User API**
 - `USER_API_AUTH_CACHE_TTL_MS`, `USER_API_AUTH_CACHE_MAX_ENTRIES` — lifetime and LRU size of the user API's resolved-token cache (`src/lib/userApi/authorize.ts`); the TTL bounds how long an access loss the server only observes takes to stop a token.
 - `USER_API_PROJECTION_TTL_MS`, `USER_API_PROJECTION_CACHE_MAX_ENTRIES` — lifetime and LRU size of the user API's resource projection cache (`src/lib/userApi/cache.ts`).
+- `USER_API_KILLS_DEFAULT_SINCE_MS`, `USER_API_KILLS_MAX_AGE_DAYS`, `USER_API_KILLS_MAX_LIMIT` — `GET /api/v1/kills`: the default `since` lookback, the `since` floor (the window the `kills` projection spans), and the `limit` cap and default (which also caps the projection).
 - `USER_API_RATE_WINDOW_MS`, `USER_API_MAX_PER_TOKEN`, `USER_API_MAX_PER_ACCOUNT`, `USER_API_MAX_GLOBAL`, `USER_API_MAX_PER_IP` — the one shared fixed window and its request caps (`src/lib/userApi/rateLimit.ts`); the account cap sums every token the account owns.
 - `USER_API_MAX_AUTH_FAILURES_PER_IP`, `USER_API_IP_BLOCK_STEPS_MS` — failed auths an IP may make per window, and the escalating block lengths once it exceeds them.
 - `USER_API_MAX_TOKENS_PER_ACCOUNT_PER_MAP`, `USER_API_MAX_TOKENS_PER_ACCOUNT` — live-token caps per account, per map and overall.

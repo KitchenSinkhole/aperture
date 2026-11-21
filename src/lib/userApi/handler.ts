@@ -292,6 +292,40 @@ export const serveUserApiMassLog: UserApiServe = async (request, record) => {
   };
 };
 
+function killsSince(raw: string | null, now: number): number {
+  const floor = now - apertureConfig.USER_API_KILLS_MAX_AGE_DAYS * 86_400_000;
+  const parsed = raw === null ? Number.NaN : Date.parse(raw);
+  const since = Number.isNaN(parsed) ? now - apertureConfig.USER_API_KILLS_DEFAULT_SINCE_MS : parsed;
+  return Math.min(Math.max(since, floor), now);
+}
+
+function killsLimit(raw: string | null): number {
+  const max = apertureConfig.USER_API_KILLS_MAX_LIMIT;
+  const parsed = raw === null || raw.trim() === '' ? Number.NaN : Number(raw);
+  if (!Number.isFinite(parsed)) return max;
+  return Math.min(Math.max(Math.trunc(parsed), 1), max);
+}
+
+/**
+ * Serves cached kills newer than `?since=<ISO>` (default 24 hours back, floor
+ * 7 days), newest first, at most `?limit=` (default and maximum 200). An
+ * unparseable value takes its default and an out-of-range one its nearest
+ * bound; neither is refused.
+ */
+export const serveUserApiKills: UserApiServe = async (request, record) => {
+  const entry = await getUserApiProjection(record.map.id, 'kills', viewerOf(record));
+  const params = request.nextUrl.searchParams;
+  const since = killsSince(params.get('since'), Date.now());
+  const limit = killsLimit(params.get('limit'));
+  const payload = {
+    data: entry.payload.data.filter((k) => Date.parse(k.killmailTime) >= since).slice(0, limit),
+  };
+  return {
+    body: JSON.stringify({ ok: true, ...payload, generatedAt: entry.generatedAt }),
+    etag: weakEtag(payload),
+  };
+};
+
 /** Serves what the presented token is and what it may do right now. */
 export const serveUserApiToken: UserApiServe = async (_request, record) => {
   const data: UserApiTokenInfo = {

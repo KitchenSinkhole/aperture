@@ -427,7 +427,7 @@ export type UserApiTokenInfo = {
 };
 
 /** A resource the user API projects from one map (`src/lib/userApi/projection.ts`). */
-export type UserApiResource = 'map' | 'signatures' | 'pilots' | 'notes' | 'mass_log';
+export type UserApiResource = 'map' | 'signatures' | 'pilots' | 'notes' | 'mass_log' | 'kills';
 
 /** A visible system on the token's map. `id` is the `ap_map_system.id` that connection endpoints name. */
 export type UserApiSystem = {
@@ -568,6 +568,26 @@ export type UserApiMassLogEntry = {
   jumpedAt: string;
 };
 
+/**
+ * A cached kill in a visible system, from the local killmail cache only: ids,
+ * the SDE ship-type name, and zKillboard's ISK estimate when one was recorded.
+ */
+export type UserApiKill = {
+  killmailId: string;
+  killmailTime: string;
+  mapSystemId: string;
+  /** EVE solar-system id. */
+  systemId: number;
+  systemName: string;
+  shipTypeId: number | null;
+  shipTypeName: string | null;
+  victimCharacterId: string | null;
+  victimCorporationId: string | null;
+  victimAllianceId: string | null;
+  attackerCount: number;
+  totalValue: number | null;
+};
+
 /** The `data` each user API resource carries. */
 export type UserApiProjectionData = {
   map: UserApiMap;
@@ -575,6 +595,7 @@ export type UserApiProjectionData = {
   pilots: UserApiPilot[];
   notes: UserApiNotes;
   mass_log: UserApiMassLogEntry[];
+  kills: UserApiKill[];
 };
 
 /**

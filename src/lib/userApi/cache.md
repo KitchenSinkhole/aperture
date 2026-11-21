@@ -20,7 +20,7 @@ The entry holds the `payload`, `generatedAt` (ISO of `now` at load), `body` (the
 ---
 
 ### userApiProjectionKey(mapId: bigint, resource: UserApiResource, viewer: BlackoutViewer): string
-`<mapId>:<resource>` for `map`, `signatures` and `notes`. `pilots` and `mass_log` append the visibility: `full`, or `own:<userId>` while `isBlackedOut(viewer)`.
+`<mapId>:<resource>` for `map`, `signatures`, `notes` and `kills`. `pilots` and `mass_log` append the visibility: `full`, or `own:<userId>` while `isBlackedOut(viewer)`.
 
 ---
 

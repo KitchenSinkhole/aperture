@@ -1,7 +1,7 @@
 import 'server-only';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { apMap } from '@/db/schema';
+import { apMap, universeKillmail, universeType } from '@/db/schema';
 import { isBlackedOut } from '@/lib/auth/blackout';
 import { listMapConnectionMassLog } from '@/lib/map/connectionMassLog';
 import {
@@ -15,6 +15,7 @@ import type {
   BlackoutViewer,
   MapSystemNode,
   UserApiConnection,
+  UserApiKill,
   UserApiMap,
   UserApiMassLogEntry,
   UserApiNotes,
@@ -25,6 +26,7 @@ import type {
   UserApiSignature,
   UserApiSystem,
 } from '@/types';
+import { apertureConfig } from '../../../aperture.config';
 
 /**
  * The user API's read projections: each resource as its own wire DTO, built
@@ -62,6 +64,8 @@ export async function loadUserApiProjection<R extends UserApiResource>(
       case 'mass_log':
         if (isBlackedOut(viewer)) return { data: [], hidden: true };
         return { data: await projectMassLog(mapId) };
+      case 'kills':
+        return { data: await projectKills(mapId) };
     }
     throw new Error(`Unknown user API resource: ${String(resource)}`);
   })();
@@ -246,6 +250,66 @@ async function projectMassLog(mapId: bigint): Promise<UserApiMassLogEntry[]> {
       mass: e.mass,
       cumulativeMass: e.cumulativeMass,
       jumpedAt: e.jumpedAt,
+    }];
+  });
+}
+
+const victim = (field: 'character_id' | 'corporation_id' | 'alliance_id') =>
+  sql<string | null>`${universeKillmail.body} -> 'victim' ->> ${sql.raw(`'${field}'`)}`;
+const victimShipTypeId = sql<number | null>`(${universeKillmail.body} -> 'victim' ->> 'ship_type_id')::integer`;
+
+/**
+ * The newest `USER_API_KILLS_MAX_LIMIT` cached kills in the map's visible
+ * systems within the last `USER_API_KILLS_MAX_AGE_DAYS`, newest first. Any
+ * `since` inside that window and any `limit` up to that cap select a prefix
+ * of this list, so the serve step can apply both without a second query.
+ */
+async function projectKills(mapId: bigint): Promise<UserApiKill[]> {
+  const systems = await loadVisibleMapSystems(mapId);
+  if (systems.length === 0) return [];
+  const bySystemId = new Map(systems.map((s) => [s.systemId, s]));
+  const floor = new Date(Date.now() - apertureConfig.USER_API_KILLS_MAX_AGE_DAYS * 86_400_000);
+
+  const rows = await db
+    .select({
+      id: universeKillmail.id,
+      killmailTime: universeKillmail.killmailTime,
+      solarSystemId: universeKillmail.solarSystemId,
+      totalValue: universeKillmail.totalValue,
+      shipTypeId: victimShipTypeId,
+      shipTypeName: universeType.name,
+      victimCharacterId: victim('character_id'),
+      victimCorporationId: victim('corporation_id'),
+      victimAllianceId: victim('alliance_id'),
+      attackerCount: sql<number>`coalesce(jsonb_array_length(${universeKillmail.body} -> 'attackers'), 0)`,
+    })
+    .from(universeKillmail)
+    .leftJoin(universeType, eq(universeType.id, victimShipTypeId))
+    .where(
+      and(
+        inArray(universeKillmail.solarSystemId, [...bySystemId.keys()]),
+        gte(universeKillmail.killmailTime, floor),
+      ),
+    )
+    .orderBy(desc(universeKillmail.killmailTime), desc(universeKillmail.id))
+    .limit(apertureConfig.USER_API_KILLS_MAX_LIMIT);
+
+  return rows.flatMap((k): UserApiKill[] => {
+    const system = k.solarSystemId === null ? undefined : bySystemId.get(k.solarSystemId);
+    if (!system) return [];
+    return [{
+      killmailId: k.id.toString(),
+      killmailTime: k.killmailTime.toISOString(),
+      mapSystemId: system.id,
+      systemId: system.systemId,
+      systemName: system.name,
+      shipTypeId: k.shipTypeId,
+      shipTypeName: k.shipTypeName,
+      victimCharacterId: k.victimCharacterId,
+      victimCorporationId: k.victimCorporationId,
+      victimAllianceId: k.victimAllianceId,
+      attackerCount: Number(k.attackerCount),
+      totalValue: k.totalValue,
     }];
   });
 }

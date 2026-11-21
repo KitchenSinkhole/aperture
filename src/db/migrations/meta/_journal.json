@@ -512,6 +512,13 @@
       "when": 1795275085747,
       "tag": "0073_user_api_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1795281630966,
+      "tag": "0074_killmail_system_value",
+      "breakpoints": true
     }
   ]
 }

@@ -12,7 +12,7 @@ docker compose up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test user-api
 Pins `Date` (fake timers, Date only) to the start of a rate window so no limiter window rolls mid-test, and resets every in-process limiter, usage buffer, projection cache, auth cache and the instance-switch cache around each test. Snapshots the live `ap_instance` access mode and user API switch and restores them; the test corp is an instance owner, so the main passes the login gate and each refusal has one cause. Ids use a 9734xxxx block.
 
 ### Covers
-- 200 on all six endpoints with the success envelope, `cache-control: private, no-store`, `x-robots-tag`, open CORS, the `RateLimit-*` headers and a weak ETag; `/token` reports granted and effective scopes and the limits.
+- 200 on all seven endpoints with the success envelope, `cache-control: private, no-store`, `x-robots-tag`, open CORS, the `RateLimit-*` headers and a weak ETag; `/token` reports granted and effective scopes and the limits.
 - 304 on a matching `If-None-Match` (in a list), still charged against the budget; a non-matching one is 200. `mass-log?connection=` keeps the envelope.
 - 401 `invalid_token` with `WWW-Authenticate: Bearer` for a missing, foreign-scheme, malformed, unknown and revoked token, for a cookie-only request, and for a token whose map was just soft-deleted, that last one with no `RateLimit-*` headers.
 - 403 `account_blocked`, `token_suspended` (with `Retry-After`), `api_disabled`, `access_lost`, `scope_not_granted`.

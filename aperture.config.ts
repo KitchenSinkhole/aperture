@@ -536,6 +536,15 @@ export const apertureConfig = {
   /** Cached user API projections (one per map, resource and Blackout visibility) held before LRU eviction. */
   USER_API_PROJECTION_CACHE_MAX_ENTRIES: 1_000,
 
+  /** How far back `GET /api/v1/kills?since=` reaches when `since` is absent or unparseable. */
+  USER_API_KILLS_DEFAULT_SINCE_MS: 86_400_000,
+
+  /** Floor of `GET /api/v1/kills?since=`, in days; the `kills` projection spans this window. */
+  USER_API_KILLS_MAX_AGE_DAYS: 7,
+
+  /** Most kills one `GET /api/v1/kills` answers, and its default `limit`; also caps the `kills` projection. */
+  USER_API_KILLS_MAX_LIMIT: 200,
+
   /**
    * The one fixed window every user API counter shares (per IP, failed auths
    * per IP, per token, per account, global). Every per-key counter is

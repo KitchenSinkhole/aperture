@@ -14,6 +14,7 @@ import {
   apMapEvent,
   apUser,
 } from '@/db/schema';
+import { GET as killsGET } from '@/app/api/v1/kills/route';
 import { GET as massLogGET } from '@/app/api/v1/mass-log/route';
 import { GET as mapGET, OPTIONS as mapOPTIONS } from '@/app/api/v1/map/route';
 import { GET as notesGET } from '@/app/api/v1/notes/route';
@@ -51,7 +52,7 @@ const run = process.env.RUN_DB_TESTS === '1';
 const CORP = 97349001n;
 const MAIN = 97340001n;
 const MAP_NAME = 'User API HTTP Map';
-const ALL_SCOPES: ApiScope[] = ['map', 'signatures', 'pilots', 'notes', 'mass_log'];
+const ALL_SCOPES: ApiScope[] = ['map', 'signatures', 'pilots', 'notes', 'mass_log', 'kills'];
 
 const W = apertureConfig.USER_API_RATE_WINDOW_MS;
 const PER_TOKEN = apertureConfig.USER_API_MAX_PER_TOKEN;
@@ -186,6 +187,7 @@ describe.skipIf(!run)('User API HTTP surface (real Postgres)', () => {
     ['pilots', pilotsGET],
     ['notes', notesGET],
     ['mass-log', massLogGET],
+    ['kills', killsGET],
   ] as const)('serves /api/v1/%s with the envelope and the contract headers', async (path, handler) => {
     const res = await call(handler, `/api/v1/${path}`, { token: full });
     expect(res.status).toBe(200);
