@@ -5,6 +5,7 @@ import type { SQL } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
   apCharacter,
+  apMapApiToken,
   apMapEvent,
   apMapSystem,
   apUser,
@@ -273,7 +274,10 @@ export async function queryAuditEvents(params: AuditQueryParams): Promise<AuditP
   const hasMore = fetched.length > limit;
   const page = hasMore ? fetched.slice(0, limit) : fetched;
 
-  const names = await resolveNames(page.map((r) => r.payload));
+  const names = await resolveNames(
+    page.map((r) => r.payload),
+    params.hideActors === true,
+  );
 
   const rows: AuditEventRow[] = page.map((r) => {
     const kind = r.kind as MapEventKind;
@@ -284,7 +288,10 @@ export async function queryAuditEvents(params: AuditQueryParams): Promise<AuditP
     const parsed = mapEventPayloadSchema.safeParse(r.payload);
     let action: string | null = null;
     if (parsed.success) {
-      action = describeMapEvent(parsed.data, buildContext(parsed.data, actorName, names));
+      action = describeMapEvent(
+        parsed.data,
+        buildContext(parsed.data, actorName, names, params.hideActors === true),
+      );
     }
     return {
       id: r.id.toString(),
@@ -310,18 +317,25 @@ export async function queryAuditEvents(params: AuditQueryParams): Promise<AuditP
 
 interface ResolvedNames {
   systemNameByMapSystemId: Map<string, string>;
+  /** Token id to the owning account's current main name (null without a main). */
+  tokenOwnerByTokenId: Map<string, string | null>;
 }
 
 /**
- * Batch-resolve every referenced system name for a page of payloads in one query.
+ * Batch-resolve every referenced system name for a page of payloads in one
+ * query, and every token owner named by a token event in another. Owners are
+ * the owning account's main as of now, the same roll-up the actor column uses;
+ * a token whose account was deleted has no row and resolves to no owner.
+ * Owners are not read at all while actors are hidden.
  * Every system reference rides the payload as an `ap_map_system` id — including
  * the audit descriptors (connection endpoints, a signature's owning system)
  * embedded at mutation time — so even hard-deleted connections / signatures
  * resolve against the persistent `ap_map_system` rows (those rows soft-delete and
  * outlive every event that names them).
  */
-async function resolveNames(payloads: unknown[]): Promise<ResolvedNames> {
+async function resolveNames(payloads: unknown[], hideActors: boolean): Promise<ResolvedNames> {
   const mapSystemIds = new Set<bigint>();
+  const tokenIds = new Set<bigint>();
 
   for (const raw of payloads) {
     const parsed = mapEventPayloadSchema.safeParse(raw);
@@ -347,6 +361,10 @@ async function resolveNames(payloads: unknown[]): Promise<ResolvedNames> {
         addId(mapSystemIds, ev.source);
         addId(mapSystemIds, ev.target);
         break;
+      case 'api.token_revoked':
+      case 'api.token_suspended':
+        if (!hideActors) addId(tokenIds, ev.tokenId);
+        break;
       default:
         break;
     }
@@ -364,7 +382,21 @@ async function resolveNames(payloads: unknown[]): Promise<ResolvedNames> {
     }
   }
 
-  return { systemNameByMapSystemId };
+  const tokenOwnerByTokenId = new Map<string, string | null>();
+  if (tokenIds.size > 0) {
+    const rows = await db
+      .select({ tokenId: apMapApiToken.id, mainName: apCharacter.name })
+      .from(apMapApiToken)
+      .innerJoin(apUser, eq(apUser.id, apMapApiToken.userId))
+      .leftJoin(
+        apCharacter,
+        and(eq(apCharacter.id, apUser.mainCharacterId), eq(apCharacter.userId, apUser.id)),
+      )
+      .where(inArray(apMapApiToken.id, [...tokenIds]));
+    for (const row of rows) tokenOwnerByTokenId.set(row.tokenId.toString(), row.mainName);
+  }
+
+  return { systemNameByMapSystemId, tokenOwnerByTokenId };
 }
 
 function addId(set: Set<bigint>, value: string | null | undefined): void {
@@ -377,6 +409,7 @@ function buildContext(
   ev: MapEventPayload,
   characterName: string | null,
   names: ResolvedNames,
+  hideActor: boolean,
 ): WebhookEventContext {
   const nameOf = (value: string | null | undefined): string | null =>
     value ? (names.systemNameByMapSystemId.get(value) ?? null) : null;
@@ -384,6 +417,7 @@ function buildContext(
   let systemName: string | null = null;
   let sourceSystemName: string | null = null;
   let targetSystemName: string | null = null;
+  let tokenOwnerName: string | null = null;
 
   switch (ev.kind) {
     case 'system.added':
@@ -408,12 +442,24 @@ function buildContext(
       sourceSystemName = nameOf(ev.source);
       targetSystemName = nameOf(ev.target);
       break;
+    case 'api.token_revoked':
+    case 'api.token_suspended':
+      tokenOwnerName = names.tokenOwnerByTokenId.get(ev.tokenId) ?? null;
+      break;
     default:
       break;
   }
 
   // `mapName` is unused by describeMapEvent (only the Discord prefix needs it).
-  return { mapName: '', characterName, systemName, sourceSystemName, targetSystemName };
+  return {
+    mapName: '',
+    characterName,
+    systemName,
+    sourceSystemName,
+    targetSystemName,
+    tokenOwnerName,
+    hideActor,
+  };
 }
 
 /** Action phrasing (no actor) for events `describeMapEvent` declines (admin map.restore / map.purge). */

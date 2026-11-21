@@ -500,10 +500,10 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     added: z.array(apiScopeEnum),
     removed: z.array(apiScopeEnum),
   }),
-  // Token events never carry the raw token, its hash or its prefix: this
-  // envelope reaches every viewer of the map and the Discord history webhook.
-  // The owner is the owning account's main at event time, null when the
-  // account has no main.
+  // Token events are audit-only (`AUDIT_ONLY_EVENT_KINDS`) and name no owner:
+  // the audit log resolves the owning account's main from `tokenId` when it is
+  // read, so Blackout can hide it. They never carry the raw token, its hash or
+  // its prefix.
   z.object({
     kind: z.literal('api.token_created'),
     eventId,
@@ -517,8 +517,6 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     eventId,
     tokenId: z.string(),
     label: z.string(),
-    ownerCharacterId: z.number().int().nullable(),
-    ownerName: z.string().nullable(),
     reason: z.enum(apiTokenRevokeReason.enumValues),
   }),
   z.object({
@@ -526,8 +524,6 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     eventId,
     tokenId: z.string(),
     label: z.string(),
-    ownerCharacterId: z.number().int().nullable(),
-    ownerName: z.string().nullable(),
     until: z.string(),
     strike: z.number().int().positive(),
   }),
@@ -573,6 +569,18 @@ export const MAP_EVENT_KINDS = [
 ] as const;
 
 export type MapEventKind = (typeof MAP_EVENT_KINDS)[number];
+
+/**
+ * Kinds recorded for the audit log only. The bus does not fan them out to
+ * sockets and the webhook dispatcher does not post them: they change no map
+ * state, and what they name (who holds a credential to the map) is for
+ * `audit_view` holders, not every viewer or a Discord channel.
+ */
+export const AUDIT_ONLY_EVENT_KINDS: ReadonlySet<string> = new Set<MapEventKind>([
+  'api.token_created',
+  'api.token_revoked',
+  'api.token_suspended',
+]);
 
 /** Patch fields for a given kind — the body `mutate()` returns, minus `kind`/`eventId`. */
 export type MapEventPatch<K extends MapEventKind> = Omit<

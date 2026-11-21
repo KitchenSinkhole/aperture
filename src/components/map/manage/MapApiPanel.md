@@ -16,6 +16,7 @@ An explainer with a link to the API reference (`docs/reference/user-api.md` on t
 
 ### Behaviour & Interactions
 - Loads `getMapApiState(mapId)` on mount (the tab only mounts when selected), after every save, mint and revoke, and whenever the live `apiEnabled` / `apiScopes` props change.
+- While mounted it re-reads the state every 15 seconds and when the page becomes visible again, skipping ticks while the page is hidden, so tokens minted, revoked or suspended elsewhere appear; token events reach no socket. A failed background read keeps the state shown and shows no error.
 - The create form's scopes come from the live props; the settings form seeds from the fetched state and reseeds when it changes.
 - Turning the switch off in the settings form resets and disables the scope checkboxes, since a save that turns the API off cannot also change scopes.
 - The create form is disabled, with the reason shown, while the instance or the map has the API off, the map exposes no scope, the account is blocked, or either live-token cap is reached.

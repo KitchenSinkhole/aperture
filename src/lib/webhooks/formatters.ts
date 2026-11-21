@@ -16,7 +16,13 @@ export interface WebhookEventContext {
   /** Connection events have two endpoints — set both when known. */
   sourceSystemName: string | null;
   targetSystemName: string | null;
-  /** Blackout is on at dispatch time: posts name no actor. */
+  /**
+   * The current main of the account owning the token an `api.token_revoked` /
+   * `api.token_suspended` event names, resolved at read time; null when the
+   * account has no main or no longer exists.
+   */
+  tokenOwnerName?: string | null;
+  /** Blackout restricts the reader: lines name no actor and no token owner. */
   hideActor?: boolean;
 }
 
@@ -217,18 +223,22 @@ export function describeMapEvent(event: MapEventPayload, ctx: WebhookEventContex
       return `created API token **${event.label}** (${describeScopes(event.scopes)}, ${expiry})`;
     }
     case 'api.token_revoked': {
-      const owner = event.ownerName ?? 'an unknown pilot';
       const why = event.reason === 'abuse' ? ' after repeated rate-limit abuse' : '';
-      return `revoked API token **${event.label}** owned by **${owner}**${why}`;
+      return `revoked API token **${event.label}**${ownedBy(ctx)}${why}`;
     }
     case 'api.token_suspended': {
-      const owner = event.ownerName ?? 'an unknown pilot';
       const until = `${event.until.slice(0, 16).replace('T', ' ')} UTC`;
-      return `suspended API token **${event.label}** owned by **${owner}** for rate-limit abuse (strike ${event.strike}, until ${until})`;
+      return `suspended API token **${event.label}**${ownedBy(ctx)} for rate-limit abuse (strike ${event.strike}, until ${until})`;
     }
     default:
       return null;
   }
+}
+
+/** ` owned by **<main>**` for a token event, or nothing while actors are hidden. */
+function ownedBy(ctx: WebhookEventContext): string {
+  if (ctx.hideActor) return '';
+  return ` owned by **${ctx.tokenOwnerName ?? 'an unknown pilot'}**`;
 }
 
 /** Backticked, comma-joined scope names. */

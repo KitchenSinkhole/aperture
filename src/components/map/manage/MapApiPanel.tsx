@@ -74,6 +74,11 @@ const EXPIRY_OPTIONS: { value: string; label: string; days: number | null }[] = 
 ];
 const EXPIRY_LABELS = Object.fromEntries(EXPIRY_OPTIONS.map((o) => [o.value, o.label]));
 
+// While the tab is open and visible it re-reads its state on this cadence, so
+// tokens minted, revoked or suspended elsewhere show up. A hard-coded constant,
+// not a runtime knob.
+const POLL_MS = 15_000;
+
 function describeScopes(scopes: ApiScope[]): string {
   return scopes.map((s) => SCOPE_LABEL[s]).join(', ');
 }
@@ -97,22 +102,39 @@ export function MapApiPanel({
   const [revealed, setRevealed] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  const load = useCallback(() => {
-    startTransition(async () => {
-      const result = await getMapApiState(mapId);
-      if (result.ok) {
-        setState(result.data);
-        setError(null);
-      } else {
-        setError(result.error);
-      }
-    });
-  }, [mapId]);
+  // A background refresh that fails keeps the state already shown rather than
+  // replacing the tab with the error.
+  const load = useCallback(
+    (background = false) => {
+      startTransition(async () => {
+        const result = await getMapApiState(mapId);
+        if (result.ok) {
+          setState(result.data);
+          setError(null);
+        } else if (!background) {
+          setError(result.error);
+        }
+      });
+    },
+    [mapId],
+  );
 
   const liveScopesKey = apiScopes.join(',');
   useEffect(() => {
     load();
   }, [load, apiEnabled, liveScopesKey]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') load(true);
+    };
+    const id = setInterval(refresh, POLL_MS);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [load]);
 
   // The reveal sits outside the error and loading branches, so a reload that
   // fails right after a mint cannot unmount the only copy of the raw token.

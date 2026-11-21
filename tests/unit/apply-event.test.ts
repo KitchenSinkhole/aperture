@@ -416,8 +416,6 @@ describe('applyEvent — no-op events', () => {
       eventId: 33,
       tokenId: '9',
       label: 'chain bot',
-      ownerCharacterId: 90000001,
-      ownerName: 'Pilot Bar',
       reason: 'creator' as const,
     },
     {
@@ -425,8 +423,6 @@ describe('applyEvent — no-op events', () => {
       eventId: 34,
       tokenId: '9',
       label: 'chain bot',
-      ownerCharacterId: 90000001,
-      ownerName: 'Pilot Bar',
       until: '2026-11-21T14:30:00.000Z',
       strike: 1,
     },

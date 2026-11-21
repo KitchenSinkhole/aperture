@@ -379,7 +379,7 @@ A token's strike count starts over when its previous strike is more than 7 days 
 
 An **account block** covers every character on the account. While it stands the account cannot create tokens and every token it owns answers `account_blocked`. A first block lasts 7 days. A second block that begins within 180 days of the previous one lasts until an instance admin lifts it. Admins can also block an account by hand, until they lift it, with a stated reason. The account sees the reason and the end of the block in Aperture.
 
-Suspensions and revocations appear in the map's audit log, naming the token's label and its owner. The token itself is never logged.
+Token creation, suspensions and revocations appear in the map's audit log, which only its managers and delegated titles can read, naming the token's label and its owner. They are not posted to the map's Discord history webhook. The token itself is never logged.
 
 ## Blackout
 

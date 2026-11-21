@@ -116,8 +116,6 @@ describe('mapEventPayloadSchema', () => {
         eventId: 5,
         tokenId: '12',
         label: 'chain bot',
-        ownerCharacterId: 90000001,
-        ownerName: 'Pilot Bar',
         reason: 'manager',
       },
       {
@@ -125,8 +123,6 @@ describe('mapEventPayloadSchema', () => {
         eventId: 6,
         tokenId: '12',
         label: 'chain bot',
-        ownerCharacterId: null,
-        ownerName: null,
         until: '2026-11-21T14:30:00.000Z',
         strike: 1,
       },

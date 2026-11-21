@@ -273,13 +273,9 @@ describe.skipIf(!run)('account API token actions (real Postgres)', () => {
       expect(log[0]).toMatchObject({
         kind: 'api.token_revoked',
         characterId: ALT,
-        payload: {
-          tokenId: target.id.toString(),
-          reason: 'creator',
-          ownerCharacterId: Number(MAIN),
-          ownerName: 'Account Main',
-        },
+        payload: { tokenId: target.id.toString(), reason: 'creator' },
       });
+      expect(log[0]!.payload).not.toHaveProperty('ownerName');
     }
 
     const listed = await getAccountApiTokens();

@@ -176,7 +176,7 @@ Prometheus: `user_api_requests_total{endpoint,outcome}` (outcome is one of `ok`,
 
 ### Audit
 
-Each of these is one `commitMapEvent`, so it reaches the map audit log, every viewer's socket, and the Discord history webhook, exactly like `share.created`. No payload ever carries the token, its hash or its prefix.
+Each of these is one `commitMapEvent`. The three settings kinds reach the map audit log, every viewer's socket and the Discord history webhook, exactly like `share.created`. The three token kinds are **audit-only** (`AUDIT_ONLY_EVENT_KINDS` in `protocol.ts`): recorded in `ap_map_event` for the audit log, but the bus does not broadcast them and the webhook dispatcher does not post them. This is a deliberate exception to "every `ap_map_event` row fans out": token events change no map state, and who holds a credential to the map is for `audit_view` holders, not every viewer or a Discord channel. No payload ever carries the token, its hash or its prefix, or names the owner.
 
 | Kind | Actor | Payload |
 |---|---|---|
@@ -184,12 +184,12 @@ Each of these is one `commitMapEvent`, so it reaches the map audit log, every vi
 | `api.disabled` | manager | none |
 | `api.scopes_changed` | manager | `added`, `removed` |
 | `api.token_created` | creator | `tokenId`, `label`, `scopes`, `expiresAt` |
-| `api.token_revoked` | creator or manager; NULL for automation | `tokenId`, `label`, `ownerCharacterId`, `ownerName`, `reason` |
-| `api.token_suspended` | NULL (automation) | `tokenId`, `label`, `ownerCharacterId`, `ownerName`, `until`, `strike` |
+| `api.token_revoked` | creator or manager; NULL for automation | `tokenId`, `label`, `reason` |
+| `api.token_suspended` | NULL (automation) | `tokenId`, `label`, `until`, `strike` |
 
 One settings save is one event: a flipped switch yields `api.enabled` (carrying the scopes it was enabled with) or `api.disabled`; a scope edit with the switch unchanged yields `api.scopes_changed`. `api.token_revoked` and `api.disabled` join the audit console's destructive set.
 
-The actor on a creator's own event is the session character (sign-in lands the session on the account's main). `ownerCharacterId` / `ownerName` are the owning account's main at the time of the event.
+The actor on a creator's own event is the session character (sign-in lands the session on the account's main). The audit log names a revoked or suspended token's owner by resolving `tokenId` to the owning account's current main when it is read, the same roll-up as its actor column, and names no owner while Blackout restricts the reader.
 
 A token going inert because its creator lost access is not an event (nothing was mutated). It shows as a computed status in the manager's list.
 
@@ -347,3 +347,4 @@ _(appended by executing sessions; non-obvious findings only)_
 - **Stage 10** — the two gaps the Stage 6 notes left unowned are still unowned and the plan has no stage after this one: map soft-delete calls neither `invalidateUserApiMap` nor `clearUserApiProjections` (resources keep serving a deleted map for up to the auth TTL), and a non-GET method gets Next's default 405 without CORS headers. The reference documents the 405; neither is fixed.
 - **PR #294 review** — the map soft-delete gap is closed by `invalidateUserApiMap` alone (user and admin delete), plus `invalidateUserApiAccount` on account deletion and re-home. Clearing the projections is unnecessary: the next decide reloads the record, sees `deleted_at`, and 401s before anything is served. The non-GET 405 gap is still open.
 - **PR #294 review** — `TRUSTED_PROXY_HOPS` defaults to `1`, not `0`: with `0` an existing deployment behind one proxy would see every caller as the proxy and share one limit, while `1` is never worse than reading the head of `X-Forwarded-For` was. The address is resolved in `server.ts`, which has the socket peer, and handed to route handlers in `x-aperture-client-ip`; a route handler cannot see the socket.
+- **PR #294 review** — token events left the realtime fan-out: the bus dropped nothing before, and the client ignored their payloads, but every viewer and the Discord history channel received the owner of every token. Making them audit-only meant the API tab lost its only push signal, so it polls `getMapApiState` instead; the task vocabulary is fixed. Rows written before this change still hold `ownerCharacterId` / `ownerName` in their payload; nothing reads them.

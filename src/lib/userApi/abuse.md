@@ -3,7 +3,7 @@
 **Purpose:** Persists strikes on user API tokens and applies the abuse ladder: suspend (strikes 1 and 2), then revoke and block the owning account (strike 3).
 **File:** `src/lib/userApi/abuse.ts`
 
-Strikes are detected in-process by `rateLimit.ts`. Each transition is exactly one actorless `ap_map_event` (`api.token_suspended` / `api.token_revoked`), whose payload names the token's label and the owning account's main at the time; it never carries the token, its hash or its prefix. The auth cache is invalidated after the transaction commits, so the very next request sees the change. An account block writes no event of its own: it rides the revocation's transaction and is logged at `warn`.
+Strikes are detected in-process by `rateLimit.ts`. Each transition is exactly one actorless, audit-only `ap_map_event` (`api.token_suspended` / `api.token_revoked`), whose payload names the token's id and label; it never names the owner or carries the token, its hash or its prefix. The auth cache is invalidated after the transaction commits, so the very next request sees the change. An account block writes no event of its own: it rides the revocation's transaction and is logged at `warn`.
 
 No `import 'server-only'`.
 
@@ -14,7 +14,7 @@ One transaction holding the token and account rows (`FOR UPDATE`): numbers the s
 - strikes 1 and 2: sets `suspended_until` and commits `api.token_suspended` (`until` as an ISO string, `strike`);
 - strike 3: sets `revoked_at`, `revoked_reason='abuse'`, and blocks the account (`api_blocked_at = now`, `api_blocked_until` from `userApiAccountBlockUntil`, an automatic `api_block_reason` naming the token label), then commits `api.token_revoked` with reason `abuse`. An account already blocked keeps its block untouched and `accountBlocked` is false.
 
-After commit: `invalidateUserApiToken`, plus `invalidateUserApiAccount` when a block was applied; tallies `user_api_strikes_total{level}`; enqueues the webhook dispatch for the event.
+After commit: `invalidateUserApiToken`, plus `invalidateUserApiAccount` when a block was applied; tallies `user_api_strikes_total{level}`.
 
 **Returns:** the outcome, or null with nothing written for a missing or already-revoked token. Never throws: a failure is logged at `error` and returns null, so the request path can fire it without awaiting.
 

@@ -13,6 +13,6 @@ Mocks `@/lib/auth`'s `auth()` (the session set via `actAs`) and `next/cache`. Sn
 
 ### Covers
 - `getAccountApiTokens` lists every non-revoked token the account owns with its map name and status (`active`, `expired`, `api_disabled`, `lost_access`, `map_deleted`), omits revoked tokens and other accounts' tokens, and never carries the raw token.
-- `revokeMapApiToken` from an alt revokes the account's tokens on the unviewable, API-off and deleted maps with reason `creator`, one `api.token_revoked` each naming the main as owner.
+- `revokeMapApiToken` from an alt revokes the account's tokens on the unviewable, API-off and deleted maps with reason `creator`, one `api.token_revoked` each, with no owner in the payload.
 - `setMainCharacterAction` drops the account's cached authorisations: a direct main change leaves a cached allow standing, and the action turns it into `access_lost` on the next call.
 - The block reads back with its reason and end for a timed block, and `until: null` for an indefinite one.

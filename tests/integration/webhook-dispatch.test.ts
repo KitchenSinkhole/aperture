@@ -23,7 +23,8 @@ import { runWebhookDispatch } from '@/lib/webhooks/dispatcher';
  *
  * Covers: per-event dispatch (success, retriable 5xx, terminal 404), the
  * rally-vs-history routing rule, the no-webhook short-circuit in
- * `commitMapEvent`, and the graphile-worker enqueue when a webhook exists.
+ * `commitMapEvent`, the graphile-worker enqueue when a webhook exists, and
+ * audit-only token events neither enqueued nor posted.
  */
 const run = process.env.RUN_DB_TESTS === '1';
 
@@ -242,6 +243,33 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
     });
     const notes = await runWebhookDispatch(mapId, 999_999_999n, new Date());
     expect(notes.missingEvent).toBe(true);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it('never posts or enqueues an audit-only token event', async () => {
+    await db.insert(apMapWebhook).values({
+      mapId,
+      channel: 'discord',
+      event: 'history',
+      url: 'https://discord.example/webhooks/A',
+    });
+    const result = await commitMapEvent({
+      mapId,
+      characterId: null,
+      kind: 'api.token_created',
+      mutate: async () => ({ tokenId: '1', label: '@everyone', scopes: ['map' as const], expiresAt: null }),
+    });
+    expect(result.ok).toBe(true);
+    expect(await countQueuedJobs()).toBe(0);
+
+    const ev = await insertMockEvent('api.token_revoked', {
+      tokenId: '1',
+      label: 'chain bot',
+      reason: 'manager',
+    });
+    mockFetchOnce(204);
+    const notes = await runWebhookDispatch(mapId, ev.id, ev.occurredAt);
+    expect(notes).toEqual({ attempted: 0, succeeded: 0, failed: 0, skipped: 0 });
     expect(fetchCalls).toHaveLength(0);
   });
 

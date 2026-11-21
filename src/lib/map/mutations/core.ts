@@ -10,6 +10,7 @@ import { apMapEvent } from '@/db/schema';
 import { getLogger } from '@/lib/log/logger';
 import { recordMapEvent } from '@/lib/metrics/registry';
 import {
+  AUDIT_ONLY_EVENT_KINDS,
   mapEventPayloadSchema,
   type MapEventKind,
   type MapEventPatch,
@@ -114,7 +115,9 @@ export async function commitMapEvent<K extends MapEventKind>(
 
   try {
     const result = await db.transaction(run);
-    await enqueueWebhookDispatch(mapId, result.eventId, result.occurredAt);
+    if (!AUDIT_ONLY_EVENT_KINDS.has(kind)) {
+      await enqueueWebhookDispatch(mapId, result.eventId, result.occurredAt);
+    }
     return { ok: true, data: result.payload, eventId: result.eventId };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Mutation failed.' };

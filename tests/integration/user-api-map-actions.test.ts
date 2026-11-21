@@ -21,6 +21,7 @@ import {
   checkUserApiScope,
   clearUserApiAuthCache,
 } from '@/lib/userApi/authorize';
+import { queryAuditEvents } from '@/lib/map/audit';
 import { invalidateUserApiInstanceSwitch } from '@/lib/userApi/instance';
 import { generateUserApiToken, hashUserApiToken } from '@/lib/userApi/token';
 import type { ApiScope } from '@/types';
@@ -522,12 +523,29 @@ describe.skipIf(!run)('map API actions (real Postgres)', () => {
         payload: {
           tokenId: id.toString(),
           label: 'seeded',
-          ownerCharacterId: Number(MEMBER),
-          ownerName: 'Actions Member',
           reason: 'creator',
         },
       });
+      expect(JSON.stringify(log[0]!.payload)).not.toContain('Actions Member');
       expect(JSON.stringify(log.map((e) => e.payload))).not.toContain(token);
+    });
+
+    it("names the owner's current main in the audit log, and no one while actors are hidden", async () => {
+      const { id } = await insertToken(users.member);
+      actAs(DELEGATE, users.delegate);
+      expect(await revokeMapApiToken(id.toString())).toEqual({ ok: true });
+
+      const seen = await queryAuditEvents({ mapId });
+      expect(seen.rows[0]).toMatchObject({
+        kind: 'api.token_revoked',
+        summary: 'Revoked API token **seeded** owned by **Actions Member**.',
+      });
+      const hidden = await queryAuditEvents({ mapId, hideActors: true });
+      expect(hidden.rows[0]).toMatchObject({
+        kind: 'api.token_revoked',
+        summary: 'Revoked API token **seeded**.',
+      });
+      expect(hidden.rows[0]).not.toHaveProperty('characterName');
     });
 
     it("refuses someone else's token without api_manage, exactly as for an unknown id", async () => {
@@ -551,7 +569,7 @@ describe.skipIf(!run)('map API actions (real Postgres)', () => {
       const log = await events();
       expect(log[0]).toMatchObject({
         kind: 'api.token_revoked',
-        payload: { ownerName: 'Actions Member', reason: 'manager' },
+        payload: { tokenId: id.toString(), reason: 'manager' },
       });
     });
   });

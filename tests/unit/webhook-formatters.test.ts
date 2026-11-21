@@ -403,7 +403,8 @@ describe('formatHistoryMessage', () => {
 });
 
 describe('describeMapEvent — user API', () => {
-  const cases: Array<[MapEventPayload, string | null]> = [
+  const ownerCtx = { ...baseCtx, tokenOwnerName: 'Pilot Bar' };
+  const cases: Array<[MapEventPayload, string | null, WebhookEventContext?]> = [
     [
       { kind: 'api.enabled', eventId: 1, scopes: ['map', 'pilots'] },
       'enabled the user API (scopes `map`, `pilots`)',
@@ -447,11 +448,10 @@ describe('describeMapEvent — user API', () => {
         eventId: 9,
         tokenId: '12',
         label: 'chain bot',
-        ownerCharacterId: 90000001,
-        ownerName: 'Pilot Bar',
         reason: 'manager',
       },
       'revoked API token **chain bot** owned by **Pilot Bar**',
+      ownerCtx,
     ],
     [
       {
@@ -459,11 +459,10 @@ describe('describeMapEvent — user API', () => {
         eventId: 10,
         tokenId: '12',
         label: 'chain bot',
-        ownerCharacterId: 90000001,
-        ownerName: 'Pilot Bar',
         reason: 'abuse',
       },
       'revoked API token **chain bot** owned by **Pilot Bar** after repeated rate-limit abuse',
+      ownerCtx,
     ],
     [
       {
@@ -471,8 +470,6 @@ describe('describeMapEvent — user API', () => {
         eventId: 11,
         tokenId: '12',
         label: 'chain bot',
-        ownerCharacterId: null,
-        ownerName: null,
         reason: 'creator',
       },
       'revoked API token **chain bot** owned by **an unknown pilot**',
@@ -483,18 +480,28 @@ describe('describeMapEvent — user API', () => {
         eventId: 12,
         tokenId: '12',
         label: 'chain bot',
-        ownerCharacterId: 90000001,
-        ownerName: 'Pilot Bar',
         until: '2026-11-21T14:30:00.000Z',
         strike: 1,
       },
       'suspended API token **chain bot** owned by **Pilot Bar** for rate-limit abuse (strike 1, until 2026-11-21 14:30 UTC)',
+      ownerCtx,
+    ],
+    [
+      {
+        kind: 'api.token_revoked',
+        eventId: 14,
+        tokenId: '12',
+        label: 'chain bot',
+        reason: 'manager',
+      },
+      'revoked API token **chain bot**',
+      { ...ownerCtx, hideActor: true },
     ],
   ];
 
-  for (const [event, expected] of cases) {
+  for (const [event, expected, ctx] of cases) {
     it(`renders ${event.kind} (event ${event.eventId}) with no actor`, () => {
-      expect(describeMapEvent(event, baseCtx)).toBe(expected);
+      expect(describeMapEvent(event, ctx ?? baseCtx)).toBe(expected);
     });
   }
 
@@ -504,12 +511,10 @@ describe('describeMapEvent — user API', () => {
       eventId: 13,
       tokenId: '12',
       label: 'chain bot',
-      ownerCharacterId: 90000001,
-      ownerName: 'Pilot Bar',
       until: '2026-11-21T20:30:00.000Z',
       strike: 2,
     };
-    expect(formatHistoryMessage(event, { ...baseCtx, characterName: null })?.content).toBe(
+    expect(formatHistoryMessage(event, { ...ownerCtx, characterName: null })?.content).toBe(
       '**Test Map**: Aperture suspended API token **chain bot** owned by **Pilot Bar** for rate-limit abuse (strike 2, until 2026-11-21 20:30 UTC).',
     );
   });

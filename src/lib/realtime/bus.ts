@@ -7,6 +7,7 @@ import {
   PG_NOTIFY_RECEIVED_TOTAL,
 } from '@/lib/metrics/registry';
 import {
+  AUDIT_ONLY_EVENT_KINDS,
   characterLogoutLoadSchema,
   characterUpdateLoadSchema,
   connectionMassLogLoadSchema,
@@ -273,6 +274,7 @@ class RealtimeBus {
         data && typeof data === 'object' && typeof (data as { kind?: unknown }).kind === 'string'
           ? (data as { kind: string }).kind
           : undefined;
+      if (kind !== undefined && AUDIT_ONLY_EVENT_KINDS.has(kind)) return;
       // Trusted passthrough: the trigger forwards a payload built by
       // `commitMapEvent` (already validated against `mapEventPayloadSchema`),
       // so the bus re-wraps it without re-parsing. Clients revalidate.

@@ -11,3 +11,4 @@ Stubs the Base UI-backed `Dialog`, `Button`, `Input` and `Select` primitives so 
 - Blocked account — the banner with the reason and "until an admin lifts it", and a disabled create button.
 - One-time reveal — a mint sends the chosen label, scopes and default 90-day expiry, shows the raw token in the reveal dialog with the not-shown-again statement, reloads the state, and drops the token from the DOM once the dialog closes.
 - The reveal survives a failed reload after a mint: the error shows and the raw token stays in the reveal dialog.
+- Polling — while open and visible the tab re-reads its state every 15 seconds, so a token revoked elsewhere drops off; a failed background poll keeps the state shown without an error; a hidden page does not poll.

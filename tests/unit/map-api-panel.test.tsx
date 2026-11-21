@@ -141,6 +141,8 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 async function render(state: MapApiState, live = { apiEnabled: true, apiScopes: state.apiScopes }) {
@@ -273,5 +275,43 @@ describe('MapApiPanel', () => {
     expect(container.textContent).toContain('Network down.');
     const reveal = container.querySelector<HTMLInputElement>('input[aria-label="New API token"]');
     expect(reveal?.value).toBe(RAW);
+  });
+
+  describe('polling while open', () => {
+    const POLL_MS = 15_000;
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    });
+
+    async function tick(): Promise<void> {
+      await act(async () => {
+        vi.advanceTimersByTime(POLL_MS);
+      });
+    }
+
+    it('picks up a token revoked elsewhere on the next poll', async () => {
+      await render(viewerState());
+      expect(container.textContent).toContain('Chain bot');
+      mockGetState.mockResolvedValue({ ok: true, data: viewerState({ ownTokens: [] }) });
+      await tick();
+      expect(container.textContent).not.toContain('Chain bot');
+    });
+
+    it('keeps what it shows when a background poll fails', async () => {
+      await render(viewerState());
+      mockGetState.mockResolvedValue({ ok: false, error: 'Network down.' });
+      await tick();
+      expect(container.textContent).toContain('Chain bot');
+      expect(container.textContent).not.toContain('Network down.');
+    });
+
+    it('does not poll while the page is hidden', async () => {
+      await render(viewerState());
+      const calls = mockGetState.mock.calls.length;
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+      await tick();
+      expect(mockGetState.mock.calls.length).toBe(calls);
+    });
   });
 });

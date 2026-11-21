@@ -1,10 +1,10 @@
 // No `import 'server-only'`: it reaches `commitMapEvent` and `authorize.ts`,
 // both of which load under plain Node.
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { apCharacter, apMap, apMapApiToken, apUser } from '@/db/schema';
+import { apMap, apMapApiToken, apUser } from '@/db/schema';
 import { getLogger } from '@/lib/log/logger';
-import { commitMapEvent, enqueueWebhookDispatch } from '@/lib/map/mutations/core';
+import { commitMapEvent } from '@/lib/map/mutations/core';
 import { recordUserApiStrike } from '@/lib/metrics/registry';
 import type { UserApiStrikeOutcome } from '@/types';
 import { apertureConfig } from '../../../aperture.config';
@@ -18,8 +18,8 @@ import {
  * The user API abuse ladder: a strike on a token suspends it (strikes 1 and 2)
  * or revokes it and blocks its owning account (strike 3). Strikes are detected
  * in-process by `rateLimit.ts`; this module persists them. Each transition is
- * exactly one `ap_map_event` (`api.token_suspended` / `api.token_revoked`,
- * actorless), and the auth cache is invalidated after it commits so the very
+ * exactly one audit-only `ap_map_event` (`api.token_suspended` /
+ * `api.token_revoked`, actorless), and the auth cache is invalidated after it commits so the very
  * next request sees it.
  */
 
@@ -87,28 +87,17 @@ export async function applyUserApiStrike(
           revokedAt: apMapApiToken.revokedAt,
           apiBlockedAt: apUser.apiBlockedAt,
           apiBlockedUntil: apUser.apiBlockedUntil,
-          mainId: apCharacter.id,
-          mainName: apCharacter.name,
         })
         .from(apMapApiToken)
         .innerJoin(apMap, eq(apMap.id, apMapApiToken.mapId))
         .innerJoin(apUser, eq(apUser.id, apMapApiToken.userId))
-        .leftJoin(
-          apCharacter,
-          and(eq(apCharacter.id, apUser.mainCharacterId), eq(apCharacter.userId, apUser.id)),
-        )
         .where(eq(apMapApiToken.id, tokenId))
         .for('update', { of: [apMapApiToken, apUser] })
         .limit(1);
       if (!row || row.revokedAt !== null) return null;
 
       const strike = nextUserApiStrike(row, now);
-      const owner = {
-        tokenId: tokenId.toString(),
-        label: row.label,
-        ownerCharacterId: row.mainId === null ? null : Number(row.mainId),
-        ownerName: row.mainName,
-      };
+      const named = { tokenId: tokenId.toString(), label: row.label };
       const suspensionMs = userApiSuspensionMs(strike);
 
       if (suspensionMs !== null) {
@@ -123,7 +112,7 @@ export async function applyUserApiStrike(
               .update(apMapApiToken)
               .set({ strikeCount: strike, lastStrikeAt: now, suspendedUntil: until })
               .where(eq(apMapApiToken.id, tokenId));
-            return { ...owner, until: until.toISOString(), strike };
+            return { ...named, until: until.toISOString(), strike };
           },
         });
         if (!committed.ok) throw new Error(committed.error);
@@ -166,7 +155,7 @@ export async function applyUserApiStrike(
               })
               .where(eq(apUser.id, row.userId));
           }
-          return { ...owner, reason: 'abuse' as const };
+          return { ...named, reason: 'abuse' as const };
         },
       });
       if (!committed.ok) throw new Error(committed.error);
@@ -193,7 +182,6 @@ export async function applyUserApiStrike(
         until: outcome.accountBlockedUntil?.toISOString() ?? null,
       });
     }
-    await enqueueWebhookDispatch(mapId, outcome.eventId, new Date());
     return outcome;
   } catch (err) {
     log.error('user API strike failed', { tokenId: tokenId.toString(), err });

@@ -132,8 +132,6 @@ describe.skipIf(!run)('User API abuse ladder (real Postgres)', () => {
         payload: expect.objectContaining({
           tokenId: victim.id.toString(),
           label: 'hammer',
-          ownerCharacterId: Number(MAIN),
-          ownerName: 'User API Abuser',
           until: new Date(t0 + 15 * MIN).toISOString(),
           strike: 1,
         }),
@@ -194,11 +192,12 @@ describe.skipIf(!run)('User API abuse ladder (real Postgres)', () => {
     expect(all[2]!.payload).toMatchObject({
       tokenId: victim.id.toString(),
       label: 'hammer',
-      ownerCharacterId: Number(MAIN),
-      ownerName: 'User API Abuser',
       reason: 'abuse',
     });
-    for (const e of all) expect(JSON.stringify(e.payload)).not.toContain(victim.prefix);
+    for (const e of all) {
+      expect(JSON.stringify(e.payload)).not.toContain(victim.prefix);
+      expect(JSON.stringify(e.payload)).not.toContain('User API Abuser');
+    }
 
     expect(await authorizeUserApiBearer(victim.header, t2 + 1)).toMatchObject({
       status: 401,

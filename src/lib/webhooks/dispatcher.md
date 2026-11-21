@@ -21,6 +21,7 @@ Single-event dispatch. Called by the `webhook-dispatch` graphile-worker task wit
 
 **Behaviour:**
 - Validates the event payload against `mapEventPayloadSchema`; malformed payloads end with zeroed counts (defensive — `commitMapEvent` already validates on insert).
+- An audit-only kind (`AUDIT_ONLY_EVENT_KINDS`) ends with zeroed counts before any context is resolved: it is never posted, whatever enqueued it.
 - Resolves `WebhookEventContext` once for the event (map name + character name + system / endpoint names) via a small set of joins; reused by every per-webhook formatter call. System / endpoint names come from the `ap_map_system` ids carried in the payload itself — including the audit descriptors now embedded on `connection.delete`/`connection.update` (`source`/`target`), `signature.delete`/`signature.update` (`mapSystemId`), and `signature.create`/`signature.update` (`leadsToMapSystemId` → `targetSystemName`, the link destination) — so a hard-deleted connection / signature still names its endpoints / system. No live `ap_map_connection` join (the row may be gone); `collectSystemRefs` is now pure/synchronous.
 - **Blackout:** reads the switch (`getBlackoutState`) at dispatch time; while it is on the actor's name is not loaded and the context carries `hideActor`, so history and rally posts name no actor. Posts already sent are not revisited when it lifts.
 - Rally webhooks only fire when `isRallySetEvent(event)` is true (rally-clear and other system updates flow to `history` only).

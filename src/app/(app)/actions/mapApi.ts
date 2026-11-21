@@ -534,8 +534,7 @@ export async function createMapApiToken(
  * anyone else needs `api_manage` on the token's map (`manager`). Idempotent: an
  * already-revoked token succeeds without a second event. An unknown id and a
  * token the caller may not revoke return the identical message, since token
- * ids are sequential. Commits `api.token_revoked` naming the label and the
- * owning account's current main.
+ * ids are sequential. Commits `api.token_revoked` naming the token and its label.
  */
 export async function revokeMapApiToken(tokenId: string): Promise<ActionResult> {
   const parsed = tokenIdSchema.safeParse(tokenId);
@@ -565,18 +564,8 @@ export async function revokeMapApiToken(tokenId: string): Promise<ActionResult> 
   try {
     eventId = await db.transaction(async (tx) => {
       const [row] = await tx
-        .select({
-          label: apMapApiToken.label,
-          revokedAt: apMapApiToken.revokedAt,
-          mainId: apCharacter.id,
-          mainName: apCharacter.name,
-        })
+        .select({ label: apMapApiToken.label, revokedAt: apMapApiToken.revokedAt })
         .from(apMapApiToken)
-        .innerJoin(apUser, eq(apUser.id, apMapApiToken.userId))
-        .leftJoin(
-          apCharacter,
-          and(eq(apCharacter.id, apUser.mainCharacterId), eq(apCharacter.userId, apUser.id)),
-        )
         .where(eq(apMapApiToken.id, id))
         .for('update', { of: [apMapApiToken] });
       if (!row || row.revokedAt !== null) return null;
@@ -591,13 +580,7 @@ export async function revokeMapApiToken(tokenId: string): Promise<ActionResult> 
             .update(apMapApiToken)
             .set({ revokedAt: new Date(), revokedReason: reason, revokedByCharacterId: actorId })
             .where(eq(apMapApiToken.id, id));
-          return {
-            tokenId: id.toString(),
-            label: row.label,
-            ownerCharacterId: row.mainId === null ? null : Number(row.mainId),
-            ownerName: row.mainName,
-            reason,
-          };
+          return { tokenId: id.toString(), label: row.label, reason };
         },
       });
       if (!committed.ok) throw new Error(committed.error);
@@ -609,6 +592,5 @@ export async function revokeMapApiToken(tokenId: string): Promise<ActionResult> 
   if (eventId === null) return { ok: true };
 
   invalidateUserApiToken(id);
-  await enqueueWebhookDispatch(token.mapId, eventId, new Date());
   return { ok: true };
 }
