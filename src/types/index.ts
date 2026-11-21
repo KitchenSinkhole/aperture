@@ -615,6 +615,61 @@ export type UserApiProjectionEntry<R extends UserApiResource = UserApiResource> 
   etag: string;
 };
 
+/**
+ * Computed standing of one non-revoked user API token, in the order the API's
+ * own decision applies them: `expired`, `blocked` (the owning account is
+ * blocked), `suspended`, `lost_access` (the account's main can no longer use
+ * the map), else `active`.
+ */
+export type UserApiTokenStatus = 'active' | 'suspended' | 'expired' | 'lost_access' | 'blocked';
+
+/** One non-revoked user API token as a list row. Never carries the raw token or its hash. */
+export type UserApiTokenListItem = {
+  id: string;
+  label: string;
+  /** First 6 characters of the random part, for telling tokens apart. */
+  prefix: string;
+  scopes: ApiScope[];
+  /** The owning account's current main; null when it has none. */
+  ownerName: string | null;
+  /** Owned by the viewer's account. */
+  own: boolean;
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  requestCount: string;
+  status: UserApiTokenStatus;
+  /** Set only while `status` is `suspended`. */
+  suspendedUntil: string | null;
+};
+
+/** A standing user API account block; `until` is null for an indefinite block. */
+export type UserApiAccountBlock = { reason: string | null; until: string | null };
+
+/** The Map Settings API tab's state for one map and one viewer (`getMapApiState`). */
+export type MapApiState = {
+  /** The operator's instance-wide switch. */
+  instanceEnabled: boolean;
+  apiEnabled: boolean;
+  apiScopes: ApiScope[];
+  /** The viewer holds `api_manage`. */
+  canManage: boolean;
+  /** The viewer's account block; null when not blocked. */
+  block: UserApiAccountBlock | null;
+  /** The viewer's account's tokens on this map. */
+  ownTokens: UserApiTokenListItem[];
+  /** Every token on this map; null unless the viewer holds `api_manage`. */
+  mapTokens: UserApiTokenListItem[] | null;
+  limits: {
+    /** Live tokens one account may hold on one map. */
+    perMap: number;
+    /** Live tokens one account may hold across every map. */
+    perAccount: number;
+    /** Live tokens the viewer's account holds across every map. */
+    liveOnAccount: number;
+  };
+};
+
 /** One Blackout cleared-list entry (a `blackout_view` grant) as the admin panel lists it. */
 export type BlackoutClearance = {
   grantId: string;

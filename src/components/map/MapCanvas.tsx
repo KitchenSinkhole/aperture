@@ -2426,6 +2426,8 @@ export function MapCanvas({
                 canManage={canManage}
                 capabilities={capabilities}
                 systems={manageSystems}
+                apiEnabled={viewData.map.apiEnabled}
+                apiScopes={viewData.map.apiScopes}
                 onImported={onBulkPaste}
               />
               {capabilities.includes('audit_view') && (
