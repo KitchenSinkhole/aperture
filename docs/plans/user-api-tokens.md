@@ -164,7 +164,7 @@ Abuse has one definition: **continuing to send requests after being told to stop
 | 2 | token suspended 6 hours |
 | 3 | token revoked (`revoked_reason='abuse'`), and the account is blocked |
 
-A client that keeps hammering through a suspension keeps producing hot windows, so it walks itself up the ladder without anyone watching. After revocation its requests are failed auths and feed the IP block.
+A client that keeps hammering through a suspension keeps producing hot windows, so it walks itself up the ladder without anyone watching. After an abuse revocation its requests are failed auths and feed the IP block. A token revoked by a person, expired, or on a deleted map answers the same 401 without counting, so one stale client cannot block every other token on its IP.
 
 **Account block on strike 3:** `api_blocked_at = now()`; `api_blocked_until = now() + 7 days`, or NULL (indefinite) if the previous `api_blocked_at` is within `USER_API_REPEAT_OFFENCE_WINDOW_DAYS` (180). A global admin can also block by hand (indefinite, reason required) and lift any block.
 
@@ -345,3 +345,5 @@ _(appended by executing sessions; non-obvious findings only)_
 - **Stage 9** — the Stage 8 review's `RevealDialog` fix landed: the reveal renders outside `MapApiPanel`'s loading and error branches, with a component test for a failed reload after a mint.
 - **Stage 10** — the block and lift actions write `api_blocked_at` / `api_blocked_until` from the app clock, not SQL `now()`: the block is evaluated against the Node clock, so a database clock running ahead would keep a just-lifted block standing for the skew. A manual block on an already-blocked account restarts it (new `api_blocked_at`, indefinite), so a later automatic strike 3 inside 180 days of a manual block is indefinite too.
 - **Stage 10** — the two gaps the Stage 6 notes left unowned are still unowned and the plan has no stage after this one: map soft-delete calls neither `invalidateUserApiMap` nor `clearUserApiProjections` (resources keep serving a deleted map for up to the auth TTL), and a non-GET method gets Next's default 405 without CORS headers. The reference documents the 405; neither is fixed.
+- **PR #294 review** — the map soft-delete gap is closed by `invalidateUserApiMap` alone (user and admin delete), plus `invalidateUserApiAccount` on account deletion and re-home. Clearing the projections is unnecessary: the next decide reloads the record, sees `deleted_at`, and 401s before anything is served. The non-GET 405 gap is still open.
+- **PR #294 review** — `TRUSTED_PROXY_HOPS` defaults to `1`, not `0`: with `0` an existing deployment behind one proxy would see every caller as the proxy and share one limit, while `1` is never worse than reading the head of `X-Forwarded-For` was. The address is resolved in `server.ts`, which has the socket peer, and handed to route handlers in `x-aperture-client-ip`; a route handler cannot see the socket.

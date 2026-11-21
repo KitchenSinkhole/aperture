@@ -146,6 +146,7 @@ See [`.env.example`](.env.example) for the full list.
 | `AUTH_EVE_CLIENT_ID` / `AUTH_EVE_CLIENT_SECRET` | EVE SSO OAuth2 credentials. |
 | `ESI_TOKEN_ENC_KEY` | 32 random bytes (base64). Encrypts ESI access/refresh tokens at rest. |
 | `SETUP_PASSWORD` | Gates the `/setup` operator console. Pick a long random string; rotating it invalidates active unlock cookies. |
+| `TRUSTED_PROXY_HOPS` | How many reverse proxies sit in front of the app (default `1`). See [Behind a reverse proxy](#behind-a-reverse-proxy). |
 
 The wizard at `/setup` deliberately bypasses EVE SSO so an operator can recover from a broken
 auth deploy. The floor under that bypass is the in-app `SETUP_PASSWORD` check, which mints a
@@ -155,6 +156,29 @@ signed, 4-hour `ap_setup` cookie. A deployment with `NODE_ENV=production` and an
 **Defense in depth (optional).** Operators MAY front `/setup` with proxy-level auth (nginx
 Basic, Cloudflare Access, etc.); the app gate is the floor, and the deployment is safe without
 it provided `SETUP_PASSWORD` is set.
+
+#### Behind a reverse proxy
+
+The per-IP rate limits on the user API (`/api/v1/*`) and on public share links need each caller's
+real address. A proxy adds the address it received a request from to the end of
+`X-Forwarded-For`, so Aperture counts `TRUSTED_PROXY_HOPS` entries from the right and ignores
+everything further left, which the client wrote itself.
+
+| Setup | `TRUSTED_PROXY_HOPS` |
+|---|---|
+| Browsers reach the app directly | `0` |
+| One proxy (nginx, Caddy, Traefik) | `1` |
+| Cloudflare in front of your own proxy | `2` |
+
+Getting the number wrong is not harmless. Too low, and a client can choose the address it is
+limited under, so it can dodge a block or get someone else's address blocked. Too high, and every
+caller looks like one of your proxies and shares a single limit.
+
+As a second safeguard, have the outermost proxy **replace** `X-Forwarded-For` with the address it
+sees rather than append to what the client sent. In nginx, that is
+`proxy_set_header X-Forwarded-For $remote_addr;` instead of `$proxy_add_x_forwarded_for`. A proxy
+that only sets `X-Real-IP` also works: it is used when `X-Forwarded-For` has fewer entries than
+`TRUSTED_PROXY_HOPS`.
 
 ### Contributing
 

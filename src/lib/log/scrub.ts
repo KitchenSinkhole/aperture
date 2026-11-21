@@ -25,6 +25,8 @@ const DENY_KEYS = new Set([
   'ipaddress',
   'xforwardedfor',
   'forwardedfor',
+  'clientip',
+  'xapertureclientip',
   'remoteaddr',
   'email',
   'mail',

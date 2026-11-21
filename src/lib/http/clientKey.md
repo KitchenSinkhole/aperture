@@ -1,15 +1,31 @@
 ## clientKey.ts
 
-**Purpose:** Shared best-effort caller-IP derivation for the public-facing rate limiters (`X-Forwarded-For` head, falling back to `X-Real-IP`).
+**Purpose:** Resolves the caller's address for the in-process rate limiters (user API, public snapshot, public WebSocket upgrade), trusting `X-Forwarded-For` only as far as the operator's `TRUSTED_PROXY_HOPS`.
 **File:** `src/lib/http/clientKey.ts`
+
+`server.ts` resolves every HTTP request once and writes the result to `CLIENT_IP_HEADER`, overwriting any value the client sent; route handlers read that header. The WebSocket upgrade handler resolves its own requests with `clientIpOfNodeRequest`. No address is persisted.
 
 ---
 
-### clientKeyFromForwardedFor(forwardedFor: string | undefined | null, realIp: string | undefined | null): string
-Returns the first `X-Forwarded-For` entry (trimmed), else `realIp`, else `'unknown'`. Callers extract the raw header value themselves — `NextRequest.headers.get(...)` for `/api/public/[token]/snapshot`, a Node `IncomingMessage.headers` lookup (unwrapping the possible `string[]`) for the public WS upgrade handler — so both limiters key off the same precedence without sharing a header API.
+### CLIENT_IP_HEADER
+`'x-aperture-client-ip'`, the request header carrying the resolved address to route handlers.
 
-**Parameters:**
-- `forwardedFor` — raw `X-Forwarded-For` header value, or its absence.
-- `realIp` — raw `X-Real-IP` header value, or its absence.
+---
 
-**Returns:** A best-effort client key. Never throws; the caller decides what to do with `'unknown'`.
+### resolveClientIp(parts: { forwardedFor, realIp, socketAddress }, trustedHops: number): string
+Pure. With `trustedHops` 0, the socket peer. Otherwise the `X-Forwarded-For` entry `trustedHops` places from the right, since each trusted proxy appends the address it received the request from and everything further left was written by the client. A request with fewer entries than `trustedHops` falls back to `X-Real-IP`, then the left-most entry, then the socket peer. `'unknown'` when nothing is available.
+
+---
+
+### clientIpOfNodeRequest(req: IncomingMessage, trustedHops?: number): string
+`resolveClientIp` over a raw Node request (repeated `X-Forwarded-For` headers joined in order, the socket's `remoteAddress`), with `trustedHops` defaulting to `env.TRUSTED_PROXY_HOPS`. Used by `server.ts` and the public WS upgrade handler.
+
+---
+
+### clientIpOfRequest(headers: Headers): string
+The `CLIENT_IP_HEADER` value of a route-handler request, or `'unknown'` when absent (a handler called directly, as in tests).
+
+---
+
+### Depends On
+- `@/lib/env` (`TRUSTED_PROXY_HOPS`).

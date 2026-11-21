@@ -154,16 +154,29 @@ describe('consumeUserApiRequest', () => {
     expect(consumeUserApiRequest(999n, 8, T0).ok).toBe(true);
   });
 
-  it('reports the account budget as remaining once it is the smaller', () => {
+  it('reports the account budget, limit and remaining, once it is the smaller', () => {
     const fullTokens = Math.floor(PER_ACCOUNT / PER_TOKEN);
     for (let t = 0; t < fullTokens; t++) exhaustToken(BigInt(200 + t), 9, T0);
     const accountLeft = PER_ACCOUNT - fullTokens * PER_TOKEN;
     expect(accountLeft).toBeGreaterThan(0);
     expect(accountLeft).toBeLessThan(PER_TOKEN);
-    expect(consumeUserApiRequest(300n, 9, T0)).toMatchObject({ ok: true, remaining: accountLeft - 1 });
+    expect(consumeUserApiRequest(300n, 9, T0)).toMatchObject({
+      ok: true,
+      limit: PER_ACCOUNT,
+      remaining: accountLeft - 1,
+    });
     for (let i = 0; i < accountLeft - 2; i++) consumeUserApiRequest(300n, 9, T0);
-    expect(consumeUserApiRequest(300n, 9, T0)).toMatchObject({ ok: true, remaining: 0 });
-    expect(consumeUserApiRequest(300n, 9, T0)).toMatchObject({ ok: false, limitedBy: 'account' });
+    expect(consumeUserApiRequest(300n, 9, T0)).toMatchObject({
+      ok: true,
+      limit: PER_ACCOUNT,
+      remaining: 0,
+    });
+    expect(consumeUserApiRequest(300n, 9, T0)).toMatchObject({
+      ok: false,
+      limitedBy: 'account',
+      limit: PER_ACCOUNT,
+      remaining: 0,
+    });
   });
 
   it('applies the global ceiling last', () => {
@@ -173,7 +186,12 @@ describe('consumeUserApiRequest', () => {
         expect(consumeUserApiRequest(BigInt(10_000 + account), 10_000 + account, T0).ok).toBe(true);
       }
     }
-    expect(consumeUserApiRequest(1n, 1, T0)).toMatchObject({ ok: false, limitedBy: 'global' });
+    expect(consumeUserApiRequest(1n, 1, T0)).toMatchObject({
+      ok: false,
+      limitedBy: 'global',
+      limit: GLOBAL,
+      remaining: 0,
+    });
   });
 
   it('does not count refused requests against the budget', () => {

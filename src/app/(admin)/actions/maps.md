@@ -6,7 +6,7 @@
 ---
 
 ### adminSoftDeleteMap(mapId: string): Promise<ActionResult<MapEventPayload>>
-Validates the id, gates on `isAdmin`, resolves the map via `selectMap`, then runs `commitMapEvent({ kind: 'map.delete' })` with a `mutate` that sets `deleted_at = now()` on the matching non-deleted row. Returns the same payload shape (`{ kind: 'map.delete', id, deletedAt }`) as the user-facing `deleteMapAction` so downstream subscribers don't need to discriminate by caller. Revalidates `/admin/maps` and `/maps`. Refuses to act on an already-soft-deleted map with a clear error.
+Validates the id, gates on `isAdmin`, resolves the map via `selectMap`, then runs `commitMapEvent({ kind: 'map.delete' })` with a `mutate` that sets `deleted_at = now()` on the matching non-deleted row. Returns the same payload shape (`{ kind: 'map.delete', id, deletedAt }`) as the user-facing `deleteMapAction` so downstream subscribers don't need to discriminate by caller. On success drops the map's cached user API authorisations (`invalidateUserApiMap`). Revalidates `/admin/maps` and `/maps`. Refuses to act on an already-soft-deleted map with a clear error.
 
 ### adminRestoreMap(mapId: string): Promise<ActionResult<MapEventPayload>>
 Same gate as soft-delete. Clears `deleted_at`, bumps `updated_at`, emits `map.restore` (payload `{ id }`). Refuses to act on a map that is not soft-deleted. Revalidates `/admin/maps` and `/maps`.
@@ -26,6 +26,7 @@ Returns the synthesized `{ kind: 'map.purge', eventId, id }` payload (the row th
 ### Depends on
 - `auth` / `isAdmin` — `@/lib/auth/rights`.
 - `commitMapEvent` — `@/lib/map/mutations/core`.
+- `invalidateUserApiMap` — `@/lib/userApi/authorize`.
 - `apMap` — `@/db/schema`.
 
 ### Notes

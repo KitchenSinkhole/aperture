@@ -312,6 +312,7 @@ So an empty list means "no kills Aperture knows about", not "no kills happened".
 | 403 | `access_lost` | The owning account has no main character, or its main can no longer view the map or sign in. | Stop. |
 | 403 | `scope_not_granted` | The endpoint's scope is not in the token's effective scopes. | Check `GET /api/v1/token`. |
 | 429 | `rate_limited` | A rate limit was hit. Carries `Retry-After`. | Wait for `Retry-After`. |
+| 500 | `server_error` | The server failed to build the response, usually a brief database outage. | Retry with backoff. |
 | 404 | none | The operator has turned the whole API off (body has no `code`), or the path does not exist. | |
 
 401 responses carry `WWW-Authenticate: Bearer`.
@@ -343,15 +344,15 @@ Polling faster than every 5 seconds buys nothing: data is cached for 5 seconds, 
 
 | Header | Meaning |
 |---|---|
-| `RateLimit-Limit` | The per-token limit. |
-| `RateLimit-Remaining` | Requests left this window: the smaller of what remains of the token's budget and of the account's. |
+| `RateLimit-Limit` | The limit of the budget you are closest to exhausting: the per-token, per-account or whole-API limit. On a 429, the limit that refused the request. |
+| `RateLimit-Remaining` | Requests left this window in that same budget. |
 | `RateLimit-Reset` | Seconds until the window resets. |
 
-These headers are present on successes, 304s, the rate-limit 429 and `scope_not_granted`. They are **absent** on 401s, on `account_blocked`, `token_suspended`, `api_disabled` and `access_lost`, and on the per-IP 429, because those are answered before the token's budget is consulted.
+Both headers always describe the same budget, so `RateLimit-Limit` minus `RateLimit-Remaining` is what that budget has spent, which may include your other tokens' requests. These headers are present on successes, 304s, the rate-limit 429, `scope_not_granted` and `server_error`. They are **absent** on 401s, on `account_blocked`, `token_suspended`, `api_disabled` and `access_lost`, and on the per-IP 429, because those are answered before the token's budget is consulted.
 
 Every 429 and every `token_suspended` carries `Retry-After` in seconds. Honour it.
 
-**Failed authentication.** More than 20 failed authentications (401s) from one IP address within a window block that address for 1 minute. Repeated failing windows escalate the block to 5 minutes and then 30 minutes. While blocked, every request from the address answers 429 `rate_limited` with `Retry-After`, whatever token it carries.
+**Failed authentication.** More than 20 failed authentications from one IP address within a window block that address for 1 minute. A failed authentication is a 401 for a missing, malformed or unknown token, or for a token revoked for abuse. A token revoked by a person, an expired token or a token on a deleted map still answers 401 but does not count, so one forgotten script cannot block the other tools on its machine. Repeated failing windows escalate the block to 5 minutes and then 30 minutes. While blocked, every request from the address answers 429 `rate_limited` with `Retry-After`, whatever token it carries.
 
 ## Caching, ETag and 304
 
@@ -399,6 +400,6 @@ This is safe because the API never reads a cookie: authority comes only from the
 
 - The switch for the whole API is in **Admin, Settings, User API**. Turning it off answers 404 to every `GET`, `HEAD` and `OPTIONS` request on `/api/v1/*` and refuses new tokens. Each map's managers still decide whether their own map exposes it.
 - Block and lift account blocks from **Admin, Members**. Every character of a blocked account shows an "API blocked" badge. Account blocks are not map events; they are logged at `warn`.
-- The per-IP limits key off the first entry of `X-Forwarded-For`, then `X-Real-IP`. A client can rotate a forwarded header it controls, so terminate `X-Forwarded-For` at your reverse proxy: have the proxy overwrite it with the real client address rather than append to a value the client sent.
+- The per-IP limits need each caller's real address. Set `TRUSTED_PROXY_HOPS` to the number of reverse proxies in front of Aperture (default `1`, `0` for none): the address is read that many entries from the right of `X-Forwarded-For`, so entries a client wrote itself are ignored. A wrong value lets a client choose its own address, or makes every caller share your proxy's. As a second safeguard, have the outermost proxy replace `X-Forwarded-For` with the address it sees instead of appending to the client's value. See the README's "Behind a reverse proxy" section.
 - Aperture never stores a client's IP address. IP counters live in memory and are discarded when their window ends.
 - Metrics: `user_api_requests_total{endpoint,outcome}`, `user_api_strikes_total{level}`, `user_api_tokens_live` and `user_api_tokens_suspended`.

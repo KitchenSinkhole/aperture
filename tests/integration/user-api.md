@@ -15,6 +15,8 @@ Pins `Date` (fake timers, Date only) to the start of a rate window so no limiter
 - 200 on all seven endpoints with the success envelope, `cache-control: private, no-store`, `x-robots-tag`, open CORS, the `RateLimit-*` headers and a weak ETag; `/token` reports granted and effective scopes and the limits.
 - 304 on a matching `If-None-Match` (in a list), still charged against the budget; a non-matching one is 200. `mass-log?connection=` keeps the envelope.
 - 401 `invalid_token` with `WWW-Authenticate: Bearer` for a missing, foreign-scheme, malformed, unknown and revoked token, for a cookie-only request, and for a token whose map was just soft-deleted, that last one with no `RateLimit-*` headers.
+- The failed-auth IP block: past `USER_API_MAX_AUTH_FAILURES_PER_IP`, unknown tokens and a token the abuse ladder revoked block the IP (a live token there then gets 429 with `Retry-After`), while a token revoked by its creator keeps answering 401 without blocking the IP.
+- 500 `server_error` with the CORS, cache and `RateLimit-*` headers when serving throws on a live map, logged at `error` (the logger is mocked).
 - 403 `account_blocked`, `token_suspended` (with `Retry-After`), `api_disabled`, `access_lost`, `scope_not_granted`.
 - 429 `rate_limited` with `Retry-After` past the per-token cap.
 - Ordering: a request for an ungranted scope is charged against the budget (and its usage tallied) before the scope refusal, and is eventually refused 429.

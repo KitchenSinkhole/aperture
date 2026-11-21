@@ -11,6 +11,7 @@ import type {
   ApiScope,
   UserApiDecision,
   UserApiErrorCode,
+  UserApiTokenLoader,
   UserApiTokenRecord,
 } from '@/types';
 import { apertureConfig } from '../../../aperture.config';
@@ -50,8 +51,6 @@ const state: AuthCacheState = globalThis.__apertureUserApiAuth ?? {
 };
 globalThis.__apertureUserApiAuth = state;
 
-export type UserApiTokenLoader = (hash: string, now: Date) => Promise<UserApiTokenRecord | null>;
-
 /** True while the account's API block stands at `now`. */
 export function isUserApiAccountBlocked(
   account: Pick<UserApiTokenRecord['account'], 'apiBlockedAt' | 'apiBlockedUntil'>,
@@ -90,6 +89,7 @@ export async function loadUserApiTokenRecord(
       scopes: apMapApiToken.scopes,
       expiresAt: apMapApiToken.expiresAt,
       revokedAt: apMapApiToken.revokedAt,
+      revokedReason: apMapApiToken.revokedReason,
       suspendedUntil: apMapApiToken.suspendedUntil,
       mapName: apMap.name,
       mapDeletedAt: apMap.deletedAt,
@@ -125,6 +125,7 @@ export async function loadUserApiTokenRecord(
       scopes: row.scopes,
       expiresAt: row.expiresAt,
       revokedAt: row.revokedAt,
+      revokedReason: row.revokedReason,
       suspendedUntil: row.suspendedUntil,
     },
     map: {
@@ -222,8 +223,10 @@ function refuse(
 }
 
 /**
- * The access decision over a resolved record (pipeline step 5), pure. The
- * first matching row wins:
+ * The access decision over a resolved record (pipeline step 5), pure. A
+ * refusal carries the record whenever the token is known, so a 401 for a dead
+ * token is told apart from one for a token that does not exist. The first
+ * matching row wins:
  * unknown / revoked / expired / deleted map → 401 `invalid_token`;
  * account blocked → 403 `account_blocked`;
  * token suspended → 403 `token_suspended` with `retryAfterSec`;
@@ -234,7 +237,7 @@ export function decideUserApiAccess(
   record: UserApiTokenRecord | null,
   now: Date,
 ): UserApiDecision {
-  if (!record || isDead(record, now)) return refuse(401, 'invalid_token', null);
+  if (!record || isDead(record, now)) return refuse(401, 'invalid_token', record);
   if (isUserApiAccountBlocked(record.account, now)) {
     return refuse(403, 'account_blocked', record);
   }
@@ -271,7 +274,7 @@ export function checkUserApiScope(record: UserApiTokenRecord, scope: ApiScope): 
 
 /**
  * Pipeline steps 3 to 5 for an `Authorization` header value. A malformed
- * header is refused without a database read. Every 401 is a failed auth.
+ * header is refused without a database read.
  */
 export async function authorizeUserApiBearer(
   header: string | null | undefined,

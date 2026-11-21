@@ -6,7 +6,7 @@
 ---
 
 ### postDiscordWebhook(url: string, payload: DiscordWebhookPayload): Promise<DiscordDispatchResult>
-POSTs `payload` to a Discord webhook URL. Never throws — every failure maps to a `{ ok: false }` result with a `retriable` flag so the dispatcher can decide whether to surface it as a terminal record or as a thrown error that graphile-worker will retry.
+POSTs `payload` to a Discord webhook URL with `allowed_mentions: { parse: [] }`, so no `@everyone`, `@here`, user or role mention in the text pings anyone. Never throws — every failure maps to a `{ ok: false }` result with a `retriable` flag so the dispatcher can decide whether to surface it as a terminal record or as a thrown error that graphile-worker will retry.
 
 **Parameters:**
 - `url` — full Discord webhook URL (`https://discord.com/api/webhooks/<id>/<token>`).

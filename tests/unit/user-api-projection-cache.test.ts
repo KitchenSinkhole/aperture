@@ -6,9 +6,8 @@ import {
   clearUserApiProjections,
   getUserApiProjection,
   userApiProjectionKey,
-  type UserApiProjectionLoader,
 } from '@/lib/userApi/cache';
-import type { BlackoutViewer, UserApiPayload } from '@/types';
+import type { BlackoutViewer, UserApiPayload, UserApiProjectionLoader } from '@/types';
 
 // DB-free: the loader is injected and `now` is pinned, so TTL, coalescing,
 // eviction and the clear are deterministic.

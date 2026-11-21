@@ -9,6 +9,7 @@ import { auth } from '@/lib/auth';
 import { isAdmin } from '@/lib/auth/rights';
 import { commitMapEvent, type ActionResult } from '@/lib/map/mutations/core';
 import type { MapEventPayload } from '@/lib/realtime/protocol';
+import { invalidateUserApiMap } from '@/lib/userApi/authorize';
 
 /**
  * Admin map actions — the `/admin` operator's cross-tenant oversight surface,
@@ -76,6 +77,7 @@ export async function adminSoftDeleteMap(
   });
 
   if (result.ok) {
+    invalidateUserApiMap(id);
     revalidatePath('/admin/maps');
     revalidatePath('/maps');
   }

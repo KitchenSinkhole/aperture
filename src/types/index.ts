@@ -1,4 +1,5 @@
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
+import type { NextRequest } from 'next/server';
 // Type-only (erased at compile) — `Layout` is RGL's `readonly LayoutItem[]`. Safe to
 // pull into this server-imported barrel; no runtime client/server coupling.
 import type { Layout } from 'react-grid-layout';
@@ -293,7 +294,8 @@ export type UserApiErrorCode =
   | 'api_disabled'
   | 'access_lost'
   | 'rate_limited'
-  | 'scope_not_granted';
+  | 'scope_not_granted'
+  | 'server_error';
 
 /**
  * A user API bearer token resolved with its map, its owning account and that
@@ -310,6 +312,7 @@ export type UserApiTokenRecord = {
     scopes: ApiScope[];
     expiresAt: Date | null;
     revokedAt: Date | null;
+    revokedReason: ApiTokenRevokeReason | null;
     suspendedUntil: Date | null;
   };
   map: {
@@ -351,7 +354,7 @@ export type UserApiDecision =
       code: UserApiErrorCode;
       /** Seconds until a suspension ends; set only for `token_suspended`. */
       retryAfterSec?: number;
-      /** The resolved token on a 403; always null on a 401, so 401s stay indistinguishable. */
+      /** The resolved token, or null when the token is malformed or unknown. */
       record: UserApiTokenRecord | null;
     };
 
@@ -360,9 +363,10 @@ export type UserApiIpGateDecision = { ok: true } | { ok: false; retryAfterSec: n
 
 /**
  * The user API's per-token, per-account and global request limit (pipeline
- * step 6). `limit` is the token's own cap; `remaining` is what is left of the
- * token's or the account's budget, whichever is smaller; `resetSec` is the time
- * until the window rolls. `strike` is set on the refusal that completes a
+ * step 6). `limit` and `remaining` describe one budget: on a refusal the cap
+ * that refused, on an allow whichever of the token's, the account's and the
+ * whole API's has the fewest requests left; `resetSec` is the time until the
+ * window rolls. `strike` is set on the refusal that completes a
  * strike's worth of hot windows; the caller then applies the strike.
  */
 export type UserApiRateDecision =
@@ -406,7 +410,8 @@ export type UserApiRequestOutcome =
   | 'not_modified'
   | 'rate_limited'
   | 'unauthorized'
-  | 'forbidden';
+  | 'forbidden'
+  | 'error';
 
 /** `data` of `GET /api/v1/token`: what the presented token is and what it may do right now. */
 export type UserApiTokenInfo = {
@@ -613,6 +618,31 @@ export type UserApiProjectionEntry<R extends UserApiResource = UserApiResource> 
   generatedAt: string;
   body: string;
   etag: string;
+};
+
+/** Loads one resource of one map as `viewer` may see it; the projection cache's loader. */
+export type UserApiProjectionLoader = (
+  mapId: bigint,
+  resource: UserApiResource,
+  viewer: BlackoutViewer,
+) => Promise<UserApiPayload>;
+
+/** Reads a token by hash and evaluates its standing at `now`; the auth cache's loader. */
+export type UserApiTokenLoader = (hash: string, now: Date) => Promise<UserApiTokenRecord | null>;
+
+/** A served user API success body, and its weak ETag when the resource has one. */
+export type UserApiServed = { body: string; etag: string | null };
+
+/** Serves one `/api/v1/*` resource for a token that passed every gate. */
+export type UserApiServe = (
+  request: NextRequest,
+  record: UserApiTokenRecord,
+) => Promise<UserApiServed>;
+
+/** The `GET` and `OPTIONS` exports of one `/api/v1/*` route. */
+export type UserApiRouteHandlers = {
+  GET: (request: NextRequest, ctx: unknown) => Promise<Response>;
+  OPTIONS: (request: NextRequest, ctx: unknown) => Promise<Response>;
 };
 
 /**

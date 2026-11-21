@@ -29,6 +29,7 @@ import {
   invalidateUserApiToken,
 } from '@/lib/userApi/authorize';
 import { clearUserApiProjections } from '@/lib/userApi/cache';
+import { userApiRoute } from '@/lib/userApi/handler';
 import { invalidateUserApiInstanceSwitch } from '@/lib/userApi/instance';
 import { __resetUserApiRateLimit } from '@/lib/userApi/rateLimit';
 import { generateUserApiToken } from '@/lib/userApi/token';
@@ -54,6 +55,12 @@ const run = process.env.RUN_DB_TESTS === '1';
 let currentSession: Session | null = null;
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(async () => currentSession) }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+// Keeps the forced serve failure below out of the shared `ap_error_log`.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock('@/lib/log/logger', () => {
+  const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: logError, fatal: vi.fn() };
+  return { logger: log, getLogger: () => log };
+});
 
 const { adminSetUserApiEnabled } = await import('@/app/(admin)/actions/settings');
 
@@ -66,6 +73,7 @@ const ALL_SCOPES: ApiScope[] = ['map', 'signatures', 'pilots', 'notes', 'mass_lo
 const W = apertureConfig.USER_API_RATE_WINDOW_MS;
 const PER_TOKEN = apertureConfig.USER_API_MAX_PER_TOKEN;
 const HOT = apertureConfig.USER_API_HOT_WINDOW_REJECTS;
+const AUTH_FAILURES = apertureConfig.USER_API_MAX_AUTH_FAILURES_PER_IP;
 
 type Handler = (request: NextRequest, ctx: unknown) => Promise<Response>;
 
@@ -295,6 +303,41 @@ describe.skipIf(!run)('User API HTTP surface (real Postgres)', () => {
     expect((await res.json()).code).toBe('invalid_token');
   });
 
+  it('does not block the IP for a revoked token that keeps polling', async () => {
+    await db
+      .update(apMapApiToken)
+      .set({ revokedAt: new Date(), revokedReason: 'creator' })
+      .where(eq(apMapApiToken.id, fullTokenId));
+    invalidateUserApiToken(fullTokenId);
+    for (let i = 0; i <= AUTH_FAILURES; i += 1) {
+      expect((await call(tokenGET, '/api/v1/token', { token: full })).status).toBe(401);
+    }
+    expect((await call(tokenGET, '/api/v1/token', { token: narrow })).status).toBe(200);
+  });
+
+  it.each([
+    ['unknown tokens', async () => generateUserApiToken().token],
+    [
+      'a token the abuse ladder revoked',
+      async () => {
+        await db
+          .update(apMapApiToken)
+          .set({ revokedAt: new Date(), revokedReason: 'abuse' })
+          .where(eq(apMapApiToken.id, fullTokenId));
+        invalidateUserApiToken(fullTokenId);
+        return full;
+      },
+    ],
+  ])('blocks the IP past the failed-auth limit for %s', async (_label, presented) => {
+    const token = await presented();
+    for (let i = 0; i <= AUTH_FAILURES; i += 1) {
+      expect((await call(tokenGET, '/api/v1/token', { token })).status).toBe(401);
+    }
+    const res = await call(tokenGET, '/api/v1/token', { token: narrow });
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(0);
+  });
+
   it('never takes authority from a cookie', async () => {
     const res = await call(mapGET, '/api/v1/map', {
       headers: { cookie: 'authjs.session-token=anything; __Secure-authjs.session-token=anything' },
@@ -311,6 +354,22 @@ describe.skipIf(!run)('User API HTTP surface (real Postgres)', () => {
     expect(res.headers.get('ratelimit-remaining')).toBeNull();
     expect(res.headers.get('ratelimit-reset')).toBeNull();
     expect((await res.json()).code).toBe('invalid_token');
+  });
+
+  it('answers a JSON 500 with the API headers when serving fails on a live map', async () => {
+    const { GET } = userApiRoute('token', null, async () => {
+      throw new Error('forced serve failure');
+    });
+    const res = await call(GET, '/api/v1/token', { token: full });
+    expect(res.status).toBe(500);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+    expect(res.headers.get('ratelimit-limit')).toBe(String(PER_TOKEN));
+    expect(await res.json()).toEqual({ ok: false, error: expect.any(String), code: 'server_error' });
+    expect(logError).toHaveBeenCalledWith(
+      'user API serve failed',
+      expect.objectContaining({ endpoint: 'token' }),
+    );
   });
 
   it('answers 403 account_blocked', async () => {

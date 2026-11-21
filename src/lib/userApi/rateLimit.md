@@ -22,7 +22,7 @@ Counts one failed auth from `ip`. The failure past `USER_API_MAX_AUTH_FAILURES_P
 ---
 
 ### consumeUserApiRequest(tokenId: bigint, userId: number, now?: number): UserApiRateDecision
-Step 6: the token cap (`USER_API_MAX_PER_TOKEN`), then the account cap summed over the account's tokens (`USER_API_MAX_PER_ACCOUNT`), then the global ceiling (`USER_API_MAX_GLOBAL`). An accepted request counts against all three; a refused one against none. `limit` is the token cap; `remaining` is what is left of the token's or the account's budget, whichever is smaller; `resetSec` and `retryAfterSec` are the time until the window rolls.
+Step 6: the token cap (`USER_API_MAX_PER_TOKEN`), then the account cap summed over the account's tokens (`USER_API_MAX_PER_ACCOUNT`), then the global ceiling (`USER_API_MAX_GLOBAL`). An accepted request counts against all three; a refused one against none. `limit` and `remaining` describe one budget: on a refusal the cap that refused, on an allow whichever of the three has the fewest requests left (the token's on a tie); `resetSec` and `retryAfterSec` are the time until the window rolls.
 
 Token- and account-cap refusals count towards the token's hot windows; global-ceiling refusals do not. A window is hot on its `USER_API_HOT_WINDOW_REJECTS`th refusal; the hot window that brings the token to `USER_API_STRIKE_HOT_WINDOWS` within `USER_API_STRIKE_SPAN_MS` sets `strike: true` on that one refusal and restarts the token's history.
 

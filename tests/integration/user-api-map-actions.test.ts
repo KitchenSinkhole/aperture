@@ -42,8 +42,11 @@ vi.mock('@/lib/session', () => ({
   requireSession: async () => ({ characterId: h.characterId, userId: h.userId }),
 }));
 
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+
 const { createMapApiToken, getMapApiState, revokeMapApiToken, updateMapApiSettings } =
   await import('@/app/(app)/actions/mapApi');
+const { deleteMapAction } = await import('@/app/(app)/actions/map');
 
 const CORP = 97379001n;
 const OTHER_CORP = 97379002n;
@@ -193,6 +196,7 @@ describe.skipIf(!run)('map API actions (real Postgres)', () => {
     await db.update(apInstance).set({ userApiEnabled: true }).where(eq(apInstance.id, 1));
     await db.delete(apMapEvent).where(eq(apMapEvent.mapId, mapId));
     await db.delete(apMapApiToken).where(inArray(apMapApiToken.mapId, [mapId, otherMapId]));
+    await db.update(apMap).set({ deletedAt: null }).where(eq(apMap.id, mapId));
     await setMapApi(true, ['map', 'signatures', 'pilots']);
     await db
       .update(apUser)
@@ -548,6 +552,20 @@ describe.skipIf(!run)('map API actions (real Postgres)', () => {
       expect(log[0]).toMatchObject({
         kind: 'api.token_revoked',
         payload: { ownerName: 'Actions Member', reason: 'manager' },
+      });
+    });
+  });
+
+  describe('deleteMapAction', () => {
+    it("turns the map's cached token allows into a 401 on the next call", async () => {
+      const { token } = await insertToken(users.member);
+      expect((await authorizeUserApiBearer(`Bearer ${token}`)).ok).toBe(true);
+
+      actAs(DIRECTOR, users.director);
+      expect((await deleteMapAction(mapId.toString())).ok).toBe(true);
+      expect(await authorizeUserApiBearer(`Bearer ${token}`)).toMatchObject({
+        ok: false,
+        status: 401,
       });
     });
   });

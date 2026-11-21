@@ -4,7 +4,8 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { NextRequest } from 'next/server';
 import { db } from '@/db/client';
 import { apiScope, apMap } from '@/db/schema';
-import { clientKeyFromForwardedFor } from '@/lib/http/clientKey';
+import { clientIpOfRequest } from '@/lib/http/clientKey';
+import { getLogger } from '@/lib/log/logger';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 import { recordUserApiRequest } from '@/lib/metrics/registry';
 import type {
@@ -14,6 +15,9 @@ import type {
   UserApiErrorCode,
   UserApiRequestOutcome,
   UserApiResource,
+  UserApiRouteHandlers,
+  UserApiServe,
+  UserApiServed,
   UserApiTokenInfo,
   UserApiTokenRecord,
 } from '@/types';
@@ -41,19 +45,6 @@ import { recordUserApiUsage } from './usage';
  * reads a cookie or a session, which is what makes the open CORS policy safe.
  */
 
-/** A served success body, and its weak ETag when the resource has one. */
-export type UserApiServed = { body: string; etag: string | null };
-
-export type UserApiServe = (
-  request: NextRequest,
-  record: UserApiTokenRecord,
-) => Promise<UserApiServed>;
-
-export type UserApiRouteHandlers = {
-  GET: (request: NextRequest, ctx: unknown) => Promise<Response>;
-  OPTIONS: (request: NextRequest, ctx: unknown) => Promise<Response>;
-};
-
 const BASE_HEADERS: Record<string, string> = {
   'cache-control': 'private, no-store',
   'x-robots-tag': 'noindex',
@@ -70,7 +61,10 @@ const ERROR_TEXT: Record<UserApiErrorCode, string> = {
   access_lost: "This token's owner can no longer view the map.",
   rate_limited: 'Too many requests. Wait for Retry-After before sending another.',
   scope_not_granted: 'This token may not read this resource.',
+  server_error: 'The server failed to build this response. Retry later.',
 };
+
+const log = getLogger('server');
 
 type RateHeaders = Record<string, string>;
 
@@ -108,8 +102,19 @@ function finish(
   return response;
 }
 
-function unauthorized(ip: string, endpoint: UserApiEndpoint): Response {
-  recordUserApiAuthFailure(ip);
+/**
+ * Whether a 401 counts towards the IP's failed-auth block: a malformed or
+ * unknown token does, and so does one the abuse ladder revoked, so a tool that
+ * keeps hammering past strike 3 still walks its IP up the block steps. Any
+ * other known token that is revoked, expired or on a deleted map is one stale
+ * client, and blocking its IP would lock out every other token behind it.
+ */
+function countsAsFailedAuth(record: UserApiTokenRecord | null): boolean {
+  return record === null || record.token.revokedReason === 'abuse';
+}
+
+function unauthorized(ip: string, endpoint: UserApiEndpoint, failedAuth: boolean): Response {
+  if (failedAuth) recordUserApiAuthFailure(ip);
   return finish(endpoint, 'unauthorized', failure(401, 'invalid_token'));
 }
 
@@ -151,10 +156,7 @@ async function handle(
 ): Promise<Response> {
   if (!(await isUserApiInstanceEnabled())) return notFound();
 
-  const ip = clientKeyFromForwardedFor(
-    request.headers.get('x-forwarded-for'),
-    request.headers.get('x-real-ip'),
-  );
+  const ip = clientIpOfRequest(request.headers);
   const gate = checkUserApiIp(ip);
   if (!gate.ok) {
     return finish(
@@ -166,7 +168,9 @@ async function handle(
 
   const decision = await authorizeUserApiBearer(request.headers.get('authorization'));
   if (!decision.ok) {
-    if (decision.status === 401) return unauthorized(ip, endpoint);
+    if (decision.status === 401) {
+      return unauthorized(ip, endpoint, countsAsFailedAuth(decision.record));
+    }
     if (decision.code === 'token_suspended' && decision.record !== null) {
       const tokenId = decision.record.token.id;
       if (noteUserApiSuspendedRequest(tokenId)) void applyUserApiStrike(tokenId);
@@ -208,12 +212,19 @@ async function handle(
     served = await serve(request, record);
   } catch (err) {
     // A map deleted while its tokens' records are still cached is a dead
-    // token, not a server error.
-    if (!(await isMapLive(record.map.id))) {
+    // token, not a server error. A failed liveness read is the same outage
+    // that failed the serve, so it answers 500 too.
+    const live = await isMapLive(record.map.id).catch(() => true);
+    if (!live) {
       invalidateUserApiMap(record.map.id);
-      return unauthorized(ip, endpoint);
+      return unauthorized(ip, endpoint, false);
     }
-    throw err;
+    log.error('user API serve failed', { endpoint, mapId: record.map.id.toString(), err });
+    return finish(
+      endpoint,
+      'error',
+      failure(500, 'server_error', { headers: rateHeaders }),
+    );
   }
 
   const etagHeader: Record<string, string> = served.etag === null ? {} : { etag: served.etag };

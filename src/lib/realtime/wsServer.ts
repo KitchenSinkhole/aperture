@@ -15,7 +15,7 @@ import {
 } from '@/lib/auth/blackout';
 import { canViewMap } from '@/lib/auth/rights';
 import { getBuildId } from '@/lib/buildId';
-import { clientKeyFromForwardedFor } from '@/lib/http/clientKey';
+import { clientIpOfNodeRequest } from '@/lib/http/clientKey';
 import { seedTrackingForMap } from '@/lib/jobs/tracking';
 import { getLogger } from '@/lib/log/logger';
 import { resolveShareToken } from '@/lib/map/share';
@@ -138,17 +138,6 @@ function send(socket: WebSocket, message: ServerToClientMessage): void {
 function destroyUpgrade(socket: Duplex, status: number, reason: string): void {
   socket.write(`HTTP/1.1 ${status} ${reason}\r\n\r\n`);
   socket.destroy();
-}
-
-function nodeHeaderValue(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function publicClientKey(req: IncomingMessage): string {
-  return clientKeyFromForwardedFor(
-    nodeHeaderValue(req.headers['x-forwarded-for']),
-    nodeHeaderValue(req.headers['x-real-ip']),
-  );
 }
 
 /** Map ids the actor can view (existence + soft-delete + view rights). */
@@ -373,7 +362,7 @@ export function attachWsServer(httpServer: HttpServer): WebSocketServer {
     socket: Duplex,
     head: Buffer,
   ): Promise<void> {
-    if (!allowPublicUpgrade(publicClientKey(req))) {
+    if (!allowPublicUpgrade(clientIpOfNodeRequest(req))) {
       recordPublicWsUpgrade('rate_limited');
       destroyUpgrade(socket, 429, 'Too Many Requests');
       return;

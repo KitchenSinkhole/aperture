@@ -161,7 +161,7 @@ describe.skipIf(!run)('User API authorization (real Postgres)', () => {
     expect(await authorizeUserApiBearer(header, t0 + 2)).toMatchObject({
       status: 401,
       code: 'invalid_token',
-      record: null,
+      record: { token: { id: tokenId, revokedReason: 'creator' } },
     });
   });
 

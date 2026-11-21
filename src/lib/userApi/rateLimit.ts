@@ -152,6 +152,8 @@ function countRejection(key: string, now: number): boolean {
  * Pipeline step 6 for one request on token `tokenId` owned by account
  * `userId`: the token cap, then the account cap, then the global ceiling. An
  * accepted request counts against all three; a refused one against none.
+ * `limit` and `remaining` describe one budget: on a refusal the cap that
+ * refused, otherwise whichever has the fewest requests left.
  * Token- and account-cap refusals count towards the token's hot windows;
  * global-ceiling refusals do not.
  */
@@ -162,41 +164,41 @@ export function consumeUserApiRequest(
 ): UserApiRateDecision {
   roll(now);
   const key = tokenId.toString();
-  const limit = apertureConfig.USER_API_MAX_PER_TOKEN;
-  const tokenCount = state.perToken.get(key) ?? 0;
-  const accountCount = state.perAccount.get(userId) ?? 0;
-  const limitedBy =
-    tokenCount >= limit
-      ? 'token'
-      : accountCount >= apertureConfig.USER_API_MAX_PER_ACCOUNT
-        ? 'account'
-        : state.global >= apertureConfig.USER_API_MAX_GLOBAL
-          ? 'global'
-          : null;
+  const budgets = [
+    { cap: 'token', limit: apertureConfig.USER_API_MAX_PER_TOKEN, used: state.perToken.get(key) ?? 0 },
+    { cap: 'account', limit: apertureConfig.USER_API_MAX_PER_ACCOUNT, used: state.perAccount.get(userId) ?? 0 },
+    { cap: 'global', limit: apertureConfig.USER_API_MAX_GLOBAL, used: state.global },
+  ] as const;
+  const exhausted = budgets.find((b) => b.used >= b.limit);
 
   const reset = resetSec(now);
-  if (limitedBy !== null) {
+  if (exhausted) {
     return {
       ok: false,
-      limitedBy,
-      limit,
+      limitedBy: exhausted.cap,
+      limit: exhausted.limit,
       remaining: 0,
       resetSec: reset,
       retryAfterSec: reset,
-      strike: limitedBy === 'global' ? false : countRejection(key, now),
+      strike: exhausted.cap === 'global' ? false : countRejection(key, now),
     };
   }
 
-  state.perToken.set(key, tokenCount + 1);
-  state.perAccount.set(userId, accountCount + 1);
+  state.perToken.set(key, budgets[0].used + 1);
+  state.perAccount.set(userId, budgets[1].used + 1);
   state.global += 1;
-  // Whichever of the token and account budgets runs out first is the one the
-  // client must pace to.
-  const remaining = Math.min(
-    limit - tokenCount - 1,
-    apertureConfig.USER_API_MAX_PER_ACCOUNT - accountCount - 1,
+  // The client must pace to whichever budget runs out first, so the headers
+  // describe that one; on a tie the token's own budget is reported.
+  const binding = budgets.reduce<{ limit: number; used: number }>(
+    (tightest, b) => (b.limit - b.used < tightest.limit - tightest.used ? b : tightest),
+    budgets[0],
   );
-  return { ok: true, limit, remaining, resetSec: reset };
+  return {
+    ok: true,
+    limit: binding.limit,
+    remaining: binding.limit - binding.used - 1,
+    resetSec: reset,
+  };
 }
 
 /**

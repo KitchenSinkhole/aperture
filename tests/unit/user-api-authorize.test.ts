@@ -44,6 +44,7 @@ function record(overrides: {
       scopes: ['map', 'signatures'],
       expiresAt: null,
       revokedAt: null,
+      revokedReason: null,
       suspendedUntil: null,
       ...overrides.token,
     },
@@ -130,9 +131,14 @@ describe('decideUserApiAccess', () => {
     expect(decision).toMatchObject({ ok: false, status, code });
   });
 
-  it('carries no record on any 401, so the four causes are indistinguishable', () => {
+  it('carries the record on a 401 for a known dead token, and none for an unknown one', () => {
+    expect(decideUserApiAccess(null, NOW)).toEqual({
+      ok: false,
+      status: 401,
+      code: 'invalid_token',
+      record: null,
+    });
     for (const input of [
-      null,
       record({ token: { revokedAt: before } }),
       record({ token: { expiresAt: before } }),
       record({ map: { deletedAt: before } }),
@@ -141,7 +147,7 @@ describe('decideUserApiAccess', () => {
         ok: false,
         status: 401,
         code: 'invalid_token',
-        record: null,
+        record: input,
       });
     }
   });

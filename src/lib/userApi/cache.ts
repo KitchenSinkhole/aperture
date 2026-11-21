@@ -5,6 +5,7 @@ import type {
   BlackoutViewer,
   UserApiPayload,
   UserApiProjectionEntry,
+  UserApiProjectionLoader,
   UserApiResource,
 } from '@/types';
 import { apertureConfig } from '../../../aperture.config';
@@ -23,12 +24,6 @@ import { loadUserApiProjection } from './projection';
  */
 
 type CacheEntry = { entry: UserApiProjectionEntry; expiresAt: number };
-
-export type UserApiProjectionLoader = (
-  mapId: bigint,
-  resource: UserApiResource,
-  viewer: BlackoutViewer,
-) => Promise<UserApiPayload>;
 
 interface ProjectionCacheState {
   cache: Map<string, CacheEntry>;

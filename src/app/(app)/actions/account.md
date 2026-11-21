@@ -33,7 +33,7 @@ Persists the account's audio-cue preferences to `ap_user.sound_prefs`. `prefs` i
 ---
 
 ### deleteAccountAction(): Promise<AccountActionResult>
-Hard-deletes the `ap_user` row for the current session. The FK cascade removes characters / roles / tracking; `ap_map_event` and `ap_structure_event` rows keep their history with `character_id` set null; owned maps are orphaned (`owner_character_id` set null). No soft-delete grace — irreversible. On success calls `signOut({ redirectTo: '/' })`, which throws a redirect (the trailing `{ ok: true }` is unreachable but satisfies the type). Returns `{ ok: false, error }` only if the delete itself fails.
+Hard-deletes the `ap_user` row for the current session. The FK cascade removes characters / roles / tracking; `ap_map_event` and `ap_structure_event` rows keep their history with `character_id` set null; owned maps are orphaned (`owner_character_id` set null); its user API tokens cascade away and their cached authorisations are dropped (`invalidateUserApiAccount`), so they answer 401 on their next request. No soft-delete grace — irreversible. On success calls `signOut({ redirectTo: '/' })`, which throws a redirect (the trailing `{ ok: true }` is unreachable but satisfies the type). Returns `{ ok: false, error }` only if the delete itself fails.
 
 ---
 

@@ -152,7 +152,8 @@ export async function setSoundPrefsAction(prefs: unknown): Promise<AccountAction
  * Delete the account and every character on it. The FK rules do the rest:
  * characters / roles / tracking cascade away, audit rows (`ap_map_event`,
  * `ap_structure_event`) keep their history with `character_id` set null, and
- * owned maps are orphaned (`owner_character_id` set null). Irreversible — there
+ * owned maps are orphaned (`owner_character_id` set null). Its user API tokens
+ * cascade away and stop answering on the next request. Irreversible: there
  * is no soft-delete grace for accounts. On success the user is signed out and
  * returned to the public splash (`signOut` throws a redirect and never returns).
  */
@@ -163,6 +164,7 @@ export async function deleteAccountAction(): Promise<AccountActionResult> {
   } catch {
     return { ok: false, error: 'Could not delete account.' };
   }
+  invalidateUserApiAccount(session.userId);
   await signOut({ redirectTo: '/' });
   return { ok: true };
 }
