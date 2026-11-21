@@ -345,6 +345,58 @@ export type UserApiDecision =
       record: UserApiTokenRecord | null;
     };
 
+/** The user API's per-IP gate (pipeline step 2): a failed-auth block or the per-IP cap refuses. */
+export type UserApiIpGateDecision = { ok: true } | { ok: false; retryAfterSec: number };
+
+/**
+ * The user API's per-token, per-account and global request limit (pipeline
+ * step 6). `limit` / `remaining` / `resetSec` describe the token's own budget
+ * in the current window. `strike` is set on the refusal that completes a
+ * strike's worth of hot windows; the caller then applies the strike.
+ */
+export type UserApiRateDecision =
+  | { ok: true; limit: number; remaining: number; resetSec: number }
+  | {
+      ok: false;
+      limitedBy: 'token' | 'account' | 'global';
+      limit: number;
+      remaining: 0;
+      resetSec: number;
+      retryAfterSec: number;
+      strike: boolean;
+    };
+
+/** What one strike on a user API token did (`applyUserApiStrike`). */
+export type UserApiStrikeOutcome =
+  | { action: 'suspended'; strike: number; until: Date; eventId: number }
+  | {
+      action: 'revoked';
+      strike: number;
+      /** False when the account was already blocked, so the existing block stands. */
+      accountBlocked: boolean;
+      /** The new block's end; null for an indefinite block or when none was applied. */
+      accountBlockedUntil: Date | null;
+      eventId: number;
+    };
+
+/** Endpoint label of `user_api_requests_total`: the `/api/v1/<endpoint>` path segment. */
+export type UserApiEndpoint =
+  | 'token'
+  | 'map'
+  | 'signatures'
+  | 'pilots'
+  | 'notes'
+  | 'mass-log'
+  | 'kills';
+
+/** Outcome label of `user_api_requests_total`. */
+export type UserApiRequestOutcome =
+  | 'ok'
+  | 'not_modified'
+  | 'rate_limited'
+  | 'unauthorized'
+  | 'forbidden';
+
 /** One Blackout cleared-list entry (a `blackout_view` grant) as the admin panel lists it. */
 export type BlackoutClearance = {
   grantId: string;
@@ -1075,6 +1127,10 @@ export type GaugeReadings = {
   processHeapUsedBytes: number;
   processHeapTotalBytes: number;
   eventLoopLagMs: number;
+  /** User API tokens neither revoked nor expired. */
+  userApiTokensLive: number;
+  /** Live user API tokens currently suspended. */
+  userApiTokensSuspended: number;
   /** Per-table row estimates; rendered as the labelled `db_table_rows{table}` gauge. */
   tableRows: TableRowEstimate[];
 };

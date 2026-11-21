@@ -54,6 +54,13 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 
 **User API**
 - `USER_API_AUTH_CACHE_TTL_MS`, `USER_API_AUTH_CACHE_MAX_ENTRIES` — lifetime and LRU size of the user API's resolved-token cache (`src/lib/userApi/authorize.ts`); the TTL bounds how long an access loss the server only observes takes to stop a token.
+- `USER_API_PROJECTION_TTL_MS` — lifetime of a cached user API resource projection.
+- `USER_API_RATE_WINDOW_MS`, `USER_API_MAX_PER_TOKEN`, `USER_API_MAX_PER_ACCOUNT`, `USER_API_MAX_GLOBAL`, `USER_API_MAX_PER_IP` — the one shared fixed window and its request caps (`src/lib/userApi/rateLimit.ts`); the account cap sums every token the account owns.
+- `USER_API_MAX_AUTH_FAILURES_PER_IP`, `USER_API_IP_BLOCK_STEPS_MS` — failed auths an IP may make per window, and the escalating block lengths once it exceeds them.
+- `USER_API_MAX_TOKENS_PER_ACCOUNT_PER_MAP`, `USER_API_MAX_TOKENS_PER_ACCOUNT` — live-token caps per account, per map and overall.
+- `USER_API_HOT_WINDOW_REJECTS`, `USER_API_STRIKE_HOT_WINDOWS`, `USER_API_STRIKE_SPAN_MS` — refusals that make a window hot, and hot windows within the span that make a strike.
+- `USER_API_STRIKE_DECAY_DAYS`, `USER_API_STRIKE_SUSPENSIONS_MS`, `USER_API_FIRST_BLOCK_DAYS`, `USER_API_REPEAT_OFFENCE_WINDOW_DAYS` — the abuse ladder (`src/lib/userApi/abuse.ts`): strike decay, the strike 1 and 2 suspensions, and the first and repeat automatic account blocks.
+- `USER_API_USAGE_FLUSH_MS` — minimum interval between batched token-usage writes (`src/lib/userApi/usage.ts`).
 
 **Authz / character cleanup**
 - `CHARACTER_CLEANUP_CRON`, `CHARACTER_AUTHZ_RESYNC_STALE_AFTER_MS`, `CHARACTER_AUTHZ_RESYNC_BATCH_SIZE` — cadence and throttle for the `character-cleanup` job's kick-expiry + authz resync passes.

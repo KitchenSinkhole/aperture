@@ -6,6 +6,10 @@ import {
   ESI_REQUESTS_TOTAL,
   ESI_REQUEST_DURATION_MS,
   ROUTE_PLAN_DURATION_MS,
+  USER_API_REQUESTS_TOTAL,
+  USER_API_STRIKES_TOTAL,
+  recordUserApiRequest,
+  recordUserApiStrike,
 } from '@/lib/metrics/registry';
 import { renderPrometheus } from '@/lib/metrics/prometheus';
 import type { GaugeReadings } from '@/types';
@@ -25,6 +29,8 @@ const GAUGES: GaugeReadings = {
   processHeapUsedBytes: 45_000_000,
   processHeapTotalBytes: 60_000_000,
   eventLoopLagMs: 0.5,
+  userApiTokensLive: 9,
+  userApiTokensSuspended: 2,
   tableRows: [
     { table: 'ap_job_run', rows: 14_532_586 },
     { table: 'universe_killmail', rows: 1234 },
@@ -74,6 +80,21 @@ describe('renderPrometheus', () => {
     expect(out).toContain('public_ws_connections 8');
     expect(out).toContain('process_resident_memory_bytes 123456789');
     expect(out).toContain('event_loop_lag_ms 0.5');
+  });
+
+  it('registers and renders the user API series', () => {
+    const empty = renderPrometheus(metrics.snapshot(), GAUGES);
+    expect(empty).toContain(`# TYPE ${USER_API_REQUESTS_TOTAL} counter`);
+    expect(empty).toContain(`# TYPE ${USER_API_STRIKES_TOTAL} counter`);
+
+    recordUserApiRequest('signatures', 'rate_limited');
+    recordUserApiRequest('signatures', 'rate_limited');
+    recordUserApiStrike(2);
+    const out = lines(renderPrometheus(metrics.snapshot(), GAUGES));
+    expect(out).toContain(`${USER_API_REQUESTS_TOTAL}{endpoint="signatures",outcome="rate_limited"} 2`);
+    expect(out).toContain(`${USER_API_STRIKES_TOTAL}{level="2"} 1`);
+    expect(out).toContain('user_api_tokens_live 9');
+    expect(out).toContain('user_api_tokens_suspended 2');
   });
 
   it('renders per-table row estimates as a labelled db_table_rows gauge', () => {

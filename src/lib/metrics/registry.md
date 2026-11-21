@@ -25,11 +25,14 @@ Phase 8 deepened-instrumentation metrics, also pre-registered (labels stay bound
 - Counter `esi_token_refresh_total` — `{outcome}`.
 - Counter `jwk_cache_refresh_total` — `{outcome}`.
 - Counter `public_ws_upgrades_total` — `{outcome}` (public spectator upgrade handshakes).
+- Counter `user_api_requests_total` — `{endpoint, outcome}` (`/api/v1/*` user API requests).
+- Counter `user_api_strikes_total` — `{level}` (strikes on user API tokens, `1` to `3`).
 
 ### Exported constants
 - `ESI_REQUESTS_TOTAL`, `ESI_REQUEST_DURATION_MS`, `ROUTE_PLAN_DURATION_MS` — Phase 2 metric names.
 - `MAP_EVENTS_TOTAL`, `REALTIME_BROADCASTS_TOTAL`, `PG_NOTIFY_RECEIVED_TOTAL`, `HTTP_REQUESTS_TOTAL`, `JOB_RUNS_TOTAL`, `LOCATION_POLLS_TOTAL`, `CHARACTER_JUMPS_TOTAL`, `ERROR_LOG_EVENTS_TOTAL`, `WEBHOOK_DELIVERIES_TOTAL`, `ESI_TOKEN_REFRESH_TOTAL`, `JWK_CACHE_REFRESH_TOTAL`, `REALTIME_FANOUT_DURATION_MS`, `HTTP_REQUEST_DURATION_MS`, `JOB_DURATION_MS` — Phase 8 metric names.
 - `PUBLIC_WS_UPGRADES_TOTAL` — public spectator upgrade counter name.
+- `USER_API_REQUESTS_TOTAL`, `USER_API_STRIKES_TOTAL` — user API counter names.
 
 ### metrics
 The singleton `MetricsRegistry`. Methods:
@@ -73,3 +76,9 @@ Tally one `jwk_cache_refresh_total{outcome}`. Used by `jwks.ts` (per genuine rem
 
 ### recordPublicWsUpgrade(outcome: PublicWsUpgradeOutcome): void
 Tally one `public_ws_upgrades_total{outcome}`. Used by `wsServer.ts` at each of the four public-upgrade outcomes (`accepted`, `rate_limited`, `unauthorized`, `at_cap`).
+
+### recordUserApiRequest(endpoint: UserApiEndpoint, outcome: UserApiRequestOutcome): void
+Tally one `user_api_requests_total{endpoint,outcome}`.
+
+### recordUserApiStrike(level: number): void
+Tally one `user_api_strikes_total{level}`. Used by `abuse.ts` (`applyUserApiStrike`).

@@ -530,6 +530,71 @@ export const apertureConfig = {
   /** Distinct token hashes (misses included) held in the user API auth cache before LRU eviction. */
   USER_API_AUTH_CACHE_MAX_ENTRIES: 10_000,
 
+  /** Lifetime of a cached user API resource projection; data cannot be fresher than this, so polling faster buys nothing. */
+  USER_API_PROJECTION_TTL_MS: 5_000,
+
+  /**
+   * The one fixed window every user API counter shares (per IP, failed auths
+   * per IP, per token, per account, global). Every per-key counter is
+   * discarded when it rolls.
+   */
+  USER_API_RATE_WINDOW_MS: 60_000,
+
+  /** Requests accepted per token per window. All seven endpoints every 10s is 42. */
+  USER_API_MAX_PER_TOKEN: 60,
+
+  /** Requests accepted per account per window, summed over every token it owns, so minting more tokens does not multiply the budget. */
+  USER_API_MAX_PER_ACCOUNT: 150,
+
+  /** Requests accepted across the whole user API per window. */
+  USER_API_MAX_GLOBAL: 6_000,
+
+  /** Requests accepted per client IP per window; generous because many tokens can sit behind one NAT. */
+  USER_API_MAX_PER_IP: 600,
+
+  /** Failed auths an IP may make in one window; the next one blocks the IP. */
+  USER_API_MAX_AUTH_FAILURES_PER_IP: 20,
+
+  /**
+   * Escalating IP block lengths for repeat failed-auth windows. An IP's step is
+   * remembered for the longest step after its block ends, then forgotten.
+   */
+  USER_API_IP_BLOCK_STEPS_MS: [60_000, 300_000, 1_800_000],
+
+  /** Live tokens one account may hold on one map. */
+  USER_API_MAX_TOKENS_PER_ACCOUNT_PER_MAP: 3,
+
+  /** Live tokens one account may hold across every map. */
+  USER_API_MAX_TOKENS_PER_ACCOUNT: 20,
+
+  /**
+   * Refusals of one token within one rate window that make the window "hot".
+   * Token-limit and account-limit refusals and requests sent while suspended
+   * count; global-ceiling refusals do not.
+   */
+  USER_API_HOT_WINDOW_REJECTS: 60,
+
+  /** Hot windows inside `USER_API_STRIKE_SPAN_MS` that make one strike. */
+  USER_API_STRIKE_HOT_WINDOWS: 3,
+
+  /** Span over which hot windows are counted towards a strike. */
+  USER_API_STRIKE_SPAN_MS: 600_000,
+
+  /** A token's strike count restarts from zero when its previous strike is older than this. */
+  USER_API_STRIKE_DECAY_DAYS: 7,
+
+  /** Suspension lengths for strike 1 and strike 2. Strike 3 revokes the token and blocks the account. */
+  USER_API_STRIKE_SUSPENSIONS_MS: [900_000, 21_600_000],
+
+  /** Length of an account's first automatic API block. */
+  USER_API_FIRST_BLOCK_DAYS: 7,
+
+  /** An automatic block that lands within this many days of the previous block's start is indefinite. */
+  USER_API_REPEAT_OFFENCE_WINDOW_DAYS: 180,
+
+  /** Minimum interval between two batched writes of token usage (`last_used_at`, `request_count`). */
+  USER_API_USAGE_FLUSH_MS: 60_000,
+
   /**
    * Outbound links the spectator view's promo bar offers a logged-out visitor.
    * The instance itself is always the deployment root, so it is not named here.
