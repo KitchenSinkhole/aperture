@@ -154,6 +154,18 @@ describe('consumeUserApiRequest', () => {
     expect(consumeUserApiRequest(999n, 8, T0).ok).toBe(true);
   });
 
+  it('reports the account budget as remaining once it is the smaller', () => {
+    const fullTokens = Math.floor(PER_ACCOUNT / PER_TOKEN);
+    for (let t = 0; t < fullTokens; t++) exhaustToken(BigInt(200 + t), 9, T0);
+    const accountLeft = PER_ACCOUNT - fullTokens * PER_TOKEN;
+    expect(accountLeft).toBeGreaterThan(0);
+    expect(accountLeft).toBeLessThan(PER_TOKEN);
+    expect(consumeUserApiRequest(300n, 9, T0)).toMatchObject({ ok: true, remaining: accountLeft - 1 });
+    for (let i = 0; i < accountLeft - 2; i++) consumeUserApiRequest(300n, 9, T0);
+    expect(consumeUserApiRequest(300n, 9, T0)).toMatchObject({ ok: true, remaining: 0 });
+    expect(consumeUserApiRequest(300n, 9, T0)).toMatchObject({ ok: false, limitedBy: 'account' });
+  });
+
   it('applies the global ceiling last', () => {
     let n = 0;
     for (let account = 0; n < GLOBAL; account++) {

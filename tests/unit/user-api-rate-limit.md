@@ -8,7 +8,7 @@
 ### Covers
 - `checkUserApiIp` — the per-IP cap, `retryAfterSec` to the window's end, reset on roll.
 - `recordUserApiAuthFailure` — the block on the failure past the cap, escalation through every step and the cap at the last, forgetting the step after the block memory, per-window counting.
-- `consumeUserApiRequest` — token cap with `remaining` / `resetSec`, the account cap summed over tokens, the global ceiling, refused requests not consuming budget.
+- `consumeUserApiRequest` — token cap with `remaining` / `resetSec`, the account cap summed over tokens, `remaining` reporting the account budget once it is the smaller, the global ceiling, refused requests not consuming budget.
 - Hot windows — a strike on the third hot window in the span, fired once and on the completing refusal, a short window not counting, windows aging out of the span, history restarting after a strike, account-cap refusals counting and global ones not, suspended requests counting.
 - Memory — every in-process map is empty once its window, the strike span or the block memory has rolled.
 - `nextUserApiStrike` (decay boundary), `userApiSuspensionMs`, `userApiAccountBlockUntil` (repeat-window boundary).

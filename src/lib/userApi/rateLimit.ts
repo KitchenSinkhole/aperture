@@ -190,7 +190,13 @@ export function consumeUserApiRequest(
   state.perToken.set(key, tokenCount + 1);
   state.perAccount.set(userId, accountCount + 1);
   state.global += 1;
-  return { ok: true, limit, remaining: limit - tokenCount - 1, resetSec: reset };
+  // Whichever of the token and account budgets runs out first is the one the
+  // client must pace to.
+  const remaining = Math.min(
+    limit - tokenCount - 1,
+    apertureConfig.USER_API_MAX_PER_ACCOUNT - accountCount - 1,
+  );
+  return { ok: true, limit, remaining, resetSec: reset };
 }
 
 /**

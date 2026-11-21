@@ -360,8 +360,9 @@ export type UserApiIpGateDecision = { ok: true } | { ok: false; retryAfterSec: n
 
 /**
  * The user API's per-token, per-account and global request limit (pipeline
- * step 6). `limit` / `remaining` / `resetSec` describe the token's own budget
- * in the current window. `strike` is set on the refusal that completes a
+ * step 6). `limit` is the token's own cap; `remaining` is what is left of the
+ * token's or the account's budget, whichever is smaller; `resetSec` is the time
+ * until the window rolls. `strike` is set on the refusal that completes a
  * strike's worth of hot windows; the caller then applies the strike.
  */
 export type UserApiRateDecision =
@@ -406,6 +407,24 @@ export type UserApiRequestOutcome =
   | 'rate_limited'
   | 'unauthorized'
   | 'forbidden';
+
+/** `data` of `GET /api/v1/token`: what the presented token is and what it may do right now. */
+export type UserApiTokenInfo = {
+  map: { id: string; name: string };
+  scopes: {
+    /** Fixed when the token was minted. */
+    granted: ApiScope[];
+    /** The granted scopes the map still exposes. */
+    effective: ApiScope[];
+  };
+  expiresAt: string | null;
+  rateLimit: {
+    perToken: number;
+    /** Shared by every token the owning account holds. */
+    perAccount: number;
+    windowSeconds: number;
+  };
+};
 
 /** A resource the user API projects from one map (`src/lib/userApi/projection.ts`). */
 export type UserApiResource = 'map' | 'signatures' | 'pilots' | 'notes' | 'mass_log';
