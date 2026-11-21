@@ -52,6 +52,9 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `PUBLIC_WS_NUDGE_MIN_INTERVAL_MS` — minimum spacing between `publicUpdate` nudges sent to one public socket.
 - `PUBLIC_REFETCH_JITTER_MS`, `PUBLIC_POLL_INTERVAL_MS`, `PUBLIC_IDLE_REFRESH_MS` — spectator client refetch jitter, socket-down poll cadence, and the idle-map refetch backstop.
 
+**User API**
+- `USER_API_AUTH_CACHE_TTL_MS`, `USER_API_AUTH_CACHE_MAX_ENTRIES` — lifetime and LRU size of the user API's resolved-token cache (`src/lib/userApi/authorize.ts`); the TTL bounds how long an access loss the server only observes takes to stop a token.
+
 **Authz / character cleanup**
 - `CHARACTER_CLEANUP_CRON`, `CHARACTER_AUTHZ_RESYNC_STALE_AFTER_MS`, `CHARACTER_AUTHZ_RESYNC_BATCH_SIZE` — cadence and throttle for the `character-cleanup` job's kick-expiry + authz resync passes.
 - `HEALTH_WORKER_STALE_MS` — `/api/health/ready` flags the `worker` component unhealthy if no `ap_job_run` finished within this window (15 min ≈ 3 `character-cleanup` ticks).

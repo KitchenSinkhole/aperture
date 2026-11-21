@@ -520,6 +520,17 @@ export const apertureConfig = {
   PUBLIC_SNAPSHOT_MAX_GLOBAL: 6_000,
 
   /**
+   * Lifetime of a resolved user API token record (token, map, owning account,
+   * the main's access) in the in-process auth cache. Explicit changes
+   * invalidate it at once; this bounds how long a change the server only
+   * observes (kick, ban, leaving the corp) takes to stop a token.
+   */
+  USER_API_AUTH_CACHE_TTL_MS: 10_000,
+
+  /** Distinct token hashes (misses included) held in the user API auth cache before LRU eviction. */
+  USER_API_AUTH_CACHE_MAX_ENTRIES: 10_000,
+
+  /**
    * Outbound links the spectator view's promo bar offers a logged-out visitor.
    * The instance itself is always the deployment root, so it is not named here.
    */

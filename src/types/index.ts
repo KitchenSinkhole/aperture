@@ -275,6 +275,76 @@ export type BlackoutViewer = {
   userId: number;
 };
 
+/** Stable machine-readable refusal codes of the `/api/v1/*` user API. */
+export type UserApiErrorCode =
+  | 'invalid_token'
+  | 'account_blocked'
+  | 'token_suspended'
+  | 'api_disabled'
+  | 'access_lost'
+  | 'rate_limited'
+  | 'scope_not_granted';
+
+/**
+ * A user API bearer token resolved with its map, its owning account and that
+ * account's main. The input to the pure access decision (`authorize.ts`).
+ */
+export type UserApiTokenRecord = {
+  token: {
+    id: bigint;
+    mapId: bigint;
+    /** The owning account (`ap_user.id`). */
+    userId: number;
+    label: string;
+    prefix: string;
+    scopes: ApiScope[];
+    expiresAt: Date | null;
+    revokedAt: Date | null;
+    suspendedUntil: Date | null;
+  };
+  map: {
+    id: bigint;
+    name: string;
+    deletedAt: Date | null;
+    apiEnabled: boolean;
+    apiScopes: ApiScope[];
+  };
+  account: {
+    userId: number;
+    /** The account's main, when it is set and still on this account. */
+    mainCharacterId: bigint | null;
+    mainCharacterName: string | null;
+    apiBlockedAt: Date | null;
+    apiBlockedUntil: Date | null;
+    apiBlockReason: string | null;
+  };
+  /**
+   * The main's standing, evaluated only for a token that is neither revoked,
+   * expired nor on a deleted map when resolved; null otherwise.
+   */
+  access: {
+    /** `canViewMap(main, map)`. */
+    mainCanView: boolean;
+    /** The login gate on the main's cached affiliation. */
+    mainLoginAllowed: boolean;
+    /** The owning account's standing under Blackout. */
+    blackout: BlackoutViewer;
+  } | null;
+};
+
+/** The outcome of the user API's token access decision (pipeline steps 3 to 5, and 7). */
+export type UserApiDecision =
+  | { ok: true; record: UserApiTokenRecord }
+  | {
+      ok: false;
+      status: 401 | 403;
+      code: UserApiErrorCode;
+      /** Seconds until a suspension ends; set only for `token_suspended`. */
+      retryAfterSec?: number;
+      /** The resolved token on a 403; always null on a 401, so 401s stay indistinguishable. */
+      record: UserApiTokenRecord | null;
+    };
+
 /** One Blackout cleared-list entry (a `blackout_view` grant) as the admin panel lists it. */
 export type BlackoutClearance = {
   grantId: string;

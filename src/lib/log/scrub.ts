@@ -2,6 +2,7 @@
 // ([[logger]]), reached by background-job code the custom `server.ts` loads via
 // tsx outside Next's bundler where the `server-only` shim doesn't resolve. Pure
 // data transform — no DB, no I/O.
+import { redactUserApiTokens } from '@/lib/userApi/token';
 
 /**
  * PII scrubbing for anything bound for `ap_error_log.context`. The stored
@@ -49,8 +50,14 @@ function normalizeKey(key: string): string {
 
 function scrubValue(value: unknown, depth: number): unknown {
   if (value instanceof Error) {
-    return { name: value.name, message: value.message, stack: value.stack };
+    return {
+      name: value.name,
+      message: redactUserApiTokens(value.message),
+      stack: value.stack === undefined ? undefined : redactUserApiTokens(value.stack),
+    };
   }
+  // A user API bearer token is a secret wherever it appears, whatever its key.
+  if (typeof value === 'string') return redactUserApiTokens(value);
   if (value === null || typeof value !== 'object') return value;
   if (depth >= MAX_DEPTH) return undefined;
   if (Array.isArray(value)) return value.map((v) => scrubValue(v, depth + 1));
