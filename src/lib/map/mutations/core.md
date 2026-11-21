@@ -30,8 +30,8 @@ The Drizzle transaction handle used by `commitMapEvent` and its callers. Exporte
 ### type CommitMapEventArgs<K>
 The argument bag for `commitMapEvent` (see parameters above).
 
-### enqueueWebhookDispatch(mapId: bigint, eventId: number, occurredAt: Date): Promise<void>
-Fire-and-forget enqueue of the `webhook-dispatch` graphile-worker job for one committed event, guarded by a cheap `ap_map_webhook` EXISTS check (no traffic for webhook-less maps). Failures are logged and swallowed. Normally called internally by `commitMapEvent` (standalone mode); exported so orchestrators that run in joined-tx mode — which skips the per-commit enqueue — can re-fire it for selected events after their outer transaction commits (e.g. `addSystemWithStargateLinks` enqueues only the `system.added` event).
+### enqueueWebhookDispatch(mapId: bigint, eventId: number, occurredAt?: Date): Promise<void>
+Fire-and-forget enqueue of the `webhook-dispatch` graphile-worker job for one committed event, guarded by a cheap `ap_map_webhook` EXISTS check (no traffic for webhook-less maps). The job carries the event's exact `occurred_at`, which the dispatcher needs to find it; a caller that committed in joined-tx mode omits `occurredAt` and it is read from the committed row (no job when the row is missing). Failures are logged and swallowed. Normally called internally by `commitMapEvent` (standalone mode); exported so orchestrators that run in joined-tx mode — which skips the per-commit enqueue — can re-fire it for selected events after their outer transaction commits (e.g. `addSystemWithStargateLinks` enqueues only the `system.added` event).
 
 ### Notes
 - **No `import 'server-only'`.** This module is the low-level commit primitive consumed by the high-level mutation wrappers (`signatures.ts` / `connections.ts` / `systems.ts` — all of which carry the guard) AND by the graphile-worker tasks under `src/lib/jobs/tasks/`, which run under plain Node (no React `react-server` export condition) and would crash on the bare `server-only/index.js` throw. The client-bundle guard lives at the wrapper layer instead, which is the API surface a Client Component might mistakenly reach for.

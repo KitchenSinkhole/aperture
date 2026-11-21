@@ -14,7 +14,7 @@ import {
   universeRegion,
   universeSystem,
 } from '@/db/schema';
-import { commitMapEvent } from '@/lib/map/mutations/core';
+import { commitMapEvent, enqueueWebhookDispatch } from '@/lib/map/mutations/core';
 import { runWebhookDispatch } from '@/lib/webhooks/dispatcher';
 
 /**
@@ -23,7 +23,8 @@ import { runWebhookDispatch } from '@/lib/webhooks/dispatcher';
  *
  * Covers: per-event dispatch (success, retriable 5xx, terminal 404), the
  * rally-vs-history routing rule, the no-webhook short-circuit in
- * `commitMapEvent`, the graphile-worker enqueue when a webhook exists, and
+ * `commitMapEvent`, the graphile-worker enqueue when a webhook exists, a
+ * joined-tx event enqueued without its timestamp reaching Discord, and
  * audit-only token events neither enqueued nor posted.
  */
 const run = process.env.RUN_DB_TESTS === '1';
@@ -244,6 +245,42 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
     const notes = await runWebhookDispatch(mapId, 999_999_999n, new Date());
     expect(notes.missingEvent).toBe(true);
     expect(fetchCalls).toHaveLength(0);
+  });
+
+  it('posts a joined-tx event enqueued without its timestamp', async () => {
+    await db.insert(apMapWebhook).values({
+      mapId,
+      channel: 'discord',
+      event: 'history',
+      url: 'https://discord.example/webhooks/A',
+    });
+    const eventId = await db.transaction(async (tx) => {
+      const committed = await commitMapEvent({
+        tx,
+        mapId,
+        characterId: null,
+        kind: 'api.enabled',
+        mutate: async () => ({ scopes: ['map' as const] }),
+      });
+      if (!committed.ok) throw new Error(committed.error);
+      return committed.eventId;
+    });
+    expect(await countQueuedJobs()).toBe(0);
+
+    await enqueueWebhookDispatch(mapId, eventId);
+    expect(await countQueuedJobs()).toBe(1);
+    const job = await firstQueuedJob();
+    const queued = job.payload as { eventId: string; occurredAt: string };
+    const [row] = await db
+      .select({ occurredAt: apMapEvent.occurredAt })
+      .from(apMapEvent)
+      .where(eq(apMapEvent.id, BigInt(eventId)));
+    expect(queued.occurredAt).toBe(row!.occurredAt.toISOString());
+
+    mockFetchOnce(204);
+    const notes = await runWebhookDispatch(mapId, BigInt(queued.eventId), new Date(queued.occurredAt));
+    expect(notes).toMatchObject({ attempted: 1, succeeded: 1 });
+    expect(String(fetchCalls[0]!.init?.body).toLowerCase()).toContain('enabled the user api');
   });
 
   it('never posts or enqueues an audit-only token event', async () => {

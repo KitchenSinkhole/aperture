@@ -388,7 +388,7 @@ export async function updateMapApiSettings(
   if (eventId === null) return { ok: true };
 
   invalidateUserApiMap(mapId);
-  await enqueueWebhookDispatch(mapId, eventId, new Date());
+  await enqueueWebhookDispatch(mapId, eventId);
   return { ok: true };
 }
 
