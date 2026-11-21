@@ -1,12 +1,14 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db/client';
-import { apCharacter } from '@/db/schema';
+import { apCharacter, apUser } from '@/db/schema';
 import { auth } from '@/lib/auth';
 import { isAdmin } from '@/lib/auth/rights';
+import { getLogger } from '@/lib/log/logger';
+import { invalidateUserApiAccount } from '@/lib/userApi/authorize';
 
 /**
  * Admin moderation actions on `ap_character` rows: `kick` / `ban` / `activate`.
@@ -37,6 +39,8 @@ const optionalReasonSchema = z
   .optional();
 
 type ActionResult = { ok: true } | { ok: false; error: string };
+
+const log = getLogger('server');
 
 async function gateAdmin(): Promise<ActionResult> {
   const session = await auth();
@@ -152,5 +156,87 @@ export async function adminActivateCharacter(
 
   revalidatePath('/admin/members');
   revalidatePath('/admin');
+  return { ok: true };
+}
+
+async function accountOfCharacter(id: bigint): Promise<number | null> {
+  const [row] = await db
+    .select({ userId: apCharacter.userId })
+    .from(apCharacter)
+    .where(eq(apCharacter.id, id));
+  return row?.userId ?? null;
+}
+
+/**
+ * Block the user API for the whole account `characterId` belongs to, until an
+ * admin lifts it (`api_blocked_until` NULL). A free-text `reason` is required
+ * and is shown to the account. While blocked the account cannot mint and every
+ * token it owns answers `account_blocked`. Writes no `ap_map_event` (the block
+ * is not map-scoped); logged at `warn`.
+ */
+export async function adminBlockUserApi(
+  characterId: string,
+  reason: string,
+): Promise<ActionResult> {
+  const parsedId = characterIdSchema.safeParse(characterId);
+  if (!parsedId.success) return { ok: false, error: parsedId.error.issues[0]!.message };
+  const parsedReason = reasonSchema.safeParse(reason);
+  if (!parsedReason.success) return { ok: false, error: 'Reason is required.' };
+
+  const gate = await gateAdmin();
+  if (!gate.ok) return gate;
+  const userId = await accountOfCharacter(BigInt(parsedId.data));
+  if (userId === null) return { ok: false, error: 'Character not found.' };
+
+  // The app clock, not the database's: the block is evaluated against it.
+  const now = new Date();
+  await db
+    .update(apUser)
+    .set({
+      apiBlockedAt: now,
+      apiBlockedUntil: null,
+      apiBlockReason: parsedReason.data,
+      updatedAt: now,
+    })
+    .where(eq(apUser.id, userId));
+  // After the write commits, so the very next request reads the block.
+  invalidateUserApiAccount(userId);
+  log.warn('user API account blocked by an admin', { userId, characterId: parsedId.data });
+
+  revalidatePath('/admin/members');
+  return { ok: true };
+}
+
+/**
+ * Lift the account's standing user API block, timed or indefinite, by ending
+ * it now (`api_blocked_until = now()`). `api_blocked_at` is kept, since the
+ * repeat-offence window reads it. Refused when the account is not blocked.
+ */
+export async function adminLiftUserApiBlock(characterId: string): Promise<ActionResult> {
+  const parsedId = characterIdSchema.safeParse(characterId);
+  if (!parsedId.success) return { ok: false, error: parsedId.error.issues[0]!.message };
+
+  const gate = await gateAdmin();
+  if (!gate.ok) return gate;
+  const userId = await accountOfCharacter(BigInt(parsedId.data));
+  if (userId === null) return { ok: false, error: 'Character not found.' };
+
+  const now = new Date();
+  const lifted = await db
+    .update(apUser)
+    .set({ apiBlockedUntil: now, updatedAt: now })
+    .where(
+      and(
+        eq(apUser.id, userId),
+        isNotNull(apUser.apiBlockedAt),
+        or(isNull(apUser.apiBlockedUntil), gt(apUser.apiBlockedUntil, now)),
+      ),
+    )
+    .returning({ id: apUser.id });
+  if (lifted.length === 0) return { ok: false, error: 'This account has no API block.' };
+  invalidateUserApiAccount(userId);
+  log.warn('user API account block lifted by an admin', { userId, characterId: parsedId.data });
+
+  revalidatePath('/admin/members');
   return { ok: true };
 }

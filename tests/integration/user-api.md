@@ -19,4 +19,4 @@ Pins `Date` (fake timers, Date only) to the start of a rate window so no limiter
 - 429 `rate_limited` with `Retry-After` past the per-token cap.
 - Ordering: a request for an ungranted scope is charged against the budget (and its usage tallied) before the scope refusal, and is eventually refused 429.
 - A token hammering through three hot windows is suspended by the abuse ladder, and its next request is `token_suspended`.
-- CORS preflight; 404 for every endpoint and the preflight while the instance switch is off, served again once it is back on.
+- CORS preflight; 404 for every endpoint and the preflight while the instance switch is off, served again once it is back on. The switch is flipped through the operator's `adminSetUserApiEnabled` action (with `auth()` mocked to an admin seeded beside the main), after a request that caches it, so the case proves the action's invalidation.

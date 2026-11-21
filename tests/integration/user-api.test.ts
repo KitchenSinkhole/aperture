@@ -2,6 +2,7 @@
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { and, eq, inArray } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
+import type { Session } from 'next-auth';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, pool } from '@/db/client';
 import {
@@ -49,8 +50,16 @@ import { apertureConfig } from '../../aperture.config';
  */
 const run = process.env.RUN_DB_TESTS === '1';
 
+// Only the operator's switch action reads a session; the routes never do.
+let currentSession: Session | null = null;
+vi.mock('@/lib/auth', () => ({ auth: vi.fn(async () => currentSession) }));
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+
+const { adminSetUserApiEnabled } = await import('@/app/(admin)/actions/settings');
+
 const CORP = 97349001n;
 const MAIN = 97340001n;
+const ADMIN = 97340002n;
 const MAP_NAME = 'User API HTTP Map';
 const ALL_SCOPES: ApiScope[] = ['map', 'signatures', 'pilots', 'notes', 'mass_log', 'kills'];
 
@@ -61,6 +70,7 @@ const HOT = apertureConfig.USER_API_HOT_WINDOW_REJECTS;
 type Handler = (request: NextRequest, ctx: unknown) => Promise<Response>;
 
 let userId = 0;
+let adminUserId = 0;
 let mapId = 0n;
 let fullTokenId = 0n;
 let full = '';
@@ -130,6 +140,22 @@ describe.skipIf(!run)('User API HTTP surface (real Postgres)', () => {
       allianceId: null,
       status: 'active',
     });
+    const [a] = await db.insert(apUser).values({}).returning({ id: apUser.id });
+    adminUserId = a!.id;
+    await db.insert(apCharacter).values({
+      id: ADMIN,
+      userId: adminUserId,
+      name: 'User API HTTP Admin',
+      ownerHash: 'user-api-http-admin-hash',
+      authzLevel: 'admin',
+      corporationId: CORP,
+      allianceId: null,
+      status: 'active',
+    });
+    currentSession = {
+      characterId: ADMIN.toString(),
+      user: { id: String(adminUserId) },
+    } as unknown as Session;
     const [m] = await db
       .insert(apMap)
       .values({ name: MAP_NAME, scope: 'wh', type: 'corp', ownerCorporationId: CORP })
@@ -387,8 +413,9 @@ describe.skipIf(!run)('User API HTTP surface (real Postgres)', () => {
   });
 
   it('answers 404 for the whole group while the instance switch is off', async () => {
-    await db.update(apInstance).set({ userApiEnabled: false }).where(eq(apInstance.id, 1));
-    invalidateUserApiInstanceSwitch();
+    // Served once first, so the switch is cached and only the action's invalidation can flip it.
+    expect((await call(mapGET, '/api/v1/map', { token: full })).status).toBe(200);
+    expect(await adminSetUserApiEnabled({ enabled: false })).toEqual({ ok: true });
     try {
       for (const [handler, path] of [
         [tokenGET, '/api/v1/token'],
@@ -400,8 +427,7 @@ describe.skipIf(!run)('User API HTTP surface (real Postgres)', () => {
       }
       expect((await call(mapGET, '/api/v1/map')).status).toBe(404);
     } finally {
-      await db.update(apInstance).set({ userApiEnabled: true }).where(eq(apInstance.id, 1));
-      invalidateUserApiInstanceSwitch();
+      expect(await adminSetUserApiEnabled({ enabled: true })).toEqual({ ok: true });
     }
     expect((await call(mapGET, '/api/v1/map', { token: full })).status).toBe(200);
   });
@@ -415,9 +441,11 @@ async function cleanup() {
   const users = await db
     .select({ userId: apCharacter.userId })
     .from(apCharacter)
-    .where(eq(apCharacter.id, MAIN));
-  await db.delete(apCharacter).where(eq(apCharacter.id, MAIN));
-  const userIds = [...new Set([...users.map((u) => u.userId), userId])].filter((id) => id !== 0);
+    .where(inArray(apCharacter.id, [MAIN, ADMIN]));
+  await db.delete(apCharacter).where(inArray(apCharacter.id, [MAIN, ADMIN]));
+  const userIds = [...new Set([...users.map((u) => u.userId), userId, adminUserId])].filter(
+    (id) => id !== 0,
+  );
   if (userIds.length > 0) await db.delete(apUser).where(inArray(apUser.id, userIds));
   await db.delete(apCorporation).where(eq(apCorporation.id, CORP));
 }
