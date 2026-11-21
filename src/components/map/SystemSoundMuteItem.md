@@ -18,7 +18,7 @@ A submenu trigger, `Sounds` (or `Sounds (Home)` on the Home node), opening three
 - Each checkbox shows `soundMutesFor` for the system, so a group muted by either the Home mutes or the system's own entry reads as checked.
 - Toggling saves `setSystemSoundMute(...)` through `saveSoundPrefs` and closes the menu. On Home, muting writes the account's Home mutes, which apply to the Home of every map; elsewhere it writes the system's own entry, which holds on every map the system appears on. Unmuting clears both.
 - With `MAX_SYSTEM_SOUND_MUTES` systems already muted and this one not among them, the unchecked items are disabled and a hint row points to Account settings.
-- Self-contained like `WatchConnectionItem`: no `MapCanvas` callback is involved.
+- Reads and saves the prefs itself; no `MapCanvas` callback.
 
 ### Emits / Calls
 - `saveSoundPrefs(next, prev)` — from `@/lib/sounds/savePrefs`
