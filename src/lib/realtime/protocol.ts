@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+  apiScope,
+  apiTokenRevokeReason,
   connectionScope,
   eolStage,
   mapCapability,
@@ -168,6 +170,7 @@ const signatureGroupKeyEnum = z.enum(signatureGroupKey.enumValues);
 const signatureClassKindEnum = z.enum(signatureClassKind.enumValues);
 const signatureActivityEnum = z.enum(signatureActivity.enumValues);
 const mapNoteSeverityEnum = z.enum(mapNoteSeverity.enumValues);
+const apiScopeEnum = z.enum(apiScope.enumValues);
 // `view` is implicit (any feature grant implies it) and never rides a delegation
 // event — only the six director features are grantable/revocable.
 const delegatableCapabilityEnum = z.enum(mapCapability.enumValues).exclude(['view']);
@@ -486,15 +489,58 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     shareId: z.string(),
     label: z.string(),
   }),
+  // Per-map user API. One settings save is one event: a flipped switch is
+  // `api.enabled` (with the scopes it was enabled with) or `api.disabled`; a
+  // scope edit with the switch unchanged is `api.scopes_changed`.
+  z.object({ kind: z.literal('api.enabled'), eventId, scopes: z.array(apiScopeEnum) }),
+  z.object({ kind: z.literal('api.disabled'), eventId }),
+  z.object({
+    kind: z.literal('api.scopes_changed'),
+    eventId,
+    added: z.array(apiScopeEnum),
+    removed: z.array(apiScopeEnum),
+  }),
+  // Token events never carry the raw token, its hash or its prefix: this
+  // envelope reaches every viewer of the map and the Discord history webhook.
+  // The owner is the owning account's main at event time, null when the
+  // account has no main.
+  z.object({
+    kind: z.literal('api.token_created'),
+    eventId,
+    tokenId: z.string(),
+    label: z.string(),
+    scopes: z.array(apiScopeEnum),
+    expiresAt: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal('api.token_revoked'),
+    eventId,
+    tokenId: z.string(),
+    label: z.string(),
+    ownerCharacterId: z.number().int().nullable(),
+    ownerName: z.string().nullable(),
+    reason: z.enum(apiTokenRevokeReason.enumValues),
+  }),
+  z.object({
+    kind: z.literal('api.token_suspended'),
+    eventId,
+    tokenId: z.string(),
+    label: z.string(),
+    ownerCharacterId: z.number().int().nullable(),
+    ownerName: z.string().nullable(),
+    until: z.string(),
+    strike: z.number().int().positive(),
+  }),
 ]);
 
 export type MapEventPayload = z.infer<typeof mapEventPayloadSchema>;
 
 /**
- * Seeded `ap_event_kind` values (migrations 0004 + 0014 + 0057 + 0061). The
- * discriminator set. Includes `map.restore`/`map.purge` for the admin maps
+ * Seeded `ap_event_kind` values (migrations 0004 + 0014 + 0057 + 0061 + 0073).
+ * The discriminator set. Includes `map.restore`/`map.purge` for the admin maps
  * panel, `access.granted`/`access.revoked` for per-title feature delegation,
- * and `share.created`/`share.revoked` for public share links.
+ * `share.created`/`share.revoked` for public share links, and the six `api.*`
+ * kinds for the per-map user API.
  */
 export const MAP_EVENT_KINDS = [
   'system.added',
@@ -518,6 +564,12 @@ export const MAP_EVENT_KINDS = [
   'access.revoked',
   'share.created',
   'share.revoked',
+  'api.enabled',
+  'api.disabled',
+  'api.scopes_changed',
+  'api.token_created',
+  'api.token_revoked',
+  'api.token_suspended',
 ] as const;
 
 export type MapEventKind = (typeof MAP_EVENT_KINDS)[number];

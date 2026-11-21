@@ -201,9 +201,44 @@ export function describeMapEvent(event: MapEventPayload, ctx: WebhookEventContex
       return `published public share link **${event.label}** (${describeShareProfile(event)})`;
     case 'share.revoked':
       return `revoked public share link **${event.label}**`;
+    case 'api.enabled':
+      return `enabled the user API (${describeScopes(event.scopes)})`;
+    case 'api.disabled':
+      return `disabled the user API`;
+    case 'api.scopes_changed': {
+      const clauses: string[] = [];
+      if (event.added.length > 0) clauses.push(`added ${scopeList(event.added)}`);
+      if (event.removed.length > 0) clauses.push(`removed ${scopeList(event.removed)}`);
+      if (clauses.length === 0) return null;
+      return `changed the user API scopes (${clauses.join('; ')})`;
+    }
+    case 'api.token_created': {
+      const expiry = event.expiresAt ? `expires ${event.expiresAt.slice(0, 10)}` : 'no expiry';
+      return `created API token **${event.label}** (${describeScopes(event.scopes)}, ${expiry})`;
+    }
+    case 'api.token_revoked': {
+      const owner = event.ownerName ?? 'an unknown pilot';
+      const why = event.reason === 'abuse' ? ' after repeated rate-limit abuse' : '';
+      return `revoked API token **${event.label}** owned by **${owner}**${why}`;
+    }
+    case 'api.token_suspended': {
+      const owner = event.ownerName ?? 'an unknown pilot';
+      const until = `${event.until.slice(0, 16).replace('T', ' ')} UTC`;
+      return `suspended API token **${event.label}** owned by **${owner}** for rate-limit abuse (strike ${event.strike}, until ${until})`;
+    }
     default:
       return null;
   }
+}
+
+/** Backticked, comma-joined scope names. */
+function scopeList(scopes: readonly string[]): string {
+  return scopes.map((s) => `\`${s}\``).join(', ');
+}
+
+/** `scopes \`map\`, \`pilots\`` or `no scopes`, for a parenthetical. */
+function describeScopes(scopes: readonly string[]): string {
+  return scopes.length > 0 ? `scopes ${scopeList(scopes)}` : 'no scopes';
 }
 
 /** Human phrase for each share presence mode (what a spectator sees of the roster). */

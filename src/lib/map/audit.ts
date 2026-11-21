@@ -99,6 +99,8 @@ const DESTRUCTIVE_KINDS: ReadonlySet<MapEventKind> = new Set([
   'map.purge',
   'access.revoked',
   'share.revoked',
+  'api.disabled',
+  'api.token_revoked',
 ]);
 
 /**
@@ -126,8 +128,11 @@ const auditMainChar = alias(apCharacter, 'audit_main_char');
 const rolledActorId: SQL = sql`coalesce(${apUser.mainCharacterId}, ${apMapEvent.characterId})`;
 
 function kindCategory(kind: MapEventKind): AuditEventCategory {
-  // Every MapEventKind is `<category>.<verb>`; the prefix is one of the four.
-  return kind.slice(0, kind.indexOf('.')) as AuditEventCategory;
+  const prefix = kind.slice(0, kind.indexOf('.'));
+  // Share links and the user API file under `access`, as their `ap_event_kind`
+  // rows do; every other kind's prefix is its category.
+  if (prefix === 'share' || prefix === 'api') return 'access';
+  return prefix as AuditEventCategory;
 }
 
 function safeBigInt(value: string | null | undefined): bigint | null {

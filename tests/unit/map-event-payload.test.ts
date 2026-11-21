@@ -3,7 +3,7 @@ import { MAP_EVENT_KINDS, mapEventPayloadSchema } from '@/lib/realtime/protocol'
 
 // Pure (no DB) checks on the map-event payload contract.
 describe('mapEventPayloadSchema', () => {
-  it('covers all 12 seeded event kinds as discriminators', () => {
+  it('covers every seeded event kind as a discriminator', () => {
     const optionKinds = mapEventPayloadSchema.options.map((o) => o.shape.kind.value);
     expect(new Set(optionKinds)).toEqual(new Set(MAP_EVENT_KINDS));
   });
@@ -83,6 +83,80 @@ describe('mapEventPayloadSchema', () => {
     expect(() =>
       mapEventPayloadSchema.parse({ kind: 'connection.delete', id: '3' }),
     ).toThrow();
+  });
+
+  it('includes the six user API kinds', () => {
+    for (const kind of [
+      'api.enabled',
+      'api.disabled',
+      'api.scopes_changed',
+      'api.token_created',
+      'api.token_revoked',
+      'api.token_suspended',
+    ]) {
+      expect(MAP_EVENT_KINDS).toContain(kind);
+    }
+  });
+
+  it('accepts each user API payload', () => {
+    const payloads = [
+      { kind: 'api.enabled', eventId: 1, scopes: ['map', 'signatures'] },
+      { kind: 'api.disabled', eventId: 2 },
+      { kind: 'api.scopes_changed', eventId: 3, added: ['kills'], removed: ['pilots'] },
+      {
+        kind: 'api.token_created',
+        eventId: 4,
+        tokenId: '12',
+        label: 'chain bot',
+        scopes: ['map'],
+        expiresAt: '2027-02-19T00:00:00.000Z',
+      },
+      {
+        kind: 'api.token_revoked',
+        eventId: 5,
+        tokenId: '12',
+        label: 'chain bot',
+        ownerCharacterId: 90000001,
+        ownerName: 'Pilot Bar',
+        reason: 'manager',
+      },
+      {
+        kind: 'api.token_suspended',
+        eventId: 6,
+        tokenId: '12',
+        label: 'chain bot',
+        ownerCharacterId: null,
+        ownerName: null,
+        until: '2026-11-21T14:30:00.000Z',
+        strike: 1,
+      },
+    ];
+    for (const payload of payloads) {
+      expect(mapEventPayloadSchema.parse(payload)).toEqual(payload);
+    }
+  });
+
+  it('rejects an api scope outside the api_scope enum', () => {
+    expect(() =>
+      mapEventPayloadSchema.parse({ kind: 'api.enabled', eventId: 1, scopes: ['wallet'] }),
+    ).toThrow();
+  });
+
+  it('strips any raw token from a token event', () => {
+    const parsed = mapEventPayloadSchema.parse({
+      kind: 'api.token_created',
+      eventId: 7,
+      tokenId: '12',
+      label: 'chain bot',
+      scopes: ['map'],
+      expiresAt: null,
+      token: 'apu_secret',
+      tokenHash: 'abc',
+      tokenPrefix: 'secret',
+    });
+    expect(parsed).not.toHaveProperty('token');
+    expect(parsed).not.toHaveProperty('tokenHash');
+    expect(parsed).not.toHaveProperty('tokenPrefix');
   });
 
   it('rejects an unknown kind', () => {

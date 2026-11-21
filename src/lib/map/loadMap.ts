@@ -32,7 +32,7 @@ import {
 import { canViewMap, viewableMapPredicate } from '@/lib/auth/rights';
 import { getBlackoutStatus, isPilotHidden } from '@/lib/auth/blackout';
 import { resolveShipClass } from '@/lib/eve/shipClass';
-import type { BlackoutStatus, BlackoutViewer, ShipClass } from '@/types';
+import type { ApiScope, BlackoutStatus, BlackoutViewer, ShipClass } from '@/types';
 import { loadSignaturesForSystems } from './systemNode';
 import { apertureConfig } from '../../../aperture.config';
 
@@ -215,6 +215,10 @@ export type MapViewData = {
     tagScheme: TagScheme;
     /** `ap_map_system.id` of the designated Home (the 0121 root), or null. */
     homeMapSystemId: string | null;
+    /** Whether the map's user API is on; `api.enabled` / `api.disabled` keep it live. */
+    apiEnabled: boolean;
+    /** Scopes the map's user API exposes; `api.enabled` / `api.scopes_changed` keep it live. */
+    apiScopes: ApiScope[];
   };
   systems: MapSystemNode[];
   connections: MapConnectionEdge[];
@@ -296,6 +300,8 @@ export async function loadMapForView(
       type: apMap.type,
       tagScheme: apMap.tagScheme,
       homeMapSystemId: apMap.homeMapSystemId,
+      apiEnabled: apMap.apiEnabled,
+      apiScopes: apMap.apiScopes,
     })
     .from(apMap)
     .where(and(eq(apMap.id, mapId), isNull(apMap.deletedAt)));
@@ -413,6 +419,8 @@ export async function loadMapForView(
       type: map.type,
       tagScheme: map.tagScheme,
       homeMapSystemId: map.homeMapSystemId === null ? null : map.homeMapSystemId.toString(),
+      apiEnabled: map.apiEnabled,
+      apiScopes: map.apiScopes,
     },
     systems: systemRows.map((s) => ({
       id: s.id.toString(),

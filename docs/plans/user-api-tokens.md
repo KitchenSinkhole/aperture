@@ -220,7 +220,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 2 — Audit vocabulary
 **Mode:** Execute
-**Status:** todo
+**Status:** done — b1aaacb2
 **Goal:** Teach the event pipeline the six `api.*` kinds so later stages can commit them.
 **References:** `src/lib/realtime/protocol.md`, `src/lib/map/applyEvent.md`, `src/lib/webhooks/formatters.md`, `src/lib/map/audit.md`; the `share.created` / `share.revoked` entries in each are the model.
 **Touches:** `src/lib/realtime/protocol.ts`, `src/lib/map/applyEvent.ts`, `src/lib/webhooks/formatters.ts`, `src/lib/map/audit.ts`, `tests/unit/map-event-payload.test.ts`, `tests/unit/webhook-formatters.test.ts`, companions.
@@ -271,7 +271,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 **Status:** todo
 **Goal:** Give managers the switch and scope controls, and give viewers mint, list and revoke, inside Map Settings.
 **References:** `src/app/(app)/actions/mapShares.md`, `src/components/map/manage/MapSharePanel.md`, `src/components/dialogs/MapSettingsDialog.md`, `src/components/map/manage/MapRolesForm.md`, `src/app/(app)/actions/mapRoles.md`
-**Touches:** `src/app/(app)/actions/mapApi.ts` (new: read state, update settings, create token, revoke token), `src/components/map/manage/MapApiPanel.tsx` (new), `src/components/dialogs/MapSettingsDialog.tsx`, `src/components/map/manage/MapRolesForm.tsx`, whatever passes map API state into the dialog, tests, companions.
+**Touches:** `src/app/(app)/actions/mapApi.ts` (new: read state, update settings, create token, revoke token), `src/components/map/manage/MapApiPanel.tsx` (new), `src/components/dialogs/MapSettingsDialog.tsx`, `src/components/map/manage/MapRolesForm.tsx`, whatever passes map API state into the dialog, tests, companions. The map's `apiEnabled` / `apiScopes` already ride `MapViewData.map` (loaded by `loadMapForView`, kept live by `applyEvent` from the `api.*` settings events, Stage 2), so the tab's visibility and the create form's scope list can read them from the canvas view data instead of a separate fetch. The `api.token_revoked` / `api.token_suspended` payloads take `ownerCharacterId` as a number and `ownerName`, both nullable for an account with no main.
 **Done when:** action tests show settings changes need `api_manage` and a title-delegated holder passes; minting is refused when the map or the instance is off, when the account is blocked, when a requested scope is not exposed, and at either token cap; the mint result is the only place the raw token appears and no event payload contains it; revoking your own token works, revoking someone else's needs `api_manage`, and an unknown id and a forbidden id return the identical message; every settings change and revoke invalidates the Stage 3 cache; a component test covers the three panel states (viewer, manager, blocked account) and the one-time reveal.
 
 ## Stage 9 — Account token list
@@ -311,3 +311,5 @@ _(worked by the user once, after the run; the plan is not complete until it pass
 ## Notes
 _(appended by executing sessions; non-obvious findings only)_
 - **Stage 1** — a Drizzle `bigint({ mode: 'bigint' }).default(0n)` crashes `drizzle-kit generate` (`JSON.stringify` cannot serialise a BigInt). `ap_map_api_token.request_count` uses ``.default(sql`0`)`` instead; do the same for any future bigint default.
+- **Stage 2** — `MapAuditBrowser.tsx` keeps its own client-side copies of the per-category kind lists and the destructive set (it avoids importing the protocol runtime into the client bundle). Typecheck does not force a new kind into them, so a kind missing there silently drops out of the "Access" chip and "Deletions only" filters. `audit.ts`'s `kindCategory` likewise needs an explicit mapping for any prefix that is not itself a category (`share`, `api` both map to `access`).
+- **Stage 2 (review)** — constraints on the committers of `api.*` events, which `applyEvent` and `describeMapEvent` rely on: `api.token_suspended.until` must be a `toISOString()` value (the formatter slices it and labels it UTC); Stage 8 must never commit an `api.scopes_changed` with both lists empty (it renders as a vague fallback line and posts nothing to Discord); and a save that disables the API emits only `api.disabled`, so the client's `apiScopes` go stale if the same save also edits scopes. Stage 8 should either refuse scope edits in a disabling save or not prefill the manager's checkboxes from `MapViewData.map.apiScopes` while the API is off.
