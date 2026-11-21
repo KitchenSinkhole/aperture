@@ -533,6 +533,9 @@ export const apertureConfig = {
   /** Lifetime of a cached user API resource projection; data cannot be fresher than this, so polling faster buys nothing. */
   USER_API_PROJECTION_TTL_MS: 5_000,
 
+  /** Cached user API projections (one per map, resource and Blackout visibility) held before LRU eviction. */
+  USER_API_PROJECTION_CACHE_MAX_ENTRIES: 1_000,
+
   /**
    * The one fixed window every user API counter shares (per IP, failed auths
    * per IP, per token, per account, global). Every per-key counter is

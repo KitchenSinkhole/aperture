@@ -6,7 +6,22 @@
 ---
 
 ### loadMapForView(mapId: bigint, viewerCharacterId: bigint, viewerUserId: number): Promise<MapViewData | null>
-Loads one map for rendering. Returns `null` if the map is missing, soft-deleted, or the viewer is not allowed to see it (`canViewMap`). The viewer-id is required — passing the wrong one is an access-control bug the type system catches. Joins visible `ap_map_system` rows to `universe_system` / constellation / region (plus a LEFT JOIN on `ap_character` to resolve the lock holder's name, `lockedByName`), attaches wormhole static codes, loads the `ap_map_connection` rows whose **both** endpoints are currently visible **and** that are confirmed (`confirmed_at IS NOT NULL`) — orphan edges to hidden systems are excluded (their rows persist in the DB but would otherwise render as "Unknown" in consumers that iterate connections directly, e.g. `SystemOverlay`), and dormant `wh` connections (endpoint removed, sig not re-pasted) stay hidden so they don't resurface on reload; non-`wh` rows are always confirmed and so unaffected, and loads `ap_map_signature` rows for every visible system via `loadSignaturesForSystems` (`systemNode.ts` — the shared loader, LEFT JOIN to `universe_wormhole` to surface the WH code as `wormholeCode`; the same helper the per-system signatures endpoint uses). Also loads every `ap_map_note` on the map (two LEFT JOINs on `ap_character` to resolve the creator + last-editor names; notes are independent of system visibility), resolves the viewer account's Blackout standing (`getBlackoutStatus(viewerUserId)`), and calls `loadMapPresence(mapId, viewer)` so the returned `MapViewData` carries the initial roster of online tracked pilots as this viewer may see it, plus that standing as `blackout`. All `bigint` ids and `timestamptz`s are stringified (ISO for dates) so the result is serialisable across the Server→Client boundary.
+Loads one map for rendering. Returns `null` if the map is missing, soft-deleted, or the viewer is not allowed to see it (`canViewMap`). The viewer-id is required — passing the wrong one is an access-control bug the type system catches. Reads the map header, then composes the viewer-independent loaders below: `loadVisibleMapSystems`, `loadVisibleMapConnections` over those systems, `loadSignaturesForSystems` (`systemNode.ts`, the shared loader the per-system signatures endpoint also uses; LEFT JOIN to `universe_wormhole` surfaces the WH code as `wormholeCode`) for every visible system, and `loadMapNotes`. Also resolves the viewer account's Blackout standing (`getBlackoutStatus(viewerUserId)`) and calls `loadMapPresence(mapId, viewer)` so the returned `MapViewData` carries the initial roster of online tracked pilots as this viewer may see it, plus that standing as `blackout`. All `bigint` ids and `timestamptz`s are stringified (ISO for dates) so the result is serialisable across the Server→Client boundary.
+
+---
+
+### loadVisibleMapSystems(mapId: bigint): Promise<MapSystemNode[]>
+The map's `visible` `ap_map_system` rows joined to `universe_system` / constellation / region (plus a LEFT JOIN on `ap_character` for the lock holder's name, `lockedByName`), with wormhole statics from `loadStatics`, ordered by id. No access check: the caller gates the map. Shared by `loadMapForView` and the user API projections (`src/lib/userApi/projection.md`).
+
+---
+
+### loadVisibleMapConnections(mapId: bigint, visibleSystemIds: bigint[]): Promise<MapConnectionEdge[]>
+The map's `ap_map_connection` rows whose **both** endpoints are among `visibleSystemIds` **and** that are confirmed (`confirmed_at IS NOT NULL`), ordered by id; `[]` for no visible systems. Orphan edges to hidden systems are excluded (their rows persist in the DB but would otherwise render as "Unknown" in consumers that iterate connections directly, e.g. `SystemOverlay`), and dormant `wh` connections (endpoint removed, sig not re-pasted) stay hidden so they don't resurface on reload; non-`wh` rows are always confirmed and so unaffected. No access check. Shared by `loadMapForView` and the user API projections.
+
+---
+
+### loadMapNotes(mapId: bigint): Promise<MapNote[]>
+Every `ap_map_note` on the map, ordered by id, with two LEFT JOINs on `ap_character` resolving the creator and last-editor names. Notes are independent of system visibility. No access check. Shared by `loadMapForView` and the user API projections.
 
 ---
 

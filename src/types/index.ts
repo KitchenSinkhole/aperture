@@ -55,19 +55,26 @@ import type {
   apiScope,
   apiTokenRevokeReason,
   authzLevel,
+  connectionScope,
+  eolStage,
   errorLevel,
   errorSource,
   intelScope,
   mapCapability,
+  mapNoteSeverity,
   mapRight,
+  mapScope,
   mapType,
   roleSource,
   routeSafety,
   sharePresenceMode,
+  signatureClassKind,
   signatureGroupKey,
   structureEventKind,
+  systemStatus,
   tagScheme,
   whJumpMass,
+  whMass,
 } from '@/db/schema/ap/enums';
 
 export type UniverseRegion = InferSelectModel<typeof universeRegion>;
@@ -154,6 +161,9 @@ export type ConnectionMassLogEntry = {
   cumulativeMass: number;
   jumpedAt: string;
 };
+
+/** A mass-log entry from a map-wide listing: a `ConnectionMassLogEntry` naming its connection. */
+export type MapConnectionMassLogEntry = ConnectionMassLogEntry & { connectionId: string };
 
 export type ShipClass =
   | 'capsule'
@@ -396,6 +406,174 @@ export type UserApiRequestOutcome =
   | 'rate_limited'
   | 'unauthorized'
   | 'forbidden';
+
+/** A resource the user API projects from one map (`src/lib/userApi/projection.ts`). */
+export type UserApiResource = 'map' | 'signatures' | 'pilots' | 'notes' | 'mass_log';
+
+/** A visible system on the token's map. `id` is the `ap_map_system.id` that connection endpoints name. */
+export type UserApiSystem = {
+  id: string;
+  /** EVE solar-system id. */
+  systemId: number;
+  name: string;
+  alias: string | null;
+  tag: string | null;
+  status: (typeof systemStatus.enumValues)[number];
+  security: string | null;
+  trueSec: number | null;
+  effect: string | null;
+  regionName: string;
+  constellationName: string;
+  statics: { label: string; typeId: number }[];
+  tradeHub: { name: string; jumps: number } | null;
+  locked: boolean;
+  lockedByCharacterId: string | null;
+  lockedByName: string | null;
+  rallyAt: string | null;
+  positionX: number;
+  positionY: number;
+};
+
+/** A confirmed connection between two visible systems; `source` / `target` are `UserApiSystem.id`s. */
+export type UserApiConnection = {
+  id: string;
+  source: string;
+  target: string;
+  scope: (typeof connectionScope.enumValues)[number];
+  massStatus: (typeof whMass.enumValues)[number];
+  jumpMassClass: WhJumpMass | null;
+  eolStage: (typeof eolStage.enumValues)[number];
+  eolAt: string | null;
+  preserveMass: boolean;
+  isRolling: boolean;
+  isStatic: boolean;
+  sourceBubbled: boolean;
+  targetBubbled: boolean;
+  createdAt: string;
+};
+
+/** The `map` resource: the map header, its visible systems and its confirmed connections. */
+export type UserApiMap = {
+  map: {
+    id: string;
+    name: string;
+    scope: (typeof mapScope.enumValues)[number];
+    type: MapType;
+    homeMapSystemId: string | null;
+  };
+  systems: UserApiSystem[];
+  connections: UserApiConnection[];
+};
+
+/** A signature in a visible system, carrying that system's EVE id and name. */
+export type UserApiSignature = {
+  id: string;
+  mapSystemId: string;
+  systemId: number;
+  systemName: string;
+  connectionId: string | null;
+  sigId: string;
+  groupKey: SignatureGroupKey | null;
+  classKind: (typeof signatureClassKind.enumValues)[number] | null;
+  activityOverride: SignatureActivity | null;
+  typeId: number | null;
+  wormholeCode: string | null;
+  name: string | null;
+  description: string | null;
+  eolStage: (typeof eolStage.enumValues)[number];
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** An online tracked pilot as the token's owner may see them. No account id. */
+export type UserApiPilot = {
+  characterId: string;
+  characterName: string;
+  mainCharacterId: string | null;
+  mainCharacterName: string | null;
+  systemId: number;
+  systemName: string | null;
+  systemSecurity: string | null;
+  systemTrueSec: number | null;
+  shipTypeId: number | null;
+  shipTypeName: string | null;
+  shipClass: ShipClass | null;
+  shipName: string | null;
+  locationAt: string;
+};
+
+/** A free-standing map note. */
+export type UserApiNote = {
+  id: string;
+  title: string;
+  content: string | null;
+  severity: (typeof mapNoteSeverity.enumValues)[number];
+  locked: boolean;
+  positionX: number;
+  positionY: number;
+  createdByCharacterId: string | null;
+  createdByName: string | null;
+  lastEditedByCharacterId: string | null;
+  lastEditedByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** A visible system's intel-notes text. */
+export type UserApiSystemNote = {
+  mapSystemId: string;
+  systemId: number;
+  systemName: string;
+  intelNotes: string;
+};
+
+/** The `notes` resource: free-standing notes plus the intel notes of visible systems that have any. */
+export type UserApiNotes = {
+  notes: UserApiNote[];
+  systemNotes: UserApiSystemNote[];
+};
+
+/** One jump through a confirmed, visible connection, with the EVE ids of its two ends. */
+export type UserApiMassLogEntry = {
+  id: string;
+  connectionId: string;
+  sourceSystemId: number;
+  targetSystemId: number;
+  characterId: string | null;
+  characterName: string | null;
+  shipTypeId: number | null;
+  shipTypeName: string | null;
+  mass: number;
+  cumulativeMass: number;
+  jumpedAt: string;
+};
+
+/** The `data` each user API resource carries. */
+export type UserApiProjectionData = {
+  map: UserApiMap;
+  signatures: UserApiSignature[];
+  pilots: UserApiPilot[];
+  notes: UserApiNotes;
+  mass_log: UserApiMassLogEntry[];
+};
+
+/**
+ * The envelope fields a resource contributes besides `ok` and `generatedAt`.
+ * `hidden: true` appears only on a `mass_log` withheld by Blackout, with `data` empty.
+ */
+export type UserApiPayload<R extends UserApiResource = UserApiResource> = {
+  data: UserApiProjectionData[R];
+  hidden?: true;
+};
+
+/** A cached user API resource: its payload, the serialised success body and a weak ETag over the payload. */
+export type UserApiProjectionEntry<R extends UserApiResource = UserApiResource> = {
+  payload: UserApiPayload<R>;
+  generatedAt: string;
+  body: string;
+  etag: string;
+};
 
 /** One Blackout cleared-list entry (a `blackout_view` grant) as the admin panel lists it. */
 export type BlackoutClearance = {
