@@ -33,8 +33,15 @@ import {
  */
 
 type Listener = (message: ServerToClientMessage) => void;
+type InstanceListener = () => void;
 
 const PREFIX = apertureConfig.MAP_EVENT_NOTIFY_CHANNEL_PREFIX;
+const INSTANCE_CHANNEL = apertureConfig.INSTANCE_NOTIFY_CHANNEL;
+
+/** Quote a notify channel as a SQL identifier (map channels contain a colon). */
+function quoteChannel(channel: string): string {
+  return `"${channel.replace(/"/g, '""')}"`;
+}
 
 class RealtimeBus {
   private client: Client | null = null;
@@ -44,6 +51,7 @@ class RealtimeBus {
   private reconnectTimer: NodeJS.Timeout | null = null;
   /** mapId → set of listeners. The set's presence drives LISTEN/UNLISTEN. */
   private readonly listeners = new Map<bigint, Set<Listener>>();
+  private readonly instanceListeners = new Set<InstanceListener>();
 
   /** Subscribe to a map's events. Returns an unsubscribe function. */
   subscribe(mapId: bigint, listener: Listener): () => void {
@@ -69,29 +77,43 @@ class RealtimeBus {
     };
   }
 
+  /**
+   * Listen for instance-wide state changes (the Blackout switch and its cleared
+   * list). The notify carries no payload; a listener re-reads what it needs.
+   * Also fires after every (re)connect, because a notify sent while the LISTEN
+   * connection was down is lost. Returns an unsubscribe function.
+   */
+  onInstanceNotify(listener: InstanceListener): () => void {
+    this.instanceListeners.add(listener);
+    void this.ensureConnected();
+    return () => {
+      this.instanceListeners.delete(listener);
+    };
+  }
+
   /** Whether the dedicated LISTEN connection is currently live. */
   isHealthy(): boolean {
     return this.connected;
   }
 
-  /**
-   * Total active map subscriptions across all channels. Lets the health probe
-   * tell an *idle* bus (zero subscribers ⇒ intentionally not connected, since
-   * the connection is lazy) apart from a dropped connection that should exist.
-   */
+  /** Total active map subscriptions across all channels. */
   subscriberCount(): number {
     let total = 0;
     for (const set of this.listeners.values()) total += set.size;
     return total;
   }
 
+  /** Registered `onInstanceNotify` listeners. */
+  instanceListenerCount(): number {
+    return this.instanceListeners.size;
+  }
+
   private channel(mapId: bigint): string {
     return `${PREFIX}${mapId.toString()}`;
   }
 
-  /** Quote a notify channel as a SQL identifier (channels contain a colon). */
   private quoted(mapId: bigint): string {
-    return `"${this.channel(mapId).replace(/"/g, '""')}"`;
+    return quoteChannel(this.channel(mapId));
   }
 
   private async ensureConnected(): Promise<void> {
@@ -114,6 +136,8 @@ class RealtimeBus {
         for (const mapId of this.listeners.keys()) {
           await client.query(`LISTEN ${this.quoted(mapId)}`);
         }
+        await client.query(`LISTEN ${quoteChannel(INSTANCE_CHANNEL)}`);
+        this.notifyInstance();
       })
       .catch(() => this.handleDrop())
       .finally(() => {
@@ -152,7 +176,7 @@ class RealtimeBus {
     if (old) old.end().catch(() => {});
 
     // Only bother reconnecting if something still wants events.
-    if (this.listeners.size === 0) return;
+    if (this.listeners.size === 0 && this.instanceListeners.size === 0) return;
     if (this.reconnectTimer) return;
 
     const delay = Math.min(
@@ -166,7 +190,22 @@ class RealtimeBus {
     }, delay);
   }
 
+  private notifyInstance(): void {
+    for (const listener of this.instanceListeners) {
+      try {
+        listener();
+      } catch {
+        // A misbehaving listener must not stall the others.
+      }
+    }
+  }
+
   private dispatch(channel: string, raw: string | undefined): void {
+    if (channel === INSTANCE_CHANNEL) {
+      metrics.incrementCounter(PG_NOTIFY_RECEIVED_TOTAL, { channel: 'instance' });
+      this.notifyInstance();
+      return;
+    }
     if (!channel.startsWith(PREFIX)) return;
     // Collapse the unbounded `map:<id>` channel to a bounded class label so a
     // notify-stall is observable without per-map cardinality.
@@ -262,10 +301,10 @@ declare global {
   var __apertureRealtimeBus: RealtimeBus | undefined;
 }
 
+// Pinned in production too: the WS server (`server.ts` graph) owns the
+// connection, and the health probe (Next's bundled graph) must read that same
+// instance, not an unused copy.
 export const bus = globalThis.__apertureRealtimeBus ?? new RealtimeBus();
-
-if (env.NODE_ENV !== 'production') {
-  globalThis.__apertureRealtimeBus = bus;
-}
+globalThis.__apertureRealtimeBus = bus;
 
 export type { Listener };

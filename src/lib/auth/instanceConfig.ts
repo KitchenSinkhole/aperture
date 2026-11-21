@@ -2,7 +2,7 @@
 // `resolveAuthz.ts`. Read by the `/setup` Server Actions (server-side) and
 // exercised by integration tests under plain Node (tsx/vitest), so it must load
 // without the `react-server` resolver condition.
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apAccessGrant, apInstance, apInstanceOwner } from '@/db/schema';
 import type { AccessMode } from '@/types';
@@ -80,14 +80,20 @@ export async function getInstanceConfig(): Promise<InstanceConfig> {
       grantedAt: apAccessGrant.grantedAt,
     })
     .from(apAccessGrant)
-    .where(eq(apAccessGrant.scope, 'instance'))
+    .where(
+      and(
+        eq(apAccessGrant.scope, 'instance'),
+        inArray(apAccessGrant.capability, ['login', 'admin']),
+      ),
+    )
     .orderBy(asc(apAccessGrant.capability), asc(apAccessGrant.principalKind), asc(apAccessGrant.id));
 
   return {
     accessMode: row?.accessMode ?? 'restricted',
     updatedAt: row?.updatedAt ?? null,
-    // The CHECK constraints guarantee owner kind ∈ {corporation, alliance} and
-    // every selected grant carries an instance capability.
+    // The CHECK constraint guarantees owner kind ∈ {corporation, alliance}; the
+    // capability filter above keeps the Blackout cleared list out of the
+    // allowlist.
     owners: owners as InstanceOwnerRow[],
     grants: grants as InstanceGrantRow[],
   };

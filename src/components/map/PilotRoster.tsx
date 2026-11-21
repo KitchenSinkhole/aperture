@@ -48,11 +48,14 @@ export function PilotRoster({
   presence,
   systemNameById,
   viewerIds,
+  pilotsHidden,
 }: {
   presence: readonly MapPresenceEntry[];
   systemNameById: Map<number, MapSystemNode>;
   /** Character ids whose account currently has this map open in a live socket. */
   viewerIds: ReadonlySet<number>;
+  /** Blackout hides every pilot outside the viewer's account; `presence` holds only theirs. */
+  pilotsHidden: boolean;
 }) {
   const [query, setQuery] = useState('');
   const [prefs] = useState(loadRosterPrefs);
@@ -74,10 +77,23 @@ export function PilotRoster({
 
   // Distinct from a filtered-to-empty result: with no tracked pilots online there
   // is nothing to sort or filter, so skip the toolbar entirely.
-  if (presence.length === 0) return <EmptyRow>No tracked pilots are online.</EmptyRow>;
+  if (presence.length === 0) {
+    return (
+      <EmptyRow>
+        {pilotsHidden
+          ? 'Pilot locations are hidden during Blackout. None of your own characters are online.'
+          : 'No tracked pilots are online.'}
+      </EmptyRow>
+    );
+  }
 
   return (
     <div className="flex flex-col">
+      {pilotsHidden ? (
+        <p className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+          Pilot locations are hidden during Blackout. Only your own characters are shown.
+        </p>
+      ) : null}
       <div className="flex items-center gap-2 p-2">
         <div className="relative flex-1">
           <Search

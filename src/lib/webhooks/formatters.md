@@ -29,24 +29,24 @@ Returns true when `event.kind === 'system.updated'` AND `event.rallyAt` is a non
 ---
 
 ### formatHistoryMessage(event, ctx, mapName?): DiscordWebhookPayload | null
-Build a Discord payload (single-line `content`) describing the event for a `history` webhook. Composes `**<map>** — <who> <action>.` from `describeMapEvent` (which omits the actor) — `<who>` is `ctx.characterName ?? 'Aperture'`. Returns `null` for events that are nothing but cosmetic position updates / no-op updates (skip silently).
+Build a Discord payload (single-line `content`) describing the event for a `history` webhook. Composes `**<map>**: <who> <action>.` from `describeMapEvent` (which omits the actor) — `<who>` is `ctx.characterName ?? 'Aperture'`. With `ctx.hideActor` it names no actor at all: `**<map>**: <Action>.`, the action sentence-cased. Returns `null` for events that are nothing but cosmetic position updates / no-op updates (skip silently).
 
 **Parameters:**
 - `event` — the `ap_map_event.payload` validated against `mapEventPayloadSchema`.
 - `ctx` — pre-resolved names (`mapName`, `characterName`, `systemName`, `sourceSystemName`, `targetSystemName`).
 - `mapName` — defaults to `ctx.mapName`; override only for special cases.
 
-**Returns:** `{ content: '**<map>** — <who> added **<system>** to the map.' }` shape.
+**Returns:** `{ content: '**<map>**: <who> added **<system>** to the map.' }` shape.
 
 ---
 
 ### formatRallyMessage(event, ctx): DiscordWebhookPayload | null
 Build a Discord embed payload for a `rally` webhook. Returns `null` if the event is not a rally-set event (defensive — callers should check `isRallySetEvent` first).
 
-The embed is red (`0xE74C3C`), titled `"Rally point set in <system>"`, and timestamped with the event's `rallyAt` ISO string.
+The embed is red, titled `"Rally point set in <system>"`, described as `"Set by **<who>** on **<map>**."` (`"Set on **<map>**."` with `ctx.hideActor`), and timestamped with the event's `rallyAt` ISO string.
 
 ---
 
 ### Types
 
-- `WebhookEventContext` — `{ mapName, characterName, systemName, sourceSystemName, targetSystemName }`. Every name field is `string | null`; the dispatcher fills what it can resolve and the formatter falls back to generic placeholders ("a system", "Aperture", …) for missing pieces. For connection events `source`/`targetSystemName` are the two endpoints; for signature events `systemName` is the sig's own system and `targetSystemName` doubles as the sig's leads-to destination (resolved from `leadsToMapSystemId`).
+- `WebhookEventContext` — `{ mapName, characterName, systemName, sourceSystemName, targetSystemName, hideActor? }`. `hideActor` (Blackout on at dispatch time) makes both Discord formatters name no actor. Every name field is `string | null`; the dispatcher fills what it can resolve and the formatter falls back to generic placeholders ("a system", "Aperture", …) for missing pieces. For connection events `source`/`targetSystemName` are the two endpoints; for signature events `systemName` is the sig's own system and `targetSystemName` doubles as the sig's leads-to destination (resolved from `leadsToMapSystemId`).

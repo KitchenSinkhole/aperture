@@ -498,6 +498,13 @@
       "when": 1790033289128,
       "tag": "0071_user_sound_prefs",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1792270333660,
+      "tag": "0072_blackout",
+      "breakpoints": true
     }
   ]
 }

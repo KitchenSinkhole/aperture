@@ -2,6 +2,7 @@ import 'server-only';
 import { type NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { listConnectionMassLog } from '@/lib/map/connectionMassLog';
+import { getBlackoutStatus, isBlackedOut } from '@/lib/auth/blackout';
 import { parseBigInt, requireMapView } from '../../../../utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
@@ -11,6 +12,9 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
  *
  * Read-only: the log is server-derived from the location-poll;
  * there is no POST/DELETE. Access: view right on the target map.
+ *
+ * While Blackout restricts the viewer the log is withheld whole: `data` is
+ * empty and `hidden: true` tells the inspector why.
  */
 
 export const runtime = 'nodejs';
@@ -29,6 +33,10 @@ export const GET = withApiMetrics('/api/map/:mapId/connections/:connId/mass-log'
   const connectionId = parseBigInt(rawConnId);
   if (!connectionId) {
     return Response.json({ ok: false, error: 'Invalid connection id.' }, { status: 400 });
+  }
+
+  if (isBlackedOut(await getBlackoutStatus(session!.userId))) {
+    return Response.json({ ok: true, data: [], hidden: true });
   }
 
   const data = await listConnectionMassLog({ mapId: guard.mapId, connectionId });

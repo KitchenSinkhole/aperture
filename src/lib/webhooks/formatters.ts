@@ -16,6 +16,8 @@ export interface WebhookEventContext {
   /** Connection events have two endpoints — set both when known. */
   sourceSystemName: string | null;
   targetSystemName: string | null;
+  /** Blackout is on at dispatch time: posts name no actor. */
+  hideActor?: boolean;
 }
 
 const RALLY_EMBED_COLOR = 0xe74c3c; // Discord red
@@ -36,12 +38,15 @@ export function formatHistoryMessage(
   ctx: WebhookEventContext,
   mapName: string = ctx.mapName,
 ): DiscordWebhookPayload | null {
-  const who = ctx.characterName ?? 'Aperture';
   const line = describeMapEvent(event, ctx);
   if (!line) return null;
+  if (ctx.hideActor) {
+    return { content: `**${mapName}**: ${line.charAt(0).toUpperCase()}${line.slice(1)}.` };
+  }
+  const who = ctx.characterName ?? 'Aperture';
   // Discord has no actor column, so the name leads the sentence here. The audit
   // console (its own actor column) renders `describeMapEvent` without this prefix.
-  return { content: `**${mapName}** — ${who} ${line}.` };
+  return { content: `**${mapName}**: ${who} ${line}.` };
 }
 
 /** Build the Discord payload for a `rally` webhook. Caller should only invoke for `isRallySetEvent`. */
@@ -53,11 +58,11 @@ export function formatRallyMessage(
   // Narrowed by isRallySetEvent.
   const rallyAt = (event as Extract<MapEventPayload, { kind: 'system.updated' }>).rallyAt as string;
   const system = ctx.systemName ?? 'an unknown system';
-  const setter = ctx.characterName ?? 'Aperture';
-
   const embed: DiscordWebhookEmbed = {
     title: `Rally point set in ${system}`,
-    description: `Set by **${setter}** on **${ctx.mapName}**.`,
+    description: ctx.hideActor
+      ? `Set on **${ctx.mapName}**.`
+      : `Set by **${ctx.characterName ?? 'Aperture'}** on **${ctx.mapName}**.`,
     color: RALLY_EMBED_COLOR,
     timestamp: rallyAt,
   };

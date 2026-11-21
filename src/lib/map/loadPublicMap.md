@@ -18,7 +18,7 @@ Systems reuse `loadStatics` (`src/lib/map/loadMap.ts`) for the static-wormhole d
 
 **Entrances:** `derivePublicEntrances` (`src/lib/map/publicEntrances.ts`) runs over the projected systems and connections, yielding the k-space ways into the chain with the code to scan and the gate distance to the nearest hub. It also takes the map's Home so each entrance can carry the hop-by-hop way there, when one exists.
 
-**Presence:** branches on `profile.presenceMode`. `none` skips the query. Otherwise loads `loadMapPresence(mapId)` and filters to pilots whose system is actually visible on this map — a tracked pilot located elsewhere must not leak through a public share, since `loadMapPresence` deliberately returns pilots wherever they are. `anonymous` projects to per-system counts plus optional `byClass` buckets, no ids or names. `full` carries the roster minus account linkage (`userId`, `mainCharacterId`, `mainCharacterName`).
+**Presence:** branches on `profile.presenceMode`, read as `none` whenever Blackout is on (`getBlackoutState`), whatever the profile says; nothing in the payload says which. `none` skips the query. Otherwise loads `loadMapPresence(mapId, null)` and filters to pilots whose system is actually visible on this map — a tracked pilot located elsewhere must not leak through a public share, since `loadMapPresence` deliberately returns pilots wherever they are. `anonymous` projects to per-system counts plus optional `byClass` buckets, no ids or names. `full` carries the roster minus account linkage (`userId`, `mainCharacterId`, `mainCharacterName`).
 
 ### Types
 - `PublicMapSystemNode` — `{ id, systemId, name, tag, status, security, trueSec, effect, regionName, constellationName, statics, tradeHub, isHome, positionX, positionY }`. `isHome` marks the map's designated Home (`ap_map.home_map_system_id`), which a guest reads the chain from. Has no `alias`, `intelNotes`, lock fields, or `rallyAt` — those simply are not fields on this type.
@@ -30,4 +30,4 @@ Systems reuse `loadStatics` (`src/lib/map/loadMap.ts`) for the static-wormhole d
 - `PublicMapViewData` — `{ map: { name, shareLabel }, systems, connections, signatures, presence, entrances }`. No `id`, `scope`, `type`, `tagScheme`, `notes`, `intel`, `structures`, or stats field exists on this type. Home reaches the payload only as the per-system `isHome` flag, never as a map-level id.
 
 ### Depends on
-- `@/db/client` (`db`), `@/db/schema` (tables + enums), `@/lib/map/share` (`resolveShareToken`), `@/lib/map/loadMap` (`loadStatics`, `loadMapPresence`), `@/lib/map/publicEntrances` (`derivePublicEntrances`).
+- `@/db/client` (`db`), `@/db/schema` (tables + enums), `@/lib/map/share` (`resolveShareToken`), `@/lib/map/loadMap` (`loadStatics`, `loadMapPresence`), `@/lib/auth/blackout` (`getBlackoutState`), `@/lib/map/publicEntrances` (`derivePublicEntrances`).

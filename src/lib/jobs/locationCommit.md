@@ -17,6 +17,9 @@
 
 Returns `{ mapId, fromSystemAdded, toSystemAdded, connectionCreated, connectionId }`. The booleans surface in `ap_job_run.notes` so the operability sweep can tell "the poll detected jumps and they were fully novel" from "the poll detected jumps but everything was already on the map". `connectionId` is the traversed connection (created *or* pre-existing) and is consumed by the caller (`locationPoll.ts`) to write the per-jump mass-log (`src/lib/map/connectionMassLog.ts`) — only when `scope === 'wh'`, a filament has no mass budget and can't collapse. `connectionId` is **`null`** when the jump was suppressed by the `addNewSystems` gate (map closed + an endpoint off-map), in which case the caller skips the mass-log regardless of scope.
 
+### findTraversedConnection(mapId, fromSystemId, toSystemId): TraversedConnection | null
+Read-only lookup of the connection a jump traversed on this map: both systems already visible and joined by a **confirmed** connection in either direction. Returns `{ connectionId, scope }`, or `null` when an endpoint isn't visible or no confirmed connection joins them (a dormant one doesn't count). Never writes. Used by `locationPoll.ts` while Blackout is on, in place of `foldJumpOntoMap`, to feed the mass-log without changing the map.
+
 ### visibleMapSystemId(mapId, systemId): bigint | null
 Internal helper used by the `addNewSystems = false` path. Returns the `ap_map_system.id` for a system that is already on the map with `visible = true`, or `null` if it isn't placed/visible. Read-only — never inserts.
 

@@ -251,9 +251,10 @@ export const accessScope = pgEnum('access_scope', ['instance', 'map']);
 
 /**
  * What an access grant permits. `login`/`admin` are instance-scoped (allowlist
- * entry / super-admin); `view`/`edit` are map-scoped and reserved for the
- * temporary-sharing feature — declared so adding sharing needs no
- * `ALTER TYPE access_capability ADD VALUE`. The capability↔scope pairing is
+ * entry / super-admin); `blackout_view` is instance-scoped and clears its holder
+ * to see pilot presence during a Blackout; `view`/`edit` are map-scoped and
+ * reserved for the temporary-sharing feature — declared so adding sharing needs
+ * no `ALTER TYPE access_capability ADD VALUE`. The capability↔scope pairing is
  * enforced by a CHECK.
  */
 export const accessCapability = pgEnum('access_capability', [
@@ -261,6 +262,7 @@ export const accessCapability = pgEnum('access_capability', [
   'admin',
   'view',
   'edit',
+  'blackout_view',
 ]);
 
 /**

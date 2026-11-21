@@ -33,6 +33,7 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 **Realtime / WebSocket**
 - `APP_UPDATE_IDLE_RELOAD_MS` — how long a tab must stay continuously hidden, with a newer build deployed, before it reloads itself in the background. A visible tab is never reloaded from under the pilot; it gets a banner instead.
 - `MAP_EVENT_NOTIFY_CHANNEL_PREFIX` — `pg_notify` channel prefix for `ap_map_event` fanout.
+- `INSTANCE_NOTIFY_CHANNEL` — `pg_notify` channel for instance-wide state changes (the Blackout switch and cleared list). Not a map channel.
 - `WS_PATH` — WebSocket upgrade path on the same Next.js deployment.
 - `WS_HEARTBEAT_MS`, `WS_RECONNECT_BASE_MS`, `WS_RECONNECT_MAX_MS`, `WS_HEALTH_STALE_MS` — heartbeat, client reconnect backoff, and the staleness threshold that flips the degraded-mode banner.
 - `PRESENCE_SESSION_GAP_MS` — reconnect window within which `ap_character_presence` adopts the still-open session instead of opening a second one. `PRESENCE_LIVE_GRACE_MS` (2x `WS_HEARTBEAT_MS`) — how fresh `ended_at` must be for a session to read as live. `PRESENCE_RETENTION_DAYS` — prune horizon for the presence table.

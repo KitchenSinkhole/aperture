@@ -30,7 +30,8 @@ import { getMapViewerUserIds } from '@/lib/realtime/mapViewers';
 import { shipMass } from '@/lib/eve/shipMass';
 import { resolveShipClass } from '@/lib/eve/shipClass';
 import { recordLocationPoll } from '@/lib/metrics/registry';
-import { foldJumpOntoMap } from '../locationCommit';
+import { getBlackoutState } from '@/lib/auth/blackout';
+import { findTraversedConnection, foldJumpOntoMap } from '../locationCommit';
 import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
 import type { LocationPollOutcome } from '@/types';
@@ -105,6 +106,14 @@ interface PollNotes {
    * the flag off".
    */
   abyssalMapsSkipped?: number;
+  /**
+   * Set on a wormhole / abyssal tick that saw Blackout on: `mapsSkipped` counts
+   * the tracked maps whose fold was skipped, and `massLogged` the maps where the
+   * jump matched a confirmed `wh` connection already on the map and was logged.
+   * A tick that saw Blackout start mid-fan-out carries `folds` for the maps
+   * folded before it, and `blackout` for the rest.
+   */
+  blackout?: { mapsSkipped: number; massLogged: number };
 }
 
 async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<PollNotes> {
@@ -229,6 +238,7 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
     let jumpClass: JumpClass | null = null;
     let folds: FoldSummary[] | undefined;
     let abyssalMapsSkipped: number | undefined;
+    let blackout: PollNotes['blackout'];
     if (
       character.lastSystemId !== null &&
       location.solar_system_id !== character.lastSystemId
@@ -244,9 +254,40 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
         // map) for the per-connection mass-log. Only meaningful for `wh` —
         // a filament has no mass budget and can't collapse.
         const jumpMass = scope === 'wh' ? await shipMass(ship.ship_type_id) : null;
-        folds = [];
-        if (scope === 'abyssal') abyssalMapsSkipped = 0;
-        for (const { mapId, trackAbyssalJumps } of trackedMaps) {
+        // Blackout: a tracked jump must not reveal where pilots are by changing
+        // any map. Only a jump through a hole already on the map still feeds
+        // its mass log, which the egress hides from non-cleared viewers.
+        let blackedOut = (await getBlackoutState()).active;
+        if (blackedOut) {
+          blackout = { mapsSkipped: 0, massLogged: 0 };
+        } else {
+          folds = [];
+          if (scope === 'abyssal') abyssalMapsSkipped = 0;
+        }
+        for (const [i, { mapId, trackAbyssalJumps }] of trackedMaps.entries()) {
+          // Re-read before every fold after the first: Blackout may start while
+          // this fan-out runs, and no fold may commit once it has.
+          if (!blackedOut && i > 0) blackedOut = (await getBlackoutState()).active;
+          if (blackedOut) {
+            blackout ??= { mapsSkipped: 0, massLogged: 0 };
+            blackout.mapsSkipped += 1;
+            if (scope !== 'wh') continue;
+            const traversed = await findTraversedConnection(
+              mapId,
+              character.lastSystemId,
+              location.solar_system_id,
+            );
+            if (traversed?.scope !== 'wh') continue;
+            await logConnectionJump({
+              mapId,
+              connectionId: traversed.connectionId,
+              characterId,
+              shipTypeId: ship.ship_type_id,
+              mass: jumpMass,
+            });
+            blackout.massLogged += 1;
+            continue;
+          }
           // A map that hasn't opted in to `track_abyssal_jumps` sees nothing
           // for an abyssal transition.
           if (scope === 'abyssal' && !trackAbyssalJumps) {
@@ -280,7 +321,7 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
               mass: jumpMass,
             });
           }
-          folds.push({
+          (folds ??= []).push({
             mapId: mapId.toString(),
             fromSystemAdded: result.fromSystemAdded,
             toSystemAdded: result.toSystemAdded,
@@ -317,6 +358,7 @@ async function poll(payload: LocationPollPayload, helpers: JobHelpers): Promise<
       jumpClass,
       ...(folds ? { folds } : {}),
       ...(abyssalMapsSkipped !== undefined ? { abyssalMapsSkipped } : {}),
+      ...(blackout ? { blackout } : {}),
     };
   } catch (err) {
     if (err instanceof EsiTokenError) {

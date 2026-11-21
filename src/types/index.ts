@@ -248,6 +248,60 @@ export type AccessScope = (typeof accessScope.enumValues)[number];
 export type AccessCapability = (typeof accessCapability.enumValues)[number];
 export type ErrorLevel = (typeof errorLevel.enumValues)[number];
 export type ErrorSource = (typeof errorSource.enumValues)[number];
+
+/** The instance-wide Blackout switch, read from the `ap_instance` singleton. */
+export type BlackoutState = {
+  active: boolean;
+  /** When the current Blackout began; null while off. */
+  since: Date | null;
+  /** The admin who turned it on; null while off or once that character is erased. */
+  byCharacterId: bigint | null;
+};
+
+/** One viewer's standing under Blackout: the input to the presence predicate. */
+export type BlackoutViewer = {
+  active: boolean;
+  /** The viewer's account is on the cleared list (or holds a global admin). */
+  cleared: boolean;
+  /** The viewer's account (`ap_user.id`). */
+  userId: number;
+};
+
+/** One Blackout cleared-list entry (a `blackout_view` grant) as the admin panel lists it. */
+export type BlackoutClearance = {
+  grantId: string;
+  principalKind: 'character' | 'role';
+  principalId: string;
+  /** Character name, or the title's label; null when the principal is no longer known. */
+  name: string | null;
+  /** A title's issuing corporation; null for a character. */
+  corporationName: string | null;
+  expiresAt: string | null;
+  /** Past its expiry, so it no longer clears anyone. */
+  expired: boolean;
+  note: string | null;
+};
+
+/** A corp title the cleared list can name (`ap_role`, `source='corp_title'`). */
+export type BlackoutTitleOption = {
+  roleId: string;
+  label: string;
+  corporationId: string;
+  corporationName: string;
+};
+
+/** Everything `/admin/settings` renders for Blackout. Ids and dates are strings. */
+export type BlackoutPanelData = {
+  active: boolean;
+  since: string | null;
+  /** The admin who turned the current Blackout on; null while off or once erased. */
+  byCharacterName: string | null;
+  clearances: BlackoutClearance[];
+  /** Active characters Aperture knows, for the by-name picker. */
+  characters: { id: string; name: string }[];
+  titles: BlackoutTitleOption[];
+};
+
 /**
  * The redaction flags a resolved share token carries, keyed off `ap_map_share`'s
  * per-token columns. `loadPublicMapView` (Stage 2) branches on exactly this and
@@ -519,6 +573,7 @@ export type {
   ClientToServerTask,
   ServerToClientMessage,
   ClientToServerMessage,
+  BlackoutStatus,
 } from '@/lib/realtime/protocol';
 
 // Realtime client connection status (provider in src/lib/realtime/useRealtime.tsx).

@@ -8,6 +8,7 @@ import {
   smallint,
   timestamp,
 } from 'drizzle-orm/pg-core';
+import { apCharacter } from './character';
 import { accessMode, accessPrincipal } from './enums';
 
 // Permissions-overhaul. Per-deployment access configuration.
@@ -36,6 +37,15 @@ export const apInstance = pgTable(
     staleSignatureThresholdMinutes: integer('stale_signature_threshold_minutes')
       .notNull()
       .default(240),
+    // When the instance-wide Blackout began; NULL while it is off. No expiry:
+    // it stays on until an admin lifts it.
+    blackoutSince: timestamp('blackout_since', { withTimezone: true }),
+    // The admin who turned the current Blackout on; SET NULL so erasing them
+    // leaves the Blackout itself in force.
+    blackoutByCharacterId: bigint('blackout_by_character_id', { mode: 'bigint' }).references(
+      () => apCharacter.id,
+      { onDelete: 'set null' },
+    ),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check('ap_instance_singleton_chk', sql`${t.id} = 1`)],

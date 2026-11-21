@@ -12,6 +12,8 @@ import { apMap } from './map';
 //   * scope='instance', capability='login'  — allowlist entry.
 //   * scope='instance', capability='admin'  — explicit super-admin hand-grant
 //     on a character (read by `resolveAuthzLevel`).
+//   * scope='instance', capability='blackout_view' — a Blackout cleared-list
+//     entry on a character or title (read by `isBlackoutCleared`).
 // Reserved for the later sharing feature (table exists now; read-path consult
 // is added with that feature):
 //   * scope='map', capability='view' | 'edit'         — a named-entity map share
@@ -54,12 +56,20 @@ export const apAccessGrant = pgTable(
       .nullsNotDistinct(),
     // scope and map_id move together.
     check('ap_access_grant_scope_map_chk', sql`(${t.scope} = 'instance') = (${t.mapId} is null)`),
-    // capability pairs with scope: instance caps are login/admin; map caps are
-    // view/edit.
+    // capability pairs with scope: instance caps are login/admin/blackout_view;
+    // map caps are view/edit. The `::text` casts keep `blackout_view` a text
+    // literal: Postgres rejects a freshly added enum label inside the transaction
+    // that added it, and the migrator applies every pending migration in one.
     check(
       'ap_access_grant_capability_scope_chk',
-      sql`(${t.scope} = 'instance' and ${t.capability} in ('login', 'admin'))
-          or (${t.scope} = 'map' and ${t.capability} in ('view', 'edit'))`,
+      sql`(${t.scope} = 'instance' and ${t.capability}::text in ('login', 'admin', 'blackout_view'))
+          or (${t.scope} = 'map' and ${t.capability}::text in ('view', 'edit'))`,
+    ),
+    // The Blackout cleared list names characters and titles only: corporations
+    // and alliances are the audience a Blackout hides pilots from.
+    check(
+      'ap_access_grant_blackout_principal_chk',
+      sql`${t.capability}::text <> 'blackout_view' or ${t.principalKind} in ('character', 'role')`,
     ),
     // Resolver lookup: "all grants for this principal".
     index('ap_access_grant_principal_idx').on(t.principalKind, t.principalId),
