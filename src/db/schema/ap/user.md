@@ -21,6 +21,10 @@
   - `route_avoid_reduced` / `route_avoid_critical` (`routeAvoidReduced` / `routeAvoidCritical`) — `boolean NOT NULL DEFAULT false`. Drop reduced- / critical-mass wormholes from the routed graph.
   - `route_avoid_eol` (`routeAvoidEol`) — `boolean NOT NULL DEFAULT false`. Drop wormholes whose `eol_stage <> 'none'`.
   - `route_include_eve_scout` (`routeIncludeEveScout`) — `boolean NOT NULL DEFAULT false`. Fold the public EVE-Scout Thera/Turnur connections into the routed graph.
+- **user API account block** (migration `0073`) — instance-wide, covering every character on the account. Blocked while `api_blocked_at IS NOT NULL AND (api_blocked_until IS NULL OR api_blocked_until > now())`; evaluated at read time, so nothing clears the columns when a block runs out.
+  - `api_blocked_at` (`apiBlockedAt`) — nullable `timestamptz`. When the most recent block began; kept after the block ends, since the repeat-offence window reads it.
+  - `api_blocked_until` (`apiBlockedUntil`) — nullable `timestamptz`. NULL with `api_blocked_at` set = indefinite (until a global admin lifts it).
+  - `api_block_reason` (`apiBlockReason`) — nullable `text`.
 - `created_at` / `updated_at` — `timestamptz`, default `now()`.
 
-One user is created per newly-seen character. Additional characters are linked onto an existing user via the SSO tile grid / "add character" flow; `ap_character.user_id` FKs here.
+One user is created per newly-seen character. Additional characters are linked onto an existing user via the SSO tile grid / "add character" flow; `ap_character.user_id` FKs here, as does `ap_map_api_token.user_id` (the token owner).

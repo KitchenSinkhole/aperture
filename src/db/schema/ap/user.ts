@@ -1,4 +1,4 @@
-import { bigint, boolean, integer, jsonb, pgTable, timestamp } from 'drizzle-orm/pg-core';
+import { bigint, boolean, integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import type { MapLayoutConfig, SoundPrefs } from '@/types';
 import { routeSafety, whJumpMass } from './enums';
 
@@ -47,6 +47,14 @@ export const apUser = pgTable('ap_user', {
   routeAvoidCritical: boolean('route_avoid_critical').notNull().default(false),
   routeAvoidEol: boolean('route_avoid_eol').notNull().default(false),
   routeIncludeEveScout: boolean('route_include_eve_scout').notNull().default(false),
+  // User API account block. Blocked while `api_blocked_at IS NOT NULL AND
+  // (api_blocked_until IS NULL OR api_blocked_until > now())`; NULL until means
+  // indefinite. `api_blocked_at` outlives the block: it is when the most recent
+  // block began, which the repeat-offence window reads. Evaluated at read time,
+  // so nothing clears these columns when a block runs out.
+  apiBlockedAt: timestamp('api_blocked_at', { withTimezone: true }),
+  apiBlockedUntil: timestamp('api_blocked_until', { withTimezone: true }),
+  apiBlockReason: text('api_block_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

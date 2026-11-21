@@ -20,6 +20,8 @@
 - `tag_scheme` — `tag_scheme` enum, default `none`. Auto-tagging scheme (`none`/`abc`/`0121`).
 - `home_map_system_id` — `bigint`, nullable. The map's Home system both tagging schemes calculate from; cannot be deleted while designated (guard in `removeSystem`). FK → `ap_map_system.id` `ON DELETE SET NULL` is **declared in SQL only** (migration 0024) to avoid the `map.ts ↔ map_system.ts` import cycle — same pattern as `ap_user.main_character_id`.
 - `exempt_home_static_from_tag` — `boolean`, default `false` (migration 0032). When true (ABC scheme only), the system reached by the Home system's static connection (`ap_map_connection.is_static`) is left untagged; its letter is freed for reclaim. Reconciled by `reconcileHomeStaticExemption`.
+- `api_enabled` — `boolean`, default `false` (migration 0073). The map's user API switch; off means every token on the map answers `api_disabled`.
+- `api_scopes` — `api_scope[]`, default `'{}'` (migration 0073). The scopes the map exposes; a token is served only for a scope in both this list and its own `scopes`.
 - `created_at` / `updated_at` — `timestamptz`, default `now()`.
 - `deleted_at` — `timestamptz`, nullable. **Two-phase deletion**: `NULL` = active; non-null = soft-deleted (30-day grace before a cron hard-purge). No `active` boolean per CLAUDE.md lifecycle rule.
 

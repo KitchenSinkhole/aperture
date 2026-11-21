@@ -13,6 +13,7 @@ import type {
   apInstance,
   apInstanceOwner,
   apMap,
+  apMapApiToken,
   apMapConnection,
   apMapConnectionLog,
   apMapEvent,
@@ -51,6 +52,8 @@ import type {
   accessMode,
   accessPrincipal,
   accessScope,
+  apiScope,
+  apiTokenRevokeReason,
   authzLevel,
   errorLevel,
   errorSource,
@@ -208,6 +211,9 @@ export type NewApMapRoleAccess = InferInsertModel<typeof apMapRoleAccess>;
 export type ApMapShare = InferSelectModel<typeof apMapShare>;
 export type NewApMapShare = InferInsertModel<typeof apMapShare>;
 
+export type ApMapApiToken = InferSelectModel<typeof apMapApiToken>;
+export type NewApMapApiToken = InferInsertModel<typeof apMapApiToken>;
+
 export type ApInstance = InferSelectModel<typeof apInstance>;
 export type NewApInstance = InferInsertModel<typeof apInstance>;
 
@@ -246,6 +252,8 @@ export type AccessMode = (typeof accessMode.enumValues)[number];
 export type AccessPrincipal = (typeof accessPrincipal.enumValues)[number];
 export type AccessScope = (typeof accessScope.enumValues)[number];
 export type AccessCapability = (typeof accessCapability.enumValues)[number];
+export type ApiScope = (typeof apiScope.enumValues)[number];
+export type ApiTokenRevokeReason = (typeof apiTokenRevokeReason.enumValues)[number];
 export type ErrorLevel = (typeof errorLevel.enumValues)[number];
 export type ErrorSource = (typeof errorSource.enumValues)[number];
 

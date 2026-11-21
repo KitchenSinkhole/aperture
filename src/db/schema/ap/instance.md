@@ -12,6 +12,7 @@
 - `stale_signature_threshold_minutes` (`staleSignatureThresholdMinutes`) — `integer NOT NULL DEFAULT 240` (migration `0035`). Global default for the stale-signature map indicator: a system whose newest signature is older than this (or a wormhole system with no signatures) is flagged. Admins edit it via `/admin/settings` (`adminSetStaleSignatureThreshold`); each account may override it to a *smaller* value on `ap_user.stale_signature_threshold_minutes`. Resolved per-user by `getSignatureIndicatorPrefs` (`session.ts`).
 - `blackout_since` (`blackoutSince`) — `timestamptz`, nullable (migration `0072`). When the instance-wide Blackout began; NULL = off. No expiry: it stays on until an admin lifts it. Read by `getBlackoutState` (`src/lib/auth/blackout.ts`).
 - `blackout_by_character_id` (`blackoutByCharacterId`) — `bigint`, nullable, FK → `ap_character.id` `ON DELETE SET NULL` (migration `0072`). The admin who turned the current Blackout on; erasing them leaves the Blackout in force.
+- `user_api_enabled` (`userApiEnabled`) — `boolean NOT NULL DEFAULT true` (migration `0073`). Operator kill switch for the per-map user API: off means the whole `/api/v1/*` group answers 404 and minting is refused, whatever each map's `api_enabled` says.
 - `updated_at` — `timestamptz`, default `now()`.
 
 **Constraints:**

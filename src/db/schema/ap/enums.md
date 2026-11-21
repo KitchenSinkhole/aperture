@@ -48,7 +48,7 @@
 `pgEnum('map_right', ['map_create', 'map_update', 'map_delete', 'map_import', 'map_export', 'map_share'])` — the map-management rights vocabulary. No table stores these (the `ap_corporation_right` matrix was retired in 0041); the `canMutateMap` guards take a `MapRight` argument but only distinguish `map_update` (view-gated) from everything else (binary `canManageMap`) — no per-right granularity of its own. Per-map feature delegation to specific titles is the separate, shipped `MapCapability` vocabulary (`mapCapability` below).
 
 ### mapCapability
-`pgEnum('map_capability', ['view', 'audit_view', 'settings_manage', 'webhooks_manage', 'map_import', 'map_export', 'map_delete', 'share_manage'])` — the per-map delegatable feature surface on `ap_map_role_access.capability` (added migration 0056; `share_manage` migration 0061). Each value names one director-gated feature a corp title can be granted on a single map. `view` is the role→map view overlay (any feature grant implies view); the rest map one-to-one onto the director features (audit log, settings, webhooks, import, export, delete, public share links). Distinct from `map_right`, which mixes in non-delegatable, non-per-map values and lacks the `audit_view`/`settings_manage`/`webhooks_manage`/`share_manage` verbs. Directors/owners/admins hold every capability implicitly (`canManageMap`), so a grant only ever adds a title.
+`pgEnum('map_capability', ['view', 'audit_view', 'settings_manage', 'webhooks_manage', 'map_import', 'map_export', 'map_delete', 'share_manage', 'api_manage'])` — the per-map delegatable feature surface on `ap_map_role_access.capability` (added migration 0056; `share_manage` migration 0061; `api_manage` migration 0073). Each value names one director-gated feature a corp title can be granted on a single map. `view` is the role→map view overlay (any feature grant implies view); the rest map one-to-one onto the director features (audit log, settings, webhooks, import, export, delete, public share links, and the user API: its switch, its scopes, and other people's tokens). Distinct from `map_right`, which mixes in non-delegatable, non-per-map values and lacks the `audit_view`/`settings_manage`/`webhooks_manage`/`share_manage`/`api_manage` verbs. Directors/owners/admins hold every capability implicitly (`canManageMap`), so a grant only ever adds a title.
 
 ### signatureGroupKey
 `pgEnum('signature_group_key', ['combat', 'relic', 'data', 'gas', 'wormhole', 'ore', 'ghost'])` — scanner-level group of a cosmic signature (the seven keys EVE's probe scanner emits in its "Group" column). Nullable on `ap_map_signature.group_key`; replaced the prior `group_id` FK to `universe_group` (migration 0015), which couldn't represent the cosmic six.
@@ -85,6 +85,12 @@
 
 ### sharePresenceMode
 `pgEnum('share_presence_mode', ['none', 'anonymous', 'full'])` — roster disclosure level for a public map share on `ap_map_share.presence_mode`. `none` omits the roster entirely; `anonymous` emits per-system pilot counts with no names or character ids; `full` emits the roster minus account linkage (`userId`, `mainCharacterId`).
+
+### apiScope
+`pgEnum('api_scope', ['map', 'signatures', 'pilots', 'notes', 'mass_log', 'kills'])` — a read-only data scope of the per-map user API (migration 0073). Exposed per map on `ap_map.api_scopes` and requested per token on `ap_map_api_token.scopes`; a request is served only for a scope in both. Plain nouns, so a later write scope can take a suffixed name without colliding.
+
+### apiTokenRevokeReason
+`pgEnum('api_token_revoke_reason', ['creator', 'manager', 'abuse', 'admin'])` — why a user API token was revoked, on `ap_map_api_token.revoked_reason` (migration 0073): by its owning account, by a holder of `api_manage`, by the automatic abuse ladder, or by a global admin.
 
 ### errorLevel
 `pgEnum('error_level', ['warn', 'error', 'fatal'])` — severity of an `ap_error_log` row, mirroring the pino levels the structured logger ([[logger]]) emits. Only `error`/`fatal` are persisted today (the persist threshold in `src/lib/log/logger.ts`); `warn` is declared so the threshold could be lowered later without an `ALTER TYPE`. Added migration 0045 (observability phase 4).

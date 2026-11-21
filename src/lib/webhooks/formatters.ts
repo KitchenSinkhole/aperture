@@ -245,6 +245,7 @@ const CAPABILITY_LABEL: Record<
   map_export: 'map export',
   map_delete: 'map deletion',
   share_manage: 'share-link management',
+  api_manage: 'user API management',
 };
 
 /** Per-field `field → value` clauses for a `connection.update` patch (only changed keys). */

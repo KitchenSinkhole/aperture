@@ -212,7 +212,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 1 — Schema
 **Mode:** Execute
-**Status:** todo
+**Status:** done — d35b03b2
 **Goal:** Land every table, column and enum in the Data model section, with no behaviour.
 **References:** `src/db/schema/ap/map.md`, `src/db/schema/ap/map_share.md`, `src/db/schema/ap/user.md`, `src/db/schema/ap/instance.md`, `src/db/schema/ap/enums.md`, `src/db/schema/ap/event_kind.md`, `src/types/index.md`
 **Touches:** `src/db/schema/ap/enums.ts`, `src/db/schema/ap/map.ts`, `src/db/schema/ap/map_api_token.ts` (new), `src/db/schema/ap/user.ts`, `src/db/schema/ap/instance.ts`, `src/db/schema/index.ts`, `src/types/index.ts`, `src/db/migrations/0073_*` (generated with `pnpm db:generate`, plus a hand-written `.rollback.sql`), companions.
@@ -224,7 +224,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 **Goal:** Teach the event pipeline the six `api.*` kinds so later stages can commit them.
 **References:** `src/lib/realtime/protocol.md`, `src/lib/map/applyEvent.md`, `src/lib/webhooks/formatters.md`, `src/lib/map/audit.md`; the `share.created` / `share.revoked` entries in each are the model.
 **Touches:** `src/lib/realtime/protocol.ts`, `src/lib/map/applyEvent.ts`, `src/lib/webhooks/formatters.ts`, `src/lib/map/audit.ts`, `tests/unit/map-event-payload.test.ts`, `tests/unit/webhook-formatters.test.ts`, companions.
-**Done when:** each kind has a Zod payload schema in the discriminated union and an entry in `MAP_EVENT_KINDS`; `describeMapEvent` renders each as an actorless, entity-naming sentence (the token label and its owner, the scopes added and removed) and the tests assert the exact strings; `applyEvent` folds `api.enabled` / `api.disabled` / `api.scopes_changed` into the map header's API state and treats the token kinds as no-ops; `api.token_revoked` and `api.disabled` count as destructive in `auditActorSummary`; the unit suite passes.
+**Done when:** each kind has a Zod payload schema in the discriminated union and an entry in `MAP_EVENT_KINDS`; `describeMapEvent` renders each as an actorless, entity-naming sentence (the token label and its owner, the scopes added and removed) and the tests assert the exact strings; `applyEvent` folds `api.enabled` / `api.disabled` / `api.scopes_changed` into the map header's API state and treats the token kinds as no-ops; `api.token_revoked` and `api.disabled` count as destructive in `auditActorSummary`; the unit suite passes. (Stage 1 already added `api_manage` to `CAPABILITY_LABEL` in `formatters.ts`, because that record is exhaustive over `map_capability` and typecheck required it; review the phrase, don't re-add it.)
 
 ## Stage 3 — Token model and access decision
 **Mode:** Execute
@@ -310,3 +310,4 @@ _(worked by the user once, after the run; the plan is not complete until it pass
 
 ## Notes
 _(appended by executing sessions; non-obvious findings only)_
+- **Stage 1** — a Drizzle `bigint({ mode: 'bigint' }).default(0n)` crashes `drizzle-kit generate` (`JSON.stringify` cannot serialise a BigInt). `ap_map_api_token.request_count` uses ``.default(sql`0`)`` instead; do the same for any future bigint default.

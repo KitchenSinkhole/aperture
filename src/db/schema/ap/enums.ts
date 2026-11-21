@@ -110,11 +110,13 @@ export const mapRight = pgEnum('map_right', [
  * feature a corp title can be granted on a single map via an
  * `ap_map_role_access` row. `view` is the existing role→map view overlay (any
  * feature grant implies view). The rest map one-to-one onto the director
- * features: audit log, settings, webhooks, import, export, delete, and public
- * share links. Distinct from `map_right` (the coarse mutate-guard vocabulary),
+ * features: audit log, settings, webhooks, import, export, delete, public
+ * share links, and the user API (its switch, its scopes, and other people's
+ * tokens). Distinct from `map_right` (the coarse mutate-guard vocabulary),
  * which mixes in non-delegatable, non-per-map values (`map_create`, view-gated
  * `map_update`) and lacks `audit_view`/`settings_manage`/`webhooks_manage`/
- * `share_manage`. Directors/owners/admins hold every capability implicitly.
+ * `share_manage`/`api_manage`. Directors/owners/admins hold every capability
+ * implicitly.
  */
 export const mapCapability = pgEnum('map_capability', [
   'view',
@@ -125,6 +127,7 @@ export const mapCapability = pgEnum('map_capability', [
   'map_export',
   'map_delete',
   'share_manage',
+  'api_manage',
 ]);
 
 /**
@@ -287,3 +290,30 @@ export const errorLevel = pgEnum('error_level', ['warn', 'error', 'fatal']);
  * now to avoid a later `ALTER TYPE`).
  */
 export const errorSource = pgEnum('error_source', ['server', 'job', 'client']);
+
+/**
+ * A read-only data scope of the per-map user API. Granted on `ap_map.api_scopes`
+ * by a manager and requested on `ap_map_api_token.scopes` at mint; a request is
+ * served only for a scope in both. Plain nouns so a later write scope can take a
+ * suffixed name without colliding.
+ */
+export const apiScope = pgEnum('api_scope', [
+  'map',
+  'signatures',
+  'pilots',
+  'notes',
+  'mass_log',
+  'kills',
+]);
+
+/**
+ * Why a user API token was revoked (`ap_map_api_token.revoked_reason`):
+ * `creator` by its owning account, `manager` by a holder of `api_manage`,
+ * `abuse` by the automatic abuse ladder, `admin` by a global admin.
+ */
+export const apiTokenRevokeReason = pgEnum('api_token_revoke_reason', [
+  'creator',
+  'manager',
+  'abuse',
+  'admin',
+]);

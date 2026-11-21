@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   check,
   integer,
   pgTable,
@@ -46,6 +47,9 @@ export const apInstance = pgTable(
       () => apCharacter.id,
       { onDelete: 'set null' },
     ),
+    // Operator kill switch for the per-map user API. Off: every `/api/v1/*`
+    // route answers 404 and minting is refused, whatever each map says.
+    userApiEnabled: boolean('user_api_enabled').notNull().default(true),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check('ap_instance_singleton_chk', sql`${t.id} = 1`)],
