@@ -212,7 +212,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 1 — Schema
 **Mode:** Execute
-**Status:** done — d35b03b2
+**Status:** done — 2eb5817e
 **Goal:** Land every table, column and enum in the Data model section, with no behaviour.
 **References:** `src/db/schema/ap/map.md`, `src/db/schema/ap/map_share.md`, `src/db/schema/ap/user.md`, `src/db/schema/ap/instance.md`, `src/db/schema/ap/enums.md`, `src/db/schema/ap/event_kind.md`, `src/types/index.md`
 **Touches:** `src/db/schema/ap/enums.ts`, `src/db/schema/ap/map.ts`, `src/db/schema/ap/map_api_token.ts` (new), `src/db/schema/ap/user.ts`, `src/db/schema/ap/instance.ts`, `src/db/schema/index.ts`, `src/types/index.ts`, `src/db/migrations/0073_*` (generated with `pnpm db:generate`, plus a hand-written `.rollback.sql`), companions.
@@ -220,7 +220,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 2 — Audit vocabulary
 **Mode:** Execute
-**Status:** done — b1aaacb2
+**Status:** done — dff09f8b
 **Goal:** Teach the event pipeline the six `api.*` kinds so later stages can commit them.
 **References:** `src/lib/realtime/protocol.md`, `src/lib/map/applyEvent.md`, `src/lib/webhooks/formatters.md`, `src/lib/map/audit.md`; the `share.created` / `share.revoked` entries in each are the model.
 **Touches:** `src/lib/realtime/protocol.ts`, `src/lib/map/applyEvent.ts`, `src/lib/webhooks/formatters.ts`, `src/lib/map/audit.ts`, `tests/unit/map-event-payload.test.ts`, `tests/unit/webhook-formatters.test.ts`, companions.
@@ -228,7 +228,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 3 — Token model and access decision
 **Mode:** Execute
-**Status:** done — f184fa4c
+**Status:** done — 9884d961
 **Goal:** Resolve a bearer token to an allow or a coded refusal, per steps 3 to 5 and 7 of the pipeline.
 **References:** `src/lib/integrations/token.md`, `src/lib/auth/rights.md`, `src/lib/auth/loginGate.md`, `src/lib/auth/blackout.md`, `src/lib/log/scrub.md`
 **Touches:** `src/lib/userApi/token.ts` (new: generate, hash, parse), `src/lib/userApi/authorize.ts` (new: resolve, the pure decision function, the auth cache and its invalidation exports), `src/lib/log/scrub.ts`, `tests/unit/user-api-authorize.test.ts`, `tests/db/user-api-authorize.test.ts`, companions.
@@ -236,7 +236,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 4 — Rate limiting and the abuse ladder
 **Mode:** Execute
-**Status:** done — 65d9d0e0
+**Status:** done — df883948
 **Goal:** Count requests, refuse the excess, and turn sustained refusal into suspension, revocation and account block.
 **References:** `src/lib/userApi/authorize.md` (the decision record carries the token label and the owner's main id and name that the `api.token_*` payloads need), `src/lib/map/publicSnapshot.md`, `src/lib/log/clientErrorRate.md`, `src/lib/http/clientKey.md`, `src/lib/map/mutations/core.md`, `src/lib/metrics/registry.md`, `aperture.config.md`
 **Touches:** `aperture.config.ts` (the rest of the `USER_API_*` block; Stage 3 already added `USER_API_AUTH_CACHE_TTL_MS` and `USER_API_AUTH_CACHE_MAX_ENTRIES` under a "User API" heading in `aperture.config.md`), `src/lib/userApi/rateLimit.ts` (new: IP, token, account and global windows, failed-auth IP block, hot-window tracking), `src/lib/userApi/abuse.ts` (new: strike persistence, suspend, revoke, account block, each committing its event), `src/lib/userApi/usage.ts` (new: batched usage flush), `src/lib/metrics/registry.ts`, unit and DB tests, companions.
@@ -244,7 +244,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 5 — Read projections and cache
 **Mode:** Execute
-**Status:** done — 8e6a9ffb
+**Status:** done — 1b90c2a3
 **Goal:** Produce the five non-kill resources as stable DTOs behind a coalescing cache.
 **References:** `src/lib/userApi/authorize.md` (source of the owning account's `BlackoutViewer`), `src/lib/map/loadMap.md`, `src/lib/map/loadPublicMap.md` (a second projection over the same tables), `src/lib/map/publicSnapshot.md`, `src/lib/map/connectionMassLog.md`, `src/lib/auth/blackout.md`, `src/app/(admin)/actions/blackout.md`
 **Touches:** `src/lib/userApi/projection.ts` (new), `src/lib/userApi/cache.ts` (new; `USER_API_PROJECTION_TTL_MS` already exists in `aperture.config.ts`, add only an LRU size constant beside it), `src/lib/map/loadMap.ts` only if a viewer-independent loader has to be split out of `loadMapForView`, `src/lib/map/connectionMassLog.ts` (a map-wide list), `src/app/(admin)/actions/blackout.ts` (clear the API caches where it already clears public snapshots, including Stage 3's `clearUserApiAuthCache`, because the resolved token record carries the owning account's `BlackoutViewer` in `record.access.blackout`), `src/types/index.ts`, tests, companions.
@@ -252,7 +252,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 6 — HTTP surface
 **Mode:** Execute
-**Status:** done — 8abaabf3
+**Status:** done — 2434cecb
 **Goal:** Serve the six non-kill endpoints through one wrapper that runs the whole pipeline in the contracted order.
 **References:** `src/app/api/public/[token]/snapshot/route.md`, `src/lib/metrics/httpInstrumentation.md`, plus the Stage 3, 4 and 5 companions.
 **Touches:** `src/lib/userApi/handler.ts` (new: the wrapper, CORS and `OPTIONS`, envelope, ETag, rate-limit headers; step 2 is `checkUserApiIp` (a refusal is 429 `rate_limited` with its `retryAfterSec`); steps 3 to 5 are one `authorizeUserApiBearer` call, and every 401 the wrapper returns goes to `recordUserApiAuthFailure(ip)`; step 6 is `consumeUserApiRequest(record.token.id, record.account.userId)`, whose `limit` / `remaining` / `resetSec` feed the `RateLimit-*` headers; a `token_suspended` decision calls `noteUserApiSuspendedRequest(tokenId)`; whenever either of those reports a strike, fire `applyUserApiStrike(tokenId)` without awaiting it (it never throws); step 7 is `checkUserApiScope`; every request that passes step 6 calls `recordUserApiUsage(tokenId)`; every response calls `recordUserApiRequest(endpoint, outcome)`; `/api/v1/token` reports `effectiveUserApiScopes`; step 8 is `getUserApiProjection(record.map.id, resource, record.access.blackout)` (Stage 5), answering 304 when `If-None-Match` matches `entry.etag` and otherwise sending `entry.body` unchanged, since it is already the whole success envelope; `mass-log?connection=<id>` filters `entry.payload.data` by `connectionId` and serialises its own envelope and ETag; the `mass-log` endpoint maps to resource and scope `mass_log`; tests reset state with `__resetUserApiRateLimit` / `__resetUserApiUsage` / `clearUserApiProjections`), `src/app/api/v1/{token,map,signatures,pilots,notes,mass-log}/route.ts` (new, each a few lines), `tests/unit/user-api-route-coverage.test.ts` (new static scan), `tests/integration/user-api.test.ts` (new), companions. This is more files than a stage should carry; it is acceptable only because six of them are near-identical one-call handlers. If the wrapper grows past that, split the routes into their own stage.
@@ -260,7 +260,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 7 — Kills scope
 **Mode:** Execute
-**Status:** done — ac9ab9b7
+**Status:** done — 1f39faa6
 **Goal:** Serve kills in on-map systems from the local killmail cache, with no upstream call on the request path.
 **References:** `src/db/schema/universe/killmail.md`, `src/lib/integrations/zkbFeed.md`, `src/lib/integrations/zkb.md`, `src/lib/map/killboard.md`
 **Touches:** `src/db/schema/universe/killmail.ts` and migration `0074_*` (`solar_system_id` as a stored generated column over the body, an index on `(solar_system_id, killmail_time DESC)`, and a nullable `total_value`), `src/lib/integrations/zkbFeed.ts` (persist every kill that correlates to at least one active map, whatever its age, `ON CONFLICT DO NOTHING`), `src/lib/map/killboard.ts` (write `total_value` on its cache-aside insert), `src/lib/userApi/projection.ts` (a `kills` case in `loadUserApiProjection`), `src/types/index.ts` (`kills` joins `UserApiResource` and `UserApiProjectionData`), `src/lib/userApi/handler.ts` (a `serveUserApiKills` beside `serveUserApiMassLog`), `src/app/api/v1/kills/route.ts` (exported through `userApiRoute('kills', 'kills', serveUserApiKills)`, the shape `tests/unit/user-api-route-coverage.test.ts` enforces), tests, companions. The projection cache keys `kills` by map alone, so project the whole 7-day floor once and apply `since` and `limit` in the serve function over `entry.payload.data`, the way `serveUserApiMassLog` applies `?connection=`, with its own envelope and ETag, rather than letting query parameters multiply cache keys. The wrapper has no 400 path and `UserApiErrorCode` no bad-request code, so clamp an out-of-bounds or unparseable `since` / `limit` to its default or bound rather than refusing. Route tests that count requests must pin `Date` the way `tests/integration/user-api.test.ts` does (see Notes).
@@ -268,7 +268,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 8 — Map management and the API tab
 **Mode:** Execute
-**Status:** done — 77aa89bf
+**Status:** done — 221a02fe
 **Goal:** Give managers the switch and scope controls, and give viewers mint, list and revoke, inside Map Settings.
 **References:** `src/app/(app)/actions/mapShares.md`, `src/components/map/manage/MapSharePanel.md`, `src/components/dialogs/MapSettingsDialog.md`, `src/components/map/manage/MapRolesForm.md`, `src/app/(app)/actions/mapRoles.md`
 **Touches:** `src/app/(app)/actions/mapApi.ts` (new: read state, update settings, create token, revoke token), `src/components/map/manage/MapApiPanel.tsx` (new), `src/components/dialogs/MapSettingsDialog.tsx`, `src/components/map/manage/MapRolesForm.tsx`, whatever passes map API state into the dialog, tests, companions. The map's `apiEnabled` / `apiScopes` already ride `MapViewData.map` (loaded by `loadMapForView`, kept live by `applyEvent` from the `api.*` settings events, Stage 2), so the tab's visibility and the create form's scope list can read them from the canvas view data instead of a separate fetch. The `api.token_revoked` / `api.token_suspended` payloads take `ownerCharacterId` as a number and `ownerName`, both nullable for an account with no main.
@@ -276,7 +276,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 9 — Account token list
 **Mode:** Execute
-**Status:** done — 75c47097
+**Status:** done — fb337f95
 **Goal:** Show an account every token it owns, with revoke and block status, in Account Settings.
 **References:** `src/components/account/AccountSettingsDialog.md`, `src/app/(app)/actions/account.md`, `src/lib/session.md`
 **Touches:** `src/app/(app)/actions/mapApi.ts`, `src/app/(app)/actions/account.ts` (the set-main action calls `invalidateUserApiAccount`, since a token is judged by the account's current main), `src/components/account/AccountSettingsDialog.tsx` (or a small child component it embeds), the layout plumbing that feeds the dialog, tests, companions.
@@ -285,7 +285,7 @@ Stage 8 left reusable pieces in `mapApi.ts`: `revokeMapApiToken` already lets th
 
 ## Stage 10 — Operator controls and documentation
 **Mode:** Execute
-**Status:** todo
+**Status:** done — b4828e22
 **Goal:** Give the operator the instance switch and the block and lift actions, and publish the consumer reference.
 **References:** `src/app/(admin)/actions/settings.md`, `src/app/(admin)/actions/members.md`, `src/components/admin/MemberActionsMenu.md`, `src/lib/auth/members.md`, `src/app/(public)/privacy/page.md`
 **Touches:** `src/app/(admin)/actions/settings.ts`, `src/app/(admin)/actions/members.ts`, `src/lib/auth/members.ts`, `src/components/admin/MemberActionsMenu.tsx`, the `/admin/settings` and `/admin/members` pages, `src/app/(public)/privacy/page.tsx`, `docs/reference/user-api.md` (new), tests, companions.
