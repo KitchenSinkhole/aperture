@@ -101,7 +101,11 @@ describe('PresenceSoundBridge', () => {
   let container: HTMLDivElement;
   let root: Root;
 
-  function mount(initial: MapPresenceEntry[], watchedJumpOn = false) {
+  function mount(
+    initial: MapPresenceEntry[],
+    watchedJumpOn = false,
+    homeSystemId: number | null = null,
+  ) {
     act(() => {
       root.render(
         <RealtimeProvider>
@@ -116,6 +120,7 @@ describe('PresenceSoundBridge', () => {
                 connections={CONNECTIONS}
                 viewerCharacterIds={[ME]}
                 watchedJumpOn={watchedJumpOn}
+                homeSystemId={homeSystemId}
               />
             </MapActiveCharProvider>
           </MapPresenceProvider>
@@ -144,13 +149,17 @@ describe('PresenceSoundBridge', () => {
   it('plays the arrive cue for a foreign pilot jumping into my system', () => {
     mount([entry(ME, 'Me', SYSTEM_A), entry(FOREIGN, 'Foreign', SYSTEM_C)]);
     act(() => lastPort?.onmessage?.(moveFrame(FOREIGN, 'Foreign', SYSTEM_A)));
-    expect(play.mock.calls).toEqual([['pilotArrived']]);
+    expect(play.mock.calls).toEqual([
+      ['pilotArrived', { system: { systemId: SYSTEM_A, isHome: false } }],
+    ]);
   });
 
   it('plays the leave cue for a foreign pilot jumping out of my system', () => {
     mount([entry(ME, 'Me', SYSTEM_A), entry(FOREIGN, 'Foreign', SYSTEM_A)]);
     act(() => lastPort?.onmessage?.(moveFrame(FOREIGN, 'Foreign', SYSTEM_C)));
-    expect(play.mock.calls).toEqual([['pilotLeft']]);
+    expect(play.mock.calls).toEqual([
+      ['pilotLeft', { system: { systemId: SYSTEM_A, isHome: false } }],
+    ]);
   });
 
   it('classifies against my post-jump system when both moves land in one frame', () => {
@@ -163,7 +172,9 @@ describe('PresenceSoundBridge', () => {
       lastPort?.onmessage?.(moveFrame(ME, 'Me', SYSTEM_B));
       lastPort?.onmessage?.(moveFrame(FOREIGN, 'Foreign', SYSTEM_B));
     });
-    expect(play.mock.calls).toEqual([['pilotArrived']]);
+    expect(play.mock.calls).toEqual([
+      ['pilotArrived', { system: { systemId: SYSTEM_B, isHome: false } }],
+    ]);
   });
 
   it('stays silent for a jump between two systems that are not mine', () => {
@@ -189,6 +200,16 @@ describe('PresenceSoundBridge', () => {
     toggleConnectionWatch(String(MAP_ID), HOLE_AC);
     mount([entry(ME, 'Me', SYSTEM_A), entry(FOREIGN, 'Foreign', SYSTEM_C)]);
     act(() => lastPort?.onmessage?.(moveFrame(FOREIGN, 'Foreign', SYSTEM_A)));
-    expect(play.mock.calls).toEqual([['pilotArrived']]);
+    expect(play.mock.calls).toEqual([
+      ['pilotArrived', { system: { systemId: SYSTEM_A, isHome: false } }],
+    ]);
+  });
+
+  it('marks the cue as Home when my system is the map Home', () => {
+    mount([entry(ME, 'Me', SYSTEM_A), entry(FOREIGN, 'Foreign', SYSTEM_A)], false, SYSTEM_A);
+    act(() => lastPort?.onmessage?.(moveFrame(FOREIGN, 'Foreign', SYSTEM_C)));
+    expect(play.mock.calls).toEqual([
+      ['pilotLeft', { system: { systemId: SYSTEM_A, isHome: true } }],
+    ]);
   });
 });

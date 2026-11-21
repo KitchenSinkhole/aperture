@@ -6,7 +6,13 @@ import {
   type SoundBackend,
   type SoundEngine,
 } from '@/lib/sounds/engine';
-import { BUILT_IN_SOUND_IDS, resolveSoundPrefs, type SoundId } from '@/lib/sounds/prefs';
+import type { MapSystemNode } from '@/lib/map/loadMap';
+import {
+  BUILT_IN_SOUND_IDS,
+  resolveSoundPrefs,
+  setSystemSoundMute,
+  type SoundId,
+} from '@/lib/sounds/prefs';
 
 // The bridge resolves the engine at event time, so the real engine can stand
 // behind it on a fake backend: the coalescing the burst case asks about is the
@@ -78,16 +84,22 @@ function systemUpdatedFrame(
 }
 
 const RALLY_AT = '2026-09-22T12:00:00.000Z';
+const RALLIED_SYSTEM_ID = 31000042;
+const SYSTEMS = [{ id: '42', systemId: RALLIED_SYSTEM_ID, name: 'J100042' } as MapSystemNode];
 
 describe('RallySoundBridge', () => {
   let container: HTMLDivElement;
   let root: Root;
 
-  function mount() {
+  function mount(homeMapSystemId: string | null = null) {
     act(() => {
       root.render(
         <RealtimeProvider>
-          <RallySoundBridge mapId={String(MAP_ID)} />
+          <RallySoundBridge
+            mapId={String(MAP_ID)}
+            systems={SYSTEMS}
+            homeMapSystemId={homeMapSystemId}
+          />
         </RealtimeProvider>,
       );
     });
@@ -145,6 +157,30 @@ describe('RallySoundBridge', () => {
   it('stays silent for an update on another map', () => {
     mount();
     act(() => lastPort?.onmessage?.(systemUpdatedFrame({ rallyAt: RALLY_AT }, OTHER_MAP_ID)));
+    expect(played).toEqual([]);
+  });
+
+  it('stays silent for a rally in a system muted for rally & ping', () => {
+    engine.setPrefs(
+      setSystemSoundMute(
+        engine.getPrefs(),
+        { systemId: RALLIED_SYSTEM_ID, name: 'J100042', isHome: false },
+        'alerts',
+        true,
+      ),
+    );
+    mount();
+    act(() => lastPort?.onmessage?.(systemUpdatedFrame({ rallyAt: RALLY_AT })));
+    expect(played).toEqual([]);
+  });
+
+  it('applies the Home mutes when the rallied system is Home', () => {
+    engine.setPrefs({
+      ...engine.getPrefs(),
+      homeMutes: { kills: false, pilots: false, alerts: true },
+    });
+    mount('42');
+    act(() => lastPort?.onmessage?.(systemUpdatedFrame({ rallyAt: RALLY_AT })));
     expect(played).toEqual([]);
   });
 });

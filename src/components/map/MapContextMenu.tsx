@@ -47,6 +47,7 @@ import { cn } from '@/lib/utils';
 import { SetDestinationItem } from './SetDestinationItem';
 import { WatchConnectionItem } from './WatchConnectionItem';
 import { AddToRoutesItem } from './AddToRoutesItem';
+import { SystemSoundMuteItem } from './SystemSoundMuteItem';
 
 /** Sentinel radio value for "jump mass unknown" — mirrors `InspectorModule.tsx`. */
 const NONE_JUMP_MASS = '__none__';
@@ -541,6 +542,8 @@ function SystemItems({
       >
         Locked
       </MenuCheckboxItem>
+
+      <SystemSoundMuteItem system={system} isHome={isHome} onClose={onClose} />
 
       <MenuSeparator />
 

@@ -13,6 +13,7 @@ import {
   Radiation,
   Signal,
   Swords,
+  VolumeX,
   type LucideIcon,
 } from 'lucide-react';
 import type { MapPresenceEntry, MapSystemNode } from '@/lib/map/loadMap';
@@ -34,6 +35,8 @@ import { useSignatureIndicator } from './MapSignatureIndicatorContext';
 import { useUnderglowForSystem } from './MapUnderglowContext';
 import { SystemUnderglow } from './SystemUnderglow';
 import { RALLY_UNDERGLOW } from './underglowPresets';
+import { SOUND_MUTE_GROUP_LABELS } from '@/lib/sounds/catalog';
+import { useMutedSoundGroups } from '@/lib/sounds/engine';
 import React from 'react';
 
 // System tile. Status stripe + security badge + tag + alias/name + presence
@@ -73,6 +76,7 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
   const pilots = usePresenceForSystem(data.systemId);
   const glow = useUnderglowForSystem(data.id);
   const sigIndicator = useSignatureIndicator(data.id, isWormhole);
+  const mutedSoundGroups = useMutedSoundGroups(data.systemId, data.isHome ?? false);
 
   const classColor = systemClassColor(data.security);
   const displayName = systemDisplayName(data.systemId, data.name);
@@ -256,6 +260,15 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
               <Home className="size-3" style={{ color: home }} aria-label="Home system" />
             )}
             {data.locked && <Lock className="size-3 text-muted-foreground" />}
+            {mutedSoundGroups.length > 0 && (
+              <SystemKindIcon
+                icon={VolumeX}
+                label={`Sounds muted: ${mutedSoundGroups
+                  .map((g) => SOUND_MUTE_GROUP_LABELS[g].label.toLowerCase())
+                  .join(', ')}`}
+                className="text-muted-foreground"
+              />
+            )}
           </div>
 
           <div className="flex items-center gap-1 px-2 text-[10px] text-muted-foreground">

@@ -9,6 +9,7 @@
 |---|---|---|---|
 | mapId | string | yes | The open map's id; guards against a foreign-map envelope. |
 | systems | MapSystemNode[] | yes | Current visible systems; a notification for a system not among them stays silent. |
+| homeSystemId | number \| null | yes | EVE id of the map's Home, for the engine's per-system mute gate. |
 
 ### Renders
 Nothing.
@@ -22,7 +23,7 @@ Nothing.
 - Reads the same envelopes `MapUnderglowBridge` turns into the red and blue glows; the two are independent listeners on one delivery.
 
 ### Emits / Calls
-- `getSoundEngine().play('killInSystem' | 'systemPinged')`
+- `getSoundEngine().play('killInSystem' | 'systemPinged', { system })` — `system` is the notified system and whether it is Home, so a kills or rally-and-ping mute there silences it.
 
 ### Depends On
 - `@/lib/realtime/useRealtime` (`useRealtimeEvents`), `@/lib/realtime/protocol` (`systemNotificationLoadSchema`, `Envelope`, `SystemNotificationLoad`), `@/lib/sounds/engine` (`getSoundEngine`).

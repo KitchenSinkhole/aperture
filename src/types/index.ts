@@ -638,10 +638,14 @@ export type { WormholeJumpInfoRow } from '@/lib/eve/wormholeJumpInfo';
 
 // Sound-cue vocabulary and the account-level preference blob (src/lib/sounds/prefs.ts).
 export type {
+  SoundCueSystem,
   SoundEvent,
   SoundId,
+  SoundMuteGroup,
+  SoundMutes,
   SoundPrefs,
   SoundVariant,
+  SystemSoundMute,
   VoicePackId,
 } from '@/lib/sounds/prefs';
 
