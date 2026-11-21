@@ -13,6 +13,7 @@ import {
 import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
 import { migrateLayout } from '@/lib/map/layout/panels';
 import { soundPrefsSchema } from '@/lib/sounds/prefs';
+import { invalidateUserApiAccount } from '@/lib/userApi/authorize';
 
 // Account self-service. Low-frequency, user-initiated state changes
 // over ap_user — Server Actions per the CLAUDE.md mutation pathways.
@@ -22,7 +23,8 @@ export type AccountActionResult = { ok: true } | { ok: false; error: string };
 /**
  * Set the account's main character — the identity login lands on and that
  * statistics / activity roll up to. The target must be an active character on
- * the current account.
+ * the current account. The account's user API tokens are judged by its main,
+ * so their cached authorisations are dropped once the change commits.
  */
 export async function setMainCharacterAction(
   targetCharacterId: string,
@@ -41,6 +43,7 @@ export async function setMainCharacterAction(
     .update(apUser)
     .set({ mainCharacterId: target, updatedAt: new Date() })
     .where(eq(apUser.id, session.userId));
+  invalidateUserApiAccount(session.userId);
   revalidatePath('/', 'layout');
   return { ok: true };
 }

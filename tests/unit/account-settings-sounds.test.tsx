@@ -16,6 +16,8 @@ vi.mock('@/app/(app)/actions/account', () => ({
   setSoundPrefsAction: vi.fn(async () => ({ ok: true })),
   deleteAccountAction: vi.fn(async () => ({ ok: true })),
 }));
+// The API tokens section loads through its own Server Actions; covered by account-api-tokens.
+vi.mock('@/components/account/AccountApiTokens', () => ({ AccountApiTokens: () => null }));
 // A real engine on a silent backend, so the dialog reads and writes the same
 // prefs store the map's cue surfaces read.
 let engine!: SoundEngine;

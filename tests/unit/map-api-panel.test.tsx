@@ -95,6 +95,8 @@ const RAW = `apu_${'A'.repeat(43)}`;
 function tokenItem(overrides: Partial<UserApiTokenListItem> = {}): UserApiTokenListItem {
   return {
     id: '1',
+    mapId: '7',
+    mapName: 'Home chain',
     label: 'Chain bot',
     prefix: 'AbCdEf',
     scopes: ['map'],
@@ -251,5 +253,25 @@ describe('MapApiPanel', () => {
     });
     expect(container.querySelector('input[aria-label="New API token"]')).toBeNull();
     expect(container.innerHTML).not.toContain(RAW);
+  });
+
+  it('keeps the reveal open when the reload after a mint fails', async () => {
+    await render(viewerState());
+    mockCreate.mockResolvedValue({ ok: true, data: { token: RAW, tokenId: '9' } });
+    mockGetState.mockResolvedValue({ ok: false, error: 'Network down.' });
+
+    await act(async () => {
+      typeInto(container.querySelector<HTMLInputElement>('#api-token-label')!, 'Overlay');
+    });
+    await act(async () => {
+      checkbox('Token reads Map')!.click();
+    });
+    await act(async () => {
+      button('Create token').click();
+    });
+
+    expect(container.textContent).toContain('Network down.');
+    const reveal = container.querySelector<HTMLInputElement>('input[aria-label="New API token"]');
+    expect(reveal?.value).toBe(RAW);
   });
 });

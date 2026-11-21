@@ -276,7 +276,7 @@ Account blocks are not map-scoped and write no `ap_map_event`, consistent with k
 
 ## Stage 9 — Account token list
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 75c47097
 **Goal:** Show an account every token it owns, with revoke and block status, in Account Settings.
 **References:** `src/components/account/AccountSettingsDialog.md`, `src/app/(app)/actions/account.md`, `src/lib/session.md`
 **Touches:** `src/app/(app)/actions/mapApi.ts`, `src/app/(app)/actions/account.ts` (the set-main action calls `invalidateUserApiAccount`, since a token is judged by the account's current main), `src/components/account/AccountSettingsDialog.tsx` (or a small child component it embeds), the layout plumbing that feeds the dialog, tests, companions.
@@ -338,3 +338,6 @@ _(appended by executing sessions; non-obvious findings only)_
 - **Stage 8 (review)** — the Done when never required minting to be judged by the account's main, so the session character's view alone passed it. The session can sit on an alt (a set-main mid-session, or an inactive stored main), so any action that grants or lists the account's API access must run the main's `canViewMap` + login gate itself, not just `requireMapView`; Stage 9's list already does through `statusOf`.
 - **Stage 8** — settings and revoke run their own `db.transaction` with `commitMapEvent` in joined mode, so the auth invalidation and `enqueueWebhookDispatch` both follow the commit; joined mode skips the webhook enqueue, so a later committer taking that route must re-fire it the same way.
 - **Stage 8 (review)** — `MapApiPanel` renders the one-time `RevealDialog` inside the panel's non-error branch, so if the reload that follows a successful mint fails, the panel swaps to its error text and the raw token is lost unrecoverably. Not a Done-when gap; worth fixing (render the reveal outside the error/loading early returns) when Stage 9 extracts the block banner from the same file.
+- **Stage 9** — `UserApiTokenStatus` gained `map_deleted` (checked right after `expired`, both 401s in the decision) and `api_disabled` (after `suspended`, where the decision's `api_disabled` row sits). Tokens on a soft-deleted map stay listed and revocable in Account Settings, because an admin restore brings the map, and so the token, back to life. `api_disabled` also shows in the map tab's lists, so a manager who switches the API off sees every token there read "API off on this map".
+- **Stage 9** — the account section fetches `getAccountApiTokens` when Account Settings opens (the section sits inside the dialog's content, which mounts only while open), so no layout plumbing was added; `CharacterPanel` mounts the dialog on every page and a server-rendered list would cost a query per page load.
+- **Stage 9** — the Stage 8 review's `RevealDialog` fix landed: the reveal renders outside `MapApiPanel`'s loading and error branches, with a component test for a failed reload after a mint.

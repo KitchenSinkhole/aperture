@@ -6,7 +6,7 @@
 ---
 
 ### setMainCharacterAction(targetCharacterId: string): Promise<AccountActionResult>
-Sets `ap_user.main_character_id` to `targetCharacterId` for the current account. Validates the target is an active, owned character via `assertCharacterOwnership`. Revalidates the `/` layout so the header / switcher reflect the new main. Returns `{ ok: false, error }` on an invalid or unowned target.
+Sets `ap_user.main_character_id` to `targetCharacterId` for the current account. Validates the target is an active, owned character via `assertCharacterOwnership`. After the write, drops the account's cached user API authorisations (`invalidateUserApiAccount`), since every token the account owns is judged by its current main. Revalidates the `/` layout so the header / switcher reflect the new main. Returns `{ ok: false, error }` on an invalid or unowned target.
 
 **Returns:** `{ ok: true }` on success.
 

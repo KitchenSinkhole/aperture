@@ -21,6 +21,7 @@ import {
 import { isUserApiInstanceEnabled } from '@/lib/userApi/instance';
 import { generateUserApiToken } from '@/lib/userApi/token';
 import type {
+  AccountApiState,
   ApiScope,
   MapApiState,
   UserApiAccountBlock,
@@ -83,12 +84,15 @@ function liveTokenPredicate(now: Date): SQL {
   )!;
 }
 
-/** Non-revoked tokens with their owning account's block columns and current main. */
+/** Non-revoked tokens with their map's API state, their owning account's block columns and current main. */
 function selectTokenRows(where: SQL) {
   return db
     .select({
       id: apMapApiToken.id,
       mapId: apMapApiToken.mapId,
+      mapName: apMap.name,
+      mapDeletedAt: apMap.deletedAt,
+      mapApiEnabled: apMap.apiEnabled,
       userId: apMapApiToken.userId,
       label: apMapApiToken.label,
       prefix: apMapApiToken.tokenPrefix,
@@ -108,6 +112,7 @@ function selectTokenRows(where: SQL) {
       mainAllianceId: apCharacter.allianceId,
     })
     .from(apMapApiToken)
+    .innerJoin(apMap, eq(apMap.id, apMapApiToken.mapId))
     .innerJoin(apUser, eq(apUser.id, apMapApiToken.userId))
     .leftJoin(
       apCharacter,
@@ -157,8 +162,10 @@ async function statusOf(
   memo: Map<string, Promise<boolean>>,
 ): Promise<UserApiTokenStatus> {
   if (row.expiresAt !== null && row.expiresAt <= now) return 'expired';
+  if (row.mapDeletedAt !== null) return 'map_deleted';
   if (isUserApiAccountBlocked(row, now)) return 'blocked';
   if (row.suspendedUntil !== null && row.suspendedUntil > now) return 'suspended';
+  if (!row.mapApiEnabled) return 'api_disabled';
   return (await ownerCanUse(row, memo)) ? 'active' : 'lost_access';
 }
 
@@ -173,6 +180,8 @@ async function toListItems(
       const status = await statusOf(row, now, memo);
       return {
         id: row.id.toString(),
+        mapId: row.mapId.toString(),
+        mapName: row.mapName,
         label: row.label,
         prefix: row.prefix,
         scopes: normaliseScopes(row.scopes),
@@ -245,6 +254,38 @@ export async function getMapApiState(mapId: string): Promise<ActionResult<MapApi
         perAccount: apertureConfig.USER_API_MAX_TOKENS_PER_ACCOUNT,
         liveOnAccount: live?.n ?? 0,
       },
+    },
+  };
+}
+
+/**
+ * The Account Settings API tokens section's state: the instance switch, the
+ * signed-in account's block, and every non-revoked token the account owns on
+ * any map, including maps it can no longer view, maps whose API is off and
+ * soft-deleted maps, each with its computed status. Gated only by the session:
+ * an account may always see its own tokens.
+ */
+export async function getAccountApiTokens(): Promise<ActionResult<AccountApiState>> {
+  const session = await requireSession();
+  const now = new Date();
+  const [instanceEnabled, [account], rows] = await Promise.all([
+    isUserApiInstanceEnabled(),
+    db
+      .select({
+        apiBlockedAt: apUser.apiBlockedAt,
+        apiBlockedUntil: apUser.apiBlockedUntil,
+        apiBlockReason: apUser.apiBlockReason,
+      })
+      .from(apUser)
+      .where(eq(apUser.id, session.userId)),
+    selectTokenRows(eq(apMapApiToken.userId, session.userId)),
+  ]);
+  return {
+    ok: true,
+    data: {
+      instanceEnabled,
+      block: account ? blockOf(account, now) : null,
+      tokens: await toListItems(rows, session.userId, now),
     },
   };
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, useTransition } from 'react';
-import { BookOpen, Copy, KeyRound, Save, Trash2 } from 'lucide-react';
+import { BookOpen, Copy, KeyRound, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -11,7 +11,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,12 +22,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  UserApiBlockBanner,
+  UserApiRevokeButton,
+  describeUserApiTokenStatus,
+  formatUserApiDate,
+} from '@/components/userApi/UserApiTokenParts';
+import {
   createMapApiToken,
   getMapApiState,
-  revokeMapApiToken,
   updateMapApiSettings,
 } from '@/app/(app)/actions/mapApi';
-import type { ApiScope, MapApiState, UserApiAccountBlock, UserApiTokenListItem } from '@/types';
+import type { ApiScope, MapApiState, UserApiTokenListItem } from '@/types';
 import { apertureConfig } from '../../../../aperture.config';
 
 const API_REFERENCE_URL = `https://github.com/${apertureConfig.GITHUB_CHANGELOG_REPO}/blob/master/docs/reference/user-api.md`;
@@ -70,33 +74,6 @@ const EXPIRY_OPTIONS: { value: string; label: string; days: number | null }[] = 
 ];
 const EXPIRY_LABELS = Object.fromEntries(EXPIRY_OPTIONS.map((o) => [o.value, o.label]));
 
-const DATE_FORMAT = new Intl.DateTimeFormat('en-US', {
-  year: 'numeric',
-  month: 'short',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-
-function formatDate(iso: string | null, fallback: string): string {
-  return iso ? DATE_FORMAT.format(new Date(iso)) : fallback;
-}
-
-function describeStatus(token: UserApiTokenListItem): string {
-  switch (token.status) {
-    case 'active':
-      return 'Active';
-    case 'suspended':
-      return `Suspended until ${formatDate(token.suspendedUntil, 'later')}`;
-    case 'expired':
-      return 'Expired';
-    case 'lost_access':
-      return 'Owner lost access';
-    case 'blocked':
-      return "Owner's account blocked";
-  }
-}
-
 function describeScopes(scopes: ApiScope[]): string {
   return scopes.map((s) => SCOPE_LABEL[s]).join(', ');
 }
@@ -137,8 +114,21 @@ export function MapApiPanel({
     load();
   }, [load, apiEnabled, liveScopesKey]);
 
-  if (error) return <p className="text-sm text-destructive">{error}</p>;
-  if (!state) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  // The reveal sits outside the error and loading branches, so a reload that
+  // fails right after a mint cannot unmount the only copy of the raw token.
+  const reveal = <RevealDialog token={revealed} onClose={() => setRevealed(null)} />;
+  if (error || !state) {
+    return (
+      <>
+        {error ? (
+          <p className="text-sm text-destructive">{error}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        )}
+        {reveal}
+      </>
+    );
+  }
 
   const liveOnMap = state.ownTokens.filter((t) => t.status !== 'expired').length;
   const mintBlocker = !state.instanceEnabled
@@ -177,7 +167,7 @@ export function MapApiPanel({
           until it is turned back on.
         </p>
       )}
-      {state.block && <BlockBanner block={state.block} />}
+      {state.block && <UserApiBlockBanner block={state.block} />}
 
       {state.canManage && (
         <ManagerSettings
@@ -209,25 +199,7 @@ export function MapApiPanel({
         />
       </section>
 
-      <RevealDialog token={revealed} onClose={() => setRevealed(null)} />
-    </div>
-  );
-}
-
-function BlockBanner({ block }: { block: UserApiAccountBlock }) {
-  return (
-    <div
-      role="alert"
-      className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm"
-    >
-      <p className="font-medium">
-        API access is blocked for your account{' '}
-        {block.until ? `until ${formatDate(block.until, '')}` : 'until an admin lifts it'}.
-      </p>
-      {block.reason && <p className="text-muted-foreground">{block.reason}</p>}
-      <p className="text-muted-foreground">
-        Your tokens do not work and you cannot create new ones while the block stands.
-      </p>
+      {reveal}
     </div>
   );
 }
@@ -374,19 +346,21 @@ function TokenTable({
               <td className="px-2 py-1.5 text-muted-foreground">{describeScopes(token.scopes)}</td>
               {!showOwner && (
                 <td className="px-2 py-1.5 text-muted-foreground">
-                  {formatDate(token.expiresAt, 'Never')}
+                  {formatUserApiDate(token.expiresAt, 'Never')}
                 </td>
               )}
               <td className="px-2 py-1.5 text-muted-foreground">
-                {formatDate(token.lastUsedAt, 'Never')}
+                {formatUserApiDate(token.lastUsedAt, 'Never')}
               </td>
               {showOwner && (
                 <td className="px-2 py-1.5 text-muted-foreground">{token.requestCount}</td>
               )}
-              <td className="px-2 py-1.5 text-muted-foreground">{describeStatus(token)}</td>
+              <td className="px-2 py-1.5 text-muted-foreground">
+                {describeUserApiTokenStatus(token)}
+              </td>
               <td className="px-2 py-1.5">
                 <div className="flex justify-end">
-                  <RevokeButton token={token} onRevoked={onRevoked} />
+                  <UserApiRevokeButton token={token} onRevoked={onRevoked} />
                 </div>
               </td>
             </tr>
@@ -565,64 +539,6 @@ function RevealDialog({ token, onClose }: { token: string | null; onClose: () =>
             Copy
           </Button>
           <DialogClose render={<Button type="button" />}>Done</DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function RevokeButton({
-  token,
-  onRevoked,
-}: {
-  token: UserApiTokenListItem;
-  onRevoked: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pending, startTransition] = useTransition();
-
-  function onConfirm() {
-    startTransition(async () => {
-      const result = await revokeMapApiToken(token.id);
-      if (result.ok) {
-        toast.success('Token revoked.');
-        setOpen(false);
-        onRevoked();
-      } else {
-        toast.error(result.error);
-      }
-    });
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Revoke ${token.label}`}
-            className="text-muted-foreground hover:text-destructive"
-          />
-        }
-      >
-        <Trash2 />
-      </DialogTrigger>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Revoke “{token.label}”?</DialogTitle>
-          <DialogDescription>
-            Any tool using this token is refused from its next request. A revoked token cannot be
-            restored.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <DialogClose render={<Button type="button" variant="ghost" disabled={pending} />}>
-            Cancel
-          </DialogClose>
-          <Button type="button" variant="destructive" onClick={onConfirm} disabled={pending}>
-            {pending ? 'Revoking…' : 'Revoke'}
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

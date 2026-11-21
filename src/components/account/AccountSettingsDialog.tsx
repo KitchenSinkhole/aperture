@@ -37,6 +37,7 @@ import {
   setMainCharacterAction,
   setSignatureIndicatorPrefsAction,
 } from '@/app/(app)/actions/account';
+import { AccountApiTokens } from './AccountApiTokens';
 import { DeleteAccountDialog } from './DeleteAccountDialog';
 import { SoundPicker } from './SoundPicker';
 
@@ -466,6 +467,8 @@ export function AccountSettingsDialog({
 
             <CustomSoundsSection />
           </div>
+
+          <AccountApiTokens />
 
           <div className="mt-2 flex flex-col gap-2 rounded-lg border border-destructive/40 p-3">
             <div className="flex flex-col gap-0.5">

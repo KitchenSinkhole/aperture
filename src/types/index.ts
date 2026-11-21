@@ -617,15 +617,26 @@ export type UserApiProjectionEntry<R extends UserApiResource = UserApiResource> 
 
 /**
  * Computed standing of one non-revoked user API token, in the order the API's
- * own decision applies them: `expired`, `blocked` (the owning account is
- * blocked), `suspended`, `lost_access` (the account's main can no longer use
- * the map), else `active`.
+ * own decision applies them: `expired`, `map_deleted` (the map is
+ * soft-deleted), `blocked` (the owning account is blocked), `suspended`,
+ * `api_disabled` (the map's API is off), `lost_access` (the account's main can
+ * no longer use the map), else `active`.
  */
-export type UserApiTokenStatus = 'active' | 'suspended' | 'expired' | 'lost_access' | 'blocked';
+export type UserApiTokenStatus =
+  | 'active'
+  | 'suspended'
+  | 'expired'
+  | 'map_deleted'
+  | 'api_disabled'
+  | 'lost_access'
+  | 'blocked';
 
 /** One non-revoked user API token as a list row. Never carries the raw token or its hash. */
 export type UserApiTokenListItem = {
   id: string;
+  /** The token's map. */
+  mapId: string;
+  mapName: string;
   label: string;
   /** First 6 characters of the random part, for telling tokens apart. */
   prefix: string;
@@ -645,6 +656,16 @@ export type UserApiTokenListItem = {
 
 /** A standing user API account block; `until` is null for an indefinite block. */
 export type UserApiAccountBlock = { reason: string | null; until: string | null };
+
+/** The Account Settings API tokens section's state (`getAccountApiTokens`). */
+export type AccountApiState = {
+  /** The operator's instance-wide switch. */
+  instanceEnabled: boolean;
+  /** The account's block; null when not blocked. */
+  block: UserApiAccountBlock | null;
+  /** Every non-revoked token the account owns, on any map, newest first. */
+  tokens: UserApiTokenListItem[];
+};
 
 /** The Map Settings API tab's state for one map and one viewer (`getMapApiState`). */
 export type MapApiState = {
