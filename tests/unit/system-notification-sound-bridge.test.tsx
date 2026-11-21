@@ -8,7 +8,12 @@ import {
   type SoundEngine,
 } from '@/lib/sounds/engine';
 import type { MapSystemNode } from '@/lib/map/loadMap';
-import { BUILT_IN_SOUND_IDS, resolveSoundPrefs, type SoundId } from '@/lib/sounds/prefs';
+import {
+  BUILT_IN_SOUND_IDS,
+  resolveSoundPrefs,
+  setSystemSoundMute,
+  type SoundId,
+} from '@/lib/sounds/prefs';
 
 // The bridge resolves the engine at event time, so the real engine can stand
 // behind it on a fake backend: the coalescing the burst case asks about is the
@@ -99,11 +104,15 @@ describe('SystemNotificationSoundBridge', () => {
   let container: HTMLDivElement;
   let root: Root;
 
-  function mount(systems: MapSystemNode[] = ON_MAP) {
+  function mount(systems: MapSystemNode[] = ON_MAP, homeSystemId: number | null = null) {
     act(() => {
       root.render(
         <RealtimeProvider>
-          <SystemNotificationSoundBridge mapId={String(MAP_ID)} systems={systems} />
+          <SystemNotificationSoundBridge
+            mapId={String(MAP_ID)}
+            systems={systems}
+            homeSystemId={homeSystemId}
+          />
         </RealtimeProvider>,
       );
     });
@@ -212,6 +221,31 @@ describe('SystemNotificationSoundBridge', () => {
       lastPort?.onmessage?.(killFrame());
       lastPort?.onmessage?.(pingFrame());
     });
+    expect(played).toEqual([]);
+  });
+
+  it('mutes kills but not pings in a system muted for kills', () => {
+    engine.setPrefs(
+      setSystemSoundMute(
+        engine.getPrefs(),
+        { systemId: SYSTEM_ID, name: 'Jita', isHome: false },
+        'kills',
+        true,
+      ),
+    );
+    mount();
+    act(() => lastPort?.onmessage?.(killFrame()));
+    act(() => lastPort?.onmessage?.(pingFrame()));
+    expect(played).toEqual(['ping']);
+  });
+
+  it('applies the Home mutes only to the Home system', () => {
+    engine.setPrefs({
+      ...engine.getPrefs(),
+      homeMutes: { kills: true, pilots: false, alerts: false },
+    });
+    mount(ON_MAP, SYSTEM_ID);
+    act(() => lastPort?.onmessage?.(killFrame()));
     expect(played).toEqual([]);
   });
 });

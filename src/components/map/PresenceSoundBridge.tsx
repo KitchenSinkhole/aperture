@@ -31,12 +31,15 @@ export function PresenceSoundBridge({
   connections,
   viewerCharacterIds,
   watchedJumpOn,
+  homeSystemId,
 }: {
   mapId: string;
   systems: MapSystemNode[];
   connections: MapConnectionEdge[];
   viewerCharacterIds: number[];
   watchedJumpOn: boolean;
+  /** EVE solar-system id of the map's Home, or null. */
+  homeSystemId: number | null;
 }) {
   const { activeCharId } = useMapActiveChar();
   const store = usePresenceStore();
@@ -59,7 +62,8 @@ export function PresenceSoundBridge({
     ) {
       return;
     }
-    getSoundEngine().play(event);
+    const systemId = event === 'pilotArrived' ? t.toSystemId : t.fromSystemId;
+    getSoundEngine().play(event, { system: { systemId, isHome: systemId === homeSystemId } });
   });
 
   return null;
