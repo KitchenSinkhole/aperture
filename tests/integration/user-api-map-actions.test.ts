@@ -4,6 +4,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, pool } from '@/db/client';
 import {
+  apAccessGrant,
   apCharacter,
   apCharacterRole,
   apCorporation,
@@ -32,7 +33,8 @@ import { apertureConfig } from '../../aperture.config';
  * against real Postgres, with `requireSession` mocked. `ap_instance` is a live
  * singleton: its access mode and user API switch are snapshotted and restored.
  * The test corp owns the instance, so its members pass the login gate and each
- * refusal below has exactly one cause. Ids use a 9737xxxx block.
+ * refusal below has exactly one cause. The Blackout switch is reset before every
+ * test and restored afterwards. Ids use a 9737xxxx block.
  *
  *   docker compose up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test user-api-map-actions
  */
@@ -43,11 +45,15 @@ vi.mock('@/lib/session', () => ({
   requireSession: async () => ({ characterId: h.characterId, userId: h.userId }),
 }));
 
+vi.mock('@/lib/auth', () => ({ auth: async () => ({ characterId: h.characterId }) }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 const { createMapApiToken, getMapApiState, revokeMapApiToken, updateMapApiSettings } =
   await import('@/app/(app)/actions/mapApi');
 const { deleteMapAction } = await import('@/app/(app)/actions/map');
+const { adminAddBlackoutClearance, adminRemoveBlackoutClearance } = await import(
+  '@/app/(admin)/actions/blackout'
+);
 
 const CORP = 97379001n;
 const OTHER_CORP = 97379002n;
@@ -56,12 +62,13 @@ const MEMBER = 97370002n;
 const MEMBER_ALT = 97370003n;
 const DELEGATE = 97370004n;
 const OUTSIDER = 97370005n;
+const ADMIN = 97370006n;
 const TITLE = 97378001n;
 const MAP_NAME = 'User API Actions Map';
 const OTHER_MAP_NAME = 'User API Actions Other Map';
-const CHARACTERS = [DIRECTOR, MEMBER, MEMBER_ALT, DELEGATE, OUTSIDER];
+const CHARACTERS = [DIRECTOR, MEMBER, MEMBER_ALT, DELEGATE, OUTSIDER, ADMIN];
 
-const users = { director: 0, member: 0, delegate: 0, outsider: 0 };
+const users = { director: 0, member: 0, delegate: 0, outsider: 0, admin: 0 };
 let mapId = 0n;
 let otherMapId = 0n;
 let instanceSnapshot: typeof apInstance.$inferSelect | undefined;
@@ -109,6 +116,35 @@ async function events() {
     .orderBy(asc(apMapEvent.id));
 }
 
+async function setBlackout(on: boolean): Promise<void> {
+  await db
+    .update(apInstance)
+    .set({ blackoutSince: on ? new Date() : null, blackoutByCharacterId: null })
+    .where(eq(apInstance.id, 1));
+}
+
+function clearCharacter(characterId: bigint) {
+  return db.insert(apAccessGrant).values({
+    principalKind: 'character',
+    principalId: characterId,
+    scope: 'instance',
+    mapId: null,
+    capability: 'blackout_view',
+  });
+}
+
+function deleteTestClearances() {
+  return db
+    .delete(apAccessGrant)
+    .where(
+      and(
+        eq(apAccessGrant.capability, 'blackout_view'),
+        eq(apAccessGrant.principalKind, 'character'),
+        inArray(apAccessGrant.principalId, CHARACTERS),
+      ),
+    );
+}
+
 async function setMapApi(enabled: boolean, scopes: ApiScope[]): Promise<void> {
   await db.update(apMap).set({ apiEnabled: enabled, apiScopes: scopes }).where(eq(apMap.id, mapId));
 }
@@ -143,12 +179,19 @@ describe.skipIf(!run)('map API actions (real Postgres)', () => {
       const [u] = await db.insert(apUser).values({}).returning({ id: apUser.id });
       users[key] = u!.id;
     }
-    const char = (id: bigint, userId: number, name: string, corp: bigint, isDirector = false) => ({
+    const char = (
+      id: bigint,
+      userId: number,
+      name: string,
+      corp: bigint,
+      isDirector = false,
+      authzLevel: 'member' | 'admin' = 'member',
+    ) => ({
       id,
       userId,
       name,
       ownerHash: `user-api-actions-${id}`,
-      authzLevel: 'member' as const,
+      authzLevel,
       corporationId: corp,
       allianceId: null,
       isDirector,
@@ -162,6 +205,7 @@ describe.skipIf(!run)('map API actions (real Postgres)', () => {
         char(MEMBER_ALT, users.member, 'Actions Member Alt', CORP),
         char(DELEGATE, users.delegate, 'Actions Delegate', CORP),
         char(OUTSIDER, users.outsider, 'Actions Outsider', OTHER_CORP),
+        char(ADMIN, users.admin, 'Actions Admin', CORP, false, 'admin'),
       ]);
     await db.update(apUser).set({ mainCharacterId: DIRECTOR }).where(eq(apUser.id, users.director));
     await db.update(apUser).set({ mainCharacterId: MEMBER }).where(eq(apUser.id, users.member));
@@ -199,6 +243,8 @@ describe.skipIf(!run)('map API actions (real Postgres)', () => {
     await db.delete(apMapApiToken).where(inArray(apMapApiToken.mapId, [mapId, otherMapId]));
     await db.update(apMap).set({ deletedAt: null }).where(eq(apMap.id, mapId));
     await setMapApi(true, ['map', 'signatures', 'pilots']);
+    await setBlackout(false);
+    await deleteTestClearances();
     await db
       .update(apUser)
       .set({ apiBlockedAt: null, apiBlockedUntil: null, apiBlockReason: null })
@@ -215,6 +261,8 @@ describe.skipIf(!run)('map API actions (real Postgres)', () => {
         .set({
           accessMode: instanceSnapshot.accessMode,
           userApiEnabled: instanceSnapshot.userApiEnabled,
+          blackoutSince: instanceSnapshot.blackoutSince,
+          blackoutByCharacterId: instanceSnapshot.blackoutByCharacterId,
         })
         .where(eq(apInstance.id, 1));
     }
@@ -638,10 +686,75 @@ describe.skipIf(!run)('map API actions (real Postgres)', () => {
       if (!blockedView.ok) return;
       expect(blockedView.data.block).toEqual({ reason: 'by hand', until: null });
     });
+
+    it("hides other accounts' token owners while Blackout restricts the viewer", async () => {
+      const theirs = await insertToken(users.member);
+      const mine = await insertToken(users.director);
+      await setBlackout(true);
+      actAs(DIRECTOR, users.director);
+
+      const ownerNames = async () => {
+        const state = await getMapApiState(mapId.toString());
+        expect(state.ok).toBe(true);
+        if (!state.ok) return new Map<string, string | null>();
+        return new Map(state.data.mapTokens!.map((t) => [t.id, t.ownerName]));
+      };
+
+      const restricted = await ownerNames();
+      expect(restricted.get(theirs.id.toString())).toBeNull();
+      expect(restricted.get(mine.id.toString())).toBe('Actions Director');
+
+      await clearCharacter(DIRECTOR);
+      const cleared = await ownerNames();
+      expect(cleared.get(theirs.id.toString())).toBe('Actions Member');
+    });
+  });
+
+  describe('the Blackout cleared list', () => {
+    it("reaches a token's cached record on the next request when a clearance is added or removed", async () => {
+      await setBlackout(true);
+      const { token } = await insertToken(users.member);
+      const cleared = async () => {
+        const decision = await authorizeUserApiBearer(`Bearer ${token}`);
+        expect(decision.ok).toBe(true);
+        return decision.ok ? decision.record.access!.blackout.cleared : undefined;
+      };
+
+      expect(await cleared()).toBe(false);
+      // Written behind the actions' back, the grant waits on the cache TTL.
+      await clearCharacter(MEMBER);
+      expect(await cleared()).toBe(false);
+      await deleteTestClearances();
+
+      actAs(ADMIN, users.admin);
+      expect(
+        await adminAddBlackoutClearance({
+          principalKind: 'character',
+          principalId: MEMBER.toString(),
+          expiresAt: '',
+          note: '',
+        }),
+      ).toEqual({ ok: true });
+      expect(await cleared()).toBe(true);
+
+      const [grant] = await db
+        .select({ id: apAccessGrant.id })
+        .from(apAccessGrant)
+        .where(
+          and(
+            eq(apAccessGrant.capability, 'blackout_view'),
+            eq(apAccessGrant.principalKind, 'character'),
+            eq(apAccessGrant.principalId, MEMBER),
+          ),
+        );
+      expect(await adminRemoveBlackoutClearance(grant!.id.toString())).toEqual({ ok: true });
+      expect(await cleared()).toBe(false);
+    });
   });
 });
 
 async function cleanup() {
+  await deleteTestClearances();
   await db.delete(apMap).where(inArray(apMap.name, [MAP_NAME, OTHER_MAP_NAME]));
   await db.delete(apCharacterRole).where(eq(apCharacterRole.roleId, TITLE));
   await db.delete(apRole).where(eq(apRole.id, TITLE));
