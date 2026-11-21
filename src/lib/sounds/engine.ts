@@ -1,13 +1,18 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { getBuiltInSound, soundFilesFor } from './catalog';
 import { getCustomSoundStore } from './customStore';
 import { readSoundMuted, subscribeSoundMuted, writeSoundMuted } from './mutePrefs';
 import {
   DEFAULT_SOUND_PREFS,
   SOUND_EVENTS,
+  SOUND_MUTE_GROUPS,
+  isCueMutedInSystem,
+  soundMutesFor,
+  type SoundCueSystem,
   type SoundEvent,
+  type SoundMuteGroup,
   type SoundId,
   type SoundPrefs,
   type SoundVariant,
@@ -64,8 +69,11 @@ export interface SoundEngine {
   /** The prefs every sound surface reads; reference-stable between `setPrefs` calls. */
   getPrefs(): SoundPrefs;
   setMapId(mapId: string | null): void;
-  /** Play an event's cue, subject to every gate. Silent when any gate blocks. */
-  play(event: SoundEvent, opts?: { variant?: SoundVariant }): void;
+  /**
+   * Play an event's cue, subject to every gate. Silent when any gate blocks,
+   * including a mute on `system`, the system the cue happened in.
+   */
+  play(event: SoundEvent, opts?: { variant?: SoundVariant; system?: SoundCueSystem }): void;
   /** Audition a sound, bypassing the master switch, mute, leadership and coalescing. */
   preview(soundId: SoundId): void;
   /** Ask the browser for playback permission; call from a user gesture. No-op while sounds are off. */
@@ -229,6 +237,7 @@ export function createSoundEngine(deps: SoundEngineDeps): SoundEngine {
     play(event, opts): void {
       if (!prefs.enabled) return;
       if (!prefs.events[event].enabled) return;
+      if (opts?.system && isCueMutedInSystem(prefs, event, opts.system)) return;
       if (muted) return;
       if (!unlocked) return;
       if (!isLeader) return;
@@ -540,4 +549,24 @@ export function useSoundCueOn(event?: SoundEvent): boolean {
     },
     () => false,
   );
+}
+
+/**
+ * The groups muted in one system, in `SOUND_MUTE_GROUPS` order; empty while
+ * the master switch is off. The snapshot is a string, so a volume drag or an
+ * edit to another system's mutes does not re-render the caller.
+ */
+export function useMutedSoundGroups(systemId: number, isHome: boolean): readonly SoundMuteGroup[] {
+  const engine = getSoundEngine();
+  const key = useSyncExternalStore(
+    engine.subscribe,
+    () => {
+      const prefs = engine.getPrefs();
+      if (!prefs.enabled) return '';
+      const mutes = soundMutesFor(prefs, { systemId, isHome });
+      return SOUND_MUTE_GROUPS.filter((g) => mutes[g]).join(',');
+    },
+    () => '',
+  );
+  return useMemo(() => (key === '' ? [] : (key.split(',') as SoundMuteGroup[])), [key]);
 }

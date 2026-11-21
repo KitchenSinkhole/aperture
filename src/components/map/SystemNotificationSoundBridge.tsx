@@ -25,9 +25,12 @@ const CUE_FOR_KIND: Record<SystemNotificationLoad['kind'], SoundEvent> = {
 export function SystemNotificationSoundBridge({
   mapId,
   systems,
+  homeSystemId,
 }: {
   mapId: string;
   systems: MapSystemNode[];
+  /** EVE solar-system id of the map's Home, or null. */
+  homeSystemId: number | null;
 }) {
   const systemsRef = useRef(systems);
   useEffect(() => {
@@ -48,9 +51,11 @@ export function SystemNotificationSoundBridge({
         const { systemId } = parsed.data;
         if (!systemsRef.current.some((s) => s.systemId === systemId)) return;
 
-        getSoundEngine().play(CUE_FOR_KIND[parsed.data.kind]);
+        getSoundEngine().play(CUE_FOR_KIND[parsed.data.kind], {
+          system: { systemId, isHome: systemId === homeSystemId },
+        });
       },
-      [mapId],
+      [mapId, homeSystemId],
     ),
   );
 

@@ -1477,6 +1477,13 @@ export function MapCanvas({
     return [...selectedSystemIds].filter((id) => id !== homeId && !locked.has(id));
   }, [selectedSystemIds, viewData.map.homeMapSystemId, viewData.systems]);
 
+  // EVE id of the Home, for the sound bridges' per-system mute gate.
+  const homeSystemId = useMemo(
+    () =>
+      viewData.systems.find((s) => s.id === viewData.map.homeMapSystemId)?.systemId ?? null,
+    [viewData.map.homeMapSystemId, viewData.systems],
+  );
+
   // How many of the current selection are locked (and so excluded from the group
   // delete) — feeds the "Remove N" button's hint so the count discrepancy is
   // explained rather than silent.
@@ -2247,6 +2254,7 @@ export function MapCanvas({
                   connections={viewData.connections}
                   viewerCharacterIds={viewerCharacterIds}
                   watchedJumpOn={watchedJumpOn}
+                  homeSystemId={homeSystemId}
                 />
               )}
               {watchedJumpOn && (
@@ -2258,9 +2266,19 @@ export function MapCanvas({
                 />
               )}
               {(killInSystemOn || systemPingedOn) && (
-                <SystemNotificationSoundBridge mapId={mapId} systems={viewData.systems} />
+                <SystemNotificationSoundBridge
+                  mapId={mapId}
+                  systems={viewData.systems}
+                  homeSystemId={homeSystemId}
+                />
               )}
-              {rallySetOn && <RallySoundBridge mapId={mapId} />}
+              {rallySetOn && (
+                <RallySoundBridge
+                  mapId={mapId}
+                  systems={viewData.systems}
+                  homeMapSystemId={viewData.map.homeMapSystemId}
+                />
+              )}
               <SignaturePasteHotkey
                 mapId={mapId}
                 selectedSystem={selectedSystem}
