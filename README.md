@@ -177,8 +177,8 @@ caller looks like one of your proxies and shares a single limit.
 As a second safeguard, have the outermost proxy **replace** `X-Forwarded-For` with the address it
 sees rather than append to what the client sent. In nginx, that is
 `proxy_set_header X-Forwarded-For $remote_addr;` instead of `$proxy_add_x_forwarded_for`. A proxy
-that only sets `X-Real-IP` also works: it is used when `X-Forwarded-For` has fewer entries than
-`TRUSTED_PROXY_HOPS`.
+that only sets `X-Real-IP` also works: it is used when a request carries no `X-Forwarded-For` at
+all.
 
 ### Contributing
 

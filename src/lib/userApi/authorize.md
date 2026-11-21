@@ -3,7 +3,7 @@
 **Purpose:** Resolves a user API bearer token to an allow or a coded refusal: parse, resolve and decide (request pipeline steps 3 to 5) and the scope check (step 7). Rate limiting, which sits between decide and scope, is not here.
 **File:** `src/lib/userApi/authorize.ts`
 
-Resolved records are cached in-process by token hash for `USER_API_AUTH_CACHE_TTL_MS`, misses included, LRU-bounded at `USER_API_AUTH_CACHE_MAX_ENTRIES`; concurrent misses for one hash share one load. Expiry, suspension and account block are evaluated against the clock at decide time, so they never wait on the TTL. Explicit changes call the invalidation exports; changes the server only observes (kick, ban, leaving the corp, a cleared-list edit) apply within the TTL. Every invalidation also stops any load in flight from caching its result. State is a `globalThis` singleton.
+Resolved records are cached in-process by token hash for `USER_API_AUTH_CACHE_TTL_MS`, misses included, LRU-bounded at `USER_API_AUTH_CACHE_MAX_ENTRIES`; concurrent misses for one hash share one load. Expiry, suspension and account block are evaluated against the clock at decide time, so they never wait on the TTL. Explicit changes call the invalidation exports; changes the server only observes (kick, ban, leaving the corp, gaining or losing a cleared title) apply within the TTL. Every invalidation also stops any load in flight from caching its result. State is a `globalThis` singleton.
 
 No `import 'server-only'`: reached alongside `rights.ts`, `loginGate.ts` and `blackout.ts`, which load under plain Node.
 
@@ -63,13 +63,13 @@ One query for the token row (revoke reason included) with its map, owning accoun
 Drops the cached record of one token (revoke, suspend).
 
 ### invalidateUserApiMap(mapId: bigint): void
-Drops every cached record on one map (API switch, scope change, map soft-delete).
+Drops every cached record on one map (API switch, scope change, title delegation change, map soft-delete).
 
 ### invalidateUserApiAccount(userId: number): void
 Drops every cached record owned by one account (block, lift, main change, account deletion, losing a character to a re-home).
 
 ### clearUserApiAuthCache(): void
-Drops every cached record, misses included (the Blackout switch, tests).
+Drops every cached record, misses included (the Blackout switch, cleared-list edits, tests).
 
 ---
 

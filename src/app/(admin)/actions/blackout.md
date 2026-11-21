@@ -19,7 +19,7 @@ Turns Blackout off: clears `blackout_since` and `blackout_by_character_id`, then
 ---
 
 ### adminAddBlackoutClearance({ principalKind, principalId, expiresAt, note }): Promise<ActionResult>
-Adds an instance-scoped `blackout_view` grant, recording the acting admin as `granted_by_character_id`. Re-adding a principal already on the list replaces its expiry and note.
+Adds an instance-scoped `blackout_view` grant, recording the acting admin as `granted_by_character_id`. Re-adding a principal already on the list replaces its expiry and note. Then clears the user API auth cache (`clearUserApiAuthCache`), so a token owner's cleared standing applies from the next request.
 
 **Parameters:**
 - `principalKind` — `'character'` or `'role'`; anything else (corporation, alliance) is rejected.
@@ -30,7 +30,7 @@ Adds an instance-scoped `blackout_view` grant, recording the acting admin as `gr
 ---
 
 ### adminRemoveBlackoutClearance(grantId: string): Promise<ActionResult>
-Deletes one cleared-list entry. Only `scope='instance'`, `capability='blackout_view'` rows are removable; any other id (a `login` / `admin` grant, an unknown id) returns `Not a cleared-list entry.` and deletes nothing.
+Deletes one cleared-list entry. Only `scope='instance'`, `capability='blackout_view'` rows are removable; any other id (a `login` / `admin` grant, an unknown id) returns `Not a cleared-list entry.` and deletes nothing. A removal clears the user API auth cache, as an addition does.
 
 ---
 

@@ -8,6 +8,7 @@ import { mapCapability } from '@/db/schema/ap/enums';
 import { canManageMap } from '@/lib/auth/rights';
 import { commitMapEvent } from '@/lib/map/mutations/core';
 import { requireSession } from '@/lib/session';
+import { invalidateUserApiMap } from '@/lib/userApi/authorize';
 import type { DelegationRole, MapDelegationState } from '@/types';
 
 /**
@@ -162,5 +163,8 @@ export async function setMapDelegation(input: z.input<typeof setSchema>): Promis
   });
 
   if (!result.ok) return { ok: false, error: result.error };
+  // A title's feature grants decide whether its holders can view the map, which
+  // the user API auth cache has already evaluated for their tokens.
+  invalidateUserApiMap(mapId);
   return { ok: true };
 }

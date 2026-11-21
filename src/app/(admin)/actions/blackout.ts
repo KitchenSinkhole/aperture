@@ -168,6 +168,7 @@ export async function adminAddBlackoutClearance(
     await tx.execute(notifyInstance());
   });
 
+  clearUserApiAuthCache();
   revalidatePath('/admin/settings');
   return { ok: true };
 }
@@ -196,6 +197,7 @@ export async function adminRemoveBlackoutClearance(grantId: string): Promise<Act
   });
   if (!removed) return { ok: false, error: 'Not a cleared-list entry.' };
 
+  clearUserApiAuthCache();
   revalidatePath('/admin/settings');
   return { ok: true };
 }

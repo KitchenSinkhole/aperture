@@ -671,7 +671,7 @@ export type UserApiTokenListItem = {
   /** First 6 characters of the random part, for telling tokens apart. */
   prefix: string;
   scopes: ApiScope[];
-  /** The owning account's current main; null when it has none. */
+  /** The owning account's current main; null when it has none, or for another account's token while Blackout restricts the viewer. */
   ownerName: string | null;
   /** Owned by the viewer's account. */
   own: boolean;

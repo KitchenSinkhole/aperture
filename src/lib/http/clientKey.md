@@ -13,7 +13,7 @@
 ---
 
 ### resolveClientIp(parts: { forwardedFor, realIp, socketAddress }, trustedHops: number): string
-Pure. With `trustedHops` 0, the socket peer. Otherwise the `X-Forwarded-For` entry `trustedHops` places from the right, since each trusted proxy appends the address it received the request from and everything further left was written by the client. A request with fewer entries than `trustedHops` falls back to `X-Real-IP`, then the left-most entry, then the socket peer. `'unknown'` when nothing is available.
+Pure. With `trustedHops` 0, the socket peer. Otherwise the `X-Forwarded-For` entry `trustedHops` places from the right, since each trusted proxy appends the address it received the request from and everything further left was written by the client. A request with fewer entries than `trustedHops` takes its right-most entry, the one the nearest proxy appended. `X-Real-IP` is read only when `X-Forwarded-For` is absent or empty, since a client can write it whenever a proxy appends rather than sets; then the socket peer. `'unknown'` when nothing is available.
 
 ---
 

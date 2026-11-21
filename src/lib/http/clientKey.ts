@@ -21,9 +21,11 @@ export const CLIENT_IP_HEADER = 'x-aperture-client-ip';
  * the caller is the entry `trustedHops` places from the right; anything left of
  * it was written by the client. Zero hops is the socket's own peer.
  *
- * A request carrying fewer entries than `trustedHops` did not pass through
- * every proxy (or a proxy sets only `X-Real-IP`): it falls back to
- * `X-Real-IP`, then the left-most entry, then the socket peer.
+ * A request carrying fewer entries than `trustedHops` skipped a proxy. Its
+ * right-most entry is still the one the nearest proxy appended; the client may
+ * have written everything else, `X-Real-IP` included, so `X-Real-IP` is read
+ * only when there is no `X-Forwarded-For` at all (a proxy that sets just that
+ * header, overwriting the client's). Then the socket peer.
  */
 export function resolveClientIp(
   parts: {
@@ -40,7 +42,8 @@ export function resolveClientIp(
     .map((entry) => entry.trim())
     .filter((entry) => entry !== '');
   if (forwarded.length >= trustedHops) return forwarded[forwarded.length - trustedHops]!;
-  return parts.realIp?.trim() || forwarded[0] || socket;
+  if (forwarded.length > 0) return forwarded[forwarded.length - 1]!;
+  return parts.realIp?.trim() || socket;
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {

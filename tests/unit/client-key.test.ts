@@ -26,10 +26,15 @@ describe('resolveClientIp', () => {
     expect(resolve(' 6.6.6.6 ,198.51.100.1 ,', 1)).toBe('198.51.100.1');
   });
 
-  it('falls back to X-Real-IP, then the left-most entry, then the socket, when entries run short', () => {
-    expect(resolve(null, 1, '198.51.100.7')).toBe('198.51.100.7');
-    expect(resolve('198.51.100.1', 2, '198.51.100.7')).toBe('198.51.100.7');
+  it('takes the right-most entry when entries run short, ignoring X-Real-IP the client could write', () => {
+    expect(resolve('198.51.100.1', 2, '6.6.6.6')).toBe('198.51.100.1');
     expect(resolve('198.51.100.1', 2)).toBe('198.51.100.1');
+    expect(resolve('6.6.6.6, 198.51.100.1', 3, '6.6.6.7')).toBe('198.51.100.1');
+  });
+
+  it('falls back to X-Real-IP only without X-Forwarded-For, then the socket', () => {
+    expect(resolve(null, 1, '198.51.100.7')).toBe('198.51.100.7');
+    expect(resolve(' , ', 2, '198.51.100.7')).toBe('198.51.100.7');
     expect(resolve(null, 1)).toBe(SOCKET);
     expect(resolveClientIp({ forwardedFor: null, realIp: null, socketAddress: undefined }, 1)).toBe(
       'unknown',

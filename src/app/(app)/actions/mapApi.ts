@@ -4,6 +4,7 @@ import { and, count, desc, eq, gt, isNull, or, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db/client';
 import { apCharacter, apiScope, apMap, apMapApiToken, apUser } from '@/db/schema';
+import { getBlackoutStatus, isBlackedOut } from '@/lib/auth/blackout';
 import { isLoginAllowed } from '@/lib/auth/loginGate';
 import {
   canUseMapFeature,
@@ -173,11 +174,13 @@ async function toListItems(
   rows: TokenRow[],
   viewerUserId: number,
   now: Date,
+  hideOtherOwners = false,
 ): Promise<UserApiTokenListItem[]> {
   const memo = new Map<string, Promise<boolean>>();
   return Promise.all(
     rows.map(async (row) => {
       const status = await statusOf(row, now, memo);
+      const own = row.userId === viewerUserId;
       return {
         id: row.id.toString(),
         mapId: row.mapId.toString(),
@@ -185,8 +188,8 @@ async function toListItems(
         label: row.label,
         prefix: row.prefix,
         scopes: normaliseScopes(row.scopes),
-        ownerName: row.mainName,
-        own: row.userId === viewerUserId,
+        ownerName: own || !hideOtherOwners ? row.mainName : null,
+        own,
         createdAt: row.createdAt.toISOString(),
         expiresAt: row.expiresAt?.toISOString() ?? null,
         lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
@@ -202,6 +205,8 @@ async function toListItems(
  * The API tab's state for one map and the signed-in viewer: the instance and
  * map switches, the map's scopes, the viewer's account block, the account's
  * own tokens on the map and, for a holder of `api_manage`, every token on it.
+ * While Blackout restricts the viewer, other accounts' tokens carry no owner,
+ * the same redaction the audit log applies to token owners.
  */
 export async function getMapApiState(mapId: string): Promise<ActionResult<MapApiState>> {
   const parsed = mapIdSchema.safeParse(mapId);
@@ -213,9 +218,10 @@ export async function getMapApiState(mapId: string): Promise<ActionResult<MapApi
   if (!guard.ok) return { ok: false, error: guard.error };
 
   const now = new Date();
-  const [canManage, instanceEnabled, [map], [account], [live], rows] = await Promise.all([
+  const [canManage, instanceEnabled, blackout, [map], [account], [live], rows] = await Promise.all([
     canUseMapFeature(guard.characterId, id, 'api_manage'),
     isUserApiInstanceEnabled(),
+    getBlackoutStatus(session.userId),
     db
       .select({ apiEnabled: apMap.apiEnabled, apiScopes: apMap.apiScopes })
       .from(apMap)
@@ -237,7 +243,7 @@ export async function getMapApiState(mapId: string): Promise<ActionResult<MapApi
   if (!map) return { ok: false, error: 'Map not found.' };
 
   const visible = canManage ? rows : rows.filter((r) => r.userId === session.userId);
-  const items = await toListItems(visible, session.userId, now);
+  const items = await toListItems(visible, session.userId, now, isBlackedOut(blackout));
 
   return {
     ok: true,
