@@ -151,16 +151,82 @@ There are exactly three emitters of `connection.delete` in the codebase:
 
 ---
 
-## Stage 5 — Age-based auto-EOL marking
-**Design pass:** the auto vs observed EOL distinction and its schema — needs its own planning session before execution starts.
-**Status:** todo
+## Stage 5 — Age-based auto-EOL marking (overview)
+
 **Goal:** Mark a wormhole `eol_stage = 'eol'` automatically as it approaches its type's catalogued lifetime, so abandoned holes get reaped by `eolExpiry` near nominal instead of rotting to the 48h `expiredConnections` cap. This is what kills the stale pile at the source.
 
-**The design risk that gates this stage:** an age-based EOL is a *guess* about collapse, not an observation. It must be distinguishable from a human/observed EOL — an `eol_source` marker of `auto` vs `observed`, carried through to the death snapshot — so the lifecycle read model can exclude auto-marked holes from any "how long do they really last" measurement. Getting this wrong launders guesses into the dataset as data, which is the exact failure this whole effort exists to prevent.
+**The design risk that gates it:** an age-based EOL is a *guess* about collapse, not an observation. It must be distinguishable from a scout's EOL everywhere it is read (DB, wire, death snapshot, read model, map, Discord, user API), or guesses get laundered into the dataset as data, which is the exact failure this effort exists to prevent.
 
-**Known scope beyond the original sketch:** this needs a schema migration (`eol_source` on `ap_map_connection`, plus its enum), a new cron task with registry entry and companion, the per-type nominal lifetime read via the static catalog (`staticMatchForConnection` / `src/db/schema/universe/statics.ts`), and a decision on whether auto-EOL is opt-in per map like the two existing reapers. `eolSource` must ride the death snapshot (an optional field on the `connection.delete` schema in `protocol.ts`, read by Stage 1's shared reader), and `ap_connection_lifecycle` gains an `eol_source` column. `CREATE OR REPLACE VIEW` can append a column at the end, so that's a new custom migration and an edit to `src/db/views/connection_lifecycle.sql` and its companion.
+Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the per-map flag defaults off and its toggle ships last, so no map can opt in before the map can tell an estimate from an observation.
 
-_(`Mode`, `References`, `Touches`, `Done when` are filled in by that session, which may also split this stage.)_
+**Settled design (applies across 5a–5f):**
+- **`eol_source` is the provenance of the current `eol_stage` value.** New `pgEnum` `eol_source` = `auto` | `observed`, nullable column `ap_map_connection.eol_source`. `NULL` means nobody has ever set the stage (the `none` default). `observed` means a human set it last, **including setting it to `none`**. `auto` means the cron set it. `auto` is only ever paired with `eol`, enforced by a check constraint: `eol_stage = 'none'` requires `eol_source IS DISTINCT FROM 'auto'`, and `eol_stage <> 'none'` requires `eol_source IS NOT NULL`. The migration backfills `observed` onto every row whose stage is not `none` (there was no automatic EOL writer before it).
+- **Clients never send `eolSource`.** The server derives it: any `eolStage` that arrives through `createConnection` / `updateConnection` (the API routes, and the client's sig-to-connection populate that goes through them) is `observed`. Only the cron writes `auto`. Paths that create at `none` (location-poll auto-link, `ensureTopology`) leave it `NULL`. `restoreConnection` leaves it untouched.
+- **Confirming an estimate is an observation.** A human committing **any** `eolStage` on an `auto` row, **including the same `eol`**, flips it to `observed` **and re-stamps `eol_at` to now**, even though an unchanged stage normally keeps `eol_at`. The scout's sighting is the real "≤4h left" data point, and the auto stamp was a guess.
+- **A human-touched row is never auto-marked.** The cron only targets `eol_source IS NULL`. A scout clearing an estimate (setting `none`) makes it `observed` and the cron leaves it alone. That hole falls back to the 48h cap, which is acceptable.
+- **Mark time:** a row is eligible once `created_at + nominal − WORMHOLE_EOL_NOMINAL_MS ≤ now()`. This reuses the existing 4h constant and adds no new config. The cron stamps **`eol_at = now()`, not the estimated entry time**, so an estimate is always on screen for the full `eol` reap clock (`WORMHOLE_EOL_LIFETIME_MS`) before `eolExpiry` takes it. Opting a map in, or typing a sig late on an old hole, therefore never mass-reaps on the next tick. `born_at` is an upper bound on spawn, so the estimate errs late, never early, for a correctly typed hole.
+- **Nominal lifetime:** dogma `wormholeMaxStableTime` (minutes, on `universe_type_attribute_effective`, attribute resolved **by name**). On the dev DB this is 270, 720, 960, 1440 or 2880 minutes, and K162 has none. **The type comes from the bound signatures**, using the same rule as Stage 1's `wormholeCode`: exactly one distinct non-K162 code. **Fallback:** when no code resolves and `is_static` is set, use the source system's static whose `target_class` equals the target system's `security`, but only if exactly one matches (the same join as `staticMatchForConnection`, done set-wise in SQL). Anything else (K162-only, untyped, disagreeing, ambiguous static) is never auto-marked and falls to the 48h cap.
+- **Eligibility:** `ap_map.auto_eol_connections = true`, `ap_map.deleted_at IS NULL`, `scope = 'wh'`, `eol_stage = 'none'`, `eol_source IS NULL`, `confirmed_at IS NOT NULL` (dormant holes are hidden and die under the 48h sweep with `wasDormant`). 48h types are not excluded: they are marked at 44h, which is a correct estimate, and the 48h cap usually reaps them first.
+- **Opt-in:** new `ap_map.auto_eol_connections boolean NOT NULL DEFAULT false`, with its own toggle in `MapBehaviorForm`. It is independent of `delete_eol_connections`: on a map without EOL reaping, an estimate still shows on the map but is never acted on.
+- **Discord:** auto-marks are **not posted** to webhooks. **Audit:** they appear in the automation bucket, described as an estimate (e.g. "EOL estimated from age → ~4h"), never with the wording a scout's EOL gets.
+- **Not in scope:** auto-advancing to `critical`; reverting an estimate when a sig's type is later corrected (a human clears it, and that makes it `observed`); the "Expires in X" hint using per-type nominal instead of 48h.
+
+---
+
+## Stage 5a — EOL provenance schema
+**Mode:** Execute
+**Status:** todo
+**Goal:** Land the `eol_source` enum and column, the `auto_eol_connections` map flag, the check constraint and the `observed` backfill, with the shared `EolSource` type.
+**References:** `src/db/schema/ap/enums.md`, `src/db/schema/ap/map_connection.md`, `src/db/schema/ap/map.md`, `src/types/index.md`
+**Touches:** `src/db/schema/ap/enums.ts`, `src/db/schema/ap/map_connection.ts`, `src/db/schema/ap/map.ts`, `src/types/index.ts`, a migration at the next free number (`drizzle-kit generate`, plus the backfill `UPDATE` appended by hand) and its hand-written `.rollback.sql`, and their companions.
+**Done when:** the migration applies on the dev DB, the backfill leaves no row with `eol_stage <> 'none' AND eol_source IS NULL`, the check constraint rejects `('none', 'auto')` and `('eol', NULL)`, and the rollback drops the constraint, both columns and the enum cleanly. `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
+
+## Stage 5b — Human EOL writes record `observed`
+**Mode:** Execute
+**Status:** todo
+**Goal:** Make every human EOL write path stamp `eol_source = 'observed'` and carry `eolSource` on the `connection.create` / `connection.update` payloads, including the confirm-an-estimate re-stamp.
+**References:** `src/lib/map/mutations/connections.md`, `src/lib/realtime/protocol.md`, `src/lib/map/transfer.md`, `src/db/schema/ap/map_connection.md`
+**Touches:** `src/lib/map/mutations/connections.ts`, `src/lib/realtime/protocol.ts` (optional `eolSource` on the `connection.create` and `connection.update` members), `src/lib/map/transfer.ts`, their companions, and a DB integration test.
+**Transfer:** export carries `eolSource` and `autoEolConnections`. On import, both are optional: an absent `eolSource` on a row whose stage is not `none` means `observed`, because exports from before 5a predate auto-marking. An absent flag means `false`. Per the settled design, `eol_at` is re-stamped on import, and a round-tripped `auto` row stays `auto`.
+**Done when:** a DB test asserts that creating with `eolStage = 'eol'` stores `observed`; that updating any stage (including `none`) stores `observed`; and that on a row hand-set to `('eol', 'auto')` an update to the same `eol` flips it to `observed` and advances `eol_at`. Each is read from both the row and the stored `ap_map_event.payload`. A transfer round-trip preserves `eol_source`. `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
+
+## Stage 5c — Provenance in the death snapshot and read model
+**Mode:** Execute
+**Status:** todo
+**Goal:** Carry `eolSource` into every `connection.delete` snapshot and surface it as `ap_connection_lifecycle.eol_source`.
+**References:** Stage 1's snapshot-reader companion, `src/lib/realtime/protocol.md`, `src/db/views/connection_lifecycle.md`
+**Touches:** Stage 1's snapshot reader, the `connection.delete` member of `mapEventPayloadSchema` (optional `eolSource`), `src/db/views/connection_lifecycle.sql` + companion, a custom migration (`drizzle-kit generate --custom`) doing `CREATE OR REPLACE VIEW` with the column appended last + its `.rollback.sql` restoring the Stage 4 definition, and the Stage 4 view test.
+**View column:** `eol_source` is payload `eolSource`, else `'observed'` when the payload lacks it and `eolStage <> 'none'` (deaths snapshotted before 5b, when every EOL was human), else `NULL`. The companion states that `cause = 'eol_reaped' AND eol_source = 'auto'` rows have a lifetime set by the cron's clock, not measured.
+**Done when:** the Stage 4 view test is extended so that a connection hand-set to `('eol', 'auto')` and then reaped by `eolExpiry` yields `eol_source = 'auto'`, a human-EOL'd one yields `observed`, and a hand-inserted Stage-1-shape snapshot with `eolStage = 'eol'` and no `eolSource` yields `observed`. Migration and rollback apply cleanly. `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
+
+## Stage 5d — The auto-EOL cron
+**Mode:** Execute
+**Status:** todo
+**Goal:** Ship the cron that marks eligible holes `('eol', 'auto')` per the settled design, kept out of Discord and labelled as an estimate in the audit log.
+**References:** `src/lib/jobs/tasks/eolExpiry.md` (the shape to follow), `src/lib/jobs/registry.md`, `src/lib/map/mutations/core.md`, `src/lib/eve/wormholeJumpInfo.md` (attribute-by-name resolution), `src/lib/map/wormholeTypes.md` (`staticMatchForConnection` join), Stage 1's snapshot-reader companion (the `wormholeCode` rule), `src/lib/webhooks/dispatcher.md`, `src/lib/webhooks/formatters.md`
+**Touches:** a new `src/lib/jobs/tasks/autoEol.ts` + companion, `src/lib/jobs/registry.ts`, `src/lib/webhooks/dispatcher.ts` and/or `src/lib/webhooks/formatters.ts`, their companions, and job integration tests.
+**Constraints:**
+- **No `server-only` imports.** The task runs in the bare-tsx runner, and both `wormholeJumpInfo.ts` and `wormholeTypes.ts` import `server-only`. Resolve the attribute and do the static join in the task's own SQL, or in a runner-safe helper.
+- **Reuse Stage 1's bound-code rule, don't re-derive it.** If Stage 1 shipped it per-connection only, lift it into a shared set-wise SQL fragment that both use.
+- **The `UPDATE` is conditional** (`WHERE eol_stage = 'none' AND eol_source IS NULL`) inside the `commitMapEvent` `mutate`, so a scout's concurrent write wins. One `connection.update` per marked row, with `characterId: null` and a payload of `eolStage: 'eol'`, `eolAt`, `eolSource: 'auto'` plus the `source`/`target` descriptors. Batch with `JOB_DELETE_BATCH_SIZE`. Cadence is a hard-coded cron string (every 5 minutes, matching `eolExpiry`). An unresolvable attribute marks nothing and says so in `ap_job_run.notes`.
+**Done when:** job tests on an opted-in map show that an O477-typed hole past `nominal − 4h` is marked `('eol', 'auto')` with `eol_at ≈ now()`; that one short of it, a K162-only hole, a dormant hole, an `observed`-`none` hole and a hole on a non-opted map are untouched; that an untyped `is_static` hole with a single matching static is marked; and that the emitted event is not dispatched to webhooks while `describeMapEvent` renders it as an estimate. `pnpm lint`, `pnpm typecheck`, `pnpm build` green, and `pnpm dev` boots the runner with the task registered (the only gate that catches a `server-only` import).
+
+## Stage 5e — `eolSource` reaches every reader
+**Mode:** Execute
+**Status:** todo
+**Goal:** Plumb `eolSource` to the map client, the public spectator snapshot and the user API, so every consumer that sees `eolStage` can tell an estimate apart.
+**References:** `src/lib/map/loadMap.md`, `src/lib/map/loadPublicMap.md`, `src/lib/map/applyEvent.md`, `src/lib/map/client.md`, `src/lib/userApi/projection.md`, `docs/api/README.md`
+**Touches:** `src/lib/map/loadMap.ts`, `src/lib/map/loadPublicMap.ts`, `src/lib/map/applyEvent.ts` (and the client connection type it feeds), `src/lib/userApi/projection.ts`, `docs/api/README.md` (additive `eolSource` field on connections), and their companions.
+**Done when:** `eolSource` is present on loaded and realtime-applied connections, on the public snapshot and in the user API connection projection, covered by the existing tests for those modules extended with an `auto` row. `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
+
+## Stage 5f — Render estimates and ship the toggle
+**Mode:** Execute
+**Status:** todo
+**Goal:** Render an `auto` EOL visibly as an estimate with a one-click confirm, and expose the `auto_eol_connections` toggle, which is what turns the feature on.
+**References:** `src/components/map/styling.md`, `src/components/map/ConnectionDetailPopover.md`, `src/components/sidebar/InspectorModule.md`, `src/components/map/MapContextMenu.md`, `src/components/map/manage/MapBehaviorForm.md`, `src/app/(app)/actions/map.md`
+**Touches:** `src/components/map/styling.ts`, `src/components/map/ConnectionDetailPopover.tsx`, `src/components/sidebar/InspectorModule.tsx`, `src/components/map/MapContextMenu.tsx`, `src/components/map/manage/MapBehaviorForm.tsx`, `src/app/(app)/actions/map.ts`, and their companions.
+**Contract:** an `auto` edge keeps the EOL treatment but is visibly marked as an estimate in the edge styling and in the popover and inspector wording. Every EOL control lets a human re-select the current `eol` on an `auto` row (that's the confirm, which 5b turns into `observed`). The toggle is labelled so a map owner understands it shows *estimated* EOLs on everyone's map.
+**Done when:** the toggle persists through the map settings Server Action, and an `auto` connection's rendered output differs from an `observed` one's (component or styling unit test). `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
 
 ---
 
@@ -179,13 +245,14 @@ _(`Mode`, `References`, `Touches`, `Done when` are filled in by that session, wh
 - Stages 1 and 2 are load-bearing: everything after them reads the death snapshot they write. Stage 1 settles the cause taxonomy and the shared snapshot reader; Stage 2 is mechanical reuse of both across the crons.
 - Stage 3 is independent of Stage 2 and can run in either order after Stage 1.
 - Stage 4 needs Stages 1 and 2 landed (its test reaps through a cron). Stage 3 only improves the data it reads, not its shape.
-- Stage 5 still needs its own planning session before any execution run reaches it.
 - Stage 5 is the largest behavioural change and the one most able to corrupt the dataset if the auto/observed distinction is sloppy; keep it behind Stage 4 so its output is immediately inspectable.
+- 5a and 5b depend only on the schema and can run any time. 5c needs Stages 1, 4 and 5b. 5d needs Stage 1 (the `wormholeCode` rule) and 5b (the `connection.update` field). 5e needs 5b. 5f goes last because its toggle is the only way to switch the feature on, so nothing auto-marks before estimates render distinctly.
 
 ## Manual verification
 _(worked by the user once, after the run — the plan is not complete until it passes)_
 - **Stage 2** — after a live cron reap on a real map, the audit-log entry and the Discord message for the collapsed hole still name both endpoint systems correctly; the enriched payload must not have broken the formatters.
 - **Stage 3** — paste the same probe-scan result twice from the in-game client into a live mapped chain, a few minutes apart. The mapped connections stay on the map and their heartbeat advances; nothing is dropped or duplicated by the second paste.
+- **Stage 5f** — on a live opted-in map, let a typed hole cross `nominal − 4h`. It turns EOL, visibly marked as estimated, in two tabs and on the public share view, and no Discord message fires. Re-selecting EOL on it in the inspector drops the estimate marking and restarts the countdown. Clearing an estimate to `none` keeps it cleared on the next cron tick.
 - **Stage 6** — the measurement run itself: tagged statics left unrolled to natural collapse, deaths classified by cause, clear-lag bounded per hole.
 
 ## Notes
