@@ -9,6 +9,7 @@ import {
   universeSystem,
 } from '@/db/schema';
 import {
+  isDiscordWebhookUrl,
   postDiscordWebhook,
   type DiscordDispatchResult,
   type DiscordWebhookPayload,
@@ -100,7 +101,6 @@ export async function runWebhookDispatch(
   const webhooks = await db
     .select({
       id: apMapWebhook.id,
-      channel: apMapWebhook.channel,
       event: apMapWebhook.event,
       url: apMapWebhook.url,
       username: apMapWebhook.username,
@@ -117,7 +117,6 @@ export async function runWebhookDispatch(
     // Rally webhooks only fire on rally-set events; rally-clear and other
     // system updates flow to history only.
     if (wh.event === 'rally' && !isRally) continue;
-    if (wh.channel !== 'discord') continue;
 
     const payload =
       wh.event === 'rally'
@@ -156,7 +155,6 @@ export async function runTestWebhookDispatch(
 ): Promise<WebhookDispatchNotes> {
   const [wh] = await db
     .select({
-      channel: apMapWebhook.channel,
       url: apMapWebhook.url,
       username: apMapWebhook.username,
       mapId: apMapWebhook.mapId,
@@ -165,9 +163,6 @@ export async function runTestWebhookDispatch(
     .where(eq(apMapWebhook.id, webhookId));
   if (!wh) {
     return { attempted: 0, succeeded: 0, failed: 0, skipped: 0, test: true, missingWebhook: true };
-  }
-  if (wh.channel !== 'discord') {
-    return { attempted: 0, succeeded: 0, failed: 0, skipped: 1, test: true };
   }
 
   const [mapRow] = await db
@@ -205,11 +200,18 @@ async function deliver(
   url: string,
   payload: DiscordWebhookPayload,
 ): Promise<{ ok: boolean }> {
+  // Re-checked at send time so a row stored before the allowlist existed is refused too.
+  if (!isDiscordWebhookUrl(url)) {
+    recordWebhookDelivery('blocked_url');
+    await recordFailure(webhookId, null, 'Not a Discord webhook URL; delivery refused.');
+    return { ok: false };
+  }
+
   const result = await postDiscordWebhook(url, payload);
   recordWebhookDelivery(webhookOutcome(result));
-  const attemptedAt = new Date();
 
   if (result.ok) {
+    const attemptedAt = new Date();
     await db
       .update(apMapWebhook)
       .set({
@@ -223,17 +225,26 @@ async function deliver(
     return { ok: true };
   }
 
+  await recordFailure(webhookId, result.status ?? null, result.error);
+  return { ok: false };
+}
+
+async function recordFailure(
+  webhookId: bigint,
+  status: number | null,
+  error: string,
+): Promise<void> {
+  const attemptedAt = new Date();
   await db
     .update(apMapWebhook)
     .set({
-      lastStatus: result.status ?? null,
-      lastError: result.error.slice(0, LAST_ERROR_MAX),
+      lastStatus: status,
+      lastError: error.slice(0, LAST_ERROR_MAX),
       lastAttemptedAt: attemptedAt,
       consecutiveFailures: sql`${apMapWebhook.consecutiveFailures} + 1`,
       updatedAt: attemptedAt,
     })
     .where(eq(apMapWebhook.id, webhookId));
-  return { ok: false };
 }
 
 async function resolveContext(

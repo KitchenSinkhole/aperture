@@ -74,9 +74,7 @@ export const routeSafety = pgEnum('route_safety', ['shortest', 'safer', 'less_sa
 export const eolStage = pgEnum('eol_stage', ['none', 'eol', 'critical', 'expired']);
 
 /**
- * Outbound chat channel for `ap_map_webhook`. Currently Discord only;
- * adding `'slack'` is one `ALTER TYPE ap_webhook_channel ADD VALUE` plus
- * a sibling `src/lib/integrations/slack.ts`.
+ * Outbound chat channel for `ap_map_webhook`. Discord is the only channel.
  */
 export const apWebhookChannel = pgEnum('ap_webhook_channel', ['discord']);
 

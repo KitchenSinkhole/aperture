@@ -6,6 +6,7 @@ import { db } from '@/db/client';
 import { apMapWebhook, apWebhookChannel, apWebhookEvent } from '@/db/schema';
 import { requireSession } from '@/lib/session';
 import { requireMapCapability } from '@/lib/auth/rights';
+import { isDiscordWebhookUrl } from '@/lib/integrations/discord';
 
 /**
  * Map-scoped actions on `ap_map_webhook` rows, gated by
@@ -26,7 +27,14 @@ const mapIdSchema = z.string().regex(/^\d+$/, 'Invalid map id.');
 const webhookIdSchema = z.string().regex(/^\d+$/, 'Invalid webhook id.');
 const channelSchema = z.enum(apWebhookChannel.enumValues);
 const eventSchema = z.enum(apWebhookEvent.enumValues);
-const urlSchema = z.string().url('Webhook URL must be a valid URL.').max(2000);
+const urlSchema = z
+  .string()
+  .trim()
+  .max(2000)
+  .refine(
+    isDiscordWebhookUrl,
+    'Webhook URL must be a Discord webhook URL (https://discord.com/api/webhooks/...).',
+  );
 const usernameSchema = z
   .string()
   .trim()
