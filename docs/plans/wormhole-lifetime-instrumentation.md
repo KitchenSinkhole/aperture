@@ -146,7 +146,7 @@ _(`Mode`, `References`, `Touches`, `Done when` are filled in by that session, wh
 
 ## Manual verification
 _(worked by the user once, after the run — the plan is not complete until it passes)_
-- **Stage 2** — after a live cron reap on a real map, the audit-log entry and the Discord/Slack message for the collapsed hole still name both endpoint systems correctly; the enriched payload must not have broken the formatters.
+- **Stage 2** — after a live cron reap on a real map, the audit-log entry and the Discord message for the collapsed hole still name both endpoint systems correctly; the enriched payload must not have broken the formatters.
 - **Stage 3** — paste the same probe-scan result twice from the in-game client into a live mapped chain, a few minutes apart. The mapped connections stay on the map and their heartbeat advances; nothing is dropped or duplicated by the second paste.
 - **Stage 6** — the measurement run itself: tagged statics left unrolled to natural collapse, deaths classified by cause, clear-lag bounded per hole.
 

@@ -39,7 +39,7 @@
 `pgEnum('eol_stage', ['none', 'eol', 'critical', 'expired'])` — end-of-life stage of a wormhole. Replaces the earlier `is_eol` boolean (migration 0031); `expired` added migration 0053. `none` is a hole not yet decaying; `eol` (~4h) and `critical` (~1h) are EVE's two timed decay warnings; `expired` (migration 0053) is EVE's terminal "expiration imminent" / Expired state. On `ap_map_connection` and `ap_map_signature`, default `none`. The `eol`/`critical` stage selects which lifetime constant (`WORMHOLE_EOL_LIFETIME_MS` vs `WORMHOLE_EOL_CRITICAL_LIFETIME_MS`) drives the countdown + EOL-expiry reap; `eol_at` is re-stamped on each stage change. `expired` is set only manually; it shows an elapsed-since readout instead of a countdown and the EOL-expiry reaper purges it `WORMHOLE_EXPIRED_LIFETIME_MS` (4h) after `eol_at` on opt-in maps.
 
 ### apWebhookChannel
-`pgEnum('ap_webhook_channel', ['discord'])` — outbound chat channel for an `ap_map_webhook` row. Currently Discord only; adding `'slack'` is a one-line `ALTER TYPE` migration plus a sibling client module.
+`pgEnum('ap_webhook_channel', ['discord'])` — outbound chat channel for an `ap_map_webhook` row. Discord is the only channel.
 
 ### apWebhookEvent
 `pgEnum('ap_webhook_event', ['history', 'rally'])` — which class of map events a webhook subscribes to. `history` mirrors every `ap_map_event` insert on the map; `rally` fires only when a `system.updated` event carries a non-null `rallyAt` (rally set, not cleared).

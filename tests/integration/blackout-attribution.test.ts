@@ -152,7 +152,7 @@ describe.skipIf(!run)('Blackout attribution (real Postgres)', () => {
       mapId,
       channel: 'discord',
       event: 'history',
-      url: 'https://discord.example/webhooks/attribution',
+      url: 'https://discord.com/api/webhooks/1/attribution',
     });
 
     await insertEvent('system.removed', OWNER_CHAR, { id: mapSystemA.toString() });

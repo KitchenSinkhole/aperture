@@ -53,6 +53,36 @@ export type DiscordDispatchResult =
       retryAfterSeconds?: number;
     };
 
+const DISCORD_WEBHOOK_HOSTS = new Set([
+  'discord.com',
+  'discordapp.com',
+  'canary.discord.com',
+  'ptb.discord.com',
+]);
+
+/**
+ * Whether `url` is an execute-webhook URL on one of Discord's own hosts. Map
+ * webhooks are configured by any map manager and POSTed from the server, so an
+ * unrestricted URL would let a manager aim the server at internal addresses and
+ * read the reply back through `last_error`.
+ */
+export function isDiscordWebhookUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return (
+    parsed.protocol === 'https:' &&
+    DISCORD_WEBHOOK_HOSTS.has(parsed.hostname) &&
+    parsed.port === '' &&
+    parsed.username === '' &&
+    parsed.password === '' &&
+    parsed.pathname.startsWith('/api/webhooks/')
+  );
+}
+
 /**
  * POST a payload to a Discord webhook URL. Never throws — every transport
  * failure is mapped to a `{ ok: false }` result with a `retriable` flag.
@@ -73,6 +103,8 @@ export async function postDiscordWebhook(
         'User-Agent': 'Aperture/0.0.0',
       },
       body: JSON.stringify({ ...payload, allowed_mentions: { parse: [] } }),
+      // A redirect would carry the POST past the host allowlist.
+      redirect: 'manual',
       signal: AbortSignal.timeout(apertureConfig.INTEGRATION_REQUEST_TIMEOUT_MS),
     });
   } catch (err) {

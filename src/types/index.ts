@@ -1382,7 +1382,8 @@ export type WebhookOutcome =
   | 'rate_limited'
   | 'http_4xx'
   | 'http_5xx'
-  | 'network_error';
+  | 'network_error'
+  | 'blocked_url';
 
 /**
  * Outcome label for `public_ws_upgrades_total`, one per public spectator
