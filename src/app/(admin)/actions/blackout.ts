@@ -8,6 +8,8 @@ import { apAccessGrant, apCharacter, apCorporation, apInstance, apRole } from '@
 import { auth } from '@/lib/auth';
 import { isAdmin } from '@/lib/auth/rights';
 import { clearPublicSnapshots } from '@/lib/map/publicSnapshot';
+import { clearUserApiAuthCache } from '@/lib/userApi/authorize';
+import { clearUserApiProjections } from '@/lib/userApi/cache';
 import type { BlackoutPanelData } from '@/types';
 import { apertureConfig } from '../../../../aperture.config';
 
@@ -33,6 +35,17 @@ async function adminCharacterId(): Promise<bigint | null> {
   return BigInt(session.characterId);
 }
 
+/**
+ * Every in-process cache holding presence read under the old switch: public
+ * share snapshots, user API projections, and the user API auth records, which
+ * carry each token owner's Blackout standing.
+ */
+function clearBlackoutSensitiveCaches(): void {
+  clearPublicSnapshots();
+  clearUserApiProjections();
+  clearUserApiAuthCache();
+}
+
 function notifyInstance() {
   return sql`SELECT pg_notify(${apertureConfig.INSTANCE_NOTIFY_CHANNEL}, '')`;
 }
@@ -54,7 +67,7 @@ export async function adminStartBlackout(): Promise<ActionResult> {
     await tx.execute(notifyInstance());
   });
 
-  clearPublicSnapshots();
+  clearBlackoutSensitiveCaches();
   revalidatePath('/admin/settings');
   return { ok: true };
 }
@@ -71,7 +84,7 @@ export async function adminEndBlackout(): Promise<ActionResult> {
     await tx.execute(notifyInstance());
   });
 
-  clearPublicSnapshots();
+  clearBlackoutSensitiveCaches();
   revalidatePath('/admin/settings');
   return { ok: true };
 }
@@ -155,6 +168,7 @@ export async function adminAddBlackoutClearance(
     await tx.execute(notifyInstance());
   });
 
+  clearUserApiAuthCache();
   revalidatePath('/admin/settings');
   return { ok: true };
 }
@@ -183,6 +197,7 @@ export async function adminRemoveBlackoutClearance(grantId: string): Promise<Act
   });
   if (!removed) return { ok: false, error: 'Not a cleared-list entry.' };
 
+  clearUserApiAuthCache();
   revalidatePath('/admin/settings');
   return { ok: true };
 }

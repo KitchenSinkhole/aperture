@@ -4,12 +4,13 @@
 // client could accidentally import) AND by the graphile-worker tasks,
 // which run under plain Node via server.ts and would crash on the bare
 // `server-only/index.js` throw (no React `react-server` export condition).
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apMapEvent } from '@/db/schema';
 import { getLogger } from '@/lib/log/logger';
 import { recordMapEvent } from '@/lib/metrics/registry';
 import {
+  AUDIT_ONLY_EVENT_KINDS,
   mapEventPayloadSchema,
   type MapEventKind,
   type MapEventPatch,
@@ -114,7 +115,9 @@ export async function commitMapEvent<K extends MapEventKind>(
 
   try {
     const result = await db.transaction(run);
-    await enqueueWebhookDispatch(mapId, result.eventId, result.occurredAt);
+    if (!AUDIT_ONLY_EVENT_KINDS.has(kind)) {
+      await enqueueWebhookDispatch(mapId, result.eventId, result.occurredAt);
+    }
     return { ok: true, data: result.payload, eventId: result.eventId };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Mutation failed.' };
@@ -126,11 +129,15 @@ export async function commitMapEvent<K extends MapEventKind>(
  * The EXISTS short-circuit keeps the common case (map with no webhooks
  * configured) free of any graphile-worker traffic. Failures are logged and
  * swallowed — webhook delivery never blocks the underlying map mutation.
+ *
+ * The dispatcher finds the event by its exact `occurred_at`, so a caller that
+ * committed in joined-tx mode, and so never saw it, omits `occurredAt` and it
+ * is read from the committed row.
  */
 export async function enqueueWebhookDispatch(
   mapId: bigint,
   eventId: number,
-  occurredAt: Date,
+  occurredAt?: Date,
 ): Promise<void> {
   try {
     const existsRows = (
@@ -140,13 +147,24 @@ export async function enqueueWebhookDispatch(
     ).rows as Array<{ has_webhook: boolean }>;
     if (!existsRows[0]?.has_webhook) return;
 
+    let at = occurredAt;
+    if (at === undefined) {
+      const [row] = await db
+        .select({ occurredAt: apMapEvent.occurredAt })
+        .from(apMapEvent)
+        .where(and(eq(apMapEvent.mapId, mapId), eq(apMapEvent.id, BigInt(eventId))))
+        .limit(1);
+      if (!row) return;
+      at = row.occurredAt;
+    }
+
     await db.execute(sql`
       SELECT graphile_worker.add_job(
         ${WEBHOOK_DISPATCH_TASK},
         json_build_object(
           'mapId', ${mapId.toString()}::text,
           'eventId', ${eventId.toString()}::text,
-          'occurredAt', ${occurredAt.toISOString()}::text
+          'occurredAt', ${at.toISOString()}::text
         )
       )
     `);

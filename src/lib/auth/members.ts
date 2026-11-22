@@ -1,7 +1,9 @@
 import 'server-only';
-import { asc } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { apCharacter } from '@/db/schema';
+import { apCharacter, apUser } from '@/db/schema';
+import { isUserApiAccountBlocked } from '@/lib/userApi/authorize';
+import type { UserApiAccountBlock } from '@/types';
 
 /**
  * Row shape returned by `listAdminMembers`. Mirrors the `ap_character` columns
@@ -20,6 +22,8 @@ export type AdminMemberRow = {
   authzLevel: 'member' | 'admin';
   lastOnline: boolean | null;
   lastLocationAt: string | null;
+  /** The owning account's standing user API block; null when not blocked. */
+  apiBlock: UserApiAccountBlock | null;
 };
 
 /**
@@ -44,10 +48,15 @@ export async function listAdminMembers(): Promise<AdminMemberRow[]> {
       authzLevel: apCharacter.authzLevel,
       lastOnline: apCharacter.lastOnline,
       lastLocationAt: apCharacter.lastLocationAt,
+      apiBlockedAt: apUser.apiBlockedAt,
+      apiBlockedUntil: apUser.apiBlockedUntil,
+      apiBlockReason: apUser.apiBlockReason,
     })
     .from(apCharacter)
+    .innerJoin(apUser, eq(apUser.id, apCharacter.userId))
     .orderBy(asc(apCharacter.status), asc(apCharacter.name));
 
+  const now = new Date();
   return rows.map((r) => ({
     id: r.id.toString(),
     name: r.name,
@@ -60,5 +69,8 @@ export async function listAdminMembers(): Promise<AdminMemberRow[]> {
     authzLevel: r.authzLevel,
     lastOnline: r.lastOnline,
     lastLocationAt: r.lastLocationAt === null ? null : r.lastLocationAt.toISOString(),
+    apiBlock: isUserApiAccountBlocked(r, now)
+      ? { reason: r.apiBlockReason, until: r.apiBlockedUntil?.toISOString() ?? null }
+      : null,
   }));
 }

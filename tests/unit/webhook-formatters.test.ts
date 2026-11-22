@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  describeMapEvent,
   formatHistoryMessage,
   formatRallyMessage,
   isRallySetEvent,
@@ -397,6 +398,124 @@ describe('formatHistoryMessage', () => {
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
       '**Test Map**: Pilot Foo removed signature `ABC-123` from **Jita**.',
+    );
+  });
+});
+
+describe('describeMapEvent — user API', () => {
+  const ownerCtx = { ...baseCtx, tokenOwnerName: 'Pilot Bar' };
+  const cases: Array<[MapEventPayload, string | null, WebhookEventContext?]> = [
+    [
+      { kind: 'api.enabled', eventId: 1, scopes: ['map', 'pilots'] },
+      'enabled the user API (scopes `map`, `pilots`)',
+    ],
+    [{ kind: 'api.enabled', eventId: 2, scopes: [] }, 'enabled the user API (no scopes)'],
+    [{ kind: 'api.disabled', eventId: 3 }, 'disabled the user API'],
+    [
+      { kind: 'api.scopes_changed', eventId: 4, added: ['kills', 'notes'], removed: ['pilots'] },
+      'changed the user API scopes (added `kills`, `notes`; removed `pilots`)',
+    ],
+    [
+      { kind: 'api.scopes_changed', eventId: 5, added: [], removed: ['mass_log'] },
+      'changed the user API scopes (removed `mass_log`)',
+    ],
+    [{ kind: 'api.scopes_changed', eventId: 6, added: [], removed: [] }, null],
+    [
+      {
+        kind: 'api.token_created',
+        eventId: 7,
+        tokenId: '12',
+        label: 'chain bot',
+        scopes: ['map', 'signatures'],
+        expiresAt: '2027-02-19T10:00:00.000Z',
+      },
+      'created API token **chain bot** (scopes `map`, `signatures`, expires 2027-02-19)',
+    ],
+    [
+      {
+        kind: 'api.token_created',
+        eventId: 8,
+        tokenId: '12',
+        label: 'chain bot',
+        scopes: ['map'],
+        expiresAt: null,
+      },
+      'created API token **chain bot** (scopes `map`, no expiry)',
+    ],
+    [
+      {
+        kind: 'api.token_revoked',
+        eventId: 9,
+        tokenId: '12',
+        label: 'chain bot',
+        reason: 'manager',
+      },
+      'revoked API token **chain bot** owned by **Pilot Bar**',
+      ownerCtx,
+    ],
+    [
+      {
+        kind: 'api.token_revoked',
+        eventId: 10,
+        tokenId: '12',
+        label: 'chain bot',
+        reason: 'abuse',
+      },
+      'revoked API token **chain bot** owned by **Pilot Bar** after repeated rate-limit abuse',
+      ownerCtx,
+    ],
+    [
+      {
+        kind: 'api.token_revoked',
+        eventId: 11,
+        tokenId: '12',
+        label: 'chain bot',
+        reason: 'creator',
+      },
+      'revoked API token **chain bot** owned by **an unknown pilot**',
+    ],
+    [
+      {
+        kind: 'api.token_suspended',
+        eventId: 12,
+        tokenId: '12',
+        label: 'chain bot',
+        until: '2026-11-21T14:30:00.000Z',
+        strike: 1,
+      },
+      'suspended API token **chain bot** owned by **Pilot Bar** for rate-limit abuse (strike 1, until 2026-11-21 14:30 UTC)',
+      ownerCtx,
+    ],
+    [
+      {
+        kind: 'api.token_revoked',
+        eventId: 14,
+        tokenId: '12',
+        label: 'chain bot',
+        reason: 'manager',
+      },
+      'revoked API token **chain bot**',
+      { ...ownerCtx, hideActor: true },
+    ],
+  ];
+
+  for (const [event, expected, ctx] of cases) {
+    it(`renders ${event.kind} (event ${event.eventId}) with no actor`, () => {
+      expect(describeMapEvent(event, ctx ?? baseCtx)).toBe(expected);
+    });
+  }
+
+  it('prefixes the actor in the Discord history line, and Aperture for automation', () => {
+    const event: MapEventPayload = {
+      kind: 'api.token_suspended',
+      eventId: 13,
+      tokenId: '12',
+      label: 'chain bot',
+      until: '2026-11-21T20:30:00.000Z',
+      strike: 2,
+    };
+    expect(formatHistoryMessage(event, { ...ownerCtx, characterName: null })?.content).toBe(
+      '**Test Map**: Aperture suspended API token **chain bot** owned by **Pilot Bar** for rate-limit abuse (strike 2, until 2026-11-21 20:30 UTC).',
     );
   });
 });

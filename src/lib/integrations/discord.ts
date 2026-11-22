@@ -56,6 +56,9 @@ export type DiscordDispatchResult =
 /**
  * POST a payload to a Discord webhook URL. Never throws — every transport
  * failure is mapped to a `{ ok: false }` result with a `retriable` flag.
+ *
+ * Mentions are never parsed: message text carries user-supplied labels and
+ * names, so an `@everyone` or a role mention in one must not ping anyone.
  */
 export async function postDiscordWebhook(
   url: string,
@@ -69,7 +72,7 @@ export async function postDiscordWebhook(
         'Content-Type': 'application/json',
         'User-Agent': 'Aperture/0.0.0',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, allowed_mentions: { parse: [] } }),
       signal: AbortSignal.timeout(apertureConfig.INTEGRATION_REQUEST_TIMEOUT_MS),
     });
   } catch (err) {

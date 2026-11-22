@@ -1,6 +1,6 @@
 ## AccountSettingsDialog
 
-**Purpose:** Account self-service dialog — pick the account's main character (with per-character role display), toggle preferences (travel animation, signature indicators, sound cues), and reach account deletion.
+**Purpose:** Account self-service dialog — pick the account's main character (with per-character role display), toggle preferences (travel animation, signature indicators, sound cues), see and revoke the account's API tokens, and reach account deletion.
 **File:** `src/components/account/AccountSettingsDialog.tsx`
 
 ### Props
@@ -17,7 +17,7 @@
 | soundPrefs | SoundPrefs | yes | The account's saved sound preferences (master switch, volume, per-event enable + sound id); pushed into the engine whenever its content changes |
 
 ### Renders
-A roster list — each row shows portrait, name, role label (Member / Manager / Admin), and either a "Main" marker (current main), the kicked/banned status, or a "Set as main" button. Below it, a "Show connection travel animation" checkbox row, a "Signature indicators" section (two toggles + a "Mark stale after" hours input), a "Sounds" section (master checkbox, volume slider, one row per `SoundEvent` with an enable checkbox and a `SoundPicker`, then a "Muted systems" block (a "Home system" row and one row per `systemMutes` entry, each with three toggle chips in `SOUND_MUTE_GROUPS` order labelled from `SOUND_MUTE_GROUP_LABELS`, the system rows adding a remove button, and a hint pointing at the map's right-click menu), then a "Your sounds" block with an "Add file" button and one row per imported sound carrying a preview and a remove button), then a destructive-bordered "Delete account" section embedding `DeleteAccountDialog`. Everything below the header sits in a scrolling body within a capped dialog height, so the title and close button stay pinned.
+A roster list — each row shows portrait, name, role label (Member / Manager / Admin), and either a "Main" marker (current main), the kicked/banned status, or a "Set as main" button. Below it, a "Show connection travel animation" checkbox row, a "Signature indicators" section (two toggles + a "Mark stale after" hours input), a "Sounds" section (master checkbox, volume slider, one row per `SoundEvent` with an enable checkbox and a `SoundPicker`, then a "Muted systems" block (a "Home system" row and one row per `systemMutes` entry, each with three toggle chips in `SOUND_MUTE_GROUPS` order labelled from `SOUND_MUTE_GROUP_LABELS`, the system rows adding a remove button, and a hint pointing at the map's right-click menu), then a "Your sounds" block with an "Add file" button and one row per imported sound carrying a preview and a remove button), then the `AccountApiTokens` section, then a destructive-bordered "Delete account" section embedding `DeleteAccountDialog`. Everything below the header sits in a scrolling body within a capped dialog height, so the title and close button stay pinned.
 
 ### Behaviour & Interactions
 - `mainId` is local optimistic state seeded from `mainCharacterId`; clicking "Set as main" calls `setMainCharacterAction` in a transition and moves the marker on success, toasting on failure.
@@ -38,6 +38,7 @@ A roster list — each row shows portrait, name, role label (Member / Manager / 
 - `getCustomSoundStore().add(file)` / `.remove(id)`, `useCustomSounds()` — from `@/lib/sounds/customStore`
 
 ### Depends On
+- `AccountApiTokens` — the account's API tokens on every map, with revoke and the block banner
 - `DeleteAccountDialog` — the type-to-confirm deletion flow
 - `SoundPicker` — the per-event sound select + preview button
 - `Dialog`, `Avatar`, `Button` UI primitives

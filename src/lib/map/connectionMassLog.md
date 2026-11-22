@@ -40,3 +40,10 @@ remains correct regardless of the DESC outer sort. **Scoped to `mapId`** (inner-
 so a connection id from another map can't be read through this map's route; returns `[]` when the
 connection isn't on the map. Backs `GET /api/map/[mapId]/connections/[connId]/mass-log`.
 
+---
+
+### listMapConnectionMassLog({ mapId, connectionIds }): Promise<MapConnectionMassLogEntry[]>
+The log of several connections on one map, **newest jump first**, each entry carrying its `connectionId`.
+`cumulativeMass` is the running total within that entry's own connection (the window is partitioned by
+connection). Scoped to `mapId` like `listConnectionMassLog`, so an id from another map contributes nothing;
+`[]` for an empty id list. Backs the user API `mass_log` projection (`src/lib/userApi/projection.md`).

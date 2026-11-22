@@ -14,6 +14,7 @@ const CAPABILITY_COLUMNS: { capability: DelegatableCapability; label: string }[]
   { capability: 'settings_manage', label: 'Settings' },
   { capability: 'webhooks_manage', label: 'Webhooks' },
   { capability: 'share_manage', label: 'Share links' },
+  { capability: 'api_manage', label: 'API' },
   { capability: 'map_import', label: 'Import' },
   { capability: 'map_export', label: 'Export' },
   { capability: 'map_delete', label: 'Delete' },

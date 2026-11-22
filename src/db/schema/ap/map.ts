@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { bigint, bigserial, boolean, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { apCharacter } from './character';
-import { mapScope, mapType, tagScheme } from './enums';
+import { apiScope, mapScope, mapType, tagScheme } from './enums';
 
 // The owning entity for every per-map relation. Two-phase deletion
 // via `deleted_at` (30-day grace, then a cron hard-purge) — no `active` boolean.
@@ -49,6 +49,13 @@ export const apMap = pgTable('ap_map', {
   // connection (`ap_map_connection.is_static`) is left untagged — its letter is
   // freed for reclaim. Reconciled in `reconcileHomeStaticExemption`.
   exemptHomeStaticFromTag: boolean('exempt_home_static_from_tag').notNull().default(false),
+  // Per-map user API. Off by default; a token is served only for a scope that is
+  // in both this list and the token's own `scopes`.
+  apiEnabled: boolean('api_enabled').notNull().default(false),
+  apiScopes: apiScope('api_scopes')
+    .array()
+    .notNull()
+    .default(sql`'{}'::api_scope[]`),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   // NULL = active; non-null = soft-deleted, awaiting hard purge.

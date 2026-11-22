@@ -3,13 +3,13 @@
 // outside Next's bundler where the `server-only` shim doesn't resolve. Same
 // precedent as `locationCommit.ts` / `bus.ts`. It is only ever imported by
 // server code (the poll + the API route).
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { apertureConfig } from '../../../aperture.config';
 import { db } from '@/db/client';
 import { apCharacter, apMapConnection, apMapConnectionLog, universeType } from '@/db/schema';
 import { getLogger } from '@/lib/log/logger';
 import { recordCharacterJump } from '@/lib/metrics/registry';
-import type { ConnectionMassLogEntry } from '@/types';
+import type { ConnectionMassLogEntry, MapConnectionMassLogEntry } from '@/types';
 
 const jobLog = getLogger('job');
 
@@ -151,6 +151,54 @@ export async function listConnectionMassLog(args: {
 
   return rows.map((r) => ({
     id: r.id.toString(),
+    characterId: r.characterId !== null ? r.characterId.toString() : null,
+    characterName: r.characterName ?? null,
+    shipTypeId: r.shipTypeId,
+    shipTypeName: r.shipTypeName ?? null,
+    mass: Number(r.mass),
+    cumulativeMass: Number(r.cumulativeMass),
+    jumpedAt: r.jumpedAt.toISOString(),
+  }));
+}
+
+/**
+ * The log of several connections on one map, newest jump first, each entry
+ * naming its connection. `cumulativeMass` is the running total within that
+ * entry's own connection. Scoped to `mapId` like `listConnectionMassLog`, so an
+ * id from another map contributes nothing; `[]` for an empty id list.
+ */
+export async function listMapConnectionMassLog(args: {
+  mapId: bigint;
+  connectionIds: bigint[];
+}): Promise<MapConnectionMassLogEntry[]> {
+  if (args.connectionIds.length === 0) return [];
+  const rows = await db
+    .select({
+      id: apMapConnectionLog.id,
+      connectionId: apMapConnectionLog.connectionId,
+      characterId: apMapConnectionLog.characterId,
+      characterName: apCharacter.name,
+      shipTypeId: apMapConnectionLog.shipTypeId,
+      shipTypeName: universeType.name,
+      mass: apMapConnectionLog.mass,
+      jumpedAt: apMapConnectionLog.jumpedAt,
+      cumulativeMass: sql<string>`SUM(${apMapConnectionLog.mass}) OVER (PARTITION BY ${apMapConnectionLog.connectionId} ORDER BY ${apMapConnectionLog.jumpedAt} ASC, ${apMapConnectionLog.id} ASC)`,
+    })
+    .from(apMapConnectionLog)
+    .innerJoin(apMapConnection, eq(apMapConnection.id, apMapConnectionLog.connectionId))
+    .leftJoin(apCharacter, eq(apCharacter.id, apMapConnectionLog.characterId))
+    .leftJoin(universeType, eq(universeType.id, apMapConnectionLog.shipTypeId))
+    .where(
+      and(
+        inArray(apMapConnectionLog.connectionId, args.connectionIds),
+        eq(apMapConnection.mapId, args.mapId),
+      ),
+    )
+    .orderBy(desc(apMapConnectionLog.jumpedAt), desc(apMapConnectionLog.id));
+
+  return rows.map((r) => ({
+    id: r.id.toString(),
+    connectionId: r.connectionId.toString(),
     characterId: r.characterId !== null ? r.characterId.toString() : null,
     characterName: r.characterName ?? null,
     shipTypeId: r.shipTypeId,

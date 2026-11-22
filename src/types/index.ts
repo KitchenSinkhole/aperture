@@ -1,4 +1,5 @@
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
+import type { NextRequest } from 'next/server';
 // Type-only (erased at compile) — `Layout` is RGL's `readonly LayoutItem[]`. Safe to
 // pull into this server-imported barrel; no runtime client/server coupling.
 import type { Layout } from 'react-grid-layout';
@@ -13,6 +14,7 @@ import type {
   apInstance,
   apInstanceOwner,
   apMap,
+  apMapApiToken,
   apMapConnection,
   apMapConnectionLog,
   apMapEvent,
@@ -51,20 +53,29 @@ import type {
   accessMode,
   accessPrincipal,
   accessScope,
+  apiScope,
+  apiTokenRevokeReason,
   authzLevel,
+  connectionScope,
+  eolStage,
   errorLevel,
   errorSource,
   intelScope,
   mapCapability,
+  mapNoteSeverity,
   mapRight,
+  mapScope,
   mapType,
   roleSource,
   routeSafety,
   sharePresenceMode,
+  signatureClassKind,
   signatureGroupKey,
   structureEventKind,
+  systemStatus,
   tagScheme,
   whJumpMass,
+  whMass,
 } from '@/db/schema/ap/enums';
 
 export type UniverseRegion = InferSelectModel<typeof universeRegion>;
@@ -152,6 +163,9 @@ export type ConnectionMassLogEntry = {
   jumpedAt: string;
 };
 
+/** A mass-log entry from a map-wide listing: a `ConnectionMassLogEntry` naming its connection. */
+export type MapConnectionMassLogEntry = ConnectionMassLogEntry & { connectionId: string };
+
 export type ShipClass =
   | 'capsule'
   | 'shuttle'
@@ -208,6 +222,9 @@ export type NewApMapRoleAccess = InferInsertModel<typeof apMapRoleAccess>;
 export type ApMapShare = InferSelectModel<typeof apMapShare>;
 export type NewApMapShare = InferInsertModel<typeof apMapShare>;
 
+export type ApMapApiToken = InferSelectModel<typeof apMapApiToken>;
+export type NewApMapApiToken = InferInsertModel<typeof apMapApiToken>;
+
 export type ApInstance = InferSelectModel<typeof apInstance>;
 export type NewApInstance = InferInsertModel<typeof apInstance>;
 
@@ -246,6 +263,8 @@ export type AccessMode = (typeof accessMode.enumValues)[number];
 export type AccessPrincipal = (typeof accessPrincipal.enumValues)[number];
 export type AccessScope = (typeof accessScope.enumValues)[number];
 export type AccessCapability = (typeof accessCapability.enumValues)[number];
+export type ApiScope = (typeof apiScope.enumValues)[number];
+export type ApiTokenRevokeReason = (typeof apiTokenRevokeReason.enumValues)[number];
 export type ErrorLevel = (typeof errorLevel.enumValues)[number];
 export type ErrorSource = (typeof errorSource.enumValues)[number];
 
@@ -265,6 +284,441 @@ export type BlackoutViewer = {
   cleared: boolean;
   /** The viewer's account (`ap_user.id`). */
   userId: number;
+};
+
+/** Stable machine-readable refusal codes of the `/api/v1/*` user API. */
+export type UserApiErrorCode =
+  | 'invalid_token'
+  | 'account_blocked'
+  | 'token_suspended'
+  | 'api_disabled'
+  | 'access_lost'
+  | 'rate_limited'
+  | 'scope_not_granted'
+  | 'server_error';
+
+/**
+ * A user API bearer token resolved with its map, its owning account and that
+ * account's main. The input to the pure access decision (`authorize.ts`).
+ */
+export type UserApiTokenRecord = {
+  token: {
+    id: bigint;
+    mapId: bigint;
+    /** The owning account (`ap_user.id`). */
+    userId: number;
+    label: string;
+    prefix: string;
+    scopes: ApiScope[];
+    expiresAt: Date | null;
+    revokedAt: Date | null;
+    revokedReason: ApiTokenRevokeReason | null;
+    suspendedUntil: Date | null;
+  };
+  map: {
+    id: bigint;
+    name: string;
+    deletedAt: Date | null;
+    apiEnabled: boolean;
+    apiScopes: ApiScope[];
+  };
+  account: {
+    userId: number;
+    /** The account's main, when it is set and still on this account. */
+    mainCharacterId: bigint | null;
+    mainCharacterName: string | null;
+    apiBlockedAt: Date | null;
+    apiBlockedUntil: Date | null;
+    apiBlockReason: string | null;
+  };
+  /**
+   * The main's standing, evaluated only for a token that is neither revoked,
+   * expired nor on a deleted map when resolved; null otherwise.
+   */
+  access: {
+    /** `canViewMap(main, map)`. */
+    mainCanView: boolean;
+    /** The login gate on the main's cached affiliation. */
+    mainLoginAllowed: boolean;
+    /** The owning account's standing under Blackout. */
+    blackout: BlackoutViewer;
+  } | null;
+};
+
+/** The outcome of the user API's token access decision (pipeline steps 3 to 5, and 7). */
+export type UserApiDecision =
+  | { ok: true; record: UserApiTokenRecord }
+  | {
+      ok: false;
+      status: 401 | 403;
+      code: UserApiErrorCode;
+      /** Seconds until a suspension ends; set only for `token_suspended`. */
+      retryAfterSec?: number;
+      /** The resolved token, or null when the token is malformed or unknown. */
+      record: UserApiTokenRecord | null;
+    };
+
+/** The user API's per-IP gate (pipeline step 2): a failed-auth block or the per-IP cap refuses. */
+export type UserApiIpGateDecision = { ok: true } | { ok: false; retryAfterSec: number };
+
+/**
+ * The user API's per-token, per-account and global request limit (pipeline
+ * step 6). `limit` and `remaining` describe one budget: on a refusal the cap
+ * that refused, on an allow whichever of the token's, the account's and the
+ * whole API's has the fewest requests left; `resetSec` is the time until the
+ * window rolls. `strike` is set on the refusal that completes a
+ * strike's worth of hot windows; the caller then applies the strike.
+ */
+export type UserApiRateDecision =
+  | { ok: true; limit: number; remaining: number; resetSec: number }
+  | {
+      ok: false;
+      limitedBy: 'token' | 'account' | 'global';
+      limit: number;
+      remaining: 0;
+      resetSec: number;
+      retryAfterSec: number;
+      strike: boolean;
+    };
+
+/** What one strike on a user API token did (`applyUserApiStrike`). */
+export type UserApiStrikeOutcome =
+  | { action: 'suspended'; strike: number; until: Date; eventId: number }
+  | {
+      action: 'revoked';
+      strike: number;
+      /** False when the account was already blocked, so the existing block stands. */
+      accountBlocked: boolean;
+      /** The new block's end; null for an indefinite block or when none was applied. */
+      accountBlockedUntil: Date | null;
+      eventId: number;
+    };
+
+/** Endpoint label of `user_api_requests_total`: the `/api/v1/<endpoint>` path segment. */
+export type UserApiEndpoint =
+  | 'token'
+  | 'map'
+  | 'signatures'
+  | 'pilots'
+  | 'notes'
+  | 'mass-log'
+  | 'kills';
+
+/** Outcome label of `user_api_requests_total`. */
+export type UserApiRequestOutcome =
+  | 'ok'
+  | 'not_modified'
+  | 'rate_limited'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'error';
+
+/** `data` of `GET /api/v1/token`: what the presented token is and what it may do right now. */
+export type UserApiTokenInfo = {
+  map: { id: string; name: string };
+  scopes: {
+    /** Fixed when the token was minted. */
+    granted: ApiScope[];
+    /** The granted scopes the map still exposes. */
+    effective: ApiScope[];
+  };
+  expiresAt: string | null;
+  rateLimit: {
+    perToken: number;
+    /** Shared by every token the owning account holds. */
+    perAccount: number;
+    windowSeconds: number;
+  };
+};
+
+/** A resource the user API projects from one map (`src/lib/userApi/projection.ts`). */
+export type UserApiResource = 'map' | 'signatures' | 'pilots' | 'notes' | 'mass_log' | 'kills';
+
+/** A visible system on the token's map. `id` is the `ap_map_system.id` that connection endpoints name. */
+export type UserApiSystem = {
+  id: string;
+  /** EVE solar-system id. */
+  systemId: number;
+  name: string;
+  alias: string | null;
+  tag: string | null;
+  status: (typeof systemStatus.enumValues)[number];
+  security: string | null;
+  trueSec: number | null;
+  effect: string | null;
+  regionName: string;
+  constellationName: string;
+  statics: { label: string; typeId: number }[];
+  tradeHub: { name: string; jumps: number } | null;
+  locked: boolean;
+  lockedByCharacterId: string | null;
+  lockedByName: string | null;
+  rallyAt: string | null;
+  positionX: number;
+  positionY: number;
+};
+
+/** A confirmed connection between two visible systems; `source` / `target` are `UserApiSystem.id`s. */
+export type UserApiConnection = {
+  id: string;
+  source: string;
+  target: string;
+  scope: (typeof connectionScope.enumValues)[number];
+  massStatus: (typeof whMass.enumValues)[number];
+  jumpMassClass: WhJumpMass | null;
+  eolStage: (typeof eolStage.enumValues)[number];
+  eolAt: string | null;
+  preserveMass: boolean;
+  isRolling: boolean;
+  isStatic: boolean;
+  sourceBubbled: boolean;
+  targetBubbled: boolean;
+  createdAt: string;
+};
+
+/** The `map` resource: the map header, its visible systems and its confirmed connections. */
+export type UserApiMap = {
+  map: {
+    id: string;
+    name: string;
+    scope: (typeof mapScope.enumValues)[number];
+    type: MapType;
+    homeMapSystemId: string | null;
+  };
+  systems: UserApiSystem[];
+  connections: UserApiConnection[];
+};
+
+/** A signature in a visible system, carrying that system's EVE id and name. */
+export type UserApiSignature = {
+  id: string;
+  mapSystemId: string;
+  systemId: number;
+  systemName: string;
+  connectionId: string | null;
+  sigId: string;
+  groupKey: SignatureGroupKey | null;
+  classKind: (typeof signatureClassKind.enumValues)[number] | null;
+  activityOverride: SignatureActivity | null;
+  typeId: number | null;
+  wormholeCode: string | null;
+  name: string | null;
+  description: string | null;
+  eolStage: (typeof eolStage.enumValues)[number];
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** An online tracked pilot as the token's owner may see them. No account id. */
+export type UserApiPilot = {
+  characterId: string;
+  characterName: string;
+  mainCharacterId: string | null;
+  mainCharacterName: string | null;
+  systemId: number;
+  systemName: string | null;
+  systemSecurity: string | null;
+  systemTrueSec: number | null;
+  shipTypeId: number | null;
+  shipTypeName: string | null;
+  shipClass: ShipClass | null;
+  shipName: string | null;
+  locationAt: string;
+};
+
+/** A free-standing map note. */
+export type UserApiNote = {
+  id: string;
+  title: string;
+  content: string | null;
+  severity: (typeof mapNoteSeverity.enumValues)[number];
+  locked: boolean;
+  positionX: number;
+  positionY: number;
+  createdByCharacterId: string | null;
+  createdByName: string | null;
+  lastEditedByCharacterId: string | null;
+  lastEditedByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** A visible system's intel-notes text. */
+export type UserApiSystemNote = {
+  mapSystemId: string;
+  systemId: number;
+  systemName: string;
+  intelNotes: string;
+};
+
+/** The `notes` resource: free-standing notes plus the intel notes of visible systems that have any. */
+export type UserApiNotes = {
+  notes: UserApiNote[];
+  systemNotes: UserApiSystemNote[];
+};
+
+/** One jump through a confirmed, visible connection, with the EVE ids of its two ends. */
+export type UserApiMassLogEntry = {
+  id: string;
+  connectionId: string;
+  sourceSystemId: number;
+  targetSystemId: number;
+  characterId: string | null;
+  characterName: string | null;
+  shipTypeId: number | null;
+  shipTypeName: string | null;
+  mass: number;
+  cumulativeMass: number;
+  jumpedAt: string;
+};
+
+/**
+ * A cached kill in a visible system, from the local killmail cache only: ids,
+ * the SDE ship-type name, and zKillboard's ISK estimate when one was recorded.
+ */
+export type UserApiKill = {
+  killmailId: string;
+  killmailTime: string;
+  mapSystemId: string;
+  /** EVE solar-system id. */
+  systemId: number;
+  systemName: string;
+  shipTypeId: number | null;
+  shipTypeName: string | null;
+  victimCharacterId: string | null;
+  victimCorporationId: string | null;
+  victimAllianceId: string | null;
+  attackerCount: number;
+  totalValue: number | null;
+};
+
+/** The `data` each user API resource carries. */
+export type UserApiProjectionData = {
+  map: UserApiMap;
+  signatures: UserApiSignature[];
+  pilots: UserApiPilot[];
+  notes: UserApiNotes;
+  mass_log: UserApiMassLogEntry[];
+  kills: UserApiKill[];
+};
+
+/**
+ * The envelope fields a resource contributes besides `ok` and `generatedAt`.
+ * `hidden: true` appears only on a `mass_log` withheld by Blackout, with `data` empty.
+ */
+export type UserApiPayload<R extends UserApiResource = UserApiResource> = {
+  data: UserApiProjectionData[R];
+  hidden?: true;
+};
+
+/** A cached user API resource: its payload, the serialised success body and a weak ETag over the payload. */
+export type UserApiProjectionEntry<R extends UserApiResource = UserApiResource> = {
+  payload: UserApiPayload<R>;
+  generatedAt: string;
+  body: string;
+  etag: string;
+};
+
+/** Loads one resource of one map as `viewer` may see it; the projection cache's loader. */
+export type UserApiProjectionLoader = (
+  mapId: bigint,
+  resource: UserApiResource,
+  viewer: BlackoutViewer,
+) => Promise<UserApiPayload>;
+
+/** Reads a token by hash and evaluates its standing at `now`; the auth cache's loader. */
+export type UserApiTokenLoader = (hash: string, now: Date) => Promise<UserApiTokenRecord | null>;
+
+/** A served user API success body, and its weak ETag when the resource has one. */
+export type UserApiServed = { body: string; etag: string | null };
+
+/** Serves one `/api/v1/*` resource for a token that passed every gate. */
+export type UserApiServe = (
+  request: NextRequest,
+  record: UserApiTokenRecord,
+) => Promise<UserApiServed>;
+
+/** The `GET` and `OPTIONS` exports of one `/api/v1/*` route. */
+export type UserApiRouteHandlers = {
+  GET: (request: NextRequest, ctx: unknown) => Promise<Response>;
+  OPTIONS: (request: NextRequest, ctx: unknown) => Promise<Response>;
+};
+
+/**
+ * Computed standing of one non-revoked user API token, in the order the API's
+ * own decision applies them: `expired`, `map_deleted` (the map is
+ * soft-deleted), `blocked` (the owning account is blocked), `suspended`,
+ * `api_disabled` (the map's API is off), `lost_access` (the account's main can
+ * no longer use the map), else `active`.
+ */
+export type UserApiTokenStatus =
+  | 'active'
+  | 'suspended'
+  | 'expired'
+  | 'map_deleted'
+  | 'api_disabled'
+  | 'lost_access'
+  | 'blocked';
+
+/** One non-revoked user API token as a list row. Never carries the raw token or its hash. */
+export type UserApiTokenListItem = {
+  id: string;
+  /** The token's map. */
+  mapId: string;
+  mapName: string;
+  label: string;
+  /** First 6 characters of the random part, for telling tokens apart. */
+  prefix: string;
+  scopes: ApiScope[];
+  /** The owning account's current main; null when it has none, or for another account's token while Blackout restricts the viewer. */
+  ownerName: string | null;
+  /** Owned by the viewer's account. */
+  own: boolean;
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  requestCount: string;
+  status: UserApiTokenStatus;
+  /** Set only while `status` is `suspended`. */
+  suspendedUntil: string | null;
+};
+
+/** A standing user API account block; `until` is null for an indefinite block. */
+export type UserApiAccountBlock = { reason: string | null; until: string | null };
+
+/** The Account Settings API tokens section's state (`getAccountApiTokens`). */
+export type AccountApiState = {
+  /** The operator's instance-wide switch. */
+  instanceEnabled: boolean;
+  /** The account's block; null when not blocked. */
+  block: UserApiAccountBlock | null;
+  /** Every non-revoked token the account owns, on any map, newest first. */
+  tokens: UserApiTokenListItem[];
+};
+
+/** The Map Settings API tab's state for one map and one viewer (`getMapApiState`). */
+export type MapApiState = {
+  /** The operator's instance-wide switch. */
+  instanceEnabled: boolean;
+  apiEnabled: boolean;
+  apiScopes: ApiScope[];
+  /** The viewer holds `api_manage`. */
+  canManage: boolean;
+  /** The viewer's account block; null when not blocked. */
+  block: UserApiAccountBlock | null;
+  /** The viewer's account's tokens on this map. */
+  ownTokens: UserApiTokenListItem[];
+  /** Every token on this map; null unless the viewer holds `api_manage`. */
+  mapTokens: UserApiTokenListItem[] | null;
+  limits: {
+    /** Live tokens one account may hold on one map. */
+    perMap: number;
+    /** Live tokens one account may hold across every map. */
+    perAccount: number;
+    /** Live tokens the viewer's account holds across every map. */
+    liveOnAccount: number;
+  };
 };
 
 /** One Blackout cleared-list entry (a `blackout_view` grant) as the admin panel lists it. */
@@ -997,6 +1451,10 @@ export type GaugeReadings = {
   processHeapUsedBytes: number;
   processHeapTotalBytes: number;
   eventLoopLagMs: number;
+  /** User API tokens neither revoked nor expired. */
+  userApiTokensLive: number;
+  /** Live user API tokens currently suspended. */
+  userApiTokensSuspended: number;
   /** Per-table row estimates; rendered as the labelled `db_table_rows{table}` gauge. */
   tableRows: TableRowEstimate[];
 };

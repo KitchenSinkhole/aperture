@@ -10,9 +10,15 @@ Sets the instance-wide default stale-signature threshold (`ap_instance.stale_sig
 
 ---
 
+### adminSetUserApiEnabled({ enabled }): Promise<ActionResult>
+Turns the per-map user API on or off for the whole instance (`ap_instance.user_api_enabled`, upserting the singleton row). Gated to **global admins only** via `isAdmin`. Off answers 404 on every `/api/v1/*` route and refuses minting, whatever each map says. Calls `invalidateUserApiInstanceSwitch()` after the write commits, so the next request reads the new value. Revalidates `/admin/settings`.
+
+---
+
 ### Depends on
 - `auth` / `isAdmin` — `@/lib/auth/rights`.
 - `apInstance` — `@/db/schema`.
+- `invalidateUserApiInstanceSwitch` — `@/lib/userApi/instance`.
 
 ### Notes
 - No `ap_map_event` row is written. Instance config is not map state; `ap_map_event` is map-scoped, so these changes are intentionally out of its scope.

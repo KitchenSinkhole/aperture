@@ -9,17 +9,17 @@ Every action is gated by `isAdmin` and returns `{ ok: false, error: 'Forbidden.'
 
 ### adminStartBlackout(): Promise<ActionResult>
 Turns Blackout on: sets `blackout_since = now()` and `blackout_by_character_id` to the acting admin, creating the `ap_instance` singleton if it is missing. Already on, the original start time and admin are kept.
-Then clears every cached public share snapshot (`clearPublicSnapshots`), so a `/live` link never serves presence read before the switch.
+Then clears every in-process cache holding presence read under the old switch: public share snapshots (`clearPublicSnapshots`), user API projections (`clearUserApiProjections`), and the user API auth cache (`clearUserApiAuthCache`), whose records carry each token owner's Blackout standing. Neither a `/live` link nor a user API token serves presence read before the switch.
 
 ---
 
 ### adminEndBlackout(): Promise<ActionResult>
-Turns Blackout off: clears `blackout_since` and `blackout_by_character_id`, then clears every cached public share snapshot.
+Turns Blackout off: clears `blackout_since` and `blackout_by_character_id`, then clears the same three caches.
 
 ---
 
 ### adminAddBlackoutClearance({ principalKind, principalId, expiresAt, note }): Promise<ActionResult>
-Adds an instance-scoped `blackout_view` grant, recording the acting admin as `granted_by_character_id`. Re-adding a principal already on the list replaces its expiry and note.
+Adds an instance-scoped `blackout_view` grant, recording the acting admin as `granted_by_character_id`. Re-adding a principal already on the list replaces its expiry and note. Then clears the user API auth cache (`clearUserApiAuthCache`), so a token owner's cleared standing applies from the next request.
 
 **Parameters:**
 - `principalKind` — `'character'` or `'role'`; anything else (corporation, alliance) is rejected.
@@ -30,7 +30,7 @@ Adds an instance-scoped `blackout_view` grant, recording the acting admin as `gr
 ---
 
 ### adminRemoveBlackoutClearance(grantId: string): Promise<ActionResult>
-Deletes one cleared-list entry. Only `scope='instance'`, `capability='blackout_view'` rows are removable; any other id (a `login` / `admin` grant, an unknown id) returns `Not a cleared-list entry.` and deletes nothing.
+Deletes one cleared-list entry. Only `scope='instance'`, `capability='blackout_view'` rows are removable; any other id (a `login` / `admin` grant, an unknown id) returns `Not a cleared-list entry.` and deletes nothing. A removal clears the user API auth cache, as an addition does.
 
 ---
 
@@ -43,5 +43,5 @@ Everything the panel renders: the switch state and the name of the admin who tur
 - `auth`, `isAdmin` — `@/lib/auth/rights`.
 - Schema: `ap_instance`, `ap_access_grant`, `ap_character`, `ap_role`, `ap_corporation`.
 - `apertureConfig.INSTANCE_NOTIFY_CHANNEL`.
-- `clearPublicSnapshots` — `@/lib/map/publicSnapshot`.
+- `clearPublicSnapshots` — `@/lib/map/publicSnapshot`; `clearUserApiProjections` — `@/lib/userApi/cache`; `clearUserApiAuthCache` — `@/lib/userApi/authorize`.
 - Types: `BlackoutPanelData` (`src/types/index.ts`).

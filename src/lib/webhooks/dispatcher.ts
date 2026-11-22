@@ -15,7 +15,11 @@ import {
 } from '@/lib/integrations/discord';
 import { getBlackoutState } from '@/lib/auth/blackout';
 import { recordWebhookDelivery } from '@/lib/metrics/registry';
-import { mapEventPayloadSchema, type MapEventPayload } from '@/lib/realtime/protocol';
+import {
+  AUDIT_ONLY_EVENT_KINDS,
+  mapEventPayloadSchema,
+  type MapEventPayload,
+} from '@/lib/realtime/protocol';
 import type { WebhookOutcome } from '@/types';
 import {
   formatHistoryMessage,
@@ -83,6 +87,9 @@ export async function runWebhookDispatch(
     return { attempted: 0, succeeded: 0, failed: 0, skipped: 0 };
   }
   const event = parsed.data;
+  if (AUDIT_ONLY_EVENT_KINDS.has(event.kind)) {
+    return { attempted: 0, succeeded: 0, failed: 0, skipped: 0 };
+  }
 
   const ctx = await resolveContext(mapId, event, eventRow.characterId);
   if (!ctx) {

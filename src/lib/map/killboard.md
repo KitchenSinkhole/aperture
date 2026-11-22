@@ -13,7 +13,7 @@ Calls `recentKillsForSystem` (zkb client) for the `{ killmailId, hash, totalValu
 
 Propagates `ZkbRateLimitError` / `ZkbHttpError` to the caller (the route maps them to 429/502). ESI failures are swallowed per-row.
 
-`loadKillmails(kills)` — cache-aside resolver returning a `Map<killmailId, EsiKillmail>`. Batches a `SELECT` from `universe_killmail`, fetches only the misses via `getKillmail` (breaker-gated, one call each, per-row failures degrade to a missing entry), and `INSERT … ON CONFLICT DO NOTHING`s the fetched bodies. Killmail bodies are immutable, so a cached row is authoritative forever and is never re-fetched.
+`loadKillmails(kills)` — cache-aside resolver returning a `Map<killmailId, EsiKillmail>`. Batches a `SELECT` from `universe_killmail`, fetches only the misses via `getKillmail` (breaker-gated, one call each, per-row failures degrade to a missing entry), and `INSERT … ON CONFLICT DO NOTHING`s the fetched bodies with the list entry's zkb `totalValue` as `total_value`. Killmail bodies are immutable, so a cached row is authoritative forever and is never re-fetched.
 
 ### Types
 - `KillboardKill` — `RecentKillSummary & { killmailTime, shipTypeId, shipName, shipIcon, victimName, victimIcon, attackers }` (all nullable).
