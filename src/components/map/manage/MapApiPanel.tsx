@@ -35,7 +35,7 @@ import {
 import type { ApiScope, MapApiState, UserApiTokenListItem } from '@/types';
 import { apertureConfig } from '../../../../aperture.config';
 
-const API_REFERENCE_URL = `https://github.com/${apertureConfig.GITHUB_CHANGELOG_REPO}/blob/master/docs/reference/user-api.md`;
+const API_REFERENCE_URL = `https://github.com/${apertureConfig.GITHUB_CHANGELOG_REPO}/blob/master/docs/api/README.md`;
 
 const SCOPES: { scope: ApiScope; label: string; description: string }[] = [
   {
