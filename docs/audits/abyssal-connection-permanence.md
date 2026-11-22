@@ -1,7 +1,7 @@
 # Abyssal Connections Should Not Be Permanent
 
 **Date:** 2026-08-13
-**Status:** known defect, unfixed. Introduced by `trackAbyssalJumps` (map-settings-audit Stage 4, commit `067d3d29`).
+**Status:** fixed in `62a536f3` (#236), with one residual (see Resolution). Introduced by `trackAbyssalJumps` (map-settings-audit Stage 4, commit `067d3d29`).
 **Scope:** `src/lib/jobs/tasks/expiredConnections.ts`, `src/lib/map/connectionState.ts`, `src/lib/map/mutations/systems.ts`.
 
 **In one line:** every lifecycle path in the codebase splits on `scope = 'wh'` versus everything else, and "everything else" was written when the only other scopes were structural. An abyssal edge is not structural, so it inherits permanence it has no basis for.
@@ -41,6 +41,16 @@ Three directions worth weighing, in rough order of how much they question the pr
 - **Do not persist the edge at all.** Record the traversal as an `ap_map_event` and let the canvas render it transiently, the way `connectionMassLog` and `systemNotification` already work for server-observed facts. This asks whether a filament run is map state or an observation, and the honest answer may be the latter, which would also remove the need for any reaping at all.
 
 The third option is the one to decide first, because the other two are only worth designing if a persisted abyssal edge is the right model to begin with.
+
+## Resolution
+
+The edge stays persisted, and the first two options were combined:
+
+- **Path 1:** `expiredConnections` reaps `scope IN ('wh', 'abyssal')` past `WORMHOLE_DEFAULT_LIFETIME_MS`. Abyssal shares the 48h wormhole threshold as a generous upper bound rather than getting its own modelled lifetime.
+- **Path 3:** `removeSystem` hard-deletes the removed node's abyssal edges instead of leaving them confirmed, so re-adding the system id resurrects nothing.
+- **Path 2:** unchanged and correct as is. `connectionState` still returns `null` for abyssal, because a filament trace has no EOL state machine.
+
+**Residual:** the reaper only runs on maps with `delete_expired_connections` on. On a map that has it off and leaves `trackAbyssalJumps` on, abyssal edges still accumulate until someone removes the node.
 
 ## Related
 
