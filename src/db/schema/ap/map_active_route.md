@@ -14,3 +14,6 @@
 | `plan_json` | Serialised hops + planner metadata |
 | `follower_character_ids` | JSON array of EVE character ids |
 | `waypoint_cursor` | Index of the next k-space waypoint to push |
+
+### Constraints
+- Unique on `(map_id, owner_user_id)` — one active route session per user per map.

@@ -13,4 +13,4 @@
 | `label` | Optional display label |
 | `shared` | When true, visible to other map viewers |
 
-Unique on `(map_id, user_id, system_id)`.
+Unique on `(map_id, user_id, system_id)`. Index on `map_id` for per-map favourite lists.

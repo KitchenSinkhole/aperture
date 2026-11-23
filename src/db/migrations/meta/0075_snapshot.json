@@ -1894,7 +1894,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "ap_map_active_route_map_owner_key": {
+          "name": "ap_map_active_route_map_owner_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "map_id",
+            "owner_user_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -1948,7 +1957,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "ap_map_route_favourite_map_id_idx": {
+          "name": "ap_map_route_favourite_map_id_idx",
+          "columns": [
+            {
+              "expression": "map_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "ap_map_route_favourite_map_id_ap_map_id_fk": {
           "name": "ap_map_route_favourite_map_id_ap_map_id_fk",
