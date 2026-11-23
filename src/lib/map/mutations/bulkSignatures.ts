@@ -1,7 +1,7 @@
 import 'server-only';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { apMapSignature } from '@/db/schema';
+import { apMapConnection, apMapSignature } from '@/db/schema';
 import type { MapEventPayload } from '@/lib/realtime/protocol';
 import type { ResolvedSigRow } from '@/lib/map/signatureReader';
 import type { SignatureClassKind, SignatureGroupKey } from '@/types';
@@ -114,6 +114,8 @@ export async function pasteSignatures(
       const incomingBySigId = new Map<string, ResolvedSigRow>();
       for (const r of input.rows) incomingBySigId.set(r.sigId, r);
 
+      const reobservedConnectionIds = new Set<bigint>();
+
       // Creates + updates.
       for (const [sigId, incoming] of incomingBySigId) {
         const existingRow = existingBySigId.get(sigId);
@@ -188,6 +190,28 @@ export async function pasteSignatures(
         if (!res.ok) throw new Error(res.error);
         payloads.push(res.data);
         updated += 1;
+        if (existingRow.mapConnectionId !== null) {
+          reobservedConnectionIds.add(existingRow.mapConnectionId);
+        }
+      }
+
+      // Scan heartbeat: a bound sig re-listed by this scan means its hole is
+      // still open now, which is what the death snapshot's `lastAliveAt` reads.
+      // Dormant rows are skipped — a non-null stamp would resurface them without
+      // their removed endpoint; only `restoreConnection` re-confirms those.
+      // `confirmed_at` is not on the wire, so the sig's own `signature.update`
+      // is the event of record and no connection event is emitted.
+      if (reobservedConnectionIds.size > 0) {
+        await tx
+          .update(apMapConnection)
+          .set({ confirmedAt: sql`now()` })
+          .where(
+            and(
+              eq(apMapConnection.mapId, input.mapId),
+              inArray(apMapConnection.id, [...reobservedConnectionIds]),
+              isNotNull(apMapConnection.confirmedAt),
+            ),
+          );
       }
 
       // Removes (existing not in incoming).

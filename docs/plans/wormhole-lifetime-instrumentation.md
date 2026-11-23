@@ -93,7 +93,7 @@ There are exactly three emitters of `connection.delete` in the codebase:
 
 ## Stage 3 — Scan re-observation heartbeat
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 751d42b5
 **Goal:** Bump `confirmed_at` every time a probe-scan paste re-lists a mapped connection's signature, so holes nobody jumps but scanners keep seeing still get a fresh "known open at" stamp, tightening the clear-lag bound.
 **References:** `src/lib/map/mutations/bulkSignatures.md`, `src/lib/map/mutations/signatures.md`, `src/db/schema/ap/map_connection.md`
 **Touches:** `src/lib/map/mutations/bulkSignatures.ts` (and `signatures.ts` if the single-sig update path shares the gap), their companion `.md` files, tests.
@@ -254,7 +254,7 @@ Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the pe
 ## Manual verification
 _(worked by the user once, after the run — the plan is not complete until it passes)_
 - **Stage 2** — after a live cron reap on a real map, the audit-log entry and the Discord message for the collapsed hole still name both endpoint systems correctly; the enriched payload must not have broken the formatters.
-- **Stage 3** — paste the same probe-scan result twice from the in-game client into a live mapped chain, a few minutes apart. The mapped connections stay on the map and their heartbeat advances; nothing is dropped or duplicated by the second paste.
+- **Stage 3** — paste the same probe-scan result twice from the in-game client into a live mapped chain, a few minutes apart. The mapped connections stay on the map and their heartbeat advances (`ap_map_connection.confirmed_at` moves to the second paste's time; it is not shown in the UI); nothing is dropped or duplicated by the second paste.
 - **Stage 5f** — on a live opted-in map, let a typed hole cross `nominal − 4h`. It turns EOL, visibly marked as estimated, in two tabs and on the public share view, and no Discord message fires. Re-selecting EOL on it in the inspector drops the estimate marking and restarts the countdown. Clearing an estimate to `none` keeps it cleared on the next cron tick.
 - **Stage 6** — the measurement run itself: tagged statics left unrolled to natural collapse, deaths classified by cause, clear-lag bounded per hole.
 
@@ -268,3 +268,4 @@ _(appended by executing sessions — non-obvious findings only)_
 - `wormholeCode` is only as good as the bound sigs that survive to death. A bound sig that expires first (the reap cron, or the paste ghost sweep) takes its type with it, and that path is not compensated. Long-lived holes whose sigs went unrefreshed can die with `wormholeCode: null`.
 - A partial index on `ap_map_event (occurred_at) WHERE kind = 'connection.delete'` is the lever if `ap_connection_lifecycle` ever gets slow. It was left out of Stage 4 because building an index on the partitioned parent can't run `CONCURRENTLY` and blocks event writes for the duration of the build on prod.
 - Dormanting (`removeSystem`) sets `confirmed_at = NULL` and leaves `updated_at` alone, so the death snapshot of a hole that died dormant has no confirmation term in `lastAliveAt`, only the mass log and the last edit. A Stage 3 scan heartbeat on such a hole is wiped at removal, not carried to death.
+- The scan heartbeat rides the paste's `updateExisting` branch, because that is where each re-listed sig gets its `signature.update` event of record. A paste with "update existing" unchecked records no re-observation. The single-sig PATCH route is deliberately not a heartbeat: it is a human field edit, not a scanner sighting, and counting it would let typing on a dead hole's sig extend its `lastAliveAt`.

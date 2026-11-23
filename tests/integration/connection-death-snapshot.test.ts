@@ -186,6 +186,53 @@ describe.skipIf(!run)('connection.delete death snapshot (real Postgres)', () => 
     });
     expect(Date.parse(stored.lastAliveAt as string)).toBeGreaterThanOrEqual(jumpedAt.getTime());
   });
+
+  it('a re-pasted bound sig advances confirmed_at, which lastAliveAt then reads', async () => {
+    const live = await connect(msB, msC);
+    await bindSig(msB, 'HBT-001', live, WH_O477);
+    const { jumpedAt } = await ageAndLogJump(live);
+    const dormant = await connect(msA, msB);
+    await bindSig(msB, 'HBT-002', dormant, WH_O477);
+    await db.update(apMapConnection).set({ confirmedAt: null }).where(eq(apMapConnection.id, dormant));
+
+    const res = await pasteSignatures({
+      mapId,
+      mapSystemId: msB,
+      characterId: null,
+      rows: ['HBT-001', 'HBT-002'].map((sigId) => ({
+        sigId,
+        name: 'Unstable Wormhole',
+        groupName: 'Wormhole',
+        signal: '100.0%',
+        classKind: 'signature' as const,
+        groupKey: 'wormhole' as const,
+        typeId: WH_O477,
+      })),
+      options: {
+        addMissing: false,
+        updateExisting: true,
+        removeMissing: false,
+        removeOrphanedConnections: false,
+      },
+      defaultExpiresAt: new Date(Date.now() + 24 * HOUR),
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    const rows = await db
+      .select({ id: apMapConnection.id, confirmedAt: apMapConnection.confirmedAt })
+      .from(apMapConnection)
+      .where(inArray(apMapConnection.id, [live, dormant]));
+    const confirmed = new Map(rows.map((r) => [r.id, r.confirmedAt]));
+    const heartbeat = confirmed.get(live)!;
+    expect(heartbeat.getTime()).toBeGreaterThan(jumpedAt.getTime());
+    expect(confirmed.get(dormant)).toBeNull();
+
+    const del = await deleteConnection({ mapId, connectionId: live, characterId: null, cause: 'manual_removed' });
+    expect(del.ok).toBe(true);
+    if (!del.ok) return;
+    expect(Date.parse((await storedPayload(del.eventId)).lastAliveAt as string)).toBe(heartbeat.getTime());
+  });
 });
 
 async function addMapSystem(systemId: number): Promise<bigint> {
