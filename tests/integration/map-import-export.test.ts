@@ -239,6 +239,7 @@ describe.skipIf(!run)('map import/export — round-trip + remap (real Postgres)'
         deleteExpiredConnections: true,
         deleteEolConnections: true,
         trackAbyssalJumps: true,
+        autoEolConnections: false,
       },
       systems: [
         {

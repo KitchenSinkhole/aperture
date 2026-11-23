@@ -8,6 +8,7 @@ import {
   apMapSignature,
   apMapSystem,
   connectionScope,
+  eolSource,
   eolStage,
   mapScope,
   mapType,
@@ -87,6 +88,8 @@ const exportConnectionSchema = z.object({
   // Optional+default so pre-0065 export files (no bubbled flags) still import.
   sourceBubbled: z.boolean().optional().default(false),
   targetBubbled: z.boolean().optional().default(false),
+  // Optional: exports predating `eol_source` omit it (see `importEolSource`).
+  eolSource: z.enum(eolSource.enumValues).nullable().optional(),
 });
 
 const exportSignatureSchema = z.object({
@@ -113,6 +116,7 @@ export const mapExportSchema = z.object({
     deleteExpiredConnections: z.boolean(),
     deleteEolConnections: z.boolean(),
     trackAbyssalJumps: z.boolean(),
+    autoEolConnections: z.boolean().optional().default(false),
   }),
   systems: z.array(exportSystemSchema).max(2000),
   connections: z.array(exportConnectionSchema).max(4000),
@@ -133,6 +137,21 @@ export type ImportResult = {
 };
 
 /**
+ * The `eol_source` an imported connection lands with. A decaying stage with no
+ * provenance is `observed`: files exported before auto-marking only carry human
+ * EOLs. `auto` survives only on an `eol` stage: the cron writes nothing else,
+ * and the check constraint only forbids it on `none`, so an edited file could
+ * otherwise land an estimate on a `critical` or `expired` row.
+ */
+function importEolSource(
+  conn: MapExportFile['connections'][number],
+): MapExportFile['connections'][number]['eolSource'] {
+  if (conn.eolStage === 'eol') return conn.eolSource ?? 'observed';
+  if (conn.eolStage !== 'none') return 'observed';
+  return conn.eolSource === 'observed' ? 'observed' : null;
+}
+
+/**
  * Read a map's current visible state into a `MapExportFile`. Throws if the map
  * does not exist or is soft-deleted (callers gate access via `requireMapMutate`
  * with `map_export` first). Exports `intel_notes` so an import round-trips the
@@ -147,6 +166,7 @@ export async function buildMapExport(mapId: bigint): Promise<MapExportFile> {
       deleteExpiredConnections: apMap.deleteExpiredConnections,
       deleteEolConnections: apMap.deleteEolConnections,
       trackAbyssalJumps: apMap.trackAbyssalJumps,
+      autoEolConnections: apMap.autoEolConnections,
     })
     .from(apMap)
     .where(and(eq(apMap.id, mapId), isNull(apMap.deletedAt)));
@@ -182,6 +202,7 @@ export async function buildMapExport(mapId: bigint): Promise<MapExportFile> {
       isStatic: apMapConnection.isStatic,
       sourceBubbled: apMapConnection.sourceBubbled,
       targetBubbled: apMapConnection.targetBubbled,
+      eolSource: apMapConnection.eolSource,
     })
     .from(apMapConnection)
     .where(eq(apMapConnection.mapId, mapId))
@@ -232,6 +253,7 @@ export async function buildMapExport(mapId: bigint): Promise<MapExportFile> {
       isStatic: c.isStatic,
       sourceBubbled: c.sourceBubbled,
       targetBubbled: c.targetBubbled,
+      eolSource: c.eolSource,
     })),
     signatures: signatureRows.map((r) => ({
       mapSystemId: r.mapSystemId.toString(),
@@ -345,6 +367,7 @@ export async function importMapData(args: {
                 sourceBubbled: conn.sourceBubbled,
                 targetBubbled: conn.targetBubbled,
                 eolAt: conn.eolStage !== 'none' ? new Date() : null,
+                eolSource: importEolSource(conn),
               })
               .returning({
                 id: apMapConnection.id,
@@ -360,6 +383,7 @@ export async function importMapData(args: {
                 sourceBubbled: apMapConnection.sourceBubbled,
                 targetBubbled: apMapConnection.targetBubbled,
                 eolAt: apMapConnection.eolAt,
+                eolSource: apMapConnection.eolSource,
                 createdAt: apMapConnection.createdAt,
               });
             connRemap.set(conn.id, row!.id.toString());
@@ -378,6 +402,7 @@ export async function importMapData(args: {
               targetBubbled: row!.targetBubbled,
               eolAt: row!.eolAt ? row!.eolAt.toISOString() : null,
               createdAt: row!.createdAt.toISOString(),
+              eolSource: row!.eolSource,
             };
           },
         });

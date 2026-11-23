@@ -3,6 +3,7 @@ import {
   apiScope,
   apiTokenRevokeReason,
   connectionScope,
+  eolSource,
   eolStage,
   mapCapability,
   mapNoteSeverity,
@@ -164,6 +165,7 @@ const connectionScopeEnum = z.enum(connectionScope.enumValues);
 const whMassEnum = z.enum(whMass.enumValues);
 const whJumpMassEnum = z.enum(whJumpMass.enumValues);
 const eolStageEnum = z.enum(eolStage.enumValues);
+const eolSourceEnum = z.enum(eolSource.enumValues);
 const mapScopeEnum = z.enum(mapScope.enumValues);
 const mapTypeEnum = z.enum(mapType.enumValues);
 const signatureGroupKeyEnum = z.enum(signatureGroupKey.enumValues);
@@ -251,6 +253,8 @@ const connectionEdgeBody = {
   targetBubbled: z.boolean(),
   eolAt: z.string().nullable(),
   createdAt: z.string(),
+  // Provenance of `eolStage` (`ap_map_connection.eol_source`).
+  eolSource: eolSourceEnum.nullable().optional(),
 };
 
 /** Full signature body — mirrors `ap_map_signature` row fields used by the canvas. */
@@ -343,6 +347,8 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     sourceBubbled: z.boolean().optional(),
     targetBubbled: z.boolean().optional(),
     eolAt: z.string().nullable().optional(),
+    // Rides with `eolStage`: who set it (`observed` = a human, `auto` = the cron).
+    eolSource: eolSourceEnum.optional(),
     // Audit descriptors (endpoint `ap_map_system` ids). Carried so the event
     // self-describes its endpoints even after the connection is hard-deleted —
     // the canvas ignores them. See the preamble's payload-philosophy note.

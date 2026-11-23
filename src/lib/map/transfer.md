@@ -11,14 +11,14 @@
 ---
 
 ### mapExportSchema
-Zod schema validating an import file. Shape: `{ version, map: { name, scope, type, deleteExpiredConnections, deleteEolConnections, trackAbyssalJumps }, systems[], connections[], signatures[] }`. Each connection carries `isStatic` (optional + defaults `false`, so pre-0032 export files still import) and `sourceBubbled`/`targetBubbled` (optional + defaults `false`, so pre-0065 export files still import). Each signature carries `classKind` (`signature`/`anomaly`, optional + defaults `null`, so export files predating the class-kind column still import). Arrays are bounded defensively. System/connection `id` fields are **export-local** strings used only for in-file referencing (connections reference `systems[].id`; wormhole signatures reference `connections[].id`); they are not trusted as DB ids on import.
+Zod schema validating an import file. Shape: `{ version, map: { name, scope, type, deleteExpiredConnections, deleteEolConnections, trackAbyssalJumps, autoEolConnections }, systems[], connections[], signatures[] }`. `autoEolConnections` is optional + defaults `false`. Each connection carries `isStatic` (optional + defaults `false`, so pre-0032 export files still import) `sourceBubbled`/`targetBubbled` (optional + defaults `false`, so pre-0065 export files still import), and `eolSource` (optional, nullable). Each signature carries `classKind` (`signature`/`anomaly`, optional + defaults `null`, so export files predating the class-kind column still import). Arrays are bounded defensively. System/connection `id` fields are **export-local** strings used only for in-file referencing (connections reference `systems[].id`; wormhole signatures reference `connections[].id`); they are not trusted as DB ids on import.
 
 **Exported type:** `MapExportFile = z.infer<typeof mapExportSchema>`.
 
 ---
 
 ### buildMapExport(mapId: bigint): Promise<MapExportFile>
-Reads the map's metadata + three behaviour toggles, its visible `ap_map_system` rows (including `intel_notes`), all `ap_map_connection` rows, and the `ap_map_signature` rows in visible systems, into a `MapExportFile`. Omits timestamps and DB ids (beyond export-local references).
+Reads the map's metadata + four behaviour toggles, its visible `ap_map_system` rows (including `intel_notes`), all `ap_map_connection` rows, and the `ap_map_signature` rows in visible systems, into a `MapExportFile`. Omits timestamps and DB ids (beyond export-local references).
 
 **Throws:** `Map not found.` if the map is missing or soft-deleted (callers gate `map_export` first).
 **Returns:** the export document.
@@ -26,7 +26,7 @@ Reads the map's metadata + three behaviour toggles, its visible `ap_map_system` 
 ---
 
 ### importMapData(args): Promise<ActionResult<ImportResult>>
-Merges a validated `MapExportFile` into an existing map under one `db.transaction`, mirroring `bulkSignatures.ts`: each row is one `commitMapEvent` call sharing the outer `tx` (one `ap_map_event` + realtime echo per row). Systems upsert on `(map_id, system_id)` (setting position/alias/tag/status/intelNotes/locked + `visible=true`); connections insert with endpoints remapped from export-local system ids; signatures reuse `createSignature(tx)` with `expiresAt = now + SIGNATURE_DEFAULT_TTL_MS` and `mapConnectionId` remapped. The map's own metadata/toggles are not modified.
+Merges a validated `MapExportFile` into an existing map under one `db.transaction`, mirroring `bulkSignatures.ts`: each row is one `commitMapEvent` call sharing the outer `tx` (one `ap_map_event` + realtime echo per row). Systems upsert on `(map_id, system_id)` (setting position/alias/tag/status/intelNotes/locked + `visible=true`); connections insert with endpoints remapped from export-local system ids, keeping the file's `eolSource` (an `eol`/`auto` row stays `auto`); a non-`none` stage with no `eolSource` lands as `observed`, `auto` on any stage other than `eol` lands as `observed`, and a `none` stage never lands as `auto` (it becomes NULL); signatures reuse `createSignature(tx)` with `expiresAt = now + SIGNATURE_DEFAULT_TTL_MS` and `mapConnectionId` remapped. The map's own metadata/toggles are not modified.
 
 **Parameters:**
 - `mapId` — target map (the open map; `map_import` checked by the caller).

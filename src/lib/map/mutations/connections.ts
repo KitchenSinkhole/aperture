@@ -99,6 +99,9 @@ export function createConnection(
           sourceBubbled: input.sourceBubbled ?? false,
           targetBubbled: input.targetBubbled ?? false,
           eolAt: stage !== 'none' ? new Date() : null,
+          // A decaying stage from a caller is a human sighting. Creating at `none`
+          // records no observation, so the hole stays eligible for an age estimate.
+          eolSource: stage !== 'none' ? 'observed' : null,
           // Every create is a fresh assertion (manual draw, sig link, stargate
           // auto-link) → confirmed now. removeSystem dormants wh rows by NULLing this.
           confirmedAt: new Date(),
@@ -117,6 +120,7 @@ export function createConnection(
           sourceBubbled: apMapConnection.sourceBubbled,
           targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
+          eolSource: apMapConnection.eolSource,
           createdAt: apMapConnection.createdAt,
         });
       return {
@@ -134,6 +138,7 @@ export function createConnection(
         targetBubbled: row!.targetBubbled,
         eolAt: row!.eolAt ? row!.eolAt.toISOString() : null,
         createdAt: row!.createdAt.toISOString(),
+        eolSource: row!.eolSource,
       };
     },
   });
@@ -188,8 +193,10 @@ export function deleteConnection(
  * `eolStage` re-stamps `eol_at` to *now* whenever the stage actually changes to
  * a non-`none` value (so the 1h `critical` window starts at the critical
  * observation, not the original 4h flag), preserves the existing stamp on a
- * repeat of the same stage, and clears it to null when set back to `none` —
- * this `eol_at` feeds the EOL-expiry cron. Emits `connection.update`.
+ * repeat of the same stage (unless that stage was an `auto` estimate), and
+ * clears it to null when set back to `none` — this `eol_at` feeds the
+ * EOL-expiry cron. Any `eolStage` in the patch is a human write, so it stamps
+ * `eol_source = 'observed'`. Emits `connection.update`.
  */
 export function updateConnection(
   input: UpdateConnectionInput,
@@ -214,11 +221,16 @@ export function updateConnection(
       if ('eolStage' in patch && patch.eolStage !== undefined) {
         const nextStage = patch.eolStage;
         set.eolStage = nextStage;
+        set.eolSource = 'observed';
         if (nextStage === 'none') {
           nextEolAt = null;
         } else {
           const [cur] = await tx
-            .select({ eolStage: apMapConnection.eolStage, eolAt: apMapConnection.eolAt })
+            .select({
+              eolStage: apMapConnection.eolStage,
+              eolAt: apMapConnection.eolAt,
+              eolSource: apMapConnection.eolSource,
+            })
             .from(apMapConnection)
             .where(
               and(
@@ -227,8 +239,11 @@ export function updateConnection(
               ),
             );
           // Re-stamp when the stage changes (e.g. eol → critical restarts the 1h
-          // clock); keep the existing stamp when the same stage is re-applied.
-          nextEolAt = cur && cur.eolStage === nextStage ? (cur.eolAt ?? new Date()) : new Date();
+          // clock); keep the existing stamp when the same stage is re-applied by
+          // a human. Re-applying it over an `auto` estimate is the confirming
+          // sighting, so the clock restarts from it: the auto stamp was a guess.
+          const keep = cur && cur.eolStage === nextStage && cur.eolSource !== 'auto';
+          nextEolAt = keep ? (cur.eolAt ?? new Date()) : new Date();
         }
         set.eolAt = nextEolAt;
       }
@@ -264,6 +279,7 @@ export function updateConnection(
       if ('eolStage' in patch && patch.eolStage !== undefined) {
         out.eolStage = patch.eolStage;
         out.eolAt = nextEolAt ? nextEolAt.toISOString() : null;
+        out.eolSource = 'observed';
       }
       return out;
     },
