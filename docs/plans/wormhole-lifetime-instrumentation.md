@@ -53,7 +53,7 @@ There are exactly three emitters of `connection.delete` in the codebase:
 
 ## Stage 1 — Typed cause + death snapshot on the manual delete path
 **Mode:** Execute
-**Status:** todo
+**Status:** done — d69f292c
 **Goal:** Give `deleteConnection` a required typed cause and a death snapshot read inside the deleting transaction, so a manually-cleared hole records why it died and what state it died in.
 **References:** `src/lib/map/mutations/connections.md`, `src/lib/map/mutations/core.md`, `src/lib/map/mutations/subchain.md`, `src/lib/map/mutations/bulkSignatures.md`, `src/app/api/map/[mapId]/connections/[connId]/route.md`, `src/db/schema/ap/map_connection.md`, `src/db/schema/ap/map_connection_log.md`, `src/types/index.md`
 **Touches:** `src/types/index.ts`, a new death-snapshot reader under `src/lib/map/`, `src/lib/map/mutations/connections.ts`, and the three `deleteConnection` callers (`src/app/api/map/[mapId]/connections/[connId]/route.ts`, `src/lib/map/mutations/subchain.ts`, `src/lib/map/mutations/bulkSignatures.ts`), and the `connection.delete` member of `mapEventPayloadSchema` in `src/lib/realtime/protocol.ts`. Their companion `.md` files. No schema migration (payload is jsonb; `event_kind` is unchanged).
@@ -80,10 +80,12 @@ There are exactly three emitters of `connection.delete` in the codebase:
 **Mode:** Execute
 **Status:** todo
 **Goal:** Make both cron reapers emit the same cause-plus-snapshot payload as the manual path, so no death escapes the instrumentation.
-**References:** `src/lib/jobs/tasks/eolExpiry.md`, `src/lib/jobs/tasks/expiredConnections.md`, `src/lib/map/mutations/core.md`, plus Stage 1's snapshot-reader companion
+**References:** `src/lib/jobs/tasks/eolExpiry.md`, `src/lib/jobs/tasks/expiredConnections.md`, `src/lib/map/mutations/core.md`, `src/lib/map/connectionDeathSnapshot.md` (Stage 1's snapshot reader)
 **Touches:** `src/lib/jobs/tasks/eolExpiry.ts`, `src/lib/jobs/tasks/expiredConnections.ts`, their companion `.md` files, and the job integration tests.
 
 **Constraint:** both reapers currently delete-with-`RETURNING` the endpoint ids only. The snapshot (including the mass-log max) must be captured in the same transaction as the delete — a pre-select inside the `commitMapEvent` `mutate` or a CTE, not a separate read before it.
+
+**What Stage 1 shipped for this:** `readConnectionDeathSnapshot(tx, { connectionId, mapId, cause })` in `src/lib/map/connectionDeathSnapshot.ts` is runner-safe (no `server-only`), already accepts `eol_reaped` / `expired_swept`, and is per-connection, which fits both reapers' existing one-`commitMapEvent`-per-row loop: call it first inside `mutate`, then delete, then spread it into the payload as `deleteConnection` does. It locks the row `FOR UPDATE` and returns `null` when the row is gone (a concurrent delete since the candidate select), which the reaper should treat like its current "already gone" throw. The `rolled` promotion applies only to a requested `manual_removed`, so a cron-reaped hole keeps its cron cause and reports roll state through `isRolling` / `massStatus` alone. The `connection.delete` zod member already declares every snapshot field; no `protocol.ts` change is needed.
 
 **Done when:** an `eolExpiry` sweep emits `eol_reaped` and an `expiredConnections` sweep emits `expired_swept`, both with the full snapshot; a swept connection that was dormant carries `wasDormant: true`; DB integration tests cover both sweeps. `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
 
@@ -106,7 +108,7 @@ There are exactly three emitters of `connection.delete` in the codebase:
 **Mode:** Execute
 **Status:** todo
 **Goal:** Ship `ap_connection_lifecycle`, a plain SQL view that projects every instrumented `connection.delete` event into one lifecycle row per dead connection, replacing the session-local `home_wh_life` / `conn_static` temp views the original study hand-rolled.
-**References:** `src/db/views/activity_rollup.md` (the SQL-source-file + custom-migration precedent for a view over `ap_map_event`), `src/db/schema/ap/map_event.md`, `src/db/schema/ap/map_system.md`, Stage 1's snapshot-reader companion, `src/lib/realtime/protocol.md` (`connection.delete` payload), `src/types/index.md` (`ConnectionDeathCause`)
+**References:** `src/db/views/activity_rollup.md` (the SQL-source-file + custom-migration precedent for a view over `ap_map_event`), `src/db/schema/ap/map_event.md`, `src/db/schema/ap/map_system.md`, `src/lib/map/connectionDeathSnapshot.md` (Stage 1's snapshot reader), `src/lib/realtime/protocol.md` (`connection.delete` payload), `src/types/index.md` (`ConnectionDeathCause`)
 **Touches:** `src/db/views/connection_lifecycle.sql` + `src/db/views/connection_lifecycle.md` (source of truth + companion), a custom migration at the next free number (`src/db/migrations/00NN_connection_lifecycle_view.sql`, generated with `drizzle-kit generate --custom` so the journal records it) + its hand-written `.rollback.sql`, and one DB integration test. No Drizzle handle and no TS reader: the consumer is operator SQL. Add a `pgView(...).existing()` handle only if a TS reader appears.
 
 **Settled design:**
@@ -137,7 +139,7 @@ There are exactly three emitters of `connection.delete` in the codebase:
 | `last_alive_at` | payload `lastAliveAt` → timestamptz |
 | `clear_lag_h` | `died_at - last_alive_at` in hours (true collapse lies in `[last_alive_at, died_at]`) |
 | `mass_status_at_death` | payload `massStatus` |
-| `was_rolled` | `cause = 'rolled' OR isRolling` (a cron can reap a hole that was mid-roll) |
+| `was_rolled` | `cause = 'rolled' OR isRolling OR massStatus = 'critical'` (a cron can reap a hole that was mid-roll; the mass-critical arm is Stage 1's own `rolled` rule, which only promotes `manual_removed`) |
 | `was_dormant` | payload `wasDormant` |
 | `eol_stage_at_death` | payload `eolStage` (all four values) |
 | `eol_at` | payload `eolAt` → timestamptz |
@@ -194,8 +196,8 @@ Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the pe
 **Mode:** Execute
 **Status:** todo
 **Goal:** Carry `eolSource` into every `connection.delete` snapshot and surface it as `ap_connection_lifecycle.eol_source`.
-**References:** Stage 1's snapshot-reader companion, `src/lib/realtime/protocol.md`, `src/db/views/connection_lifecycle.md`
-**Touches:** Stage 1's snapshot reader, the `connection.delete` member of `mapEventPayloadSchema` (optional `eolSource`), `src/db/views/connection_lifecycle.sql` + companion, a custom migration (`drizzle-kit generate --custom`) doing `CREATE OR REPLACE VIEW` with the column appended last + its `.rollback.sql` restoring the Stage 4 definition, and the Stage 4 view test.
+**References:** `src/lib/map/connectionDeathSnapshot.md` (Stage 1's snapshot reader), `src/lib/realtime/protocol.md`, `src/db/views/connection_lifecycle.md`
+**Touches:** `src/lib/map/connectionDeathSnapshot.ts` (+ companion), `src/types/index.ts` (`ConnectionDeathSnapshot` gains `eolSource`), the `connection.delete` member of `mapEventPayloadSchema` (optional `eolSource`), `src/db/views/connection_lifecycle.sql` + companion, a custom migration (`drizzle-kit generate --custom`) doing `CREATE OR REPLACE VIEW` with the column appended last + its `.rollback.sql` restoring the Stage 4 definition, and the Stage 4 view test.
 **View column:** `eol_source` is payload `eolSource`, else `'observed'` when the payload lacks it and `eolStage <> 'none'` (deaths snapshotted before 5b, when every EOL was human), else `NULL`. The companion states that `cause = 'eol_reaped' AND eol_source = 'auto'` rows have a lifetime set by the cron's clock, not measured.
 **Done when:** the Stage 4 view test is extended so that a connection hand-set to `('eol', 'auto')` and then reaped by `eolExpiry` yields `eol_source = 'auto'`, a human-EOL'd one yields `observed`, and a hand-inserted Stage-1-shape snapshot with `eolStage = 'eol'` and no `eolSource` yields `observed`. Migration and rollback apply cleanly. `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
 
@@ -203,11 +205,11 @@ Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the pe
 **Mode:** Execute
 **Status:** todo
 **Goal:** Ship the cron that marks eligible holes `('eol', 'auto')` per the settled design, kept out of Discord and labelled as an estimate in the audit log.
-**References:** `src/lib/jobs/tasks/eolExpiry.md` (the shape to follow), `src/lib/jobs/registry.md`, `src/lib/map/mutations/core.md`, `src/lib/eve/wormholeJumpInfo.md` (attribute-by-name resolution), `src/lib/map/wormholeTypes.md` (`staticMatchForConnection` join), Stage 1's snapshot-reader companion (the `wormholeCode` rule), `src/lib/webhooks/dispatcher.md`, `src/lib/webhooks/formatters.md`
+**References:** `src/lib/jobs/tasks/eolExpiry.md` (the shape to follow), `src/lib/jobs/registry.md`, `src/lib/map/mutations/core.md`, `src/lib/eve/wormholeJumpInfo.md` (attribute-by-name resolution), `src/lib/map/wormholeTypes.md` (`staticMatchForConnection` join), `src/lib/map/connectionDeathSnapshot.md` (the `wormholeCode` rule), `src/lib/webhooks/dispatcher.md`, `src/lib/webhooks/formatters.md`
 **Touches:** a new `src/lib/jobs/tasks/autoEol.ts` + companion, `src/lib/jobs/registry.ts`, `src/lib/webhooks/dispatcher.ts` and/or `src/lib/webhooks/formatters.ts`, their companions, and job integration tests.
 **Constraints:**
 - **No `server-only` imports.** The task runs in the bare-tsx runner, and both `wormholeJumpInfo.ts` and `wormholeTypes.ts` import `server-only`. Resolve the attribute and do the static join in the task's own SQL, or in a runner-safe helper.
-- **Reuse Stage 1's bound-code rule, don't re-derive it.** If Stage 1 shipped it per-connection only, lift it into a shared set-wise SQL fragment that both use.
+- **Reuse Stage 1's bound-code rule, don't re-derive it.** Stage 1 shipped it per-connection only, as the TS function `boundWormholeCode(codes)` in `src/lib/map/connectionDeathSnapshot.ts` (unit-tested in `tests/unit/connection-death-snapshot.test.ts`), applied to codes the reader fetches per connection. So this stage lifts it into a shared set-wise SQL fragment, exported from that runner-safe module, and switches `readConnectionDeathSnapshot` to it as well, keeping Stage 1's integration test (`tests/integration/connection-death-snapshot.test.ts`) green. Add `src/lib/map/connectionDeathSnapshot.ts` (+ companion) to this stage's touch list.
 - **The `UPDATE` is conditional** (`WHERE eol_stage = 'none' AND eol_source IS NULL`) inside the `commitMapEvent` `mutate`, so a scout's concurrent write wins. One `connection.update` per marked row, with `characterId: null` and a payload of `eolStage: 'eol'`, `eolAt`, `eolSource: 'auto'` plus the `source`/`target` descriptors. Batch with `JOB_DELETE_BATCH_SIZE`. Cadence is a hard-coded cron string (every 5 minutes, matching `eolExpiry`). An unresolvable attribute marks nothing and says so in `ap_job_run.notes`.
 **Done when:** job tests on an opted-in map show that an O477-typed hole past `nominal − 4h` is marked `('eol', 'auto')` with `eol_at ≈ now()`; that one short of it, a K162-only hole, a dormant hole, an `observed`-`none` hole and a hole on a non-opted map are untouched; that an untyped `is_static` hole with a single matching static is marked; and that the emitted event is not dispatched to webhooks while `describeMapEvent` renders it as an estimate. `pnpm lint`, `pnpm typecheck`, `pnpm build` green, and `pnpm dev` boots the runner with the task registered (the only gate that catches a `server-only` import).
 
@@ -261,4 +263,6 @@ _(appended by executing sessions — non-obvious findings only)_
 - The bulk-paste orphan sweep (`removeOrphanedConnections`) is the only delete path backed by a direct scanner observation that the hole is gone. It routes through the same `deleteConnection` as a user click, so without a distinct `sig_orphaned` cause the best natural-collapse evidence in the system is silently merged into `manual_removed`.
 - `eol_stage` has four values, not three: `none` / `eol` / `critical` / `expired`, the last being a terminal manual marker (migration 0053) reaped on its own `WORMHOLE_EXPIRED_LIFETIME_MS` clock. Any cause or read-model logic keying off EOL must handle all four.
 - The original study's way of getting `wormhole_code` (joining it from signature events) is unsound, which is why Stage 1 snapshots it. `signature.update` carries `wormholeCode` only when the type changed (the full-row `snapshot` is a later addition), a sig can be unlinked and rebound, the two ends of a hole often disagree (one K162, one real code), and Thera sync binds no signature at all. The bound sig rows read at death time are the only reliable source.
+- The bulk-paste orphan sweep deletes the orphaned signature *before* calling `deleteConnection`, so by snapshot time the sig whose disappearance triggered the delete (usually the typed near-side one) is already gone from the bound-sig read. Without `removedBoundSigTypeIds` the strongest natural-collapse evidence would mostly record `K162` or `null`. Reordering to delete the connection first is not an option: the sig would cascade silently, with no `signature.delete` event for the audit trail or other tabs.
+- `wormholeCode` is only as good as the bound sigs that survive to death. A bound sig that expires first (the reap cron, or the paste ghost sweep) takes its type with it, and that path is not compensated. Long-lived holes whose sigs went unrefreshed can die with `wormholeCode: null`.
 - A partial index on `ap_map_event (occurred_at) WHERE kind = 'connection.delete'` is the lever if `ap_connection_lifecycle` ever gets slow. It was left out of Stage 4 because building an index on the partitioned parent can't run `CONCURRENTLY` and blocks event writes for the duration of the build on prod.

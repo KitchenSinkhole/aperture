@@ -198,7 +198,7 @@ describe.skipIf(!run)('connection mass-log (real Postgres)', () => {
 
   it('deleting a connection cascades its mass-log rows away', async () => {
     expect(await logCount(connId)).toBeGreaterThan(0);
-    const deleted = await deleteConnection({ mapId, connectionId: connId, characterId: null });
+    const deleted = await deleteConnection({ mapId, connectionId: connId, characterId: null, cause: 'manual_removed' });
     expect(deleted.ok).toBe(true);
     expect(await logCount(connId)).toBe(0);
   });

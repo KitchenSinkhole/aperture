@@ -6,7 +6,7 @@
 ---
 
 ### deleteSubchain(input: DeleteSubchainInput): Promise<ActionResult<SubchainDeleteResult>>
-Resolves the head's subchain via `computeSubchain` (`@/lib/map/subchainGraph`) — the head plus everything orphaned from the keep-side anchor by removing it — then, under one outer `db.transaction`: hard-deletes every connection whose source or target is in the set (the collapsed head↔anchor hole + any loop-back edges), then soft-deletes every system in the set. Each delete is routed through `deleteConnection` / `removeSystem` with the shared `tx`, so any failure rolls the whole batch back. Connections are torn down before systems so `connection.delete` events precede `system.removed`.
+Resolves the head's subchain via `computeSubchain` (`@/lib/map/subchainGraph`) — the head plus everything orphaned from the keep-side anchor by removing it — then, under one outer `db.transaction`: hard-deletes every connection whose source or target is in the set (the collapsed head↔anchor hole + any loop-back edges), then soft-deletes every system in the set. Each delete is routed through `deleteConnection` (cause `manual_removed`) / `removeSystem` with the shared `tx`, so any failure rolls the whole batch back. Connections are torn down before systems so `connection.delete` events precede `system.removed`.
 
 **Anchor resolution:** the map's `home_map_system_id` when set; otherwise `input.anchorMapSystemId` (which, in the no-Home path, must be a direct neighbour of the head). Home always wins, so a misuse can never delete known space. Guards: map exists, anchor present, anchor ≠ head, head + anchor are both visible, resolved set non-empty.
 

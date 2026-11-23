@@ -16,7 +16,7 @@ import {
   whJumpMass,
   whMass,
 } from '@/db/schema/ap/enums';
-import type { ShipClass } from '@/types';
+import type { ConnectionDeathCause, ShipClass } from '@/types';
 
 /**
  * Wire contracts for the Aperture realtime WebSocket transport.
@@ -198,6 +198,16 @@ const SHIP_CLASSES: ShipClass[] = [
 
 const shipClassSchema = z.enum(SHIP_CLASSES);
 
+const CONNECTION_DEATH_CAUSES: ConnectionDeathCause[] = [
+  'manual_removed',
+  'rolled',
+  'sig_orphaned',
+  'eol_reaped',
+  'expired_swept',
+];
+
+const connectionDeathCauseEnum = z.enum(CONNECTION_DEATH_CAUSES);
+
 const eventId = z.number().int().positive();
 
 /** Full node body — mirrors `MapSystemNode` (loadMap.ts) so a client can append. */
@@ -341,12 +351,26 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
   }),
   // `source`/`target` are the endpoint `ap_map_system` ids, captured at delete
   // time because the connection row is hard-deleted (unrecoverable afterwards).
+  // The rest is the death snapshot (`ConnectionDeathSnapshot`): optional here
+  // because historical events carry none, but every field must be declared or
+  // zod strips it before the event INSERT.
   z.object({
     kind: z.literal('connection.delete'),
     eventId,
     id: z.string(),
     source: z.string().optional(),
     target: z.string().optional(),
+    cause: connectionDeathCauseEnum.optional(),
+    bornAt: z.string().optional(),
+    lastAliveAt: z.string().optional(),
+    scope: connectionScopeEnum.optional(),
+    massStatus: whMassEnum.optional(),
+    isRolling: z.boolean().optional(),
+    isStatic: z.boolean().optional(),
+    eolStage: eolStageEnum.optional(),
+    eolAt: z.string().nullable().optional(),
+    wasDormant: z.boolean().optional(),
+    wormholeCode: z.string().nullable().optional(),
   }),
   z.object({ kind: z.literal('signature.create'), eventId, ...signatureBody }),
   z.object({

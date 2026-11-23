@@ -3,6 +3,7 @@ import { and, eq, type InferInsertModel } from 'drizzle-orm';
 import { apMapConnection, connectionScope, eolStage, whJumpMass, whMass } from '@/db/schema';
 import { commitMapEvent, type ActionResult, type Tx } from './core';
 import { assertSystemOnMap } from './tenancy';
+import { readConnectionDeathSnapshot } from '@/lib/map/connectionDeathSnapshot';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 
 /**
@@ -38,6 +39,10 @@ export type DeleteConnectionInput = {
   mapId: bigint;
   connectionId: bigint;
   characterId: bigint | null;
+  /** Why it is being deleted. A `manual_removed` hole that was rolling or mass-critical records `rolled`. */
+  cause: 'manual_removed' | 'sig_orphaned';
+  /** `type_id`s of signatures bound to this connection that the caller already deleted in `tx`. */
+  removedBoundSigTypeIds?: number[];
   /** Optional outer transaction (joined by `bulkSignatures.ts` to tear down orphan WH connections atomically with sig deletes). */
   tx?: Tx;
 };
@@ -134,7 +139,11 @@ export function createConnection(
   });
 }
 
-/** Hard-delete a connection (wormholes don't come back). Attached signatures cascade. Emits `connection.delete` → `{ id }`. */
+/**
+ * Hard-delete a connection (wormholes don't come back). Attached signatures and
+ * the mass log cascade, so the death snapshot is read first, on the same tx.
+ * Emits `connection.delete` → `{ id, source, target, ...ConnectionDeathSnapshot }`.
+ */
 export function deleteConnection(
   input: DeleteConnectionInput,
 ): Promise<ActionResult<MapEventPayload>> {
@@ -144,6 +153,13 @@ export function deleteConnection(
     kind: 'connection.delete',
     tx: input.tx,
     mutate: async (tx) => {
+      const snapshot = await readConnectionDeathSnapshot(tx, {
+        connectionId: input.connectionId,
+        mapId: input.mapId,
+        cause: input.cause,
+        removedBoundSigTypeIds: input.removedBoundSigTypeIds,
+      });
+      if (!snapshot) throw new Error('Connection not found on map.');
       const [row] = await tx
         .delete(apMapConnection)
         .where(
@@ -157,7 +173,12 @@ export function deleteConnection(
       if (!row) throw new Error('Connection not found on map.');
       // Endpoints ride the payload so the audit/Discord can name the collapsed
       // hole — the connection row is gone after this delete.
-      return { id: row.id.toString(), source: row.source.toString(), target: row.target.toString() };
+      return {
+        id: row.id.toString(),
+        source: row.source.toString(),
+        target: row.target.toString(),
+        ...snapshot,
+      };
     },
   });
 }

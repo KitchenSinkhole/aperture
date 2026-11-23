@@ -98,6 +98,7 @@ export const DELETE = withApiMetrics('/api/map/:mapId/connections/:connId', asyn
     mapId: guard.mapId,
     connectionId,
     characterId: guard.characterId,
+    cause: 'manual_removed',
   });
 
   // Deleting the Home static drops the exemption → the target re-tags. Reconcile

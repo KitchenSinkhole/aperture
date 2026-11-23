@@ -18,7 +18,11 @@ Inserts one `ap_map_connection` row between two map systems. Validates both `sou
 ---
 
 ### deleteConnection(input: DeleteConnectionInput): Promise<ActionResult<MapEventPayload>>
-Hard-deletes the `ap_map_connection` row matching `(connectionId, mapId)`; attached `ap_map_signature` rows cascade. Throws (rolls back) if no matching row. Emits `connection.delete` → `{ id, source, target }`, where `source`/`target` are the endpoint `ap_map_system.id`s captured from the deleted row (the audit/Discord surfaces resolve them to system names against the persistent `ap_map_system` rows — the connection itself is gone). Accepts optional `input.tx` to join an outer transaction (used by `bulkSignatures.ts` when tearing down WH connections orphaned by `removeOrphanedConnections`).
+Hard-deletes the `ap_map_connection` row matching `(connectionId, mapId)`; attached `ap_map_signature` rows and the mass log cascade. Throws (rolls back) if no matching row. Before the delete, on the same transaction, reads the death snapshot via `readConnectionDeathSnapshot` (`@/lib/map/connectionDeathSnapshot`). Emits `connection.delete` → `{ id, source, target, ...ConnectionDeathSnapshot }`, where `source`/`target` are the endpoint `ap_map_system.id`s captured from the deleted row (the audit/Discord surfaces resolve them to system names against the persistent `ap_map_system` rows — the connection itself is gone). Accepts optional `input.tx` to join an outer transaction (used by `bulkSignatures.ts` when tearing down WH connections orphaned by `removeOrphanedConnections`).
+
+**Parameters:**
+- `input.cause` — required: `'manual_removed'` (a user delete) or `'sig_orphaned'` (the paste orphan sweep). A `manual_removed` hole that is rolling or mass-critical records `rolled`.
+- `input.removedBoundSigTypeIds` — optional `type_id`s of signatures bound to this connection that the caller already deleted in `tx`; they count toward the snapshot's `wormholeCode`.
 
 ---
 
@@ -35,5 +39,6 @@ Input bags for the three helpers. Re-exported from `src/types/index.ts`.
 
 ### Depends On
 - `commitMapEvent` (`./core`) — the single commit primitive.
+- `readConnectionDeathSnapshot` (`@/lib/map/connectionDeathSnapshot`) — the `connection.delete` snapshot.
 - `apMapConnection` (Drizzle schema).
 - `mapEventPayloadSchema` variants `connection.create` / `connection.delete` / `connection.update` (`@/lib/realtime/protocol`).

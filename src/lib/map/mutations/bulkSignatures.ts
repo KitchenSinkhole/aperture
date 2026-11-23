@@ -213,6 +213,10 @@ export async function pasteSignatures(
               mapId: input.mapId,
               connectionId: existingRow.mapConnectionId,
               characterId: input.characterId,
+              cause: 'sig_orphaned',
+              // The orphaned sig is deleted above, so its type would otherwise
+              // be missing from the snapshot's wormholeCode.
+              removedBoundSigTypeIds: existingRow.typeId !== null ? [existingRow.typeId] : [],
               tx,
             });
             if (!connRes.ok) throw new Error(connRes.error);
