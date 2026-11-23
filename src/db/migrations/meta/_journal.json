@@ -519,6 +519,13 @@
       "when": 1795281630966,
       "tag": "0074_killmail_system_value",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1795394619817,
+      "tag": "0075_connection_lifecycle_view",
+      "breakpoints": true
     }
   ]
 }
