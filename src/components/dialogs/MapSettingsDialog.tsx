@@ -102,7 +102,7 @@ export function MapSettingsDialog({
               <GeneralPanel mapId={mapId} settings={settings} canEdit={can('settings_manage')} />
             </TabsPanel>
             <TabsPanel value="settings">
-              <SettingsPanel mapId={mapId} />
+              <SettingsPanel />
             </TabsPanel>
             {can('settings_manage') && (
               <TabsPanel value="behavior">
@@ -164,7 +164,7 @@ export function MapSettingsDialog({
   );
 }
 
-function SettingsPanel(_props: { mapId: string }) {
+function SettingsPanel() {
   // Client-only display prefs, persisted to localStorage. The lazy initializer
   // reads localStorage on first render; safe because this panel only mounts once
   // the dialog opens (never during SSR), so there's no hydration mismatch.
