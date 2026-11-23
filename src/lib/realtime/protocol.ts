@@ -375,6 +375,7 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     isStatic: z.boolean().optional(),
     eolStage: eolStageEnum.optional(),
     eolAt: z.string().nullable().optional(),
+    eolSource: eolSourceEnum.nullable().optional(),
     wasDormant: z.boolean().optional(),
     wormholeCode: z.string().nullable().optional(),
   }),

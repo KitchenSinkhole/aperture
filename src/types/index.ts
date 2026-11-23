@@ -298,6 +298,8 @@ export type ConnectionDeathSnapshot = {
   isStatic: boolean;
   eolStage: (typeof eolStage.enumValues)[number];
   eolAt: string | null;
+  /** Provenance of `eolStage` at death: `auto` (the cron's estimate), `observed` (a human), null (never set). */
+  eolSource: EolSource | null;
   /** `confirmed_at IS NULL` at death (an endpoint system had been removed). */
   wasDormant: boolean;
   /** The single non-K162 code bound to the hole, `K162` when only K162 is bound, else null. */

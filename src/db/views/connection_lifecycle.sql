@@ -44,7 +44,12 @@ SELECT
   )                                                       AS was_rolled,
   (e.payload ->> 'wasDormant')::boolean                   AS was_dormant,
   e.payload ->> 'eolStage'                                AS eol_stage_at_death,
-  (e.payload ->> 'eolAt')::timestamptz                    AS eol_at
+  (e.payload ->> 'eolAt')::timestamptz                    AS eol_at,
+  -- Snapshots without `eolSource` predate auto-marking, when every EOL was human.
+  CASE
+    WHEN e.payload ? 'eolSource' THEN e.payload ->> 'eolSource'
+    WHEN e.payload ->> 'eolStage' <> 'none' THEN 'observed'
+  END                                                     AS eol_source
 FROM "ap_map_event" e
 LEFT JOIN "ap_map_system" src ON src.id = (e.payload ->> 'source')::bigint
 LEFT JOIN "ap_map_system" tgt ON tgt.id = (e.payload ->> 'target')::bigint

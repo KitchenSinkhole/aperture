@@ -196,7 +196,7 @@ Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the pe
 
 ## Stage 5c — Provenance in the death snapshot and read model
 **Mode:** Execute
-**Status:** todo
+**Status:** done — bdf21a91
 **Goal:** Carry `eolSource` into every `connection.delete` snapshot and surface it as `ap_connection_lifecycle.eol_source`.
 **References:** `src/lib/map/connectionDeathSnapshot.md` (Stage 1's snapshot reader), `src/lib/realtime/protocol.md`, `src/db/views/connection_lifecycle.md`
 **Touches:** `src/lib/map/connectionDeathSnapshot.ts` (+ companion), `src/types/index.ts` (`ConnectionDeathSnapshot` gains `eolSource`), the `connection.delete` member of `mapEventPayloadSchema` (optional `eolSource`), `src/db/views/connection_lifecycle.sql` + companion, a custom migration (`drizzle-kit generate --custom`) doing `CREATE OR REPLACE VIEW` with the column appended last + its `.rollback.sql` restoring the Stage 4 definition (migration 0075's body), and the Stage 4 view test (`tests/integration/connection-lifecycle-view.test.ts` + companion).

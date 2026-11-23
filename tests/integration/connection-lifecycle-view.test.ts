@@ -19,7 +19,7 @@ import {
   universeWormhole,
 } from '@/db/schema';
 import { addSystem, removeSystem } from '@/lib/map/mutations/systems';
-import { createConnection, deleteConnection } from '@/lib/map/mutations/connections';
+import { createConnection, deleteConnection, updateConnection } from '@/lib/map/mutations/connections';
 import { restoreConnection } from '@/lib/map/mutations/restoreConnection';
 import { pasteSignatures } from '@/lib/map/mutations/bulkSignatures';
 import { eolExpiry } from '@/lib/jobs/tasks/eolExpiry';
@@ -69,6 +69,7 @@ type LifecycleRow = {
   was_dormant: boolean;
   wormhole_code: string | null;
   eol_stage_at_death: string;
+  eol_source: string | null;
 };
 
 describe.skipIf(!run)('ap_connection_lifecycle view (real Postgres)', () => {
@@ -129,6 +130,7 @@ describe.skipIf(!run)('ap_connection_lifecycle view (real Postgres)', () => {
       wormhole_code: 'K162',
       source_system_id: SYS_A,
       target_system_id: SYS_B,
+      eol_source: null,
     });
     expectTimings(row, bornAt, 3, 1);
   });
@@ -200,8 +202,66 @@ describe.skipIf(!run)('ap_connection_lifecycle view (real Postgres)', () => {
       was_rolled: true,
       wormhole_code: 'O477',
       eol_stage_at_death: 'eol',
+      eol_source: 'observed',
     });
     expectTimings(row, conn!.createdAt, 20, 2);
+  });
+
+  it('an auto-estimated EOL reaped by eolExpiry yields eol_source auto', async () => {
+    const [conn] = await db
+      .insert(apMapConnection)
+      .values({
+        mapId,
+        sourceMapSystemId: msB,
+        targetMapSystemId: msD,
+        scope: 'wh',
+        eolStage: 'eol',
+        eolSource: 'auto',
+        eolAt: sql`now() - interval '5 hours'`,
+        createdAt: sql`now() - interval '20 hours'`,
+      })
+      .returning({ id: apMapConnection.id });
+
+    await eolExpiry.run(null, FAKE_HELPERS);
+
+    const row = await onlyRow(conn!.id);
+    expect(row).toMatchObject({ cause: 'eol_reaped', eol_stage_at_death: 'eol', eol_source: 'auto' });
+  });
+
+  it('a hole EOL-marked by a human yields eol_source observed', async () => {
+    const connId = await connect(msA, msD);
+    const marked = await updateConnection({ mapId, connectionId: connId, characterId: null, patch: { eolStage: 'eol' } });
+    expect(marked.ok).toBe(true);
+
+    const res = await deleteConnection({ mapId, connectionId: connId, characterId: null, cause: 'manual_removed' });
+    expect(res.ok).toBe(true);
+
+    const row = await onlyRow(connId);
+    expect(row).toMatchObject({ cause: 'manual_removed', eol_stage_at_death: 'eol', eol_source: 'observed' });
+  });
+
+  it('a snapshot without eolSource reads as observed when its stage is not none', async () => {
+    const connectionId = 987654322n;
+    const now = Date.now();
+    await insertDeleteEvent({
+      id: connectionId.toString(),
+      source: msA.toString(),
+      target: msB.toString(),
+      cause: 'eol_reaped',
+      bornAt: new Date(now - 20 * HOUR).toISOString(),
+      lastAliveAt: new Date(now - 2 * HOUR).toISOString(),
+      scope: 'wh',
+      massStatus: 'fresh',
+      isRolling: false,
+      isStatic: false,
+      eolStage: 'eol',
+      eolAt: new Date(now - 5 * HOUR).toISOString(),
+      wasDormant: false,
+      wormholeCode: 'O477',
+    });
+
+    const row = await onlyRow(connectionId);
+    expect(row).toMatchObject({ cause: 'eol_reaped', eol_stage_at_death: 'eol', eol_source: 'observed' });
   });
 
   it('a hole dormanted by removeSystem, restored, then deleted yields exactly one row', async () => {
@@ -219,17 +279,10 @@ describe.skipIf(!run)('ap_connection_lifecycle view (real Postgres)', () => {
   });
 
   it('a pre-snapshot connection.delete event is absent from the view', async () => {
-    const [seq] = (
-      await db.execute(sql`SELECT nextval(pg_get_serial_sequence('ap_map_event','id')) AS id`)
-    ).rows as Array<{ id: string }>;
-    const eventId = BigInt(seq!.id);
-    await db.insert(apMapEvent).values({
-      id: eventId,
-      mapId,
-      characterId: null,
-      occurredAt: new Date(),
-      kind: 'connection.delete',
-      payload: { id: '987654321', source: msA.toString(), target: msB.toString() },
+    const eventId = await insertDeleteEvent({
+      id: '987654321',
+      source: msA.toString(),
+      target: msB.toString(),
     });
 
     const rows = (
@@ -238,6 +291,23 @@ describe.skipIf(!run)('ap_connection_lifecycle view (real Postgres)', () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+/** Hand-insert a `connection.delete` event on the test map; returns its id. */
+async function insertDeleteEvent(payload: Record<string, unknown>): Promise<bigint> {
+  const [seq] = (
+    await db.execute(sql`SELECT nextval(pg_get_serial_sequence('ap_map_event','id')) AS id`)
+  ).rows as Array<{ id: string }>;
+  const eventId = BigInt(seq!.id);
+  await db.insert(apMapEvent).values({
+    id: eventId,
+    mapId,
+    characterId: null,
+    occurredAt: new Date(),
+    kind: 'connection.delete',
+    payload,
+  });
+  return eventId;
+}
 
 async function onlyRow(connectionId: bigint): Promise<LifecycleRow> {
   const rows = (

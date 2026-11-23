@@ -53,6 +53,7 @@ export async function readConnectionDeathSnapshot(
       isStatic: apMapConnection.isStatic,
       eolStage: apMapConnection.eolStage,
       eolAt: apMapConnection.eolAt,
+      eolSource: apMapConnection.eolSource,
     })
     .from(apMapConnection)
     .where(and(eq(apMapConnection.id, input.connectionId), eq(apMapConnection.mapId, input.mapId)))
@@ -95,6 +96,7 @@ export async function readConnectionDeathSnapshot(
     isStatic: conn.isStatic,
     eolStage: conn.eolStage,
     eolAt: conn.eolAt ? conn.eolAt.toISOString() : null,
+    eolSource: conn.eolSource,
     wasDormant: conn.confirmedAt === null,
     wormholeCode: boundWormholeCode([...boundCodes, ...removedCodes].map((r) => r.name)),
   };
