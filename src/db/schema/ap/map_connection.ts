@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { bigint, bigserial, boolean, check, pgTable, timestamp } from 'drizzle-orm/pg-core';
-import { connectionScope, eolStage, whJumpMass, whMass } from './enums';
+import { connectionScope, eolSource, eolStage, whJumpMass, whMass } from './enums';
 import { apMap } from './map';
 import { apMapSystem } from './map_system';
 
@@ -27,6 +27,9 @@ export const apMapConnection = pgTable(
     // Two-stage EOL: `eol` (~4h warning) and `critical` (~1h final). `none` =
     // not yet decaying. Selects the lifetime the countdown / reap use.
     eolStage: eolStage('eol_stage').notNull().default('none'),
+    // Who set the current `eol_stage`: NULL = never set, `observed` = a human,
+    // `auto` = the age-based estimate cron. Clients never send it.
+    eolSource: eolSource('eol_source'),
     preserveMass: boolean('preserve_mass').notNull().default(false),
     isRolling: boolean('is_rolling').notNull().default(false),
     // User-designated "this wormhole is the source system's static". A free
@@ -54,6 +57,12 @@ export const apMapConnection = pgTable(
     check(
       'ap_map_connection_no_self_loop',
       sql`${t.sourceMapSystemId} <> ${t.targetMapSystemId}`,
+    ),
+    // `auto` only ever pairs with a decaying stage, and a set stage always has
+    // a provenance, so an estimate can't be laundered into `none` or lose its tag.
+    check(
+      'ap_map_connection_eol_source_chk',
+      sql`(${t.eolStage} = 'none' AND ${t.eolSource} IS DISTINCT FROM 'auto') OR (${t.eolStage} <> 'none' AND ${t.eolSource} IS NOT NULL)`,
     ),
   ],
 );

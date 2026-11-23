@@ -9,6 +9,6 @@ Updates only the flags present in the body. Changing `eolStage` to a non-`none` 
 **Body:** `{ scope?, massStatus?, jumpMassClass?, eolStage?, preserveMass?, isRolling?, isStatic?, sourceBubbled?, targetBubbled? }` — all optional; `eolStage` is `none`/`eol`/`critical`.
 
 ### DELETE
-Hard-deletes the connection row (wormholes don't come back). Attached signatures cascade. Returns `{ ok, data, eventId }` where `data` is the `connection.delete` payload.
+Hard-deletes the connection row (wormholes don't come back) with cause `manual_removed`. Attached signatures cascade. Returns `{ ok, data, eventId }` where `data` is the `connection.delete` payload, death snapshot included.
 
 **Responses:** 200 ok, 400 mutation error / invalid id, 401 unauthenticated, 404 map not found.

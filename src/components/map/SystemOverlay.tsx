@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMapActiveChar } from '@/components/map/MapActiveCharContext';
 import { usePresenceForSystem } from '@/components/map/MapPresenceContext';
-import { connectionBadges, connectionStyle, systemClassColor } from '@/components/map/styling';
+import {
+  connectionBadges,
+  connectionStyle,
+  isEolEstimate,
+  systemClassColor,
+} from '@/components/map/styling';
 import { ShipClassIcon } from '@/components/icons/ShipClassIcon';
 import { ChevronDown, ChevronUp, Flag } from 'lucide-react';
 import { connectionExpiredSinceMs, connectionTimeLeftMs } from '@/lib/map/connectionState';
@@ -656,7 +661,14 @@ function ConnectionRow({
           {b.label}
         </span>
       ))}
-      {countdown && <span className="text-[10px] font-semibold text-amber-500">{countdown}</span>}
+      {countdown && (
+        <span className="text-[10px] font-semibold text-amber-500">
+          {countdown}
+          {isEolEstimate(edge) && (
+            <span className="font-normal italic text-muted-foreground"> est.</span>
+          )}
+        </span>
+      )}
     </li>
   );
 }

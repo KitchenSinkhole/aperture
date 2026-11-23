@@ -37,6 +37,7 @@ import { SiteTypeCombobox } from './SiteTypeCombobox';
 import { SignaturePasteDialog } from '@/components/dialogs/SignaturePasteDialog';
 import { SignatureIcon } from '@/components/icons/SignatureIcon';
 import { AnomalyIcon } from '@/components/icons/AnomalyIcon';
+import { isEolEstimate } from '@/components/map/styling';
 import type {
   MapConnectionEdge,
   MapEventPayload,
@@ -426,7 +427,7 @@ function EolCell({ row, table }: CellContext<MapSignature, unknown>) {
       : null;
   const stage = linkedConn ? linkedConn.eolStage : sig.eolStage;
   return (
-    <div className="px-1 py-px">
+    <div className="flex items-center gap-0.5 px-1 py-px">
       <EolStageSelect
         value={stage}
         onValueChange={(next) => {
@@ -435,6 +436,14 @@ function EolCell({ row, table }: CellContext<MapSignature, unknown>) {
         }}
         triggerClassName={FLAT_TRIGGER}
       />
+      {linkedConn && isEolEstimate(linkedConn) && (
+        <span
+          className="text-[10px] italic text-muted-foreground"
+          title="Estimated from the hole's age, not seen by a scout. Re-pick the stage to confirm it."
+        >
+          est.
+        </span>
+      )}
     </div>
   );
 }

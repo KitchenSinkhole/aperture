@@ -29,11 +29,14 @@ Returns the amber/gold accent (`#fbbf24`) used to mark the map's designated Home
 ### noteSeverityColor(severity: NoteSeverity): string
 Border colour for a map note (`MapNoteNode`), by `map_note_severity`: `neutral`→grey `#6b7280` (the file's default, so an unflagged note reads as "no severity"), `green`→`#22c55e`, `yellow`→`#eab308`, `red`→`#ef4444`.
 
-### connectionStyle(edge: Pick&lt;MapConnectionEdge, 'scope' | 'massStatus' | 'jumpMassClass' | 'eolStage'&gt;): EdgeStyle
-Returns `{ stroke, strokeWidth, strokeDasharray? }`. Scope sets the base colour; wormholes are recoloured by `massStatus` (fresh/reduced/critical). `eolStage` dashes the line — `expired` sparsest (`1 4`, barely-there), `critical` (1h) tighter (`2 3`) than `eol` (4h, `6 4`) — to read as progressively more urgent; `jumpMassClass === 's'` thins the stroke (frigate/small holes).
+### connectionStyle(edge: Pick&lt;MapConnectionEdge, 'scope' | 'massStatus' | 'jumpMassClass' | 'eolStage' | 'eolSource'&gt;): EdgeStyle
+Returns `{ stroke, strokeWidth, strokeDasharray? }`. Scope sets the base colour; wormholes are recoloured by `massStatus` (fresh/reduced/critical). `eolStage` dashes the line — `expired` sparsest (`1 4`, barely-there), `critical` (1h) tighter (`2 3`) than `eol` (4h, `6 4`) — to read as progressively more urgent; an estimated `eol` (`isEolEstimate`) keeps the long dash broken by a dot, so it reads as EOL but never as a scout's sighting. `jumpMassClass === 's'` thins the stroke (frigate/small holes).
 
-### connectionBadges(edge: Pick&lt;MapConnectionEdge, 'isStatic' | 'jumpMassClass' | 'eolStage'&gt;): ConnectionBadge[]
-Structured text badges for a connection: `STATIC` (user-designated static), jump-mass class (`S`/`M`/`L`/`XL`), then `EOL` (eol stage), `EOL 1h` (critical stage), or `EXPIRED` (manual expired stage). Each badge is `{ key, label, tone? }`. The small (`s`) size badge carries `tone: 'warn'` (filled amber pill — small holes are easy to miss) and the `EXPIRED` badge `tone: 'danger'` (filled red pill — do-not-jump hazard); `ConnectionEdge`/`SystemOverlay` colour the pill by tone. Rolling and preserve-mass are **not** returned here; `ConnectionEdge` renders them as standalone icons.
+### isEolEstimate(edge: Pick&lt;MapConnectionEdge, 'eolStage' | 'eolSource'&gt;): boolean
+True when the stage is not `none` and `eolSource === 'auto'`: the auto-EOL cron's age-based guess, not a human observation. Shared by every surface that marks an estimate (edge styling and badges, `ConnectionDetailPopover`, `InspectorModule`, `MapContextMenu`, `SystemOverlay`, `MapInfoDialog`).
+
+### connectionBadges(edge: Pick&lt;MapConnectionEdge, 'isStatic' | 'jumpMassClass' | 'eolStage' | 'eolSource'&gt;): ConnectionBadge[]
+Structured text badges for a connection: `STATIC` (user-designated static), jump-mass class (`S`/`M`/`L`/`XL`), then `EOL` (eol stage, `EOL?` when it is an estimate), `EOL 1h` (critical stage), or `EXPIRED` (manual expired stage). Each badge is `{ key, label, tone? }`. The small (`s`) size badge carries `tone: 'warn'` (filled amber pill — small holes are easy to miss) and the `EXPIRED` badge `tone: 'danger'` (filled red pill — do-not-jump hazard); `ConnectionEdge`/`SystemOverlay` colour the pill by tone. Rolling and preserve-mass are **not** returned here; `ConnectionEdge` renders them as standalone icons.
 
 ### connectionBubbleColor(): string
 Returns the cold ice blue (`#9ec9f0`) used for a bubbled connection end — the `ConnectionBubble` ring and wash. Held apart from the mass/scope palette so a bubble never reads as connection state, and high enough in luminance to carry against the canvas at the low alphas the ring fill and wash use.

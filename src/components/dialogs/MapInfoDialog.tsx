@@ -14,6 +14,7 @@ import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { EmptyRow, InfoTable, ScrollTable, Td, Th } from '@/components/dialogs/infoTable';
 import { usePresenceForMap } from '@/components/map/MapPresenceContext';
+import { isEolEstimate } from '@/components/map/styling';
 import type { MapConnectionEdge, MapSystemNode, MapViewData } from '@/types';
 
 /**
@@ -206,7 +207,9 @@ function ConnectionsPanel({
                   : c.eolStage === 'critical'
                     ? 'EOL 1h'
                     : c.eolStage === 'eol'
-                      ? 'EOL'
+                      ? isEolEstimate(c)
+                        ? 'EOL (estimated)'
+                        : 'EOL'
                       : '—'}
               </Td>
             </tr>

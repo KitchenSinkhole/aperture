@@ -121,6 +121,7 @@ export async function deleteSubchain(
           mapId: input.mapId,
           connectionId: c.id,
           characterId: input.characterId,
+          cause: 'manual_removed',
           tx,
         });
         if (!res.ok) throw new Error(res.error);
@@ -217,6 +218,7 @@ export async function deleteDisconnected(
           mapId: input.mapId,
           connectionId: c.id,
           characterId: input.characterId,
+          cause: 'manual_removed',
           tx,
         });
         if (!res.ok) throw new Error(res.error);

@@ -7,7 +7,11 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { updateMapSettingsAction } from '@/app/(app)/actions/map';
 
-type ToggleKey = 'deleteExpiredConnections' | 'deleteEolConnections' | 'trackAbyssalJumps';
+type ToggleKey =
+  | 'deleteExpiredConnections'
+  | 'deleteEolConnections'
+  | 'autoEolConnections'
+  | 'trackAbyssalJumps';
 
 const TOGGLES: { key: ToggleKey; label: string; description: string }[] = [
   {
@@ -19,6 +23,12 @@ const TOGGLES: { key: ToggleKey; label: string; description: string }[] = [
     key: 'deleteEolConnections',
     label: 'Delete EOL connections',
     description: 'Auto-remove connections once they pass end-of-life.',
+  },
+  {
+    key: 'autoEolConnections',
+    label: 'Estimate EOL from wormhole age',
+    description:
+      "Marks a typed wormhole EOL on everyone's map once it nears its type's lifetime. It is a guess, shown as estimated until a pilot confirms or clears it. With Delete EOL connections on, estimated holes are removed when their EOL time runs out.",
   },
   {
     key: 'trackAbyssalJumps',

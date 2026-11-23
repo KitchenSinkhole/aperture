@@ -57,6 +57,7 @@ import type {
   apiTokenRevokeReason,
   authzLevel,
   connectionScope,
+  eolSource,
   eolStage,
   errorLevel,
   errorSource,
@@ -246,6 +247,7 @@ export type NewApSdeState = InferInsertModel<typeof apSdeState>;
 // Enum unions. `pgEnum` exposes its values via `.enumValues`; the
 // `[number]` index extracts the union of string literals.
 export type AuthzLevel = (typeof authzLevel.enumValues)[number];
+export type EolSource = (typeof eolSource.enumValues)[number];
 export type IntelScope = (typeof intelScope.enumValues)[number];
 export type MapCapability = (typeof mapCapability.enumValues)[number];
 export type MapRight = (typeof mapRight.enumValues)[number];
@@ -267,6 +269,45 @@ export type ApiScope = (typeof apiScope.enumValues)[number];
 export type ApiTokenRevokeReason = (typeof apiTokenRevokeReason.enumValues)[number];
 export type ErrorLevel = (typeof errorLevel.enumValues)[number];
 export type ErrorSource = (typeof errorSource.enumValues)[number];
+
+/**
+ * Why a connection died, recorded on its `connection.delete` event. One value per
+ * delete site, except `rolled`, which is derived from the mass state at death and
+ * takes precedence over `manual_removed`.
+ */
+export type ConnectionDeathCause =
+  | 'manual_removed'
+  | 'rolled'
+  | 'sig_orphaned'
+  | 'eol_reaped'
+  | 'expired_swept';
+
+/**
+ * A connection's state at the moment it was deleted, read inside the deleting
+ * transaction (its mass log and bound signatures cascade with it). Rides the
+ * `connection.delete` payload; timestamps are ISO strings.
+ */
+export type ConnectionDeathSnapshot = {
+  cause: ConnectionDeathCause;
+  bornAt: string;
+  /**
+   * Lower bound on "known open at": the latest of birth, logged jump,
+   * confirmation or edit. Edits don't count on an `expired` hole.
+   */
+  lastAliveAt: string;
+  scope: (typeof connectionScope.enumValues)[number];
+  massStatus: (typeof whMass.enumValues)[number];
+  isRolling: boolean;
+  isStatic: boolean;
+  eolStage: (typeof eolStage.enumValues)[number];
+  eolAt: string | null;
+  /** Provenance of `eolStage` at death: `auto` (the cron's estimate), `observed` (a human), null (never set). */
+  eolSource: EolSource | null;
+  /** `confirmed_at IS NULL` at death (an endpoint system had been removed). */
+  wasDormant: boolean;
+  /** The single non-K162 code bound to the hole, `K162` when only K162 is bound, else null. */
+  wormholeCode: string | null;
+};
 
 /** The instance-wide Blackout switch, read from the `ap_instance` singleton. */
 export type BlackoutState = {
@@ -468,6 +509,8 @@ export type UserApiConnection = {
   jumpMassClass: WhJumpMass | null;
   eolStage: (typeof eolStage.enumValues)[number];
   eolAt: string | null;
+  /** Provenance of `eolStage`: `auto` (an age-based estimate), `observed` (a human), null (never set). */
+  eolSource: EolSource | null;
   preserveMass: boolean;
   isRolling: boolean;
   isStatic: boolean;

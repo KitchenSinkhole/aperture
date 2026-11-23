@@ -150,7 +150,19 @@ describe('read-only map view (real Postgres)', () => {
     expect(k2.alias).toBe('Hub2');
     expect(k2.tag).toBe('X');
     expect(data!.connections).toHaveLength(1);
-    expect(data!.connections[0]).toMatchObject({ scope: 'wh', massStatus: 'fresh', eolStage: 'none' });
+    expect(data!.connections[0]).toMatchObject({
+      scope: 'wh',
+      massStatus: 'fresh',
+      eolStage: 'none',
+      eolSource: null,
+    });
+
+    await db
+      .update(apMapConnection)
+      .set({ eolStage: 'eol', eolSource: 'auto', eolAt: new Date() })
+      .where(eq(apMapConnection.mapId, mapId));
+    const estimated = await loadMapForView(mapId, TEST_VIEWER_ID, testUserId);
+    expect(estimated!.connections[0]).toMatchObject({ eolStage: 'eol', eolSource: 'auto' });
   });
 
   it('returns null for a soft-deleted map', async () => {

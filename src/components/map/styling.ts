@@ -166,10 +166,14 @@ export type EdgeStyle = {
  * recoloured by mass status. EOL connections dash — the `critical` (1h) stage
  * dashes more tightly than the `eol` (4h) stage to read as more urgent, and the
  * manual `expired` stage dashes sparsest of all to read as barely-there; frigate
- * holes thin out.
+ * holes thin out. An `eol` estimated from the hole's age keeps the long-dash
+ * rhythm but breaks it with a dot, so a guess never reads as a scout's sighting.
  */
 export function connectionStyle(
-  edge: Pick<MapConnectionEdge, 'scope' | 'massStatus' | 'jumpMassClass' | 'eolStage'>,
+  edge: Pick<
+    MapConnectionEdge,
+    'scope' | 'massStatus' | 'jumpMassClass' | 'eolStage' | 'eolSource'
+  >,
 ): EdgeStyle {
   const stroke = edge.scope === 'wh' ? MASS_COLORS[edge.massStatus] : SCOPE_COLORS[edge.scope];
   return {
@@ -181,9 +185,19 @@ export function connectionStyle(
         : edge.eolStage === 'critical'
           ? '2 3'
           : edge.eolStage === 'eol'
-            ? '6 4'
+            ? isEolEstimate(edge)
+              ? '6 3 1 3'
+              : '6 4'
             : undefined,
   };
+}
+
+/**
+ * Whether a connection's EOL stage is the auto-EOL cron's age-based estimate
+ * rather than a human sighting. Any stage a human commits clears it.
+ */
+export function isEolEstimate(edge: Pick<MapConnectionEdge, 'eolStage' | 'eolSource'>): boolean {
+  return edge.eolStage !== 'none' && edge.eolSource === 'auto';
 }
 
 export type ConnectionBadge = {
@@ -199,12 +213,13 @@ export type ConnectionBadge = {
 };
 
 /**
- * Text badges stacked on a connection: STATIC, jump-mass size, EOL. Rolling and
- * preserve-mass are surfaced as standalone icons by `ConnectionEdge`, not here,
- * because they carry enough operational weight to warrant a glyph over text.
+ * Text badges stacked on a connection: STATIC, jump-mass size, EOL (`EOL?` for
+ * an age-based estimate). Rolling and preserve-mass are surfaced as standalone
+ * icons by `ConnectionEdge`, not here, because they carry enough operational
+ * weight to warrant a glyph over text.
  */
 export function connectionBadges(
-  edge: Pick<MapConnectionEdge, 'isStatic' | 'jumpMassClass' | 'eolStage'>,
+  edge: Pick<MapConnectionEdge, 'isStatic' | 'jumpMassClass' | 'eolStage' | 'eolSource'>,
 ): ConnectionBadge[] {
   const badges: ConnectionBadge[] = [];
   if (edge.isStatic) badges.push({ key: 'static', label: 'STATIC' });
@@ -217,6 +232,8 @@ export function connectionBadges(
   }
   if (edge.eolStage === 'expired') badges.push({ key: 'eol', label: 'EXPIRED', tone: 'danger' });
   else if (edge.eolStage === 'critical') badges.push({ key: 'eol', label: 'EOL 1h' });
-  else if (edge.eolStage === 'eol') badges.push({ key: 'eol', label: 'EOL' });
+  else if (edge.eolStage === 'eol') {
+    badges.push({ key: 'eol', label: isEolEstimate(edge) ? 'EOL?' : 'EOL' });
+  }
   return badges;
 }

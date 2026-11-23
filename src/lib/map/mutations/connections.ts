@@ -3,7 +3,9 @@ import { and, eq, type InferInsertModel } from 'drizzle-orm';
 import { apMapConnection, connectionScope, eolStage, whJumpMass, whMass } from '@/db/schema';
 import { commitMapEvent, type ActionResult, type Tx } from './core';
 import { assertSystemOnMap } from './tenancy';
+import { readConnectionDeathSnapshot } from '@/lib/map/connectionDeathSnapshot';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
+import type { EolSource } from '@/types';
 
 /**
  * Connection-level map mutations (create / delete / update), each a single
@@ -38,6 +40,10 @@ export type DeleteConnectionInput = {
   mapId: bigint;
   connectionId: bigint;
   characterId: bigint | null;
+  /** Why it is being deleted. A `manual_removed` hole that was rolling or mass-critical records `rolled`. */
+  cause: 'manual_removed' | 'sig_orphaned';
+  /** `type_id`s of signatures bound to this connection that the caller already deleted in `tx`. */
+  removedBoundSigTypeIds?: number[];
   /** Optional outer transaction (joined by `bulkSignatures.ts` to tear down orphan WH connections atomically with sig deletes). */
   tx?: Tx;
 };
@@ -94,6 +100,9 @@ export function createConnection(
           sourceBubbled: input.sourceBubbled ?? false,
           targetBubbled: input.targetBubbled ?? false,
           eolAt: stage !== 'none' ? new Date() : null,
+          // A decaying stage from a caller is a human sighting. Creating at `none`
+          // records no observation, so the hole stays eligible for an age estimate.
+          eolSource: stage !== 'none' ? 'observed' : null,
           // Every create is a fresh assertion (manual draw, sig link, stargate
           // auto-link) → confirmed now. removeSystem dormants wh rows by NULLing this.
           confirmedAt: new Date(),
@@ -112,6 +121,7 @@ export function createConnection(
           sourceBubbled: apMapConnection.sourceBubbled,
           targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
+          eolSource: apMapConnection.eolSource,
           createdAt: apMapConnection.createdAt,
         });
       return {
@@ -129,12 +139,17 @@ export function createConnection(
         targetBubbled: row!.targetBubbled,
         eolAt: row!.eolAt ? row!.eolAt.toISOString() : null,
         createdAt: row!.createdAt.toISOString(),
+        eolSource: row!.eolSource,
       };
     },
   });
 }
 
-/** Hard-delete a connection (wormholes don't come back). Attached signatures cascade. Emits `connection.delete` → `{ id }`. */
+/**
+ * Hard-delete a connection (wormholes don't come back). Attached signatures and
+ * the mass log cascade, so the death snapshot is read first, on the same tx.
+ * Emits `connection.delete` → `{ id, source, target, ...ConnectionDeathSnapshot }`.
+ */
 export function deleteConnection(
   input: DeleteConnectionInput,
 ): Promise<ActionResult<MapEventPayload>> {
@@ -144,6 +159,13 @@ export function deleteConnection(
     kind: 'connection.delete',
     tx: input.tx,
     mutate: async (tx) => {
+      const snapshot = await readConnectionDeathSnapshot(tx, {
+        connectionId: input.connectionId,
+        mapId: input.mapId,
+        cause: input.cause,
+        removedBoundSigTypeIds: input.removedBoundSigTypeIds,
+      });
+      if (!snapshot) throw new Error('Connection not found on map.');
       const [row] = await tx
         .delete(apMapConnection)
         .where(
@@ -157,7 +179,12 @@ export function deleteConnection(
       if (!row) throw new Error('Connection not found on map.');
       // Endpoints ride the payload so the audit/Discord can name the collapsed
       // hole — the connection row is gone after this delete.
-      return { id: row.id.toString(), source: row.source.toString(), target: row.target.toString() };
+      return {
+        id: row.id.toString(),
+        source: row.source.toString(),
+        target: row.target.toString(),
+        ...snapshot,
+      };
     },
   });
 }
@@ -167,8 +194,11 @@ export function deleteConnection(
  * `eolStage` re-stamps `eol_at` to *now* whenever the stage actually changes to
  * a non-`none` value (so the 1h `critical` window starts at the critical
  * observation, not the original 4h flag), preserves the existing stamp on a
- * repeat of the same stage, and clears it to null when set back to `none` —
- * this `eol_at` feeds the EOL-expiry cron. Emits `connection.update`.
+ * repeat of the same stage (unless that stage was an `auto` estimate), and
+ * clears it to null when set back to `none` — this `eol_at` feeds the
+ * EOL-expiry cron. A non-`none` `eolStage` is a human write, so it stamps
+ * `eol_source = 'observed'`; `none` stamps `observed` only over an `auto`
+ * estimate. Emits `connection.update`.
  */
 export function updateConnection(
   input: UpdateConnectionInput,
@@ -190,26 +220,42 @@ export function updateConnection(
       if ('targetBubbled' in patch) set.targetBubbled = patch.targetBubbled;
 
       let nextEolAt: Date | null | undefined;
+      let nextEolSource: EolSource | null | undefined;
       if ('eolStage' in patch && patch.eolStage !== undefined) {
         const nextStage = patch.eolStage;
+        const [cur] = await tx
+          .select({
+            eolStage: apMapConnection.eolStage,
+            eolAt: apMapConnection.eolAt,
+            eolSource: apMapConnection.eolSource,
+          })
+          .from(apMapConnection)
+          .where(
+            and(eq(apMapConnection.id, input.connectionId), eq(apMapConnection.mapId, input.mapId)),
+          );
         set.eolStage = nextStage;
         if (nextStage === 'none') {
           nextEolAt = null;
+          // Only clearing an estimate keeps the cron off the hole. Undoing a
+          // human EOL returns it to never-staged, so an age estimate can still
+          // land; a repeat `none` keeps whatever the row already says.
+          nextEolSource =
+            cur?.eolSource === 'auto'
+              ? 'observed'
+              : cur?.eolStage === 'none'
+                ? cur.eolSource
+                : null;
         } else {
-          const [cur] = await tx
-            .select({ eolStage: apMapConnection.eolStage, eolAt: apMapConnection.eolAt })
-            .from(apMapConnection)
-            .where(
-              and(
-                eq(apMapConnection.id, input.connectionId),
-                eq(apMapConnection.mapId, input.mapId),
-              ),
-            );
+          nextEolSource = 'observed';
           // Re-stamp when the stage changes (e.g. eol → critical restarts the 1h
-          // clock); keep the existing stamp when the same stage is re-applied.
-          nextEolAt = cur && cur.eolStage === nextStage ? (cur.eolAt ?? new Date()) : new Date();
+          // clock); keep the existing stamp when the same stage is re-applied by
+          // a human. Re-applying it over an `auto` estimate is the confirming
+          // sighting, so the clock restarts from it: the auto stamp was a guess.
+          const keep = cur && cur.eolStage === nextStage && cur.eolSource !== 'auto';
+          nextEolAt = keep ? (cur.eolAt ?? new Date()) : new Date();
         }
         set.eolAt = nextEolAt;
+        set.eolSource = nextEolSource;
       }
 
       const [row] = await tx
@@ -243,6 +289,7 @@ export function updateConnection(
       if ('eolStage' in patch && patch.eolStage !== undefined) {
         out.eolStage = patch.eolStage;
         out.eolAt = nextEolAt ? nextEolAt.toISOString() : null;
+        out.eolSource = nextEolSource ?? null;
       }
       return out;
     },

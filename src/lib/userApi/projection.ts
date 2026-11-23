@@ -106,6 +106,7 @@ async function projectMap(mapId: bigint): Promise<UserApiProjectionData['map']> 
         jumpMassClass: c.jumpMassClass,
         eolStage: c.eolStage,
         eolAt: c.eolAt,
+        eolSource: c.eolSource,
         preserveMass: c.preserveMass,
         isRolling: c.isRolling,
         isStatic: c.isStatic,

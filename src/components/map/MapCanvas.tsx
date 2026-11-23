@@ -41,7 +41,7 @@ import type {
 } from '@/types';
 import type { SystemStatsSummary } from '@/lib/map/stats';
 import type { SystemIntelSummary } from '@/lib/map/intel';
-import { applyEvent } from '@/lib/map/applyEvent';
+import { applyCommittedEolFields, applyEvent } from '@/lib/map/applyEvent';
 import {
   GRID_SIZE,
   MANUAL_SLOT,
@@ -990,9 +990,9 @@ export function MapCanvas({
       run: () => Promise<
         { ok: true; data: MapEventPayload; eventId: number } | { ok: false; error: string }
       >,
-      // Runs once the server has committed, for the side effects a rollback
-      // could not undo.
-      onCommitted?: () => void,
+      // Runs once the server has committed, with the committed payload, for the
+      // side effects a rollback could not undo.
+      onCommitted?: (committed: MapEventPayload) => void,
     ) => {
       let snapshot: MapViewData | null = null;
       setViewData((prev) => {
@@ -1002,7 +1002,7 @@ export function MapCanvas({
       const result = await run();
       if (result.ok) {
         appliedEventIds.current.add(result.eventId);
-        onCommitted?.();
+        onCommitted?.(result.data);
       } else if (snapshot) {
         // Immediate rollback for responsiveness; resync reconciles deeper drift.
         setViewData(snapshot);
@@ -1516,7 +1516,11 @@ export function MapCanvas({
         id: connectionId,
         ...patch,
       };
-      runOptimistic(opt, () => updateConnectionOnServer({ mapId, connectionId, patch }));
+      runOptimistic(
+        opt,
+        () => updateConnectionOnServer({ mapId, connectionId, patch }),
+        (committed) => setViewData((prev) => applyCommittedEolFields(prev, committed)),
+      );
     },
     [mapId, runOptimistic],
   );

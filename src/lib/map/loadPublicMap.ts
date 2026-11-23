@@ -18,7 +18,7 @@ import {
   whJumpMass,
   whMass,
 } from '@/db/schema';
-import type { ShipClass } from '@/types';
+import type { EolSource, ShipClass } from '@/types';
 import { getBlackoutState } from '@/lib/auth/blackout';
 import { apertureConfig } from '../../../aperture.config';
 import { loadMapPresence, loadStatics } from './loadMap';
@@ -82,6 +82,8 @@ export type PublicMapConnectionEdge = {
   sourceBubbled: boolean;
   targetBubbled: boolean;
   eolAt: string | null;
+  /** Provenance of `eolStage`: `auto` (an age-based estimate), `observed`, or null. */
+  eolSource: EolSource | null;
   createdAt: string;
   sigIds: { source: string | null; target: string | null } | null;
 };
@@ -212,6 +214,7 @@ export async function loadPublicMapView(token: string): Promise<PublicMapViewDat
           sourceBubbled: apMapConnection.sourceBubbled,
           targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
+          eolSource: apMapConnection.eolSource,
           createdAt: apMapConnection.createdAt,
         })
         .from(apMapConnection)
@@ -282,6 +285,7 @@ export async function loadPublicMapView(token: string): Promise<PublicMapViewDat
     sourceBubbled: profile.showBubbles && c.sourceBubbled,
     targetBubbled: profile.showBubbles && c.targetBubbled,
     eolAt: c.eolAt ? c.eolAt.toISOString() : null,
+    eolSource: c.eolSource,
     createdAt: c.createdAt.toISOString(),
     sigIds:
       c.scope === 'wh' && profile.showConnectionSigIds

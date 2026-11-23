@@ -271,10 +271,10 @@ describe.skipIf(!run)('system & connection mutations (real Postgres)', () => {
     expect(conn!.eolStage).toBe('critical');
     expect(conn!.eolAt).toBeInstanceOf(Date);
 
-    const deleted = await deleteConnection({ mapId, connectionId: connId, characterId: null });
+    const deleted = await deleteConnection({ mapId, connectionId: connId, characterId: null, cause: 'manual_removed' });
     expect(deleted.ok).toBe(true);
     if (!deleted.ok) return;
-    expect(deleted.data).toEqual({
+    expect(deleted.data).toMatchObject({
       kind: 'connection.delete',
       eventId: deleted.eventId,
       id: connId.toString(),

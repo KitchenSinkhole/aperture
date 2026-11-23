@@ -12,7 +12,7 @@
 | viewData | MapViewData | yes | The canvas's live map data (map meta, systems, connections). Realtime-current. |
 
 ### Renders
-A `max-w-3xl` dialog with a `Tabs` strip. **Summary**: count tiles (systems / connections / online pilots) + a copy-to-clipboard share link (`${origin}/map/<id>`). **Systems**: scrollable table of every system (name/alias, region/constellation, security, status, statics), sorted by name. **Connections**: scrollable table (source → target resolved to system names, scope, mass status, jump size, EOL stage — `EOL` for the 4h stage, `EOL 1h` for critical, `Expired` for the manual expired stage).
+A `max-w-3xl` dialog with a `Tabs` strip. **Summary**: count tiles (systems / connections / online pilots) + a copy-to-clipboard share link (`${origin}/map/<id>`). **Systems**: scrollable table of every system (name/alias, region/constellation, security, status, statics), sorted by name. **Connections**: scrollable table (source → target resolved to system names, scope, mass status, jump size, EOL stage — `EOL` for the 4h stage (`EOL (estimated)` when `isEolEstimate`), `EOL 1h` for critical, `Expired` for the manual expired stage).
 
 ### Behaviour & Interactions
 - Reads everything from `viewData` (props) + `usePresenceForMap()` (context) — **no server call**. Reopening reflects whatever the canvas state currently is.
@@ -23,4 +23,5 @@ A `max-w-3xl` dialog with a `Tabs` strip. **Summary**: count tiles (systems / co
 - `@/components/ui/dialog`, `@/components/ui/tabs`, `@/components/ui/button`
 - `ScrollTable`/`Th`/`Td`/`EmptyRow` from `@/components/dialogs/infoTable`
 - `usePresenceForMap` from `@/components/map/MapPresenceContext` (must render inside `MapPresenceProvider`)
+- `isEolEstimate` from `@/components/map/styling`
 - Types `MapViewData`, `MapSystemNode`, `MapConnectionEdge` from `@/types`

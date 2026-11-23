@@ -19,8 +19,8 @@ Dispatches on `payload.kind` and returns a new `MapViewData` without mutating th
 - `system.added` — upserts the system node body into `state.systems` (handles both new placements and re-activations of previously-removed systems). Pure node delta: signatures are **not** carried on the event. A re-added system's surviving sigs are hydrated separately by `MapCanvas`, which calls `fetchSystemSignatures` on every `system.added` and upserts the result into `viewData.signatures` — keeping the `pg_notify` payload under the 8 KB ceiling.
 - `system.removed` — filters the system out of `state.systems` (rows persist server-side at `visible=false`; the canvas just stops showing them), **and** prunes any connections incident to it plus any signatures whose `mapSystemId` matches it. This mirrors `loadMapForView`, which only returns connections whose both endpoints are visible: a hidden system's connection rows persist in the DB but must not stay in the client snapshot, or consumers that iterate `connections`/`signatures` directly (e.g. `SystemOverlay`) keep rendering the orphans (as "Unknown" rows) until the next reload. The DB rows survive and reappear if the system is re-added.
 - `system.updated` — merges the patch into the matching system; fields applied: `alias`, `tag`, `intelNotes`, `status`, `locked`, `rallyAt`, `positionX`, `positionY`. When `locked` is present the lock attribution rides with it — `lockedByCharacterId` + `lockedByName` are applied alongside (both cleared to null on unlock).
-- `connection.create` — upserts the full edge body into `state.connections` (existence-checked by `id`, so a double-delivered event can't produce a duplicate edge / React key collision).
-- `connection.update` — merges the patch into the matching connection; `isStatic`, `sourceBubbled`, `targetBubbled`, and `eolAt` are applied when present (so the static designation, per-end bubbled markers, and canvas EOL countdown reflect the new state without a refetch).
+- `connection.create` — upserts the full edge body into `state.connections` (existence-checked by `id`, so a double-delivered event can't produce a duplicate edge / React key collision). Re-broadcasts of an existing row (restore, location-poll re-confirm) carry its `eolSource`, so the replace keeps an estimate marked as one.
+- `connection.update` — merges the patch into the matching connection; `isStatic`, `sourceBubbled`, `targetBubbled`, `eolAt`, and `eolSource` are applied when present (so the static designation, per-end bubbled markers, canvas EOL countdown, and estimate-vs-observed provenance reflect the new state without a refetch).
 - `connection.delete` — removes the connection by id, and also removes any signatures whose `mapConnectionId` matches it. This mirrors the `ON DELETE CASCADE` on `ap_map_signature.map_connection_id`: the server emits only a `connection.delete` event while Postgres silently cascade-deletes the linked signature rows, so the reducer must drop them too — otherwise the client keeps an orphaned signature whose DB row is gone, and deleting it later 400s with "Signature not found."
 - `map.update` — updates `state.map.name` if present in the patch; other settings flags have no canvas representation.
 - `signature.create` — upserts the full signature body into `state.signatures`.
@@ -36,6 +36,14 @@ Dispatches on `payload.kind` and returns a new `MapViewData` without mutating th
 - `api.disabled` — sets `state.map.apiEnabled` false; `apiScopes` is kept.
 - `api.scopes_changed` — drops `removed` from `state.map.apiScopes` and appends any `added` scope not already present.
 - `api.token_created`, `api.token_revoked`, `api.token_suspended` — return `state` unchanged; token lifecycle has no canvas state.
+
+---
+
+### applyCommittedEolFields(state: MapViewData, committed: MapEventPayload): MapViewData
+
+Folds only `eolAt` and `eolSource` from a committed `connection.update` into `state`, for the tab that issued the patch: its optimistic payload carries just the user's pick and its realtime echo is skipped, so the server-derived provenance (a confirmed estimate turning `observed`, with a re-stamped `eolAt`) would otherwise never reach it. User-picked fields are not re-applied, and the fold is skipped when the edge's current `eolStage` differs from the committed one, so a newer optimistic edit is never overwritten by an older response.
+
+**Returns:** `state` unchanged when `committed` is not a `connection.update`, carries no `eolSource`, or names a connection whose current `eolStage` differs from its own; otherwise the state with those two fields applied to the matching connection.
 
 ### Depends On
 - `MapViewData`, `MapSystemNode`, `MapConnectionEdge`, `MapSignature`, `MapNote` — types from `@/types`

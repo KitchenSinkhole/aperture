@@ -38,6 +38,9 @@
 ### eolStage
 `pgEnum('eol_stage', ['none', 'eol', 'critical', 'expired'])` — end-of-life stage of a wormhole. Replaces the earlier `is_eol` boolean (migration 0031); `expired` added migration 0053. `none` is a hole not yet decaying; `eol` (~4h) and `critical` (~1h) are EVE's two timed decay warnings; `expired` (migration 0053) is EVE's terminal "expiration imminent" / Expired state. On `ap_map_connection` and `ap_map_signature`, default `none`. The `eol`/`critical` stage selects which lifetime constant (`WORMHOLE_EOL_LIFETIME_MS` vs `WORMHOLE_EOL_CRITICAL_LIFETIME_MS`) drives the countdown + EOL-expiry reap; `eol_at` is re-stamped on each stage change. `expired` is set only manually; it shows an elapsed-since readout instead of a countdown and the EOL-expiry reaper purges it `WORMHOLE_EXPIRED_LIFETIME_MS` (4h) after `eol_at` on opt-in maps.
 
+### eolSource
+`pgEnum('eol_source', ['auto', 'observed'])` — provenance of a connection's current `eol_stage` (migration 0076). `observed` = a human set the stage last, including back to `none`; `auto` = the age-based auto-EOL cron set it, an estimate from the hole's age rather than a sighting. Nullable on `ap_map_connection.eol_source`, where NULL means the stage has never been set. Clients never send it; the server derives it.
+
 ### apWebhookChannel
 `pgEnum('ap_webhook_channel', ['discord'])` — outbound chat channel for an `ap_map_webhook` row. Discord is the only channel.
 

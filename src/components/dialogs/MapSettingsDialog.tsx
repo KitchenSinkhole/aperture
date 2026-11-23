@@ -110,6 +110,7 @@ export function MapSettingsDialog({
                   initialValues={{
                     deleteExpiredConnections: settings.deleteExpiredConnections,
                     deleteEolConnections: settings.deleteEolConnections,
+                    autoEolConnections: settings.autoEolConnections,
                     trackAbyssalJumps: settings.trackAbyssalJumps,
                   }}
                 />

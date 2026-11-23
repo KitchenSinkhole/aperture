@@ -9,6 +9,7 @@ import { fetchConnectionMassLog } from '@/lib/map/client';
 import { connectionExpiredSinceMs, connectionTimeLeftMs } from '@/lib/map/connectionState';
 import { formatWormholeMass } from '@/lib/eve/wormholeFormat';
 import { Row, WormholeReferenceRows } from './WormholeDetailRows';
+import { isEolEstimate } from './styling';
 
 const EOL_COUNTDOWN_TICK_MS = 30_000;
 
@@ -135,18 +136,27 @@ function EolCountdownRow({ connection }: { connection: MapConnectionEdge }) {
 
   const ms = connectionTimeLeftMs(connection, now);
   if (ms === null) return null;
-  const label = connection.eolStage === 'critical' ? 'EOL 1h' : 'EOL 4h';
+  const estimate = isEolEstimate(connection);
+  const label =
+    connection.eolStage === 'critical' ? 'EOL 1h' : estimate ? 'EOL 4h (estimated)' : 'EOL 4h';
   const totalMinutes = Math.max(0, Math.floor(ms / 60_000));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = String(totalMinutes % 60).padStart(2, '0');
   return (
-    <div className="mt-0.5 flex items-center justify-between gap-3 border-t border-border/60 pt-1">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium tabular-nums text-foreground">
-        {hours}
-        <span className="ap-blink">:</span>
-        {minutes}
-      </span>
+    <div className="mt-0.5 flex flex-col gap-0.5 border-t border-border/60 pt-1">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium tabular-nums text-foreground">
+          {hours}
+          <span className="ap-blink">:</span>
+          {minutes}
+        </span>
+      </div>
+      {estimate && (
+        <span className="text-[10px] italic text-muted-foreground">
+          Guessed from the hole&apos;s age, not seen in game
+        </span>
+      )}
     </div>
   );
 }

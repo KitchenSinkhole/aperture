@@ -150,6 +150,7 @@ export async function ensureWhConnection(
           sourceBubbled: apMapConnection.sourceBubbled,
           targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
+          eolSource: apMapConnection.eolSource,
           createdAt: apMapConnection.createdAt,
         });
       mapConnectionId = row!.id;
@@ -167,6 +168,7 @@ export async function ensureWhConnection(
         sourceBubbled: row!.sourceBubbled,
         targetBubbled: row!.targetBubbled,
         eolAt: row!.eolAt ? row!.eolAt.toISOString() : null,
+        eolSource: row!.eolSource,
         createdAt: row!.createdAt.toISOString(),
       };
     },

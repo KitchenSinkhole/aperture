@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { apertureConfig } from '../../../../aperture.config';
 import { db } from '@/db/client';
 import { apMap, apMapConnection } from '@/db/schema';
+import { readConnectionDeathSnapshot } from '@/lib/map/connectionDeathSnapshot';
 import { commitMapEvent } from '@/lib/map/mutations/core';
 import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
@@ -28,6 +29,16 @@ import type { JobModule } from '../registry';
 
 const NAME = 'expired-connections';
 
+function reapDue() {
+  return and(
+    inArray(apMapConnection.scope, ['wh', 'abyssal']),
+    lt(
+      apMapConnection.createdAt,
+      sql`now() - make_interval(secs => ${apertureConfig.WORMHOLE_DEFAULT_LIFETIME_MS / 1000})`,
+    ),
+  );
+}
+
 async function expire(): Promise<{ scanned: number; deleted: number; failed: number }> {
   const candidates = await db
     .select({
@@ -37,15 +48,7 @@ async function expire(): Promise<{ scanned: number; deleted: number; failed: num
     .from(apMapConnection)
     .innerJoin(apMap, eq(apMapConnection.mapId, apMap.id))
     .where(
-      and(
-        inArray(apMapConnection.scope, ['wh', 'abyssal']),
-        lt(
-          apMapConnection.createdAt,
-          sql`now() - make_interval(secs => ${apertureConfig.WORMHOLE_DEFAULT_LIFETIME_MS / 1000})`,
-        ),
-        eq(apMap.deleteExpiredConnections, true),
-        isNull(apMap.deletedAt),
-      ),
+      and(reapDue(), eq(apMap.deleteExpiredConnections, true), isNull(apMap.deletedAt)),
     )
     .limit(apertureConfig.JOB_DELETE_BATCH_SIZE);
 
@@ -57,19 +60,28 @@ async function expire(): Promise<{ scanned: number; deleted: number; failed: num
       characterId: null,
       kind: 'connection.delete',
       mutate: async (tx) => {
+        const snapshot = await readConnectionDeathSnapshot(tx, {
+          connectionId: row.connectionId,
+          mapId: row.mapId,
+          cause: 'expired_swept',
+        });
+        if (!snapshot) throw new Error('Connection already gone.');
+        // Re-checked under the snapshot's row lock, so a scope change since the
+        // candidate select keeps the connection.
         const [del] = await tx
           .delete(apMapConnection)
-          .where(eq(apMapConnection.id, row.connectionId))
+          .where(and(eq(apMapConnection.id, row.connectionId), reapDue()))
           .returning({
             id: apMapConnection.id,
             source: apMapConnection.sourceMapSystemId,
             target: apMapConnection.targetMapSystemId,
           });
-        if (!del) throw new Error('Connection already gone.');
+        if (!del) throw new Error('Connection no longer due.');
         return {
           id: del.id.toString(),
           source: del.source.toString(),
           target: del.target.toString(),
+          ...snapshot,
         };
       },
     });

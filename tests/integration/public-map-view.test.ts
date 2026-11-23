@@ -166,6 +166,9 @@ describe.skipIf(!run)('Public map share — redacted projection (real Postgres)'
           scope: 'wh',
           massStatus: 'fresh',
           confirmedAt: new Date(),
+          eolStage: 'eol',
+          eolSource: 'auto',
+          eolAt: new Date(),
         },
         {
           mapId,
@@ -346,6 +349,14 @@ describe.skipIf(!run)('Public map share — redacted projection (real Postgres)'
 
     const ad = data!.connections.find((c) => c.id === connAD.toString())!;
     expect(ad.sigIds).toBeNull();
+  });
+
+  it('publishes EOL provenance, so an age-based estimate is distinguishable', async () => {
+    const data = await loadPublicMapView('pub-defaults');
+    const ac = data!.connections.find((c) => c.id === connAC.toString())!;
+    expect(ac).toMatchObject({ eolStage: 'eol', eolSource: 'auto' });
+    const ab = data!.connections.find((c) => c.id === connAB.toString())!;
+    expect(ab).toMatchObject({ eolStage: 'none', eolSource: null });
   });
 
   it('flattens both bubbled ends to false when the flag is off, and publishes them when on', async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyEvent } from '@/lib/map/applyEvent';
+import { applyCommittedEolFields, applyEvent } from '@/lib/map/applyEvent';
 import type { MapConnectionEdge, MapSignature, MapSystemNode, MapViewData } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -66,6 +66,7 @@ const conn1: MapConnectionEdge = {
   targetBubbled: false,
   isRolling: false,
   eolAt: null,
+  eolSource: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 
@@ -236,6 +237,18 @@ describe('applyEvent — connection.create', () => {
     expect(next.connections).toHaveLength(1);
     expect(next.connections[0]).toMatchObject({ id: '20', scope: 'stargate' });
   });
+
+  it('a re-broadcast of an auto-estimated row carries its provenance', () => {
+    const state = makeState({ connections: [conn1] });
+    const restored = {
+      ...conn1,
+      eolStage: 'eol' as const,
+      eolAt: '2026-01-01T00:00:00Z',
+      eolSource: 'auto' as const,
+    };
+    const next = applyEvent(state, { kind: 'connection.create', eventId: 10, ...restored });
+    expect(next.connections[0]).toMatchObject({ eolStage: 'eol', eolSource: 'auto' });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -259,6 +272,37 @@ describe('applyEvent — connection.update', () => {
     expect(c.eolAt).toBe('2026-01-01T00:00:00Z');
   });
 
+  it('applies eolSource when present and keeps it when absent', () => {
+    const state = makeState({ connections: [conn1] });
+    const estimated = applyEvent(state, {
+      kind: 'connection.update',
+      eventId: 11,
+      id: '20',
+      eolStage: 'eol',
+      eolAt: '2026-01-01T00:00:00Z',
+      eolSource: 'auto',
+    });
+    expect(estimated.connections[0]).toMatchObject({ eolStage: 'eol', eolSource: 'auto' });
+
+    const massOnly = applyEvent(estimated, {
+      kind: 'connection.update',
+      eventId: 12,
+      id: '20',
+      massStatus: 'reduced',
+    });
+    expect(massOnly.connections[0]!.eolSource).toBe('auto');
+
+    const confirmed = applyEvent(massOnly, {
+      kind: 'connection.update',
+      eventId: 13,
+      id: '20',
+      eolStage: 'eol',
+      eolAt: '2026-01-01T01:00:00Z',
+      eolSource: 'observed',
+    });
+    expect(confirmed.connections[0]).toMatchObject({ eolSource: 'observed', eolAt: '2026-01-01T01:00:00Z' });
+  });
+
   it('is a no-op for an unknown id', () => {
     const state = makeState({ connections: [conn1] });
     const next = applyEvent(state, {
@@ -268,6 +312,95 @@ describe('applyEvent — connection.update', () => {
       massStatus: 'reduced',
     });
     expect(next.connections[0]!.massStatus).toBe('fresh');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyCommittedEolFields — the acting tab's settle after an EOL patch
+// ---------------------------------------------------------------------------
+
+describe('applyCommittedEolFields', () => {
+  const estimate: MapConnectionEdge = {
+    ...conn1,
+    eolStage: 'eol',
+    eolAt: '2026-01-01T00:00:00.000Z',
+    eolSource: 'auto',
+  };
+
+  it("confirming an estimate leaves the acting tab's edge observed with the server's eolAt", () => {
+    const state = makeState({ connections: [estimate] });
+    // MapCanvas.onConnectionPatch: the optimistic payload is only what the user picked.
+    const optimistic = applyEvent(state, {
+      kind: 'connection.update',
+      eventId: 0,
+      id: '20',
+      eolStage: 'eol',
+    });
+    expect(optimistic.connections[0]!.eolSource).toBe('auto');
+
+    // The committed payload updateConnection returns; its WS echo is skipped in this tab.
+    const settled = applyCommittedEolFields(optimistic, {
+      kind: 'connection.update',
+      eventId: 41,
+      id: '20',
+      source: '10',
+      target: '11',
+      eolStage: 'eol',
+      eolAt: '2026-01-01T03:00:00.000Z',
+      eolSource: 'observed',
+    });
+    expect(settled.connections[0]).toMatchObject({
+      eolStage: 'eol',
+      eolSource: 'observed',
+      eolAt: '2026-01-01T03:00:00.000Z',
+    });
+  });
+
+  it('takes only the server-derived fields, so a newer optimistic edit survives', () => {
+    const state = makeState({ connections: [{ ...estimate, massStatus: 'critical' }] });
+    const settled = applyCommittedEolFields(state, {
+      kind: 'connection.update',
+      eventId: 41,
+      id: '20',
+      eolStage: 'eol',
+      massStatus: 'fresh',
+      eolAt: '2026-01-01T03:00:00.000Z',
+      eolSource: 'observed',
+    });
+    expect(settled.connections[0]).toMatchObject({
+      massStatus: 'critical',
+      eolSource: 'observed',
+      eolAt: '2026-01-01T03:00:00.000Z',
+    });
+  });
+
+  it('ignores an older response for a stage the edge no longer shows', () => {
+    // EOL then Critical in quick succession; the EOL response lands last.
+    const state = makeState({
+      connections: [
+        { ...estimate, eolStage: 'critical', eolSource: 'observed', eolAt: '2026-01-01T04:00:00.000Z' },
+      ],
+    });
+    const settled = applyCommittedEolFields(state, {
+      kind: 'connection.update',
+      eventId: 41,
+      id: '20',
+      eolStage: 'eol',
+      eolAt: '2026-01-01T03:00:00.000Z',
+      eolSource: 'observed',
+    });
+    expect(settled).toBe(state);
+  });
+
+  it('is a no-op for a committed update without EOL fields', () => {
+    const state = makeState({ connections: [estimate] });
+    const settled = applyCommittedEolFields(state, {
+      kind: 'connection.update',
+      eventId: 42,
+      id: '20',
+      massStatus: 'reduced',
+    });
+    expect(settled).toBe(state);
   });
 });
 

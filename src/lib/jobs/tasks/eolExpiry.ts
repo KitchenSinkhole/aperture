@@ -2,6 +2,7 @@ import { and, eq, isNull, not, sql } from 'drizzle-orm';
 import { apertureConfig } from '../../../../aperture.config';
 import { db } from '@/db/client';
 import { apMap, apMapConnection } from '@/db/schema';
+import { readConnectionDeathSnapshot } from '@/lib/map/connectionDeathSnapshot';
 import { commitMapEvent } from '@/lib/map/mutations/core';
 import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
@@ -28,6 +29,22 @@ import type { JobModule } from '../registry';
 
 const NAME = 'eol-expiry';
 
+function reapDue() {
+  return and(
+    not(eq(apMapConnection.eolStage, 'none')),
+    // eol_at is null until the stage leaves 'none'; skip races where the
+    // stage is set but no stamp landed yet.
+    not(isNull(apMapConnection.eolAt)),
+    // The CASE branches are bound params (unknown → text), so the CASE result
+    // is text; cast it to double precision for make_interval's `secs` arg.
+    sql`${apMapConnection.eolAt} < now() - make_interval(secs => (case when ${apMapConnection.eolStage} = 'critical' then ${
+      apertureConfig.WORMHOLE_EOL_CRITICAL_LIFETIME_MS / 1000
+    } when ${apMapConnection.eolStage} = 'expired' then ${
+      apertureConfig.WORMHOLE_EXPIRED_LIFETIME_MS / 1000
+    } else ${apertureConfig.WORMHOLE_EOL_LIFETIME_MS / 1000} end)::double precision)`,
+  );
+}
+
 async function expireEol(): Promise<{ scanned: number; deleted: number; failed: number }> {
   const candidates = await db
     .select({
@@ -37,21 +54,7 @@ async function expireEol(): Promise<{ scanned: number; deleted: number; failed: 
     .from(apMapConnection)
     .innerJoin(apMap, eq(apMapConnection.mapId, apMap.id))
     .where(
-      and(
-        not(eq(apMapConnection.eolStage, 'none')),
-        // eol_at is null until the stage leaves 'none'; skip races where the
-        // stage is set but no stamp landed yet.
-        not(isNull(apMapConnection.eolAt)),
-        // The CASE branches are bound params (unknown → text), so the CASE result
-        // is text; cast it to double precision for make_interval's `secs` arg.
-        sql`${apMapConnection.eolAt} < now() - make_interval(secs => (case when ${apMapConnection.eolStage} = 'critical' then ${
-          apertureConfig.WORMHOLE_EOL_CRITICAL_LIFETIME_MS / 1000
-        } when ${apMapConnection.eolStage} = 'expired' then ${
-          apertureConfig.WORMHOLE_EXPIRED_LIFETIME_MS / 1000
-        } else ${apertureConfig.WORMHOLE_EOL_LIFETIME_MS / 1000} end)::double precision)`,
-        eq(apMap.deleteEolConnections, true),
-        isNull(apMap.deletedAt),
-      ),
+      and(reapDue(), eq(apMap.deleteEolConnections, true), isNull(apMap.deletedAt)),
     )
     .limit(apertureConfig.JOB_DELETE_BATCH_SIZE);
 
@@ -63,19 +66,28 @@ async function expireEol(): Promise<{ scanned: number; deleted: number; failed: 
       characterId: null,
       kind: 'connection.delete',
       mutate: async (tx) => {
+        const snapshot = await readConnectionDeathSnapshot(tx, {
+          connectionId: row.connectionId,
+          mapId: row.mapId,
+          cause: 'eol_reaped',
+        });
+        if (!snapshot) throw new Error('Connection already gone.');
+        // Re-checked under the snapshot's row lock, so a scout's confirm or
+        // clear since the candidate select keeps the hole.
         const [del] = await tx
           .delete(apMapConnection)
-          .where(eq(apMapConnection.id, row.connectionId))
+          .where(and(eq(apMapConnection.id, row.connectionId), reapDue()))
           .returning({
             id: apMapConnection.id,
             source: apMapConnection.sourceMapSystemId,
             target: apMapConnection.targetMapSystemId,
           });
-        if (!del) throw new Error('Connection already gone.');
+        if (!del) throw new Error('Connection no longer due.');
         return {
           id: del.id.toString(),
           source: del.source.toString(),
           target: del.target.toString(),
+          ...snapshot,
         };
       },
     });

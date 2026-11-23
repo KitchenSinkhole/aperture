@@ -47,6 +47,7 @@ The retry budget the task is registered with, or `null` when it has none. Caller
 - Per-task cron expressions live on each task module.
 - Registers `sov-fw-refresh`, the hourly sovereignty / faction-warfare ESI refresh task.
 - Registers `incursion-refresh`, the 5-minute active-incursion ESI refresh task.
+- Registers `auto-eol`, the 5-minute cron that marks opted-in maps' aging wormholes as estimated EOL (`eol_source = 'auto'`).
 - Registers `webhook-dispatch`, a non-cron task enqueued by `commitMapEvent` per `ap_map_event` insert on maps with at least one configured Discord webhook.
 - Registers `character-cleanup`, the 5-minute cron that clears expired kicks and resyncs stale `authz_level` rows against ESI.
 - Registers `sde-ingest`, a non-cron task wrapping `runIngest` so the setup wizard can re-run the static-data pipeline against the build the database holds on-demand.

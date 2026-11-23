@@ -170,7 +170,17 @@ describe.skipIf(!run)('User API projections (real Postgres)', () => {
     const conns = await db
       .insert(apMapConnection)
       .values([
-        { mapId, sourceMapSystemId: sys(SYS_A), targetMapSystemId: sys(SYS_B), scope: 'wh', massStatus: 'fresh', confirmedAt: new Date() },
+        {
+          mapId,
+          sourceMapSystemId: sys(SYS_A),
+          targetMapSystemId: sys(SYS_B),
+          scope: 'wh',
+          massStatus: 'fresh',
+          confirmedAt: new Date(),
+          eolStage: 'eol',
+          eolSource: 'auto',
+          eolAt: new Date(),
+        },
         { mapId, sourceMapSystemId: sys(SYS_A), targetMapSystemId: sys(SYS_B), scope: 'wh', massStatus: 'fresh', confirmedAt: null },
         { mapId, sourceMapSystemId: sys(SYS_A), targetMapSystemId: sys(SYS_HIDDEN), scope: 'wh', massStatus: 'fresh', confirmedAt: new Date() },
       ])
@@ -238,6 +248,7 @@ describe.skipIf(!run)('User API projections (real Postgres)', () => {
       expect(data.systems.map((s) => s.systemId).sort()).toEqual([SYS_A, SYS_B]);
       expect(data.connections.map((c) => c.id)).toEqual(view!.connections.map((c) => c.id));
       expect(data.connections.map((c) => c.id)).toEqual([seeded.liveConnection]);
+      expect(data.connections[0]).toMatchObject({ eolStage: 'eol', eolSource: 'auto' });
     });
 
     it('signatures hold only those in visible systems, as loadMapForView does', async () => {

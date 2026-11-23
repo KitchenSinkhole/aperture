@@ -3,6 +3,7 @@ import {
   apiScope,
   apiTokenRevokeReason,
   connectionScope,
+  eolSource,
   eolStage,
   mapCapability,
   mapNoteSeverity,
@@ -16,7 +17,7 @@ import {
   whJumpMass,
   whMass,
 } from '@/db/schema/ap/enums';
-import type { ShipClass } from '@/types';
+import type { ConnectionDeathCause, ShipClass } from '@/types';
 
 /**
  * Wire contracts for the Aperture realtime WebSocket transport.
@@ -164,6 +165,7 @@ const connectionScopeEnum = z.enum(connectionScope.enumValues);
 const whMassEnum = z.enum(whMass.enumValues);
 const whJumpMassEnum = z.enum(whJumpMass.enumValues);
 const eolStageEnum = z.enum(eolStage.enumValues);
+const eolSourceEnum = z.enum(eolSource.enumValues);
 const mapScopeEnum = z.enum(mapScope.enumValues);
 const mapTypeEnum = z.enum(mapType.enumValues);
 const signatureGroupKeyEnum = z.enum(signatureGroupKey.enumValues);
@@ -197,6 +199,24 @@ const SHIP_CLASSES: ShipClass[] = [
 ] as const;
 
 const shipClassSchema = z.enum(SHIP_CLASSES);
+
+const CONNECTION_DEATH_CAUSES = [
+  'manual_removed',
+  'rolled',
+  'sig_orphaned',
+  'eol_reaped',
+  'expired_swept',
+] as const satisfies readonly ConnectionDeathCause[];
+
+// Fails to compile when a `ConnectionDeathCause` is missing from the list.
+const allDeathCausesListed: [ConnectionDeathCause] extends [
+  (typeof CONNECTION_DEATH_CAUSES)[number],
+]
+  ? true
+  : never = true;
+void allDeathCausesListed;
+
+const connectionDeathCauseEnum = z.enum(CONNECTION_DEATH_CAUSES);
 
 const eventId = z.number().int().positive();
 
@@ -241,6 +261,9 @@ const connectionEdgeBody = {
   targetBubbled: z.boolean(),
   eolAt: z.string().nullable(),
   createdAt: z.string(),
+  // Provenance of `eolStage` (`ap_map_connection.eol_source`). Every emitter
+  // carries it; the default only fills historical events stored without it.
+  eolSource: eolSourceEnum.nullable().default(null),
 };
 
 /** Full signature body — mirrors `ap_map_signature` row fields used by the canvas. */
@@ -333,6 +356,9 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     sourceBubbled: z.boolean().optional(),
     targetBubbled: z.boolean().optional(),
     eolAt: z.string().nullable().optional(),
+    // Rides with `eolStage`: who set it (`observed` = a human, `auto` = the cron,
+    // null = never staged).
+    eolSource: eolSourceEnum.nullable().optional(),
     // Audit descriptors (endpoint `ap_map_system` ids). Carried so the event
     // self-describes its endpoints even after the connection is hard-deleted —
     // the canvas ignores them. See the preamble's payload-philosophy note.
@@ -341,12 +367,27 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
   }),
   // `source`/`target` are the endpoint `ap_map_system` ids, captured at delete
   // time because the connection row is hard-deleted (unrecoverable afterwards).
+  // The rest is the death snapshot (`ConnectionDeathSnapshot`): optional here
+  // because historical events carry none, but every field must be declared or
+  // zod strips it before the event INSERT.
   z.object({
     kind: z.literal('connection.delete'),
     eventId,
     id: z.string(),
     source: z.string().optional(),
     target: z.string().optional(),
+    cause: connectionDeathCauseEnum.optional(),
+    bornAt: z.string().optional(),
+    lastAliveAt: z.string().optional(),
+    scope: connectionScopeEnum.optional(),
+    massStatus: whMassEnum.optional(),
+    isRolling: z.boolean().optional(),
+    isStatic: z.boolean().optional(),
+    eolStage: eolStageEnum.optional(),
+    eolAt: z.string().nullable().optional(),
+    eolSource: eolSourceEnum.nullable().optional(),
+    wasDormant: z.boolean().optional(),
+    wormholeCode: z.string().nullable().optional(),
   }),
   z.object({ kind: z.literal('signature.create'), eventId, ...signatureBody }),
   z.object({
@@ -429,6 +470,7 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     name: z.string().optional(),
     deleteExpiredConnections: z.boolean().optional(),
     deleteEolConnections: z.boolean().optional(),
+    autoEolConnections: z.boolean().optional(),
     trackAbyssalJumps: z.boolean().optional(),
   }),
   z.object({

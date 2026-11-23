@@ -16,6 +16,7 @@ import {
 import { Tooltip } from '@base-ui/react/tooltip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConnectionMassLog } from '@/components/sidebar/ConnectionMassLog';
+import { isEolEstimate } from '@/components/map/styling';
 import type {
   MapConnectionEdge,
   MapNote,
@@ -507,6 +508,21 @@ function ConnectionInspector({
               ))}
             </SelectContent>
           </Select>
+          {isEolEstimate(connection) && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] italic text-muted-foreground">
+                Estimated from age, not seen in game
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onPatch({ eolStage: connection.eolStage })}
+              >
+                Confirm EOL
+              </Button>
+            </div>
+          )}
         </Row>
 
         <div className="grid grid-cols-2 gap-2">
@@ -556,7 +572,11 @@ function ConnectionExpiryHint({ connection }: { connection: MapConnectionEdge })
   }
   const ms = connectionTimeLeftMs(connection, now);
   if (ms === null) return null;
-  const label = connection.eolStage !== 'none' ? 'EOL expires in' : 'Expires in';
+  const label = isEolEstimate(connection)
+    ? 'Estimated EOL expires in'
+    : connection.eolStage !== 'none'
+      ? 'EOL expires in'
+      : 'Expires in';
   return (
     <div className="flex items-center justify-between text-[10px] text-muted-foreground">
       <span>{label}</span>
