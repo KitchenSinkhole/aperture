@@ -357,7 +357,7 @@ describe('applyCommittedEolFields', () => {
   });
 
   it('takes only the server-derived fields, so a newer optimistic edit survives', () => {
-    const state = makeState({ connections: [{ ...estimate, eolStage: 'critical' }] });
+    const state = makeState({ connections: [{ ...estimate, massStatus: 'critical' }] });
     const settled = applyCommittedEolFields(state, {
       kind: 'connection.update',
       eventId: 41,
@@ -367,7 +367,29 @@ describe('applyCommittedEolFields', () => {
       eolAt: '2026-01-01T03:00:00.000Z',
       eolSource: 'observed',
     });
-    expect(settled.connections[0]).toMatchObject({ eolStage: 'critical', eolSource: 'observed' });
+    expect(settled.connections[0]).toMatchObject({
+      massStatus: 'critical',
+      eolSource: 'observed',
+      eolAt: '2026-01-01T03:00:00.000Z',
+    });
+  });
+
+  it('ignores an older response for a stage the edge no longer shows', () => {
+    // EOL then Critical in quick succession; the EOL response lands last.
+    const state = makeState({
+      connections: [
+        { ...estimate, eolStage: 'critical', eolSource: 'observed', eolAt: '2026-01-01T04:00:00.000Z' },
+      ],
+    });
+    const settled = applyCommittedEolFields(state, {
+      kind: 'connection.update',
+      eventId: 41,
+      id: '20',
+      eolStage: 'eol',
+      eolAt: '2026-01-01T03:00:00.000Z',
+      eolSource: 'observed',
+    });
+    expect(settled).toBe(state);
   });
 
   it('is a no-op for a committed update without EOL fields', () => {

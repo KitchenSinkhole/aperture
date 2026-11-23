@@ -176,6 +176,7 @@ There are exactly three pathways. Pick the right one; do not invent a fourth.
 
 - The **WebSocket is broadcast-only.** Clients never send mutations over it.
 - Every mutation lands as exactly **one `INSERT INTO ap_map_event`**. An `AFTER INSERT` trigger emits `pg_notify('map:'||map_id, …)`. The WS handler picks it up. No application-level dual-write.
+  - One narrow exception: a bookkeeping column that never crosses the wire may be written in the same transaction as the event that records it, with no event of its own. The signature paste's scan heartbeat (`ap_map_connection.confirmed_at`, recorded by the sig's `signature.update`) is the one instance.
 - **Server Actions** for low-traffic state changes where a fresh render is the natural next step (account settings, map create/delete, admin settings).
 - **JSON API routes** for high-frequency client-initiated mutations (signature edits, system drag, connection type change).
 

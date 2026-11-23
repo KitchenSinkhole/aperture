@@ -290,7 +290,10 @@ export type ConnectionDeathCause =
 export type ConnectionDeathSnapshot = {
   cause: ConnectionDeathCause;
   bornAt: string;
-  /** Lower bound on "known open at": the latest logged jump, confirmation or edit. */
+  /**
+   * Lower bound on "known open at": the latest of birth, logged jump,
+   * confirmation or edit. Edits don't count on an `expired` hole.
+   */
   lastAliveAt: string;
   scope: (typeof connectionScope.enumValues)[number];
   massStatus: (typeof whMass.enumValues)[number];

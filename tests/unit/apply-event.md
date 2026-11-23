@@ -12,5 +12,6 @@ Covers, per kind:
 
 `applyCommittedEolFields`:
 - Confirming an estimate: the optimistic payload alone leaves the edge `auto`; folding the committed `connection.update` leaves it `observed` with the server's `eolAt`.
-- Only `eolAt` / `eolSource` are taken, so a newer optimistic `eolStage` survives an older response.
+- Only `eolAt` / `eolSource` are taken, so a newer optimistic field (here `massStatus`) survives.
+- A response for a stage the edge no longer shows (EOL then Critical, EOL answering last) returns the same state reference.
 - A committed update without EOL fields returns the same state reference.

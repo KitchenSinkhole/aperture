@@ -10,7 +10,7 @@ No `import 'server-only'`: the graphile-worker reaper and auto-EOL tasks run und
 ### readConnectionDeathSnapshot(tx: Tx, input: ReadConnectionDeathSnapshotInput): Promise<ConnectionDeathSnapshot | null>
 Locks the `(connectionId, mapId)` row `FOR UPDATE` and reads its state, its latest `ap_map_connection_log.jumped_at`, and the `universe_wormhole` codes of the `ap_map_signature` rows bound to it. Must run before the delete on the same transaction: the log and the bound signatures cascade with the row. Returns null when no such connection is on the map.
 
-- `lastAliveAt` — the latest of the last logged jump, `confirmed_at` and `updated_at`. A lower bound on "known open at"; true collapse lies in `[lastAliveAt, deletedAt]`.
+- `lastAliveAt` — the latest of `created_at`, the last logged jump, `confirmed_at` and `updated_at`; `updated_at` is left out when the stage is `expired`, since that stage is a sighting that the hole is gone. A lower bound on "known open at"; true collapse lies in `[lastAliveAt, deletedAt]`.
 - `wasDormant` — `confirmed_at IS NULL`.
 - `wormholeCode` — `boundWormholeCodeSql` over the bound signatures' types plus `input.removedBoundSigTypeIds`.
 - `cause` — `input.cause`, except a `manual_removed` hole that is `is_rolling` or `mass_status = 'critical'` records `rolled`. Other causes are kept as given.

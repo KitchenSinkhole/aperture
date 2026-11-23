@@ -41,9 +41,9 @@ Dispatches on `payload.kind` and returns a new `MapViewData` without mutating th
 
 ### applyCommittedEolFields(state: MapViewData, committed: MapEventPayload): MapViewData
 
-Folds only `eolAt` and `eolSource` from a committed `connection.update` into `state`, for the tab that issued the patch: its optimistic payload carries just the user's pick and its realtime echo is skipped, so the server-derived provenance (a confirmed estimate turning `observed`, with a re-stamped `eolAt`) would otherwise never reach it. User-picked fields are not re-applied, so a newer optimistic edit is never overwritten by an older response.
+Folds only `eolAt` and `eolSource` from a committed `connection.update` into `state`, for the tab that issued the patch: its optimistic payload carries just the user's pick and its realtime echo is skipped, so the server-derived provenance (a confirmed estimate turning `observed`, with a re-stamped `eolAt`) would otherwise never reach it. User-picked fields are not re-applied, and the fold is skipped when the edge's current `eolStage` differs from the committed one, so a newer optimistic edit is never overwritten by an older response.
 
-**Returns:** `state` unchanged when `committed` is not a `connection.update` or carries no `eolSource`; otherwise the state with those two fields applied to the matching connection.
+**Returns:** `state` unchanged when `committed` is not a `connection.update`, carries no `eolSource`, or names a connection whose current `eolStage` differs from its own; otherwise the state with those two fields applied to the matching connection.
 
 ### Depends On
 - `MapViewData`, `MapSystemNode`, `MapConnectionEdge`, `MapSignature`, `MapNote` — types from `@/types`

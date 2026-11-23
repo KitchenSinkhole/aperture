@@ -11,4 +11,5 @@ Cases:
 3. **wasDormant**: a hole with `confirmed_at` NULLed records `wasDormant: true`.
 4. **sig_orphaned**: an empty bulk paste with `removeMissing` + `removeOrphanedConnections` drops the hole's only bound sig (O477); the delete records `cause: 'sig_orphaned'`, `bornAt`, `lastAliveAt` no earlier than the jump, and keeps `wormholeCode: 'O477'` although that sig is deleted first.
 5. **scan heartbeat**: re-pasting two bound sigs advances the live hole's `confirmed_at` past its logged jump and leaves a dormant hole's NULL; the live hole's later delete records that heartbeat as `lastAliveAt`.
-6. **code rule**: `boundWormholeCodeSql` evaluated over literal code lists: a single non-K162 code wins over a far-end K162 (and over its own duplicate); K162 alone yields `K162`; no codes, or two disagreeing non-K162 codes (with or without a K162), yield null.
+6. **expired**: on a hole flagged `expired` and then edited, `lastAliveAt` is the logged jump, not the expire write or the edit after it.
+7. **code rule**: `boundWormholeCodeSql` evaluated over literal code lists: a single non-K162 code wins over a far-end K162 (and over its own duplicate); K162 alone yields `K162`; no codes, or two disagreeing non-K162 codes (with or without a K162), yield null.

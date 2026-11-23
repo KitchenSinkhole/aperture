@@ -17,12 +17,12 @@ Resolves the dogma attribute `wormholeMaxStableTime` (minutes) by name from `uni
 
 Otherwise selects up to `JOB_DELETE_BATCH_SIZE` connections, oldest first, that are:
 - on a map with `auto_eol_connections = true` and `deleted_at IS NULL`;
-- `scope = 'wh'`, `eol_stage = 'none'`, `eol_source IS NULL` (never touched by a human), `confirmed_at IS NOT NULL` (not dormant);
+- `scope = 'wh'`, `eol_stage = 'none'`, `eol_source IS NULL` (never staged, or a human EOL since undone; a cleared estimate reads `observed`), `confirmed_at IS NOT NULL` (not dormant);
 - past `created_at + nominal − WORMHOLE_EOL_NOMINAL_MS`.
 
 **Nominal lifetime**, read through `universe_type_attribute_effective`:
 - **Bound type:** `boundWormholeCodeSql` over the `universe_wormhole` names of the `ap_map_signature` rows bound to the connection. A single non-K162 code gives that type's lifetime.
-- **Static fallback:** when no code resolves (no typed sig, or disagreeing codes) and `is_static` is set, the source system's `universe_system_static` whose `target_class` equals the target system's `universe_system.security`, only when exactly one static matches.
+- **Static fallback:** when no code resolves (no typed sig, or disagreeing codes, which only a mistyped sig produces) and `is_static` is set, the source system's `universe_system_static` whose `target_class` equals the target system's `universe_system.security`, only when exactly one static matches.
 - K162-only, untyped non-static, a typed code with no lifetime value, and ambiguous statics are never marked.
 
 Each candidate gets its own `commitMapEvent({ kind: 'connection.update', characterId: null })`. Inside it a conditional `UPDATE` (still `eol_stage = 'none'`, `eol_source IS NULL`, `confirmed_at IS NOT NULL`) sets `('eol', 'auto')` and `eol_at = now()`; a row that no longer qualifies (a scout wrote it since the select) rolls back and counts as `failed`. The payload carries `eolStage: 'eol'`, `eolAt`, `eolSource: 'auto'` and the endpoint `source`/`target` `ap_map_system` ids.

@@ -5,6 +5,7 @@ import { commitMapEvent, type ActionResult, type Tx } from './core';
 import { assertSystemOnMap } from './tenancy';
 import { readConnectionDeathSnapshot } from '@/lib/map/connectionDeathSnapshot';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
+import type { EolSource } from '@/types';
 
 /**
  * Connection-level map mutations (create / delete / update), each a single
@@ -195,8 +196,9 @@ export function deleteConnection(
  * observation, not the original 4h flag), preserves the existing stamp on a
  * repeat of the same stage (unless that stage was an `auto` estimate), and
  * clears it to null when set back to `none` — this `eol_at` feeds the
- * EOL-expiry cron. Any `eolStage` in the patch is a human write, so it stamps
- * `eol_source = 'observed'`. Emits `connection.update`.
+ * EOL-expiry cron. A non-`none` `eolStage` is a human write, so it stamps
+ * `eol_source = 'observed'`; `none` stamps `observed` only over an `auto`
+ * estimate. Emits `connection.update`.
  */
 export function updateConnection(
   input: UpdateConnectionInput,
@@ -218,26 +220,33 @@ export function updateConnection(
       if ('targetBubbled' in patch) set.targetBubbled = patch.targetBubbled;
 
       let nextEolAt: Date | null | undefined;
+      let nextEolSource: EolSource | null | undefined;
       if ('eolStage' in patch && patch.eolStage !== undefined) {
         const nextStage = patch.eolStage;
+        const [cur] = await tx
+          .select({
+            eolStage: apMapConnection.eolStage,
+            eolAt: apMapConnection.eolAt,
+            eolSource: apMapConnection.eolSource,
+          })
+          .from(apMapConnection)
+          .where(
+            and(eq(apMapConnection.id, input.connectionId), eq(apMapConnection.mapId, input.mapId)),
+          );
         set.eolStage = nextStage;
-        set.eolSource = 'observed';
         if (nextStage === 'none') {
           nextEolAt = null;
+          // Only clearing an estimate keeps the cron off the hole. Undoing a
+          // human EOL returns it to never-staged, so an age estimate can still
+          // land; a repeat `none` keeps whatever the row already says.
+          nextEolSource =
+            cur?.eolSource === 'auto'
+              ? 'observed'
+              : cur?.eolStage === 'none'
+                ? cur.eolSource
+                : null;
         } else {
-          const [cur] = await tx
-            .select({
-              eolStage: apMapConnection.eolStage,
-              eolAt: apMapConnection.eolAt,
-              eolSource: apMapConnection.eolSource,
-            })
-            .from(apMapConnection)
-            .where(
-              and(
-                eq(apMapConnection.id, input.connectionId),
-                eq(apMapConnection.mapId, input.mapId),
-              ),
-            );
+          nextEolSource = 'observed';
           // Re-stamp when the stage changes (e.g. eol → critical restarts the 1h
           // clock); keep the existing stamp when the same stage is re-applied by
           // a human. Re-applying it over an `auto` estimate is the confirming
@@ -246,6 +255,7 @@ export function updateConnection(
           nextEolAt = keep ? (cur.eolAt ?? new Date()) : new Date();
         }
         set.eolAt = nextEolAt;
+        set.eolSource = nextEolSource;
       }
 
       const [row] = await tx
@@ -279,7 +289,7 @@ export function updateConnection(
       if ('eolStage' in patch && patch.eolStage !== undefined) {
         out.eolStage = patch.eolStage;
         out.eolAt = nextEolAt ? nextEolAt.toISOString() : null;
-        out.eolSource = 'observed';
+        out.eolSource = nextEolSource ?? null;
       }
       return out;
     },

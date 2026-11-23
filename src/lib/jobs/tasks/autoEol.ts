@@ -19,8 +19,10 @@ import type { JobModule } from '../registry';
  *
  * The type comes from the bound signatures (`boundWormholeCodeSql`, the death
  * snapshot's rule). An untyped static falls back to the source system's single
- * static leading into the target's class. K162-only, untyped non-static,
- * disagreeing and ambiguous-static holes are never marked.
+ * static leading into the target's class. K162-only, untyped non-static and
+ * ambiguous-static holes are never marked. Disagreeing bound codes (only a
+ * mistyped sig, since one end of a hole is always K162) resolve no type and
+ * are treated as untyped.
  *
  * Runs under the bare-tsx worker: nothing reachable from here may import
  * `server-only`, so the attribute lookup and the static join live in this SQL

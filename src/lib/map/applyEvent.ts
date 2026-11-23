@@ -239,14 +239,17 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
  * `connection.update` into the tab that issued it. That tab's optimistic patch
  * carries only what the user picked, and its realtime echo is skipped, so
  * without this a confirmed estimate would stay marked as one on the
- * confirmer's own screen. Only those two fields are taken: a later optimistic
- * edit to any user-picked field must not be overwritten by an older response.
+ * confirmer's own screen. Only those two fields are taken, and only while the
+ * edge still shows the stage the response committed: a later optimistic edit
+ * must not be overwritten by an older response, its `eolAt` included.
  */
 export function applyCommittedEolFields(
   state: MapViewData,
   committed: MapEventPayload,
 ): MapViewData {
   if (committed.kind !== 'connection.update' || committed.eolSource === undefined) return state;
+  const edge = state.connections.find((c) => c.id === committed.id);
+  if (!edge || edge.eolStage !== committed.eolStage) return state;
   return applyEvent(state, {
     kind: 'connection.update',
     eventId: committed.eventId,

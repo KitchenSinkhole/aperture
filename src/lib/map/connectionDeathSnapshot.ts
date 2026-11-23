@@ -83,7 +83,11 @@ export async function readConnectionDeathSnapshot(
         : inArray(universeWormhole.typeId, boundTypeIds),
     );
 
-  const aliveCandidates = [log?.lastJumpAt ?? null, conn.confirmedAt, conn.updatedAt]
+  // An `expired` stage is a sighting that the hole is gone. The write that set
+  // it bumped `updated_at`, and so did any edit after it, so no edit time counts
+  // as alive evidence once the stage is `expired`.
+  const lastEditAt = conn.eolStage === 'expired' ? null : conn.updatedAt;
+  const aliveCandidates = [conn.createdAt, log?.lastJumpAt ?? null, conn.confirmedAt, lastEditAt]
     .filter((d): d is Date => d !== null)
     .map((d) => d.getTime());
 

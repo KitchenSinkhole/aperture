@@ -25,7 +25,7 @@ A plain (non-materialized) view over `ap_map_event`. Its reader is operator SQL;
 | `died_at` | timestamptz | `ap_map_event.occurred_at`. |
 | `lifetime_h` | double precision | `died_at - born_at`, hours. |
 | `cause` | text | Payload `cause` (`ConnectionDeathCause`). |
-| `last_alive_at` | timestamptz | Payload `lastAliveAt`. |
+| `last_alive_at` | timestamptz | Payload `lastAliveAt`: the latest of birth, logged jump, confirmation and last edit, with edits ignored on a hole flagged `expired`. |
 | `clear_lag_h` | double precision | `died_at - last_alive_at`, hours. True collapse lies in `[last_alive_at, died_at]`. |
 | `mass_status_at_death` | text | Payload `massStatus`. |
 | `was_rolled` | boolean | `cause = 'rolled'`, or `isRolling`, or `massStatus = 'critical'`: a cron-reaped hole keeps its cron cause but still reads rolled here. |

@@ -97,24 +97,28 @@ describe.skipIf(!run)('eol_source provenance on human EOL writes (real Postgres)
     expect((await storedPayload(plain.eventId)).eolSource).toBeNull();
   });
 
-  it('updateConnection stores observed for every stage, including none', async () => {
+  it('updateConnection stores observed for every decaying stage; undoing it to none stores NULL', async () => {
     const id = await insertConn(mapId, { eolStage: 'none', eolSource: null, eolAt: null });
-    for (const stage of ['eol', 'critical', 'expired', 'none'] as const) {
-      const res = await updateConnection({
-        mapId,
-        connectionId: id,
-        characterId: null,
-        patch: { eolStage: stage },
-      });
-      expect(res.ok).toBe(true);
-      if (!res.ok) return;
-      const row = await connRow(id);
-      expect(row.eolStage).toBe(stage);
-      expect(row.eolSource).toBe('observed');
-      const payload = await storedPayload(res.eventId);
-      expect(payload.eolStage).toBe(stage);
-      expect(payload.eolSource).toBe('observed');
+    const steps = [
+      ['eol', 'observed'],
+      ['critical', 'observed'],
+      ['expired', 'observed'],
+      ['none', null],
+      ['none', null],
+    ] as const;
+    for (const [stage, source] of steps) {
+      await expectStageWrite(id, stage, source);
     }
+  });
+
+  it('clearing an auto estimate to none stores observed, and a repeat none keeps it', async () => {
+    const id = await insertConn(mapId, {
+      eolStage: 'eol',
+      eolSource: 'auto',
+      eolAt: new Date(Date.now() - 60 * 60_000),
+    });
+    await expectStageWrite(id, 'none', 'observed');
+    await expectStageWrite(id, 'none', 'observed');
   });
 
   it('an update that does not touch eolStage leaves eolSource alone', async () => {
@@ -364,6 +368,27 @@ async function insertConn(
     })
     .returning({ id: apMapConnection.id });
   return row!.id;
+}
+
+async function expectStageWrite(
+  id: bigint,
+  stage: 'none' | 'eol' | 'critical' | 'expired',
+  source: EolSource | null,
+) {
+  const res = await updateConnection({
+    mapId,
+    connectionId: id,
+    characterId: null,
+    patch: { eolStage: stage },
+  });
+  expect(res.ok).toBe(true);
+  if (!res.ok) return;
+  const row = await connRow(id);
+  expect(row.eolStage).toBe(stage);
+  expect(row.eolSource).toBe(source);
+  const payload = await storedPayload(res.eventId);
+  expect(payload.eolStage).toBe(stage);
+  expect(payload.eolSource).toBe(source);
 }
 
 async function connRow(id: bigint) {

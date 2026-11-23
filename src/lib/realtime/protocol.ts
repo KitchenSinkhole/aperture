@@ -200,13 +200,21 @@ const SHIP_CLASSES: ShipClass[] = [
 
 const shipClassSchema = z.enum(SHIP_CLASSES);
 
-const CONNECTION_DEATH_CAUSES: ConnectionDeathCause[] = [
+const CONNECTION_DEATH_CAUSES = [
   'manual_removed',
   'rolled',
   'sig_orphaned',
   'eol_reaped',
   'expired_swept',
-];
+] as const satisfies readonly ConnectionDeathCause[];
+
+// Fails to compile when a `ConnectionDeathCause` is missing from the list.
+const allDeathCausesListed: [ConnectionDeathCause] extends [
+  (typeof CONNECTION_DEATH_CAUSES)[number],
+]
+  ? true
+  : never = true;
+void allDeathCausesListed;
 
 const connectionDeathCauseEnum = z.enum(CONNECTION_DEATH_CAUSES);
 
@@ -348,8 +356,9 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     sourceBubbled: z.boolean().optional(),
     targetBubbled: z.boolean().optional(),
     eolAt: z.string().nullable().optional(),
-    // Rides with `eolStage`: who set it (`observed` = a human, `auto` = the cron).
-    eolSource: eolSourceEnum.optional(),
+    // Rides with `eolStage`: who set it (`observed` = a human, `auto` = the cron,
+    // null = never staged).
+    eolSource: eolSourceEnum.nullable().optional(),
     // Audit descriptors (endpoint `ap_map_system` ids). Carried so the event
     // self-describes its endpoints even after the connection is hard-deleted —
     // the canvas ignores them. See the preamble's payload-philosophy note.

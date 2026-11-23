@@ -19,7 +19,11 @@ import {
 } from '@/db/schema';
 import { boundWormholeCodeSql } from '@/lib/map/connectionDeathSnapshot';
 import { addSystem } from '@/lib/map/mutations/systems';
-import { createConnection, deleteConnection } from '@/lib/map/mutations/connections';
+import {
+  createConnection,
+  deleteConnection,
+  updateConnection,
+} from '@/lib/map/mutations/connections';
 import { pasteSignatures } from '@/lib/map/mutations/bulkSignatures';
 import type { MapEventPayload } from '@/lib/realtime/protocol';
 
@@ -233,6 +237,22 @@ describe.skipIf(!run)('connection.delete death snapshot (real Postgres)', () => 
     expect(del.ok).toBe(true);
     if (!del.ok) return;
     expect(Date.parse((await storedPayload(del.eventId)).lastAliveAt as string)).toBe(heartbeat.getTime());
+  });
+
+  it('an expired hole does not count its own expire write, or later edits, as alive', async () => {
+    const id = await connect(msA, msC);
+    const { jumpedAt } = await ageAndLogJump(id);
+    for (const patch of [{ eolStage: 'expired' as const }, { isRolling: false }]) {
+      const res = await updateConnection({ mapId, connectionId: id, characterId: null, patch });
+      expect(res.ok).toBe(true);
+    }
+
+    const del = await deleteConnection({ mapId, connectionId: id, characterId: null, cause: 'manual_removed' });
+    expect(del.ok).toBe(true);
+    if (!del.ok) return;
+    const stored = await storedPayload(del.eventId);
+    expect(stored.eolStage).toBe('expired');
+    expect(Date.parse(stored.lastAliveAt as string)).toBe(jumpedAt.getTime());
   });
 
   it('boundWormholeCodeSql applies the bound-signature code rule', async () => {
