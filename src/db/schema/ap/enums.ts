@@ -74,6 +74,13 @@ export const routeSafety = pgEnum('route_safety', ['shortest', 'safer', 'less_sa
 export const eolStage = pgEnum('eol_stage', ['none', 'eol', 'critical', 'expired']);
 
 /**
+ * Provenance of a connection's current `eol_stage`. `observed` = a human set it
+ * last (including back to `none`); `auto` = the age-based auto-EOL cron set it,
+ * an estimate rather than a sighting. NULL on the column = never set.
+ */
+export const eolSource = pgEnum('eol_source', ['auto', 'observed']);
+
+/**
  * Outbound chat channel for `ap_map_webhook`. Discord is the only channel.
  */
 export const apWebhookChannel = pgEnum('ap_webhook_channel', ['discord']);

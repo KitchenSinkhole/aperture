@@ -178,7 +178,7 @@ Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the pe
 
 ## Stage 5a — EOL provenance schema
 **Mode:** Execute
-**Status:** todo
+**Status:** done — e9395ead
 **Goal:** Land the `eol_source` enum and column, the `auto_eol_connections` map flag, the check constraint and the `observed` backfill, with the shared `EolSource` type.
 **References:** `src/db/schema/ap/enums.md`, `src/db/schema/ap/map_connection.md`, `src/db/schema/ap/map.md`, `src/types/index.md`
 **Touches:** `src/db/schema/ap/enums.ts`, `src/db/schema/ap/map_connection.ts`, `src/db/schema/ap/map.ts`, `src/types/index.ts`, a migration at the next free number (`drizzle-kit generate`, plus the backfill `UPDATE` appended by hand) and its hand-written `.rollback.sql`, and their companions.
@@ -190,8 +190,9 @@ Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the pe
 **Goal:** Make every human EOL write path stamp `eol_source = 'observed'` and carry `eolSource` on the `connection.create` / `connection.update` payloads, including the confirm-an-estimate re-stamp.
 **References:** `src/lib/map/mutations/connections.md`, `src/lib/realtime/protocol.md`, `src/lib/map/transfer.md`, `src/db/schema/ap/map_connection.md`
 **Touches:** `src/lib/map/mutations/connections.ts`, `src/lib/realtime/protocol.ts` (optional `eolSource` on the `connection.create` and `connection.update` members), `src/lib/map/transfer.ts`, their companions, and a DB integration test.
+**Runs directly after 5a.** 5a's check constraint is live, so until this stage lands every human write of a non-`none` stage fails it: `createConnection` / `updateConnection` with an `eolStage`, and transfer import of an EOL'd connection, return a failed mutation. On the 5a tree, `tests/integration/map-system-connection-mutations.test.ts` has two red tests: the EOL round-trip (its `updateConnection` to `critical` hits the constraint) and the `removeSystem` abyssal test after it, which inherits the round-trip's undeleted `wh` row. Both go green from this stage's writer change alone. The direct-insert fixtures (`housekeeping.test.ts`, `connection-lifecycle-view.test.ts`, `scripts/seed-demo-map.ts`) already carry `eolSource: 'observed'` from 5a.
 **Transfer:** export carries `eolSource` and `autoEolConnections`. On import, both are optional: an absent `eolSource` on a row whose stage is not `none` means `observed`, because exports from before 5a predate auto-marking. An absent flag means `false`. Per the settled design, `eol_at` is re-stamped on import, and a round-tripped `auto` row stays `auto`.
-**Done when:** a DB test asserts that creating with `eolStage = 'eol'` stores `observed`; that updating any stage (including `none`) stores `observed`; and that on a row hand-set to `('eol', 'auto')` an update to the same `eol` flips it to `observed` and advances `eol_at`. Each is read from both the row and the stored `ap_map_event.payload`. A transfer round-trip preserves `eol_source`. `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
+**Done when:** `tests/integration/map-system-connection-mutations.test.ts` is green again, and a DB test asserts that creating with `eolStage = 'eol'` stores `observed`; that updating any stage (including `none`) stores `observed`; and that on a row hand-set to `('eol', 'auto')` an update to the same `eol` flips it to `observed` and advances `eol_at`. Each is read from both the row and the stored `ap_map_event.payload`. A transfer round-trip preserves `eol_source`. `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
 
 ## Stage 5c — Provenance in the death snapshot and read model
 **Mode:** Execute
@@ -249,7 +250,7 @@ Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the pe
 - Stage 3 is independent of Stage 2 and can run in either order after Stage 1.
 - Stage 4 needs Stages 1 and 2 landed (its test reaps through a cron). Stage 3 only improves the data it reads, not its shape.
 - Stage 5 is the largest behavioural change and the one most able to corrupt the dataset if the auto/observed distinction is sloppy; keep it behind Stage 4 so its output is immediately inspectable.
-- 5a and 5b depend only on the schema and can run any time. 5c needs Stages 1, 4 and 5b. 5d needs Stage 1 (the `wormholeCode` rule) and 5b (the `connection.update` field). 5e needs 5b. 5f goes last because its toggle is the only way to switch the feature on, so nothing auto-marks before estimates render distinctly.
+- 5a and 5b depend only on the schema and can run any time, but **5b must follow 5a immediately**: between them, human EOL writes fail 5a's check constraint. 5c needs Stages 1, 4 and 5b. 5d needs Stage 1 (the `wormholeCode` rule) and 5b (the `connection.update` field). 5e needs 5b. 5f goes last because its toggle is the only way to switch the feature on, so nothing auto-marks before estimates render distinctly.
 
 ## Manual verification
 _(worked by the user once, after the run — the plan is not complete until it passes)_
@@ -271,3 +272,4 @@ _(appended by executing sessions — non-obvious findings only)_
 - The scan heartbeat rides the paste's `updateExisting` branch, because that is where each re-listed sig gets its `signature.update` event of record. A paste with "update existing" unchecked records no re-observation. The single-sig PATCH route is deliberately not a heartbeat: it is a human field edit, not a scanner sighting, and counting it would let typing on a dead hole's sig extend its `lastAliveAt`.
 - `ap_connection_lifecycle` casts payload `id` / `source` / `target` to `bigint` and the timestamp fields to `timestamptz` (only enum-valued fields stay `text`). Every emitter writes those as bigint/ISO strings, but a hand-inserted `connection.delete` with a non-numeric id or an unparseable time, once it carries `cause`, makes every query over the view error. Hand-written test or repair events must keep those shapes.
 - Drizzle's `db.execute` over node-postgres returns `timestamptz` columns as raw strings, not `Date`, so the Stage 4 view test reads its timings as `extract(epoch ...)` milliseconds in the query.
+- `drizzle-kit generate` emits a new check constraint in the same file as its column, so a backfill the constraint depends on cannot simply be appended: in 0076 the `observed` `UPDATE` sits between `ADD COLUMN` and `ADD CONSTRAINT`, or the constraint fails on any existing EOL row. The dev DB had no non-`none` connections, so the backfill was exercised by seeding EOL rows inside a rolled-back transaction (rollback SQL, seed, forward SQL, assert).

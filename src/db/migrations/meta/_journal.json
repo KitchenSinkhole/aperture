@@ -526,6 +526,13 @@
       "when": 1795394619817,
       "tag": "0075_connection_lifecycle_view",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1795395204668,
+      "tag": "0076_eol_source",
+      "breakpoints": true
     }
   ]
 }

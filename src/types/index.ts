@@ -57,6 +57,7 @@ import type {
   apiTokenRevokeReason,
   authzLevel,
   connectionScope,
+  eolSource,
   eolStage,
   errorLevel,
   errorSource,
@@ -246,6 +247,7 @@ export type NewApSdeState = InferInsertModel<typeof apSdeState>;
 // Enum unions. `pgEnum` exposes its values via `.enumValues`; the
 // `[number]` index extracts the union of string literals.
 export type AuthzLevel = (typeof authzLevel.enumValues)[number];
+export type EolSource = (typeof eolSource.enumValues)[number];
 export type IntelScope = (typeof intelScope.enumValues)[number];
 export type MapCapability = (typeof mapCapability.enumValues)[number];
 export type MapRight = (typeof mapRight.enumValues)[number];

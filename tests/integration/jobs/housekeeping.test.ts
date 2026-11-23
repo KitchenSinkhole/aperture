@@ -207,6 +207,7 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         targetMapSystemId: mapSystemB,
         scope: 'wh',
         eolStage: 'eol',
+        eolSource: 'observed',
         eolAt: sql`now() - interval '5 hours'`,
         createdAt: sql`now() - interval '20 hours'`,
         isStatic: true,
@@ -233,6 +234,7 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         targetMapSystemId: mapSystemB,
         scope: 'wh',
         eolStage: 'eol',
+        eolSource: 'observed',
         eolAt: sql`now() - interval '1 hour'`,
       })
       .returning({ id: apMapConnection.id });
@@ -247,6 +249,7 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         targetMapSystemId: mapSystemB,
         scope: 'wh',
         eolStage: 'critical',
+        eolSource: 'observed',
         eolAt: sql`now() - interval '90 minutes'`,
         // Mid-roll when reaped: the cron cause stands; roll state rides isRolling.
         isRolling: true,
@@ -260,6 +263,7 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         targetMapSystemId: mapSystemB,
         scope: 'wh',
         eolStage: 'critical',
+        eolSource: 'observed',
         eolAt: sql`now() - interval '30 minutes'`,
       })
       .returning({ id: apMapConnection.id });
@@ -273,6 +277,7 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         targetMapSystemId: mapSystemB,
         scope: 'wh',
         eolStage: 'expired',
+        eolSource: 'observed',
         eolAt: sql`now() - interval '5 hours'`,
       })
       .returning({ id: apMapConnection.id });
@@ -284,6 +289,7 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         targetMapSystemId: mapSystemB,
         scope: 'wh',
         eolStage: 'expired',
+        eolSource: 'observed',
         eolAt: sql`now() - interval '1 hour'`,
       })
       .returning({ id: apMapConnection.id });
@@ -296,6 +302,7 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         targetMapSystemId: optOutSystemB,
         scope: 'wh',
         eolStage: 'eol',
+        eolSource: 'observed',
         eolAt: sql`now() - interval '5 hours'`,
       })
       .returning({ id: apMapConnection.id });

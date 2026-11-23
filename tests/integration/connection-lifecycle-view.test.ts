@@ -179,6 +179,7 @@ describe.skipIf(!run)('ap_connection_lifecycle view (real Postgres)', () => {
         targetMapSystemId: msB,
         scope: 'wh',
         eolStage: 'eol',
+        eolSource: 'observed',
         eolAt: sql`now() - interval '5 hours'`,
         createdAt: sql`now() - interval '20 hours'`,
         updatedAt: sql`now() - interval '20 hours'`,

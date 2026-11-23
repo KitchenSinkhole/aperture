@@ -20,6 +20,8 @@ export const apMap = pgTable('ap_map', {
   deleteExpiredConnections: boolean('delete_expired_connections').notNull().default(true),
   deleteEolConnections: boolean('delete_eol_connections').notNull().default(true),
   trackAbyssalJumps: boolean('track_abyssal_jumps').notNull().default(false),
+  // Opt-in age-based EOL estimates; independent of `delete_eol_connections`.
+  autoEolConnections: boolean('auto_eol_connections').notNull().default(false),
   nextBookmarks: jsonb('next_bookmarks')
     .notNull()
     .default(sql`'[]'::jsonb`),
