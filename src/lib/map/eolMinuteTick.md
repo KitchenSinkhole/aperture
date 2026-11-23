@@ -8,5 +8,5 @@
 ### subscribeMapMinuteTick(listener): () => void
 Registers a listener; one interval backs every subscriber.
 
-### useMapMinuteTick(): number
-React hook returning `Date.now()`, updated on the shared minute tick while mounted.
+### useMapMinuteTick(enabled?: boolean): number
+React hook returning `Date.now()`, updated on the shared minute tick while mounted and `enabled` is true (default true).
