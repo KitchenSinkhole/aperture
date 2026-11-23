@@ -1015,7 +1015,7 @@ export function MapCanvas({
         return next;
       });
     },
-    [saveLayout],
+    [saveLayout, experimentalActive],
   );
 
   // Switch a group's active tab. Applies to every breakpoint that holds a group
@@ -1237,7 +1237,7 @@ export function MapCanvas({
       saveLayout(next);
       toast.success('Layout imported.');
     },
-    [saveLayout],
+    [saveLayout, experimentalActive],
   );
 
   const handleNavigateToSig = useCallback((systemId: string, sigId: string) => {

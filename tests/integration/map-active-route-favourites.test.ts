@@ -315,7 +315,7 @@ describe.skipIf(!run)('map active route & favourites (real Postgres)', () => {
     expect(denied).toEqual({ ok: false, error: 'No access.' });
   });
 
-  it('route-shortcut GET allows map viewers and rejects outsiders', async () => {
+  it('route-shortcut GET allows map viewers and returns not-found for outsiders', async () => {
     actAs(OWNER_CHAR, ownerUserId);
     const allowed = await routeShortcutGet(
       new NextRequest(
@@ -332,7 +332,7 @@ describe.skipIf(!run)('map active route & favourites (real Postgres)', () => {
       ),
       { params: Promise.resolve({ mapId: mapId.toString() }) },
     );
-    expect(denied.status).toBe(403);
+    expect(denied.status).toBe(404);
   });
 
   it('resolveRouteShortcut runs for a known system id', async () => {
