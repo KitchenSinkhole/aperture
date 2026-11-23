@@ -44,7 +44,7 @@ Every `voice-<pack>-<event>` id, one per pack per event. The watched-jump line s
 `['kills', 'pilots', 'alerts']` — the cue groups a system can be muted for.
 
 ### SOUND_MUTE_GROUP_OF
-`Record<SoundEvent, SoundMuteGroup | null>`: `killInSystem` → `kills`; `pilotArrived` / `pilotLeft` → `pilots`; `rallySet` / `systemPinged` → `alerts`; `watchedJump` → `null`. A watched wormhole is an explicit opt-in, so no system mute silences it.
+`Record<SoundEvent, SoundMuteGroup | null>`: `killInSystem` → `kills`; `pilotArrived` / `pilotLeft` → `pilots`; `rallySet` / `systemPinged` → `alerts`; `watchedJump`, `activeRouteOffRoute`, and `activeRouteLinkAlert` → `null`. Watched jumps and active-route alerts are explicit opt-ins, so per-system/Home mutes never silence them.
 
 ### SoundMutes (type)
 `Record<SoundMuteGroup, boolean>`; `true` silences that group's cues.
@@ -70,7 +70,7 @@ Master off, every event off, volume `DEFAULT_SOUND_VOLUME`, default chimes per e
 The groups muted in `system`: its `systemMutes` entry, OR-ed with `homeMutes` when `system.isHome`.
 
 ### isCueMutedInSystem(prefs: SoundPrefs, event: SoundEvent, system: SoundCueSystem): boolean
-Whether `event`'s group is muted in `system`. Always `false` for `watchedJump`.
+Whether `event`'s group is muted in `system`. Always `false` for `watchedJump`, `activeRouteOffRoute`, and `activeRouteLinkAlert`.
 
 ### isSystemMuteListFull(prefs: SoundPrefs, system: SoundCueSystem): boolean
 Whether muting a group in `system` would need a new `systemMutes` entry past `MAX_SYSTEM_SOUND_MUTES`. Always `false` for Home (which writes `homeMutes`) and for a system already listed.

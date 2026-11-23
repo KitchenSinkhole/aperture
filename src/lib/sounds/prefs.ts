@@ -106,8 +106,9 @@ export const SOUND_MUTE_GROUPS = ['kills', 'pilots', 'alerts'] as const;
 export type SoundMuteGroup = (typeof SOUND_MUTE_GROUPS)[number];
 
 /**
- * Which mute group silences each cue. `watchedJump` has none: watching a
- * wormhole is already an explicit opt-in, so no system mute overrides it.
+ * Which mute group silences each cue. `watchedJump` and active-route alert
+ * events have none — they are explicit opt-ins, so per-system mutes never
+ * override them.
  */
 export const SOUND_MUTE_GROUP_OF: Record<SoundEvent, SoundMuteGroup | null> = {
   pilotArrived: 'pilots',
@@ -116,8 +117,8 @@ export const SOUND_MUTE_GROUP_OF: Record<SoundEvent, SoundMuteGroup | null> = {
   killInSystem: 'kills',
   rallySet: 'alerts',
   systemPinged: 'alerts',
-  activeRouteOffRoute: 'alerts',
-  activeRouteLinkAlert: 'alerts',
+  activeRouteOffRoute: null,
+  activeRouteLinkAlert: null,
 };
 
 /** `true` ⇒ that group's cues stay silent in the system. */
