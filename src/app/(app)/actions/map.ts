@@ -13,6 +13,7 @@ import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
 import { canCreateMap, requireMapCapability } from '@/lib/auth/rights';
 import { logger } from '@/lib/log/logger';
 import { invalidateUserApiMap } from '@/lib/userApi/authorize';
+import { mergeExperimentalAutoCleanupIntoNextBookmarks } from '@/lib/map/experimentalAutoCleanupSettings';
 
 /**
  * Low-frequency, user-initiated map mutations via Server Actions (CLAUDE.md
@@ -50,6 +51,8 @@ const updateMapSettingsSchema = z.object({
   tagScheme: z.enum(tagScheme.enumValues).optional(),
   homeMapSystemId: z.string().regex(/^\d+$/, 'Invalid system id.').nullable().optional(),
   exemptHomeStaticFromTag: z.boolean().optional(),
+  experimentalAutoSignatureCleanup: z.boolean().optional(),
+  experimentalAutoMapCleanup: z.boolean().optional(),
 });
 
 /** Denial copy per map type, naming the requirement `canCreateMap` enforces. */
@@ -240,6 +243,29 @@ export async function updateMapSettingsAction(
         } else {
           set.homeMapSystemId = null;
         }
+      }
+
+      const touchesExperimentalAutoCleanup =
+        'experimentalAutoSignatureCleanup' in patch || 'experimentalAutoMapCleanup' in patch;
+      if (touchesExperimentalAutoCleanup) {
+        const [cur] = await tx
+          .select({ nextBookmarks: apMap.nextBookmarks })
+          .from(apMap)
+          .where(eq(apMap.id, id));
+        const autoPatch: {
+          autoSignatureCleanup?: boolean;
+          autoMapCleanup?: boolean;
+        } = {};
+        if ('experimentalAutoSignatureCleanup' in patch) {
+          autoPatch.autoSignatureCleanup = patch.experimentalAutoSignatureCleanup;
+        }
+        if ('experimentalAutoMapCleanup' in patch) {
+          autoPatch.autoMapCleanup = patch.experimentalAutoMapCleanup;
+        }
+        set.nextBookmarks = mergeExperimentalAutoCleanupIntoNextBookmarks(
+          cur?.nextBookmarks ?? [],
+          autoPatch,
+        );
       }
 
       const [row] = await tx

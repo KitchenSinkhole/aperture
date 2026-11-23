@@ -73,6 +73,7 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `WORMHOLE_EOL_LIFETIME_MS` (4h + 15% / 36m buffer), `WORMHOLE_EOL_CRITICAL_LIFETIME_MS` (1h + 15m) — nominal + grace-buffer reap-job purge thresholds. `WORMHOLE_DEFAULT_LIFETIME_MS` (48h) covers the non-EOL default.
 - `WORMHOLE_EXPIRED_LIFETIME_MS` (4h) — reap threshold for a manually-marked `expired` wormhole, measured from `eol_at`; safely longer than the worst-case post-"imminent" in-game lifetime.
 - `SIGNATURE_DEFAULT_TTL_MS` — default `expires_at` offset for new signatures (48 hours).
+- `EXPERIMENTAL_AUTO_CLEANUP_INTERVAL_MS` — cadence for experimental per-map automatic signature/map cleanup while a chart tab is open.
 
 **Job runtime / instrumentation**
 - `JOB_WORKER_CONCURRENCY`, `JOB_POLL_INTERVAL_MS` — graphile-worker concurrency and fallback poll cadence (LISTEN/NOTIFY drives the fast path).

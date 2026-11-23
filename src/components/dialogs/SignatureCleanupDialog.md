@@ -13,5 +13,5 @@
 
 ### Behaviour & Interactions
 
-- Combines `signatureCleanupFilters` with optional stale-system narrowing via `signatureCleanupStaleness` and account indicator prefs.
+- Preview list uses `matchSignaturesForExperimentalCleanup` (shared with experimental automatic signature cleanup).
 - On open, selects all matched rows by default.

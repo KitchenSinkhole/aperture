@@ -12,11 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { SIGNATURE_GROUP_CATALOG } from '@/lib/map/signatureGroups';
-import {
-  filterSignaturesForCleanup,
-  type SignatureCleanupOptions,
-} from '@/lib/map/signatureCleanupFilters';
-import { staleSignatureMapSystemIds } from '@/lib/map/signatureCleanupStaleness';
+import { matchSignaturesForExperimentalCleanup } from '@/lib/map/experimentalSignatureCleanupMatch';
 import { isWormholeSystem } from '@/lib/map/space';
 import type {
   MapConnectionEdge,
@@ -80,35 +76,19 @@ export function SignatureCleanupDialog({
     };
   }, [systems]);
 
-  const pool = useMemo(() => {
-    if (settings.scope === 'system' && selectedSystem) {
-      return signatures.filter((s) => s.mapSystemId === selectedSystem.id);
-    }
-    return signatures;
-  }, [settings.scope, selectedSystem, signatures]);
-
-  const opts = useMemo((): SignatureCleanupOptions => {
-    const whExpired = settings.whLinkExpired
-      ? new Set(
-          connections.filter((c) => c.eolStage === 'expired').map((c) => c.id),
-        )
-      : undefined;
-    return {
-      olderThanHours: settings.olderThanHours ?? undefined,
-      unscannedOnly: settings.unscannedOnly || undefined,
-      groups: settings.groups.length ? settings.groups : undefined,
-      whLinkExpiredConnectionIds: whExpired,
-    };
-  }, [settings, connections]);
-
-  const matched = useMemo(() => {
-    let rows = filterSignaturesForCleanup(pool, connections, opts);
-    if (settings.staleByIndicator) {
-      const staleIds = staleSignatureMapSystemIds(pool, isWormhole, indicatorPrefs);
-      rows = rows.filter((s) => staleIds.has(s.mapSystemId));
-    }
-    return rows;
-  }, [pool, connections, opts, settings.staleByIndicator, isWormhole, indicatorPrefs]);
+  const matched = useMemo(
+    () =>
+      matchSignaturesForExperimentalCleanup({
+        settings,
+        selectedSystem,
+        systems,
+        signatures,
+        connections,
+        indicatorPrefs,
+        isWormholeSystem: isWormhole,
+      }),
+    [settings, selectedSystem, systems, signatures, connections, indicatorPrefs, isWormhole],
+  );
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 

@@ -249,6 +249,10 @@ import {
   writeExperimentalIncludeJumpBridge,
 } from '@/lib/experimentalRoutePrefs';
 import { massStatusFromCumulative } from '@/lib/experimentalAutoMass';
+import { matchSignaturesForExperimentalCleanup } from '@/lib/map/experimentalSignatureCleanupMatch';
+import { connectionsForExperimentalMapCleanup } from '@/lib/map/experimentalMapCleanupConnections';
+import { isWormholeSystem } from '@/lib/map/space';
+import { apertureConfig } from '../../../aperture.config';
 import { fetchWormholeJumpInfo } from '@/lib/reference/client';
 import type { WormholeJumpInfoRow } from '@/types';
 import { useExperimentalUi } from '@/lib/experimentalUi.client';
@@ -2577,6 +2581,101 @@ export function MapCanvas({
     if (selected?.kind !== 'system') return null;
     return viewData.systems.find((s) => s.id === selected.id) ?? null;
   }, [selected, viewData.systems]);
+
+  const experimentalAutoCleanupInFlight = useRef(false);
+  const autoCleanupCtxRef = useRef({
+    experimentalActive,
+    settings,
+    signatureCleanupSettings,
+    signatureIndicators,
+    selectedSystem,
+    viewData,
+  });
+  useEffect(() => {
+    autoCleanupCtxRef.current = {
+      experimentalActive,
+      settings,
+      signatureCleanupSettings,
+      signatureIndicators,
+      selectedSystem,
+      viewData,
+    };
+  }, [
+    experimentalActive,
+    settings,
+    signatureCleanupSettings,
+    signatureIndicators,
+    selectedSystem,
+    viewData,
+  ]);
+
+  const onBulkMapConnectionCleanup = useCallback(
+    (connectionIds: string[]) => {
+      for (const connectionId of connectionIds) {
+        runOptimistic({ kind: 'connection.delete', eventId: 0, id: connectionId }, () =>
+          deleteConnectionOnServer({ mapId, connectionId }),
+        );
+      }
+    },
+    [mapId, runOptimistic],
+  );
+
+  const autoCleanupHandlersRef = useRef({
+    onBulkSignatureCleanup,
+    onBulkMapConnectionCleanup,
+  });
+  useEffect(() => {
+    autoCleanupHandlersRef.current = { onBulkSignatureCleanup, onBulkMapConnectionCleanup };
+  }, [onBulkSignatureCleanup, onBulkMapConnectionCleanup]);
+
+  useEffect(() => {
+    if (!experimentalActive) return;
+    if (!settings.experimentalAutoSignatureCleanup && !settings.experimentalAutoMapCleanup) return;
+
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (experimentalAutoCleanupInFlight.current) return;
+      const snap = autoCleanupCtxRef.current;
+      if (!snap.experimentalActive) return;
+
+      experimentalAutoCleanupInFlight.current = true;
+      try {
+        const handlers = autoCleanupHandlersRef.current;
+        if (snap.settings.experimentalAutoSignatureCleanup) {
+          const isWormhole = (mapSystemId: string) => {
+            const sys = snap.viewData.systems.find((s) => s.id === mapSystemId);
+            return sys ? isWormholeSystem(sys) : false;
+          };
+          const matched = matchSignaturesForExperimentalCleanup({
+            settings: snap.signatureCleanupSettings,
+            selectedSystem: snap.selectedSystem,
+            systems: snap.viewData.systems,
+            signatures: snap.viewData.signatures,
+            connections: snap.viewData.connections,
+            indicatorPrefs: snap.signatureIndicators,
+            isWormholeSystem: isWormhole,
+          });
+          if (matched.length > 0) {
+            handlers.onBulkSignatureCleanup(matched.map((s) => s.id));
+          }
+        }
+        if (snap.settings.experimentalAutoMapCleanup) {
+          const expired = connectionsForExperimentalMapCleanup(snap.viewData.connections);
+          if (expired.length > 0) {
+            handlers.onBulkMapConnectionCleanup(expired.map((c) => c.id));
+          }
+        }
+      } finally {
+        experimentalAutoCleanupInFlight.current = false;
+      }
+    }, apertureConfig.EXPERIMENTAL_AUTO_CLEANUP_INTERVAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [
+    experimentalActive,
+    settings.experimentalAutoSignatureCleanup,
+    settings.experimentalAutoMapCleanup,
+  ]);
 
   // EVE solar-system ids already placed — lets the add dialog flag duplicates.
   const existingSystemIds = useMemo(

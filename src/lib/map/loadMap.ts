@@ -1,5 +1,6 @@
 import 'server-only';
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { parseExperimentalAutoCleanupFromNextBookmarks } from '@/lib/map/experimentalAutoCleanupSettings';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '@/db/client';
 import {
@@ -254,6 +255,10 @@ export type MapSettings = {
   homeMapSystemId: string | null;
   /** ABC-only: leave the Home system's static target untagged. */
   exemptHomeStaticFromTag: boolean;
+  /** Experimental UI: periodic signature Clean up (off by default). Stored in `next_bookmarks`. */
+  experimentalAutoSignatureCleanup: boolean;
+  /** Experimental UI: remove chart connections already marked expired (off by default). Stored in `next_bookmarks`. */
+  experimentalAutoMapCleanup: boolean;
 };
 
 /**
@@ -543,13 +548,24 @@ export async function loadMapSettings(
       tagScheme: apMap.tagScheme,
       homeMapSystemId: apMap.homeMapSystemId,
       exemptHomeStaticFromTag: apMap.exemptHomeStaticFromTag,
+      nextBookmarks: apMap.nextBookmarks,
     })
     .from(apMap)
     .where(and(eq(apMap.id, mapId), isNull(apMap.deletedAt)));
   if (!row) return null;
+  const experimentalAuto = parseExperimentalAutoCleanupFromNextBookmarks(row.nextBookmarks);
   return {
-    ...row,
+    name: row.name,
+    scope: row.scope,
+    type: row.type,
+    deleteExpiredConnections: row.deleteExpiredConnections,
+    deleteEolConnections: row.deleteEolConnections,
+    trackAbyssalJumps: row.trackAbyssalJumps,
+    tagScheme: row.tagScheme,
     homeMapSystemId: row.homeMapSystemId === null ? null : row.homeMapSystemId.toString(),
+    exemptHomeStaticFromTag: row.exemptHomeStaticFromTag,
+    experimentalAutoSignatureCleanup: experimentalAuto.autoSignatureCleanup,
+    experimentalAutoMapCleanup: experimentalAuto.autoMapCleanup,
   };
 }
 

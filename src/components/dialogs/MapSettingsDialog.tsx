@@ -20,6 +20,7 @@ import { readLowContrast, writeLowContrast } from '@/lib/lowContrast';
 import { isExperimentalUiActive, readExperimentalUiFromHtml } from '@/lib/experimentalUi';
 import { readWhPickerPrefs, writeWhPickerPrefs } from '@/lib/wormholePickerPrefs';
 import { MapBehaviorForm } from '@/components/map/manage/MapBehaviorForm';
+import { MapExperimentalCleanupForm } from '@/components/map/manage/MapExperimentalCleanupForm';
 import { MapTaggingForm } from '@/components/map/manage/MapTaggingForm';
 import { MapWebhooksPanel } from '@/components/map/manage/MapWebhooksPanel';
 import { MapRolesForm } from '@/components/map/manage/MapRolesForm';
@@ -71,6 +72,8 @@ export function MapSettingsDialog({
 }) {
   const can = (capability: MapCapability) => capabilities.includes(capability);
   const showApi = apiEnabled || can('api_manage');
+  const [experimentalUi] = useState(readExperimentalUiFromHtml);
+  const experimentalActive = isExperimentalUiActive(experimentalUi);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-4xl flex-col">
@@ -114,6 +117,15 @@ export function MapSettingsDialog({
                     trackAbyssalJumps: settings.trackAbyssalJumps,
                   }}
                 />
+                {experimentalActive ? (
+                  <MapExperimentalCleanupForm
+                    mapId={mapId}
+                    initialValues={{
+                      experimentalAutoSignatureCleanup: settings.experimentalAutoSignatureCleanup,
+                      experimentalAutoMapCleanup: settings.experimentalAutoMapCleanup,
+                    }}
+                  />
+                ) : null}
               </TabsPanel>
             )}
             {can('settings_manage') && (
