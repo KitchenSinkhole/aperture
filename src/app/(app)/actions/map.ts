@@ -45,6 +45,7 @@ const updateMapSettingsSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   deleteExpiredConnections: z.boolean().optional(),
   deleteEolConnections: z.boolean().optional(),
+  autoEolConnections: z.boolean().optional(),
   trackAbyssalJumps: z.boolean().optional(),
   // Auto-tagging (gated by settings_manage, like the rest of this action's fields).
   tagScheme: z.enum(tagScheme.enumValues).optional(),
@@ -217,6 +218,8 @@ export async function updateMapSettingsAction(
         set.deleteExpiredConnections = out.deleteExpiredConnections = patch.deleteExpiredConnections;
       if ('deleteEolConnections' in patch)
         set.deleteEolConnections = out.deleteEolConnections = patch.deleteEolConnections;
+      if ('autoEolConnections' in patch)
+        set.autoEolConnections = out.autoEolConnections = patch.autoEolConnections;
       if ('trackAbyssalJumps' in patch)
         set.trackAbyssalJumps = out.trackAbyssalJumps = patch.trackAbyssalJumps;
       if ('tagScheme' in patch) set.tagScheme = patch.tagScheme;

@@ -249,6 +249,8 @@ export type MapSettings = {
   type: MapType;
   deleteExpiredConnections: boolean;
   deleteEolConnections: boolean;
+  /** Age-based EOL estimates (`autoEol` cron) are on for this map. */
+  autoEolConnections: boolean;
   trackAbyssalJumps: boolean;
   /** Auto-tagging scheme (owner/admin-gated). */
   tagScheme: TagScheme;
@@ -543,6 +545,7 @@ export async function loadMapSettings(
       type: apMap.type,
       deleteExpiredConnections: apMap.deleteExpiredConnections,
       deleteEolConnections: apMap.deleteEolConnections,
+      autoEolConnections: apMap.autoEolConnections,
       trackAbyssalJumps: apMap.trackAbyssalJumps,
       tagScheme: apMap.tagScheme,
       homeMapSystemId: apMap.homeMapSystemId,

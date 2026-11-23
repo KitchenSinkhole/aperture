@@ -461,6 +461,7 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     name: z.string().optional(),
     deleteExpiredConnections: z.boolean().optional(),
     deleteEolConnections: z.boolean().optional(),
+    autoEolConnections: z.boolean().optional(),
     trackAbyssalJumps: z.boolean().optional(),
   }),
   z.object({
