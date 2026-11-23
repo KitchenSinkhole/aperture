@@ -1,4 +1,14 @@
-import { bigint, bigserial, boolean, integer, pgTable, text, timestamp, unique } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  bigserial,
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+} from 'drizzle-orm/pg-core';
 import { universeSystem } from '../universe/geography';
 import { apMap } from './map';
 import { apUser } from './user';
@@ -21,5 +31,8 @@ export const apMapRouteFavourite = pgTable(
     shared: boolean('shared').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique('ap_map_route_favourite_map_user_system_key').on(t.mapId, t.userId, t.systemId)],
+  (t) => [
+    unique('ap_map_route_favourite_map_user_system_key').on(t.mapId, t.userId, t.systemId),
+    index('ap_map_route_favourite_map_id_idx').on(t.mapId),
+  ],
 );

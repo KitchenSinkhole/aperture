@@ -848,7 +848,9 @@ export function MapCanvas({
     const base =
       mapLayout ??
       defaultMapLayoutForUi(experimentalOnLoad);
-    return ensurePanelsPlaced(dedupeGroups(migrateLayout(base)));
+    return ensurePanelsPlaced(dedupeGroups(migrateLayout(base)), {
+      experimental: experimentalOnLoad,
+    });
   });
   // The grid's active responsive breakpoint (reported by `MapLayoutGrid`). Grouping
   // is per-breakpoint, so the rendered cells read from `layout.groups[breakpoint]`.
@@ -944,7 +946,9 @@ export function MapCanvas({
 
   const applyLayoutPreset = useCallback(
     (preset: ExperimentalLayoutPreset) => {
-      const next = ensurePanelsPlaced(dedupeGroups(migrateLayout(experimentalLayoutPreset(preset))));
+      const next = ensurePanelsPlaced(dedupeGroups(migrateLayout(experimentalLayoutPreset(preset))), {
+        experimental: true,
+      });
       setLayout(next);
       firstLayoutChange.current = false;
       saveLayout(next);
@@ -1000,7 +1004,9 @@ export function MapCanvas({
       setLayout((prev) => {
         let next: MapLayoutConfig;
         if (prev.hidden.includes(id)) {
-          next = ensurePanelsPlaced({ ...prev, hidden: prev.hidden.filter((h) => h !== id) });
+          next = ensurePanelsPlaced({ ...prev, hidden: prev.hidden.filter((h) => h !== id) }, {
+            experimental: experimentalActive,
+          });
         } else {
           const removed = removePanelFromLayout(prev, id);
           next = { ...removed, hidden: [...prev.hidden, id] };
@@ -1224,7 +1230,9 @@ export function MapCanvas({
         toast.error('This file is not a valid Aperture layout.');
         return;
       }
-      const next = ensurePanelsPlaced(dedupeGroups(migrateLayout(parsed.data)));
+      const next = ensurePanelsPlaced(dedupeGroups(migrateLayout(parsed.data)), {
+        experimental: experimentalActive,
+      });
       setLayout(next);
       saveLayout(next);
       toast.success('Layout imported.');

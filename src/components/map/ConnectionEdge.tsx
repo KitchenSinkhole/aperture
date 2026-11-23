@@ -140,9 +140,14 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
     const base = finalStyle.strokeOpacity ?? 1;
     finalStyle = { ...finalStyle, strokeOpacity: Math.min(1, base * 1.28) };
   }
-  const minuteNow = useMapMinuteTick();
+  const needsEolMinuteTick =
+    importance &&
+    (data.eolStage === 'eol' ||
+      data.eolStage === 'critical' ||
+      data.eolStage === 'expired');
+  const minuteNow = useMapMinuteTick(needsEolMinuteTick);
   const eolLiveCountdown =
-    data.eolStage === 'eol' || data.eolStage === 'critical'
+    needsEolMinuteTick && (data.eolStage === 'eol' || data.eolStage === 'critical')
       ? connectionTimeLeftMs(data, minuteNow)
       : null;
   const eolUrgency = importance ? eolDisplayUrgency(data.eolStage, eolLiveCountdown) : null;

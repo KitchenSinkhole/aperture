@@ -41,6 +41,20 @@ export const PANELS: PanelDef[] = [
   { id: 'thera', title: 'Eve-Scout', defaultVisible: true, minW: 1, minH: 2 },
 ];
 
+/** Panels auto-placed and forward-compat registered only when `ap_ui` is on. */
+export const EXPERIMENTAL_ONLY_PANEL_IDS = [
+  'currentRoute',
+  'pilots',
+  'kills',
+  'dscan',
+] as const satisfies readonly PanelId[];
+
+/** Registry used for `ensurePanelsPlaced` and other forward-compat when experimental is off. */
+export function panelsRegisteredForUi(experimental: boolean): readonly PanelDef[] {
+  if (experimental) return PANELS;
+  return PANELS.filter((p) => !(EXPERIMENTAL_ONLY_PANEL_IDS as readonly PanelId[]).includes(p.id));
+}
+
 // Right-column modules, in display order (everything except canvas + signatures).
 const RIGHT_COLUMN: PanelId[] = [
   'sigSearch',
@@ -86,17 +100,19 @@ const wideLayout = (cols: number) => {
   ];
 };
 
-// sm: single-column stack in DOM source order.
-const stackedLayout = (() => {
+function buildStackedLayout(registry: readonly PanelDef[]) {
   let y = 0;
-  const items = PANELS.map((p) => {
+  const items = registry.map((p) => {
     const h = p.id === 'canvas' ? 10 : p.id === 'signatures' ? 6 : 4;
     const item = { i: p.id, x: 0, y, w: 4, h, minW: p.minW, minH: p.minH };
     y += h;
     return item;
   });
   return items;
-})();
+}
+
+const stackedLayout = buildStackedLayout(PANELS);
+const legacyStackedLayout = buildStackedLayout(panelsRegisteredForUi(false));
 
 /** One singleton `PanelGroup` per layout item — its id is the item's `PanelId`. */
 function singletonGroups(items: Layout): PanelGroup[] {
@@ -109,7 +125,7 @@ function singletonGroups(items: Layout): PanelGroup[] {
 const defaultLayouts: Record<Breakpoint, Layout> = {
   lg: wideLayout(12),
   md: wideLayout(8),
-  sm: stackedLayout,
+  sm: legacyStackedLayout,
 };
 
 export const DEFAULT_MAP_LAYOUT: MapLayoutConfig = {
@@ -208,7 +224,11 @@ const APPENDED_PANEL_H = 4;
  * its layout item) survives reloads. Returns the input unchanged when nothing is
  * missing (referential stability for the common case).
  */
-export function ensurePanelsPlaced(config: MapLayoutConfig): MapLayoutConfig {
+export function ensurePanelsPlaced(
+  config: MapLayoutConfig,
+  options?: { experimental?: boolean },
+): MapLayoutConfig {
+  const registry = panelsRegisteredForUi(options?.experimental ?? false);
   let changed = false;
   const layouts = { ...config.layouts };
   const groups = { ...config.groups };
@@ -220,7 +240,7 @@ export function ensurePanelsPlaced(config: MapLayoutConfig): MapLayoutConfig {
     // so keying on layout item ids alone would wrongly treat it as missing and
     // re-add it as a duplicate standalone cell on every reload.
     const present = new Set((groups[bp] ?? []).flatMap((g) => g.members));
-    const missing = PANELS.filter((p) => !present.has(p.id) && !hidden.has(p.id));
+    const missing = registry.filter((p) => !present.has(p.id) && !hidden.has(p.id));
     if (missing.length === 0) continue;
     changed = true;
     const cols = PANEL_COLS[bp];

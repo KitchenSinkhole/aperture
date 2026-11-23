@@ -3,7 +3,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apMapActiveRoute } from '@/db/schema';
-import { requireSession } from '@/lib/session';
+import { requireSession, assertCharacterOwnership } from '@/lib/session';
 import { canViewMap } from '@/lib/auth/rights';
 import type { MapActiveRouteView, RouteHop } from '@/types';
 import { setMapActiveRouteInputSchema } from '@/lib/map/mapActiveRouteSchema';
@@ -19,23 +19,41 @@ export async function setMapActiveRouteAction(
     return { ok: false, error: 'No access.' };
   }
 
+  const primaryId = BigInt(parsed.data.primaryCharacterId);
+  if (!(await assertCharacterOwnership(primaryId, session.userId))) {
+    return { ok: false, error: 'Character not found.' };
+  }
+  for (const followerId of parsed.data.followerCharacterIds) {
+    if (!(await assertCharacterOwnership(BigInt(followerId), session.userId))) {
+      return { ok: false, error: 'Character not found.' };
+    }
+  }
+
   const hops = parsed.data.plan.hops;
   const planJson = { hops, destinationSystemId: parsed.data.destinationSystemId };
-
-  await db
-    .delete(apMapActiveRoute)
-    .where(and(eq(apMapActiveRoute.mapId, mapId), eq(apMapActiveRoute.ownerUserId, session.userId)));
+  const now = new Date();
 
   const [row] = await db
     .insert(apMapActiveRoute)
     .values({
       mapId,
       ownerUserId: session.userId,
-      primaryCharacterId: BigInt(parsed.data.primaryCharacterId),
+      primaryCharacterId: primaryId,
       destinationSystemId: parsed.data.destinationSystemId,
       planJson,
       followerCharacterIds: parsed.data.followerCharacterIds,
       waypointCursor: 0,
+    })
+    .onConflictDoUpdate({
+      target: [apMapActiveRoute.mapId, apMapActiveRoute.ownerUserId],
+      set: {
+        primaryCharacterId: primaryId,
+        destinationSystemId: parsed.data.destinationSystemId,
+        planJson,
+        followerCharacterIds: parsed.data.followerCharacterIds,
+        waypointCursor: 0,
+        updatedAt: now,
+      },
     })
     .returning();
 

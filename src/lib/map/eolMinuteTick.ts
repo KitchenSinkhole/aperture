@@ -33,9 +33,12 @@ export function subscribeMapMinuteTick(listener: () => void): () => void {
   };
 }
 
-/** Re-renders at most once per minute while mounted. */
-export function useMapMinuteTick(): number {
+/** Re-renders at most once per minute while mounted and `enabled`. */
+export function useMapMinuteTick(enabled = true): number {
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => subscribeMapMinuteTick(() => setNow(Date.now())), []);
+  useEffect(() => {
+    if (!enabled) return;
+    return subscribeMapMinuteTick(() => setNow(Date.now()));
+  }, [enabled]);
   return now;
 }

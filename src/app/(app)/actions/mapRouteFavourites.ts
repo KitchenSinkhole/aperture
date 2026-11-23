@@ -73,6 +73,7 @@ export async function removeMapRouteFavouriteAction(input: {
     .where(
       and(
         eq(apMapRouteFavourite.id, BigInt(input.favouriteId)),
+        eq(apMapRouteFavourite.mapId, BigInt(input.mapId)),
         eq(apMapRouteFavourite.userId, session.userId),
       ),
     );

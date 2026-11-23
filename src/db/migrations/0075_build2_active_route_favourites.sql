@@ -28,4 +28,6 @@ ALTER TABLE "ap_map_active_route" ADD CONSTRAINT "ap_map_active_route_primary_ch
 ALTER TABLE "ap_map_active_route" ADD CONSTRAINT "ap_map_active_route_destination_system_id_universe_system_id_fk" FOREIGN KEY ("destination_system_id") REFERENCES "public"."universe_system"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ap_map_route_favourite" ADD CONSTRAINT "ap_map_route_favourite_map_id_ap_map_id_fk" FOREIGN KEY ("map_id") REFERENCES "public"."ap_map"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ap_map_route_favourite" ADD CONSTRAINT "ap_map_route_favourite_user_id_ap_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."ap_user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "ap_map_route_favourite" ADD CONSTRAINT "ap_map_route_favourite_system_id_universe_system_id_fk" FOREIGN KEY ("system_id") REFERENCES "public"."universe_system"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "ap_map_route_favourite" ADD CONSTRAINT "ap_map_route_favourite_system_id_universe_system_id_fk" FOREIGN KEY ("system_id") REFERENCES "public"."universe_system"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ap_map_active_route" ADD CONSTRAINT "ap_map_active_route_map_owner_key" UNIQUE("map_id","owner_user_id");--> statement-breakpoint
+CREATE INDEX "ap_map_route_favourite_map_id_idx" ON "ap_map_route_favourite" USING btree ("map_id");
