@@ -1,18 +1,33 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, getSmoothStepPath, type EdgeProps } from '@xyflow/react';
 import type { MapConnectionEdge } from '@/lib/map/loadMap';
 import type { ConnectionEnd } from '@/types';
 import { Tooltip } from '@base-ui/react/tooltip';
 import { Eye, RefreshCw, Shield, type LucideIcon } from 'lucide-react';
-import { connectionBadges, connectionStyle } from './styling';
+import {
+  connectionBadges,
+  connectionStyle,
+  experimentalEolCountdownPillClass,
+  experimentalEolOutlineClass,
+  experimentalEolOutlineClassFromUrgency,
+} from './styling';
+import { useMapStyleOptions } from './MapStyleContext';
 import { useTravelForConnection } from './MapTravelContext';
 import { useIsConnectionWatched } from '@/lib/connectionWatchPrefs';
 import { ConnectionDetailPopover } from './ConnectionDetailPopover';
 import { useEdgeAnchors } from './useEdgeAnchors';
 import { ConnectionBubble } from './ConnectionBubble';
 import { ConnectionEndpoint, type ConnectionEndpointState } from './ConnectionEndpoint';
+import { useMapLinkHover, useSetMapLinkHover } from './MapLinkHoverContext';
+import { SIGNATURE_DRAG_MIME } from '@/lib/experimentalSignatureUndo';
+import {
+  connectionTimeLeftMs,
+  eolDisplayUrgency,
+  formatEolTimeLeftTag,
+} from '@/lib/map/connectionState';
+import { useMapMinuteTick } from '@/lib/map/eolMinuteTick';
 
 // Selectable connection edge. Scope + mass status drive the stroke colour; EOL
 // dashes the line; flags (jump-mass / EOL / frigate / rolling / preserve) render
@@ -45,6 +60,12 @@ export type ConnectionEdgeData = MapConnectionEdge & {
   wormholeCode: string | null;
   /** Right-click on one mouth of this connection; opens the endpoint context menu. */
   onEndpointContextMenu: (connectionId: string, end: ConnectionEnd, clientX: number, clientY: number) => void;
+  /** BFS tree from Home (experimental link salience). */
+  isOnHomePath?: boolean;
+  /** Experimental route planner path highlight. */
+  routeHighlighted?: boolean;
+  /** Drop a signature row onto this edge to link (experimental). */
+  onSignatureLinkDrop?: (connectionId: string, signatureId: string) => void;
 };
 
 export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) {
@@ -93,12 +114,67 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
   const [hovered, setHovered] = useState(false);
   const [hoveredEnd, setHoveredEnd] = useState<ConnectionEnd | null>(null);
 
-  const style = connectionStyle(data);
-  const lineWeight = selected ? 2 : hovered && hoveredEnd === null ? 1.5 : 0;
-  const finalStyle = lineWeight
-    ? { ...style, strokeWidth: (style.strokeWidth ?? 3) + lineWeight }
-    : style;
-  const badges = connectionBadges(data);
+  const styleOpts = useMapStyleOptions();
+  const importance = styleOpts.importanceLinks === true;
+  const style = connectionStyle(data, styleOpts);
+  const linkHover = useMapLinkHover();
+  const setLinkHover = useSetMapLinkHover();
+  const isLit = importance && linkHover.edgeId === props.id;
+  const lineWeight = selected
+    ? 2
+    : hovered && hoveredEnd === null
+      ? importance
+        ? 2.5
+        : 1.5
+      : 0;
+  let finalStyle = lineWeight
+    ? { ...style, strokeWidth: (style.strokeWidth ?? 3) + lineWeight, strokeOpacity: 1 }
+    : { ...style };
+  if (importance && isLit) {
+    finalStyle = {
+      ...finalStyle,
+      strokeWidth: (finalStyle.strokeWidth ?? 2) + 2,
+      strokeOpacity: 1,
+    };
+  } else if (importance && data.isOnHomePath) {
+    const base = finalStyle.strokeOpacity ?? 1;
+    finalStyle = { ...finalStyle, strokeOpacity: Math.min(1, base * 1.28) };
+  }
+  const minuteNow = useMapMinuteTick();
+  const eolLiveCountdown =
+    data.eolStage === 'eol' || data.eolStage === 'critical'
+      ? connectionTimeLeftMs(data, minuteNow)
+      : null;
+  const eolUrgency = importance ? eolDisplayUrgency(data.eolStage, eolLiveCountdown) : null;
+  const eolOutlineClass = importance
+    ? experimentalEolOutlineClassFromUrgency(eolUrgency) ??
+      (eolLiveCountdown == null ? experimentalEolOutlineClass(data.eolStage) : null)
+    : null;
+
+  const badges = useMemo(() => {
+    const base = connectionBadges(data, styleOpts);
+    if (!importance) return base;
+    const countdown =
+      eolLiveCountdown != null ? formatEolTimeLeftTag(eolLiveCountdown) : null;
+    const showLiveEol =
+      data.eolStage === 'eol' ||
+      data.eolStage === 'critical' ||
+      data.eolStage === 'expired';
+    if (!showLiveEol) return base;
+    if (!countdown && eolUrgency == null) return base;
+    return base.map((b) => {
+      if (b.key !== 'eol') return b;
+      const urgency =
+        eolUrgency ??
+        (data.eolStage === 'critical' || data.eolStage === 'expired' ? 'critical' : 'warning');
+      return {
+        ...b,
+        tone: data.eolStage === 'expired' && urgency === 'critical' ? undefined : b.tone,
+        ...(countdown ? { label: countdown } : {}),
+        eolUrgency: urgency,
+      };
+    });
+  }, [data, styleOpts, importance, eolLiveCountdown, eolUrgency]);
   const watched = useIsConnectionWatched(data.mapId, props.id);
   const hasLabel = badges.length > 0 || data.isRolling || data.preserveMass || watched;
   const travel = useTravelForConnection(props.id);
@@ -112,12 +188,42 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
   return (
     <>
       <g
-        onMouseEnter={() => setHovered(true)}
+        onMouseEnter={() => {
+          setHovered(true);
+          if (importance) {
+            setLinkHover({ edgeId: props.id, sourceId: source, targetId: target });
+          }
+        }}
         onMouseLeave={() => {
           setHovered(false);
           setHoveredEnd(null);
+          if (importance) {
+            setLinkHover({ edgeId: null, sourceId: null, targetId: null });
+          }
+        }}
+        onDragOver={(e) => {
+          if (!data.onSignatureLinkDrop) return;
+          if (e.dataTransfer.types.includes(SIGNATURE_DRAG_MIME)) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'link';
+          }
+        }}
+        onDrop={(e) => {
+          if (!data.onSignatureLinkDrop) return;
+          const sigId = e.dataTransfer.getData(SIGNATURE_DRAG_MIME);
+          if (!sigId) return;
+          e.preventDefault();
+          data.onSignatureLinkDrop(props.id, sigId);
         }}
       >
+        {eolOutlineClass ? (
+          <path
+            d={path}
+            fill="none"
+            className={`${eolOutlineClass} pointer-events-none`}
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
         {data.sourceBubbled && (
           <ConnectionBubble
             gradientId={`bubble-${props.id}-source`}
@@ -136,7 +242,18 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
             far={sourceAnchor}
           />
         )}
-        <BaseEdge path={path} style={finalStyle} />
+        <BaseEdge
+          path={path}
+          style={
+            data.routeHighlighted
+              ? {
+                  ...finalStyle,
+                  strokeWidth: (finalStyle.strokeWidth ?? 2) + 1.5,
+                  filter: 'drop-shadow(0 0 3px rgb(56 189 248 / 0.75))',
+                }
+              : finalStyle
+          }
+        />
         <ConnectionEndpoint
           end="source"
           anchor={sourceAnchor}
@@ -216,6 +333,13 @@ export function ConnectionEdge(props: EdgeProps & { data: ConnectionEdgeData }) 
                           key={b.key}
                           className="rounded-sm bg-amber-400 px-1 py-px font-bold text-black"
                           aria-label="Small connection — frigate-size ships only"
+                        >
+                          {b.label}
+                        </span>
+                      ) : b.eolUrgency ? (
+                        <span
+                          key={b.key}
+                          className={`rounded-sm px-1 py-px font-medium ${experimentalEolCountdownPillClass(b.eolUrgency)}`}
                         >
                           {b.label}
                         </span>

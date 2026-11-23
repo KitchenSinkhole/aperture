@@ -50,6 +50,7 @@ const updateMapSettingsSchema = z.object({
   tagScheme: z.enum(tagScheme.enumValues).optional(),
   homeMapSystemId: z.string().regex(/^\d+$/, 'Invalid system id.').nullable().optional(),
   exemptHomeStaticFromTag: z.boolean().optional(),
+  experimentalAutoSignatureCleanup: z.boolean().optional(),
 });
 
 /** Denial copy per map type, naming the requirement `canCreateMap` enforces. */
@@ -219,6 +220,9 @@ export async function updateMapSettingsAction(
         set.deleteEolConnections = out.deleteEolConnections = patch.deleteEolConnections;
       if ('trackAbyssalJumps' in patch)
         set.trackAbyssalJumps = out.trackAbyssalJumps = patch.trackAbyssalJumps;
+      if ('experimentalAutoSignatureCleanup' in patch)
+        set.experimentalSignatureCleanup = out.experimentalAutoSignatureCleanup =
+          patch.experimentalAutoSignatureCleanup;
       if ('tagScheme' in patch) set.tagScheme = patch.tagScheme;
       if ('exemptHomeStaticFromTag' in patch)
         set.exemptHomeStaticFromTag = patch.exemptHomeStaticFromTag;

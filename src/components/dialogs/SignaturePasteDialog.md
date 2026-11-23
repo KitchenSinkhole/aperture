@@ -13,6 +13,7 @@
 | mapSystemId | string | yes | `ap_map_system.id` as string |
 | existingSigs | MapSignature[] | yes | Sigs on this system (pre-filtered by caller) |
 | onResult | (payloads: MapEventPayload[]) => void | yes | Called with the committed events on success — caller registers each `eventId` and applies each payload |
+| initialText | string | no | Seeds the textarea when opened from experimental Ctrl+V preview |
 
 ### Renders
 A shadcn `Dialog`: header, monospace textarea, preview table (one row per parsed sig + one per to-be-removed existing sig), four option checkboxes, action footer.

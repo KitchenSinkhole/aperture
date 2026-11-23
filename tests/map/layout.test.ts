@@ -1,9 +1,16 @@
+import type { Layout } from 'react-grid-layout';
 import { describe, expect, it } from 'vitest';
 import {
+  applyExperimentalPanelCollapse,
+  EXPERIMENTAL_COLLAPSED_PANEL_H,
+} from '@/lib/map/layout/experimentalCollapse';
+import {
   DEFAULT_MAP_LAYOUT,
+  LAYOUT_CONFIG_VERSION,
   PANELS,
   dedupeGroups,
   ensurePanelsPlaced,
+  mergePanelIntoGroup,
   migrateLayout,
   removePanelFromLayout,
 } from '@/lib/map/layout/panels';
@@ -29,7 +36,7 @@ function v1Layout(): StoredMapLayout {
 describe('migrateLayout', () => {
   it('derives one singleton group per layout item from a v1 blob', () => {
     const migrated = migrateLayout(v1Layout());
-    expect(migrated.version).toBe(2);
+    expect(migrated.version).toBe(LAYOUT_CONFIG_VERSION);
     expect(migrated.groups.lg).toEqual([
       { id: 'canvas', members: ['canvas'], active: 'canvas' },
       { id: 'signatures', members: ['signatures'], active: 'signatures' },
@@ -46,10 +53,10 @@ describe('migrateLayout', () => {
     }
   });
 
-  it('returns an already-grouped (v2) config unchanged', () => {
+  it('returns an already-grouped config unchanged', () => {
     const migrated = migrateLayout(DEFAULT_MAP_LAYOUT);
     expect(migrated.groups).toEqual(DEFAULT_MAP_LAYOUT.groups);
-    expect(migrated.version).toBe(2);
+    expect(migrated.version).toBe(LAYOUT_CONFIG_VERSION);
   });
 });
 
@@ -84,7 +91,7 @@ describe('ensurePanelsPlaced', () => {
   });
 
   it('is referentially stable when nothing is missing', () => {
-    const complete = migrateLayout(DEFAULT_MAP_LAYOUT);
+    const complete = ensurePanelsPlaced(migrateLayout(DEFAULT_MAP_LAYOUT));
     expect(ensurePanelsPlaced(complete)).toBe(complete);
   });
 
@@ -181,6 +188,18 @@ describe('dedupeGroups', () => {
   it('is referentially stable when no panel is duplicated', () => {
     const clean = migrateLayout(DEFAULT_MAP_LAYOUT);
     expect(dedupeGroups(clean)).toBe(clean);
+  });
+});
+
+describe('mergePanelIntoGroup', () => {
+  it('moves a singleton tab into another group and activates it', () => {
+    const base = migrateLayout(DEFAULT_MAP_LAYOUT);
+    const next = mergePanelIntoGroup(base, 'lg', 'route', 'inspector');
+    const inspector = next.groups.lg.find((g) => g.id === 'inspector')!;
+    expect(inspector.members).toContain('route');
+    expect(inspector.active).toBe('route');
+    expect(next.groups.lg.some((g) => g.id === 'route')).toBe(false);
+    expect(next.layouts.lg.some((i) => i.i === 'route')).toBe(false);
   });
 });
 
@@ -294,5 +313,38 @@ describe('mapLayoutConfigSchema', () => {
       },
     };
     expect(mapLayoutConfigSchema.safeParse(config).success).toBe(false);
+  });
+});
+
+describe('applyExperimentalPanelCollapse', () => {
+  const stack: Layout = [
+    { i: 'canvas', x: 0, y: 0, w: 8, h: 12 },
+    { i: 'signatures', x: 0, y: 12, w: 8, h: 10 },
+    { i: 'intel', x: 0, y: 22, w: 8, h: 4 },
+  ];
+
+  it('shrinks height and pulls items below up on collapse', () => {
+    const saved = new Map<string, number>();
+    const next = applyExperimentalPanelCollapse(stack, 'signatures', true, saved)!;
+    const sig = next.find((it) => it.i === 'signatures')!;
+    const intel = next.find((it) => it.i === 'intel')!;
+    expect(sig.h).toBe(EXPERIMENTAL_COLLAPSED_PANEL_H);
+    expect(intel.y).toBe(12 + EXPERIMENTAL_COLLAPSED_PANEL_H);
+    expect(saved.get('signatures')).toBe(10);
+  });
+
+  it('restores saved height and shifts items down on expand', () => {
+    const saved = new Map<string, number>([['signatures', 10]]);
+    const collapsed: Layout = [
+      { i: 'canvas', x: 0, y: 0, w: 8, h: 12 },
+      { i: 'signatures', x: 0, y: 12, w: 8, h: EXPERIMENTAL_COLLAPSED_PANEL_H },
+      { i: 'intel', x: 0, y: 13, w: 8, h: 4 },
+    ];
+    const next = applyExperimentalPanelCollapse(collapsed, 'signatures', false, saved)!;
+    const sig = next.find((it) => it.i === 'signatures')!;
+    const intel = next.find((it) => it.i === 'intel')!;
+    expect(sig.h).toBe(10);
+    expect(intel.y).toBe(22);
+    expect(saved.has('signatures')).toBe(false);
   });
 });

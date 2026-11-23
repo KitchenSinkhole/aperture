@@ -58,6 +58,7 @@ If the target id no longer resolves (realtime removed it), a single disabled "�
 - `./WatchConnectionItem` — renders the "Watch this wormhole" checkbox (reads and writes the watch store itself, and decides whether to appear).
 - `./SystemSoundMuteItem` — renders the system's `Sounds ▸` mute submenu (reads and saves the account's sound prefs itself, and decides whether to appear).
 - `./AddToRoutesItem` — renders the "Add to routes" menu item (saves a route-planner destination).
+- `./RouteHereItem` — experimental "Route here" menu item (same persistence, route-oriented toast).
 - `@base-ui/react/context-menu` — `ContextMenu.Root` for the context-menu-mode root (controlled `open` + virtual anchor).
 - `@base-ui/react/menu` — `Portal` / `Positioner` / `Popup` for the cursor-anchored popup (styling mirrors `MenuContent`).
 - `@/lib/map/enumLabels` — enum value lists + EOL labels and their types.

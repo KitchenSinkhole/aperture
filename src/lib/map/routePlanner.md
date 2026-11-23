@@ -11,7 +11,7 @@ The cached undirected K-space stargate adjacency plus each system's `true_sec` (
 ---
 
 ### loadMapWormholeEdges(mapId: bigint): Promise<RouteOverlayEdge[]>
-The map's `wh` + `jumpbridge` connections as overlay edges, with each endpoint resolved to its EVE solar-system id via a double self-join on `ap_map_system`. Only links between two **visible** systems are returned; `stargate` (already in the static graph) and `abyssal` connections are skipped. Wormhole mass/EOL fields are carried for filtering; jumpbridges carry nulls.
+The map's `wh` + `jumpbridge` connections as overlay edges (jumpbridges omitted when `prefs.includeJumpBridge === false`), with each endpoint resolved to its EVE solar-system id via a double self-join on `ap_map_system`. Only links between two **visible** systems are returned; `stargate` (already in the static graph) and `abyssal` connections are skipped. Wormhole mass/EOL fields are carried for filtering; jumpbridges carry nulls.
 
 **Returns:** `RouteOverlayEdge[]` — `{ from, to, kind, connectionId, jumpMassClass, massStatus, eolStage }`.
 

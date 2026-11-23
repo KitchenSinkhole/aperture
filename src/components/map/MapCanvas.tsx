@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import {
   Background,
   ConnectionMode,
@@ -26,14 +34,19 @@ import type {
   MapCapability,
   MapContextMenuTarget,
   MapEventPayload,
+  ExperimentalLayoutPreset,
   MapLayoutConfig,
   MapSettings,
   MapSignature,
+  SignatureGroupKey,
   MapSystemNode,
   MapViewData,
   PanelGroup,
   PanelId,
   RouteDestinationView,
+  MapActiveRouteView,
+  MapRouteFavouriteView,
+  RoutePlan,
   RoutePrefs,
   SignatureIndicatorPrefs,
   SigSearchFilters,
@@ -62,6 +75,7 @@ import {
   fetchMapSnapshot,
   fetchSystemData,
   fetchSystemSignatures,
+  fetchWormholeCatalog,
   pingSystemOnServer,
   removeSystemOnServer,
   updateConnectionOnServer,
@@ -82,7 +96,7 @@ import {
   deleteStructureOnServer,
   updateStructureOnServer,
 } from '@/lib/structures/client';
-import { mapUpdateLoadSchema, type Envelope } from '@/lib/realtime/protocol';
+import { connectionMassLogLoadSchema, mapUpdateLoadSchema, type Envelope } from '@/lib/realtime/protocol';
 import {
   useBlackoutStatus,
   useMapSubscription,
@@ -104,12 +118,14 @@ import {
   SignatureModuleHeaderActions,
 } from '@/components/sidebar/SignatureModule';
 import {
+  Copy,
   Download,
   Info,
   LayoutDashboard,
   RotateCcw,
   ScrollText,
   Settings,
+  Sparkles,
   Trash2,
   Upload,
   User,
@@ -127,6 +143,7 @@ import {
   Menu,
   MenuCheckboxItem,
   MenuContent,
+  MenuGroupLabel,
   MenuItem,
   MenuSeparator,
   MenuTrigger,
@@ -154,6 +171,24 @@ import { MapUnderglowProvider } from './MapUnderglowContext';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
 import { PresenceSoundBridge } from './PresenceSoundBridge';
 import { RallySoundBridge } from './RallySoundBridge';
+import { ExperimentalActiveRouteBridge } from './ExperimentalActiveRouteBridge';
+import { ExperimentalPanelGearProvider } from './experimentalPanelGear';
+import { pushKspaceWaypointsForCharacter } from '@/lib/character/pushRouteWaypoints';
+import { ExperimentalCombatRingProvider } from './ExperimentalCombatRingContext';
+import { ExperimentalCombatKillBridge } from './ExperimentalCombatKillBridge';
+import { ExperimentalFollowPilotBridge } from './ExperimentalFollowPilotBridge';
+import {
+  mergeSoundPanelSettings,
+  parseExperimentalSoundLayoutSettings,
+  type ExperimentalSoundLayoutSettings,
+} from '@/lib/experimentalSoundLayout';
+import { activeRouteConnectionIds, remainingActiveRouteHops } from '@/lib/map/activeRouteMonitor';
+import { MapJumpToSystemDialog } from './MapJumpToSystemDialog';
+import { ExperimentalUndoHotkeys } from './ExperimentalUndoHotkeys';
+import { CurrentRoutePanel } from '@/components/sidebar/CurrentRoutePanel';
+import { ExperimentalPilotsPanel } from '@/components/sidebar/ExperimentalPilotsPanel';
+import { ExperimentalKillsPanel } from '@/components/sidebar/ExperimentalKillsPanel';
+import { ExperimentalDscanPanel } from '@/components/sidebar/ExperimentalDscanPanel';
 import { SystemNotificationSoundBridge } from './SystemNotificationSoundBridge';
 import { WatchedConnectionSoundBridge } from './WatchedConnectionSoundBridge';
 import { SystemNode, type SystemNodeData } from './SystemNode';
@@ -161,25 +196,108 @@ import { MapNoteNode, type MapNoteNodeData } from './MapNoteNode';
 import { MapContextMenu } from './MapContextMenu';
 import { SubchainDeletePrompt } from './SubchainDeletePrompt';
 import { RestoreConnectionPrompt } from './RestoreConnectionPrompt';
+import { applyExperimentalPanelCollapse } from '@/lib/map/layout/experimentalCollapse';
+import { MapCommandPalette, useMapCommandPaletteKeyboard } from './MapCommandPalette';
+import {
+  focusSystemActionLabel,
+  matchSystemsForFocus,
+} from '@/lib/map/commandPaletteSystemFocus';
+import { ExperimentalThemeToggle } from './ExperimentalThemeToggle';
+import { MapStyleProvider } from './MapStyleContext';
+import { MapLinkHoverProvider } from './MapLinkHoverContext';
+import { homePathConnectionIds } from '@/lib/map/homePath';
+import type { MapStyleOptions } from './styling';
 import { MapLayoutGrid } from './layout/MapLayoutGrid';
 import { MapPanelGroup } from './layout/MapPanelGroup';
 import { PanelDndContext } from './layout/PanelDndContext';
 import {
-  DEFAULT_MAP_LAYOUT,
+  defaultMapLayoutForUi,
   PANELS,
   PANEL_COLS,
   PANEL_MIN,
   dedupeGroups,
   ensurePanelsPlaced,
+  mergePanelIntoGroup,
   migrateLayout,
   removePanelFromLayout,
 } from '@/lib/map/layout/panels';
 import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
 import { setMapLayoutAction } from '@/app/(app)/actions/account';
+import { clearMapActiveRouteAction } from '@/app/(app)/actions/mapActiveRoute';
+import { experimentalMapStyleVariant, isExperimentalUiActive } from '@/lib/experimentalUi';
+import { experimentalLayoutPreset } from '@/lib/experimentalLayoutPresets';
+import {
+  DEFAULT_SIGNATURE_CLEANUP_SETTINGS,
+  SignatureCleanupDialog,
+  type SignatureCleanupPanelSettings,
+} from '@/components/dialogs/SignatureCleanupDialog';
+import {
+  ExperimentalPanelAddButton,
+  experimentalPanelSupportsAdd,
+} from '@/components/map/experimentalPanelHeaderActions';
+import {
+  requestExperimentalPanelAdd,
+  subscribeExperimentalPanelAdd,
+} from '@/lib/experimentalPanelActionBus';
+import { readExperimentalAutoMassFromLog, readKeepMapSelection } from '@/lib/experimentalQolPrefs';
+import { experimentalSettingLabel } from '@/lib/experimentalSettingLabel';
+import {
+  readExperimentalFightMapSystemId,
+  readExperimentalIncludeJumpBridge,
+  subscribeExperimentalRoutePrefs,
+  writeExperimentalFightMapSystemId,
+  writeExperimentalIncludeJumpBridge,
+} from '@/lib/experimentalRoutePrefs';
+import { massStatusFromCumulative } from '@/lib/experimentalAutoMass';
+import { matchSignaturesForExperimentalCleanup } from '@/lib/map/experimentalSignatureCleanupMatch';
+import { isWormholeSystem } from '@/lib/map/space';
+import { apertureConfig } from '../../../aperture.config';
+import { fetchWormholeJumpInfo } from '@/lib/reference/client';
+import type { WormholeJumpInfoRow } from '@/types';
+import { useExperimentalUi } from '@/lib/experimentalUi.client';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
+import {
+  experimentalUndoHydrateFromStorage,
+  experimentalUndoPush,
+  experimentalUndoPushSignature,
+  experimentalUndoSetExecutor,
+} from '@/lib/experimentalPanelUndo';
+import {
+  runSignatureUndoPayload,
+  snapshotPatchInverse,
+  type SignatureUndoPayload,
+  type SignatureUndoRuntime,
+} from '@/lib/experimentalSignatureUndo';
 
 // Debounce window for persisting layout edits (drag/resize/hide) to the server.
 const LAYOUT_SAVE_DEBOUNCE_MS = 600;
+
+function parseSignatureCleanupSettings(
+  layout: MapLayoutConfig,
+): SignatureCleanupPanelSettings {
+  const raw = layout.panelSettings?.signatures;
+  if (!raw || typeof raw !== 'object') return DEFAULT_SIGNATURE_CLEANUP_SETTINGS;
+  const scope = raw.scope === 'chain' ? 'chain' : 'system';
+  const groups = Array.isArray(raw.groups)
+    ? raw.groups.filter((g): g is SignatureGroupKey => typeof g === 'string')
+    : DEFAULT_SIGNATURE_CLEANUP_SETTINGS.groups;
+  return {
+    scope,
+    olderThanHours:
+      typeof raw.olderThanHours === 'number'
+        ? raw.olderThanHours
+        : raw.olderThanHours === null
+          ? null
+          : DEFAULT_SIGNATURE_CLEANUP_SETTINGS.olderThanHours,
+    unscannedOnly: raw.unscannedOnly === true,
+    staleByIndicator: raw.staleByIndicator !== false,
+    whLinkExpired: raw.whLinkExpired === true,
+    groups,
+  };
+}
+
+const COMMAND_PANEL_FOCUS_ORDER: PanelId[] = ['signatures', 'inspector', 'route', 'intel'];
 
 // Cadence for re-pulling read-side per-system intel/stats for systems already on
 // the map. Floored at the ~5min server refresh-job cadence — polling faster than
@@ -308,6 +426,9 @@ export function MapCanvas({
   routePrefs,
   routeDestinations,
   mapLayout,
+  initialExperimentalUi,
+  mapRouteFavourites = [],
+  mapActiveRoute = null,
 }: {
   data: MapViewData;
   stats: Record<number, SystemStatsSummary>;
@@ -355,8 +476,13 @@ export function MapCanvas({
    * `DEFAULT_MAP_LAYOUT`.
    */
   mapLayout?: MapLayoutConfig | null;
+  /** SSR-resolved experimental UI mode for seeding the default layout when `mapLayout` is null. */
+  initialExperimentalUi: import('@/lib/experimentalUi').ExperimentalUiMode;
+  mapRouteFavourites?: MapRouteFavouriteView[];
+  mapActiveRoute?: MapActiveRouteView | null;
 }) {
   const [selected, setSelected] = useState<SelectionRef | null>(null);
+  const [lastPrimarySystem, setLastPrimarySystem] = useState<MapSystemNode | null>(null);
   // The multi-select set; `selected` (above) remains the primary anchor that
   // drives the inspector and sidebar modules. Invariant: when
   // `selected?.kind === 'system'`, this set contains `selected.id`. Always
@@ -385,6 +511,9 @@ export function MapCanvas({
   const [disconnectedPreview, setDisconnectedPreview] = useState<{ count: number } | null>(null);
   const [mapInfoOpen, setMapInfoOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [jumpPickerOpen, setJumpPickerOpen] = useState(false);
+  const whMassRef = useRef<WormholeJumpInfoRow[] | null>(null);
   const [auditOpen, setAuditOpen] = useState(false);
   const [addSystemOpen, setAddSystemOpen] = useState(false);
   const [sigSearchFilters, setSigSearchFilters] = useState<SigSearchFilters>({
@@ -404,6 +533,15 @@ export function MapCanvas({
   // One-shot "Lazy delete" arm for the CTRL+V fast paste: when on, the next
   // direct scanner paste also removes missing sigs, then disarms itself.
   const [lazyDeleteSigs, setLazyDeleteSigs] = useState(false);
+  const [sigCleanupOpen, setSigCleanupOpen] = useState(false);
+  const [panelGearJumpBridge, setPanelGearJumpBridge] = useState(readExperimentalIncludeJumpBridge);
+  useEffect(
+    () =>
+      subscribeExperimentalRoutePrefs(() =>
+        setPanelGearJumpBridge(readExperimentalIncludeJumpBridge()),
+      ),
+    [],
+  );
   const [viewData, setViewData] = useState<MapViewData>(data);
   const [liveShares, setLiveShares] = useState<LiveShareBadge[]>(initialLiveShares);
   const blackout = useBlackoutStatus(viewData.blackout);
@@ -571,9 +709,147 @@ export function MapCanvas({
   // a saved layout (a panel that shipped after the user last saved). All are
   // normalisers, no data migration. No-ops for `DEFAULT_MAP_LAYOUT` (already
   // current and complete).
-  const [layout, setLayout] = useState<MapLayoutConfig>(() =>
-    ensurePanelsPlaced(dedupeGroups(migrateLayout(mapLayout ?? DEFAULT_MAP_LAYOUT))),
+  const [experimentalUi, setExperimentalUi] = useExperimentalUi(initialExperimentalUi);
+  const experimentalActive = isExperimentalUiActive(experimentalUi);
+  const fightMapSystemId = useSyncExternalStore(
+    subscribeExperimentalRoutePrefs,
+    readExperimentalFightMapSystemId,
+    () => null,
   );
+  const resolvedFightMapSystemId = experimentalActive ? fightMapSystemId : null;
+  const mapStyleOpts = useMemo<MapStyleOptions>(() => {
+    if (!experimentalActive) {
+      return { palette: 'default', theme: 'dark' };
+    }
+    const variant = experimentalMapStyleVariant(experimentalUi);
+    return {
+      palette: variant === 'aperture' ? 'default' : 'experimental',
+      theme: variant === 'light' ? 'light' : 'dark',
+      importanceLinks: true,
+      variant,
+    };
+  }, [experimentalActive, experimentalUi]);
+  const emptyHighlightSet = useMemo(() => new Set<string>(), []);
+  const activeRouteId = mapActiveRoute?.id ?? null;
+  const [highlightClearedRouteId, setHighlightClearedRouteId] = useState<string | null>(null);
+  const activeRouteLocallyCleared =
+    activeRouteId != null && highlightClearedRouteId === activeRouteId;
+  const [planHighlightSuppressedRouteId, setPlanHighlightSuppressedRouteId] =
+    useState<string | null>(null);
+  const planHighlightSuppressed =
+    activeRouteId != null && planHighlightSuppressedRouteId === activeRouteId;
+  const [planRouteHighlightConnectionIds, setPlanRouteHighlightConnectionIds] =
+    useState<ReadonlySet<string>>(() => new Set());
+  const [planRouteHighlightMapSystemIds, setPlanRouteHighlightMapSystemIds] =
+    useState<ReadonlySet<string>>(() => new Set());
+  const activeRouteHighlight = useMemo(() => {
+    if (!experimentalActive || !mapActiveRoute || activeRouteLocallyCleared) {
+      return { connections: emptyHighlightSet, systems: emptyHighlightSet };
+    }
+    const byEve = new Map(viewData.systems.map((s) => [s.systemId, s.id]));
+    return {
+      connections: new Set(activeRouteConnectionIds(mapActiveRoute.hops)),
+      systems: new Set(
+        mapActiveRoute.hops
+          .map((h) => byEve.get(h.systemId))
+          .filter((id): id is string => id != null),
+      ),
+    };
+  }, [
+    activeRouteLocallyCleared,
+    emptyHighlightSet,
+    experimentalActive,
+    mapActiveRoute,
+    viewData.systems,
+  ]);
+  const routeHighlightConnectionIds = useMemo(() => {
+    if (experimentalActive && mapActiveRoute && !activeRouteLocallyCleared) {
+      return activeRouteHighlight.connections;
+    }
+    return planRouteHighlightConnectionIds;
+  }, [
+    activeRouteHighlight.connections,
+    activeRouteLocallyCleared,
+    experimentalActive,
+    mapActiveRoute,
+    planRouteHighlightConnectionIds,
+  ]);
+  const routeHighlightMapSystemIds = useMemo(() => {
+    if (experimentalActive && mapActiveRoute && !activeRouteLocallyCleared) {
+      return activeRouteHighlight.systems;
+    }
+    return planRouteHighlightMapSystemIds;
+  }, [
+    activeRouteHighlight.systems,
+    activeRouteLocallyCleared,
+    experimentalActive,
+    mapActiveRoute,
+    planRouteHighlightMapSystemIds,
+  ]);
+  const [routeFocusMapSystemId, setRouteFocusMapSystemId] = useState<string | null>(null);
+  const router = useRouter();
+  const [pilotHoverSystemId, setPilotHoverSystemId] = useState<string | null>(null);
+  const [signatureHoverFarSystemId, setSignatureHoverFarSystemId] = useState<string | null>(null);
+
+  const onRoutePlanHighlight = useCallback(
+    (plan: RoutePlan | null) => {
+      if (mapActiveRoute && !activeRouteLocallyCleared) return;
+      if (!plan?.reachable) {
+        setPlanRouteHighlightConnectionIds(new Set());
+        setPlanRouteHighlightMapSystemIds(new Set());
+        return;
+      }
+      const byEve = new Map(viewData.systems.map((s) => [s.systemId, s.id]));
+      setPlanRouteHighlightConnectionIds(
+        new Set(
+          plan.hops
+            .filter((h) => h.connectionId != null)
+            .map((h) => String(h.connectionId)),
+        ),
+      );
+      setPlanRouteHighlightMapSystemIds(
+        new Set(
+          plan.hops
+            .map((h) => byEve.get(h.systemId))
+            .filter((id): id is string => id != null),
+        ),
+      );
+    },
+    [activeRouteLocallyCleared, mapActiveRoute, viewData.systems],
+  );
+
+  const focusMapSystemByEveId = useCallback(
+    (eveSystemId: number) => {
+      const mapSystem = viewData.systems.find((s) => s.systemId === eveSystemId);
+      if (!mapSystem) {
+        toast.info('That hop is not on the map.');
+        return;
+      }
+      setSelected({ kind: 'system', id: mapSystem.id });
+      setSelectedSystemIds(new Set([mapSystem.id]));
+      const inst = flowInstance.current;
+      const node = inst?.getNode(mapSystem.id);
+      if (inst && node) {
+        const w = node.measured?.width ?? node.width ?? 0;
+        const h = node.measured?.height ?? node.height ?? 0;
+        inst.setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+          zoom: Math.max(inst.getZoom(), 0.85),
+          duration: 200,
+        });
+      }
+      setRouteFocusMapSystemId(mapSystem.id);
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      flashTimer.current = setTimeout(() => setRouteFocusMapSystemId(null), 3000);
+    },
+    [viewData.systems],
+  );
+  const [layout, setLayout] = useState<MapLayoutConfig>(() => {
+    const experimentalOnLoad = isExperimentalUiActive(initialExperimentalUi);
+    const base =
+      mapLayout ??
+      defaultMapLayoutForUi(experimentalOnLoad);
+    return ensurePanelsPlaced(dedupeGroups(migrateLayout(base)));
+  });
   // The grid's active responsive breakpoint (reported by `MapLayoutGrid`). Grouping
   // is per-breakpoint, so the rendered cells read from `layout.groups[breakpoint]`.
   const [breakpoint, setBreakpoint] = useState<Breakpoint>('lg');
@@ -582,6 +858,36 @@ export function MapCanvas({
   // first call updates local state but must not persist (no spurious write per
   // map open). Subsequent (user-driven) changes save.
   const firstLayoutChange = useRef(true);
+  const layoutPersistSkipRef = useRef(false);
+  const experimentalCollapsedHeightsRef = useRef(new Map<string, number>());
+  const [experimentalCollapsedGroups, setExperimentalCollapsedGroups] = useState(
+    () => new Set<string>(),
+  );
+
+  const handleExperimentalPanelCollapse = useCallback(
+    (groupId: string, collapsed: boolean) => {
+      setExperimentalCollapsedGroups((prev) => {
+        const next = new Set(prev);
+        if (collapsed) next.add(groupId);
+        else next.delete(groupId);
+        return next;
+      });
+      setLayout((prev) => {
+        const bp = breakpoint;
+        const items = prev.layouts[bp] ?? [];
+        const updated = applyExperimentalPanelCollapse(
+          items,
+          groupId,
+          collapsed,
+          experimentalCollapsedHeightsRef.current,
+        );
+        if (!updated) return prev;
+        layoutPersistSkipRef.current = true;
+        return { ...prev, layouts: { ...prev.layouts, [bp]: updated } };
+      });
+    },
+    [breakpoint],
+  );
 
   const saveLayout = useCallback((config: MapLayoutConfig) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -601,9 +907,64 @@ export function MapCanvas({
     [],
   );
 
+  const signatureCleanupSettings = useMemo(
+    () => parseSignatureCleanupSettings(layout),
+    [layout],
+  );
+
+  const persistSignatureCleanupSettings = useCallback(
+    (next: SignatureCleanupPanelSettings) => {
+      setLayout((prev) => {
+        const updated: MapLayoutConfig = {
+          ...prev,
+          panelSettings: { ...prev.panelSettings, signatures: next },
+        };
+        saveLayout(updated);
+        return updated;
+      });
+    },
+    [saveLayout],
+  );
+
+  const soundLayoutSettings = useMemo(
+    () => parseExperimentalSoundLayoutSettings(layout),
+    [layout],
+  );
+
+  const persistSoundLayoutSettings = useCallback(
+    (next: ExperimentalSoundLayoutSettings) => {
+      setLayout((prev) => {
+        const updated = mergeSoundPanelSettings(prev, next);
+        saveLayout(updated);
+        return updated;
+      });
+    },
+    [saveLayout],
+  );
+
+  const applyLayoutPreset = useCallback(
+    (preset: ExperimentalLayoutPreset) => {
+      const next = ensurePanelsPlaced(dedupeGroups(migrateLayout(experimentalLayoutPreset(preset))));
+      setLayout(next);
+      firstLayoutChange.current = false;
+      saveLayout(next);
+      toast.success(`Layout preset: ${preset}`);
+    },
+    [saveLayout],
+  );
+
+  useEffect(
+    () => subscribeExperimentalPanelAdd('inspector', () => setAddSystemOpen(true)),
+    [],
+  );
+
   const handleLayoutChange = useCallback(
     (_current: Layout, all: ResponsiveLayouts<Breakpoint>) => {
       setLayout((prev) => {
+        if (layoutPersistSkipRef.current) {
+          layoutPersistSkipRef.current = false;
+          return prev;
+        }
         const next: MapLayoutConfig = { ...prev, layouts: mergeLayouts(prev.layouts, all) };
         if (!firstLayoutChange.current) saveLayout(next);
         firstLayoutChange.current = false;
@@ -676,53 +1037,11 @@ export function MapCanvas({
   // per-breakpoint). If the source group empties it is dropped, along with its
   // grid item in `layouts[bp]` — `mergeLayouts` keeps only `prev` items, so a
   // removed item is not resurrected by RGL's next `onLayoutChange`.
-  const mergePanelIntoGroup = useCallback(
+  const handleMergePanelIntoGroup = useCallback(
     (sourcePanel: PanelId, targetGroupId: string) => {
       setLayout((prev) => {
-        const bp = breakpoint;
-        const source = prev.groups[bp].find((g) => g.members.includes(sourcePanel));
-        const target = prev.groups[bp].find((g) => g.id === targetGroupId);
-        if (!source || !target || source.id === targetGroupId) return prev;
-        const droppedIds = new Set<string>();
-        // Old group id → new anchor id, when removing the source's anchor member
-        // forces a re-key; its `layouts[bp]` item is renamed to match.
-        const renamed = new Map<string, PanelId>();
-        const groupsBp = prev.groups[bp].flatMap((g) => {
-          if (g.id === source.id) {
-            const members = g.members.filter((m) => m !== sourcePanel);
-            if (members.length === 0) {
-              droppedIds.add(g.id);
-              return [];
-            }
-            const active = g.active === sourcePanel ? members[0]! : g.active;
-            // A group's id must stay one of its members. If the removed panel was
-            // the anchor id, re-key to the new active so the freed PanelId isn't
-            // later reused for a second cell with a colliding id (duplicate keys).
-            if (g.id === sourcePanel) {
-              renamed.set(g.id, active);
-              return [{ id: active, members, active }];
-            }
-            return [{ ...g, members, active }];
-          }
-          if (g.id === targetGroupId) {
-            return [{ ...g, members: [...g.members, sourcePanel], active: sourcePanel }];
-          }
-          return [g];
-        });
-        const groups = { ...prev.groups, [bp]: groupsBp };
-        const layouts =
-          droppedIds.size > 0 || renamed.size > 0
-            ? {
-                ...prev.layouts,
-                [bp]: prev.layouts[bp]
-                  .filter((i) => !droppedIds.has(i.i))
-                  .map((it) => {
-                    const newId = renamed.get(it.i);
-                    return newId ? { ...it, i: newId, ...PANEL_MIN[newId] } : it;
-                  }),
-              }
-            : prev.layouts;
-        const next: MapLayoutConfig = { ...prev, groups, layouts };
+        const next = mergePanelIntoGroup(prev, breakpoint, sourcePanel, targetGroupId);
+        if (next === prev) return prev;
         saveLayout(next);
         return next;
       });
@@ -821,7 +1140,7 @@ export function MapCanvas({
     (activePanel: PanelId, overId: string) => {
       const groupsBp = layout.groups[breakpoint] ?? [];
       if (overId.startsWith('grp:')) {
-        mergePanelIntoGroup(activePanel, overId.slice(4));
+        handleMergePanelIntoGroup(activePanel, overId.slice(4));
         return;
       }
       const overPanel = overId as PanelId;
@@ -831,19 +1150,19 @@ export function MapCanvas({
       if (overGroup.id === sourceGroup.id) {
         reorderTab(sourceGroup.id, activePanel, overPanel);
       } else {
-        mergePanelIntoGroup(activePanel, overGroup.id);
+        handleMergePanelIntoGroup(activePanel, overGroup.id);
       }
     },
-    [layout.groups, breakpoint, mergePanelIntoGroup, reorderTab],
+    [layout.groups, breakpoint, handleMergePanelIntoGroup, reorderTab],
   );
 
   // Reset to the shipped arrangement. Clone so later immutable updates can never
   // mutate the shared `DEFAULT_MAP_LAYOUT` constant.
   const handleResetLayout = useCallback(() => {
-    const next = structuredClone(DEFAULT_MAP_LAYOUT);
+    const next = structuredClone(defaultMapLayoutForUi(experimentalActive));
     setLayout(next);
     saveLayout(next);
-  }, [saveLayout]);
+  }, [saveLayout, experimentalActive]);
 
   // Download the current arrangement as a shareable JSON file. The exported blob
   // is exactly `MapLayoutConfig` — the same shape the import validator accepts.
@@ -856,6 +1175,35 @@ export function MapCanvas({
     a.click();
     URL.revokeObjectURL(url);
   }, [layout]);
+
+  const handleCopyLayout = useCallback(() => {
+    void navigator.clipboard.writeText(JSON.stringify(layout, null, 2)).then(
+      () => toast.success('Layout JSON copied'),
+      () => toast.error('Could not copy layout'),
+    );
+  }, [layout]);
+
+  const refreshActiveRouteWaypoints = useCallback(async () => {
+    if (!mapActiveRoute) return;
+    const charId = mainCharacterId ?? viewerCharacterIds[0] ?? null;
+    if (charId == null) {
+      toast.error('No character for waypoint push.');
+      return;
+    }
+    const primaryPresence = viewData.presence.find((p) => p.characterId === charId);
+    const hops = remainingActiveRouteHops(
+      mapActiveRoute.hops,
+      mapActiveRoute.waypointCursor,
+      primaryPresence?.systemId ?? null,
+    );
+    const push = await pushKspaceWaypointsForCharacter(charId, hops);
+    if (!push.ok) {
+      toast.error(push.error);
+      return;
+    }
+    toast.success(`Waypoints refreshed (${push.pushed})`);
+    router.refresh();
+  }, [mainCharacterId, mapActiveRoute, router, viewData.presence, viewerCharacterIds]);
 
   // Hidden picker for importing someone else's exported layout file.
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -1061,6 +1409,21 @@ export function MapCanvas({
 
   // ---- xyflow → server callbacks -----------------------------------------
   const mapId = viewData.map.id;
+
+  const stopActiveRoute = useCallback(async () => {
+    const result = await clearMapActiveRouteAction({ mapId });
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success('Active route stopped.');
+    setHighlightClearedRouteId(mapActiveRoute?.id ?? null);
+    setPlanHighlightSuppressedRouteId(mapActiveRoute?.id ?? null);
+    setPlanRouteHighlightConnectionIds(new Set());
+    setPlanRouteHighlightMapSystemIds(new Set());
+    setRouteFocusMapSystemId(null);
+    router.refresh();
+  }, [mapActiveRoute?.id, mapId, router]);
 
   // Only the tab holding this map's lock plays its cues; standing down on
   // unmount hands the lock to the next waiter.
@@ -1350,8 +1713,10 @@ export function MapCanvas({
       }
       setSelected({ kind: 'system', id: node.id });
       setSelectedSystemIds(new Set([node.id]));
+      const sys = viewData.systems.find((s) => s.id === node.id);
+      if (sys) setLastPrimarySystem(sys);
     },
-    [selectedSystemIds],
+    [selectedSystemIds, viewData.systems],
   );
 
   const onEdgeClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
@@ -1360,9 +1725,10 @@ export function MapCanvas({
   }, []);
 
   const onPaneClick = useCallback(() => {
+    if (experimentalActive && readKeepMapSelection()) return;
     setSelected(null);
     setSelectedSystemIds(new Set());
-  }, []);
+  }, [experimentalActive]);
 
   // Right-click handlers. Each suppresses the native browser menu and stores the
   // cursor point + target; selection is intentionally left untouched.
@@ -1446,6 +1812,7 @@ export function MapCanvas({
   // ---- Inspector callbacks -----------------------------------------------
   const onSystemPatch = useCallback(
     (mapSystemId: string, patch: UpdateSystemBody) => {
+      const prev = viewData.systems.find((s) => s.id === mapSystemId);
       const opt: MapEventPayload = {
         kind: 'system.updated',
         eventId: 0,
@@ -1453,8 +1820,24 @@ export function MapCanvas({
         ...patch,
       };
       runOptimistic(opt, () => updateSystemOnServer({ mapId, mapSystemId, patch }));
+      if (experimentalActive && prev) {
+        const inverse: UpdateSystemBody = {};
+        for (const key of Object.keys(patch) as (keyof UpdateSystemBody)[]) {
+          const k = key;
+          (inverse as Record<string, unknown>)[k] = (prev as Record<string, unknown>)[k];
+        }
+        experimentalUndoPush('map', {
+          label: 'Edit system',
+          undo: () => {
+            void updateSystemOnServer({ mapId, mapSystemId, patch: inverse });
+          },
+          redo: () => {
+            void updateSystemOnServer({ mapId, mapSystemId, patch });
+          },
+        });
+      }
     },
-    [mapId, runOptimistic],
+    [mapId, runOptimistic, experimentalActive, viewData.systems],
   );
 
   const onSystemRemove = useCallback(
@@ -1509,16 +1892,79 @@ export function MapCanvas({
   }, [mapId, runOptimistic, deletableSelectedSystemIds]);
 
   const onConnectionPatch = useCallback(
-    (connectionId: string, patch: UpdateConnectionBody) => {
+    (
+      connectionId: string,
+      patch: UpdateConnectionBody,
+      options?: { fromAutoMass?: boolean },
+    ) => {
+      let body = patch;
+      if (
+        experimentalActive &&
+        patch.massStatus !== undefined &&
+        !options?.fromAutoMass
+      ) {
+        body = { ...patch, preserveMass: true };
+      }
       const opt: MapEventPayload = {
         kind: 'connection.update',
         eventId: 0,
         id: connectionId,
-        ...patch,
+        ...body,
       };
-      runOptimistic(opt, () => updateConnectionOnServer({ mapId, connectionId, patch }));
+      runOptimistic(opt, () => updateConnectionOnServer({ mapId, connectionId, patch: body }));
     },
-    [mapId, runOptimistic],
+    [experimentalActive, mapId, runOptimistic],
+  );
+
+  useEffect(() => {
+    if (!experimentalActive) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (selected?.kind !== 'connection') return;
+      const key = e.key.toLowerCase();
+      if (key === 'f') {
+        e.preventDefault();
+        onConnectionPatch(selected.id, { massStatus: 'fresh' });
+      } else if (key === 'r') {
+        e.preventDefault();
+        onConnectionPatch(selected.id, { massStatus: 'reduced' });
+      } else if (key === 'c') {
+        e.preventDefault();
+        onConnectionPatch(selected.id, { massStatus: 'critical' });
+      } else if (key === 'e' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        onConnectionPatch(selected.id, { eolStage: 'eol' });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [experimentalActive, selected, onConnectionPatch]);
+
+  useRealtimeEvents(
+    useCallback(
+      (envelope: Envelope) => {
+        if (!experimentalActive || !readExperimentalAutoMassFromLog()) return;
+        if (envelope.task !== 'connectionMassLog') return;
+        const parsed = connectionMassLogLoadSchema.safeParse(envelope.load);
+        if (!parsed.success || parsed.data.mapId !== Number(mapId)) return;
+        const { connectionId, cumulativeMass } = parsed.data;
+        void (async () => {
+          if (!whMassRef.current) {
+            const wh = await fetchWormholeJumpInfo();
+            if (wh.ok) whMassRef.current = wh.data;
+          }
+          const sig = viewData.signatures.find((s) => s.mapConnectionId === connectionId);
+          const ref = whMassRef.current?.find((r) => r.typeId === sig?.typeId) ?? null;
+          const status = massStatusFromCumulative(cumulativeMass, ref?.totalMass ?? null);
+          if (!status) return;
+          const conn = viewData.connections.find((c) => c.id === connectionId);
+          if (!conn || conn.massStatus === status) return;
+          if (conn.preserveMass) return;
+          onConnectionPatch(connectionId, { massStatus: status }, { fromAutoMass: true });
+        })();
+      },
+      [experimentalActive, mapId, onConnectionPatch, viewData.connections, viewData.signatures],
+    ),
   );
 
   const onConnectionDelete = useCallback(
@@ -1535,15 +1981,98 @@ export function MapCanvas({
     [mapId, runOptimistic],
   );
 
+  const signatureUndoRuntime = useMemo((): SignatureUndoRuntime => {
+    return {
+      mapId,
+      getSignatures: () => viewData.signatures,
+      deleteSignature: (signatureId) => {
+        void deleteSignatureOnServer({ mapId, signatureId }).then((result) => {
+          if (result.ok) {
+            appliedEventIds.current.add(result.eventId);
+            setViewData((prev) => applyEvent(prev, result.data));
+          } else void resync();
+        });
+      },
+      createSignature: (body) => {
+        void createSignatureOnServer({ mapId, body }).then((result) => {
+          if (result.ok) {
+            appliedEventIds.current.add(result.eventId);
+            setViewData((prev) => applyEvent(prev, result.data));
+          } else void resync();
+        });
+      },
+      patchSignature: (signatureId, patch) => {
+        const opt: MapEventPayload = {
+          kind: 'signature.update',
+          eventId: 0,
+          id: signatureId,
+          ...patch,
+        };
+        void runOptimistic(opt, () => updateSignatureOnServer({ mapId, signatureId, patch }));
+      },
+      bulkPaste: (payloads) => onBulkPaste(payloads as MapEventPayload[]),
+    };
+  }, [mapId, viewData.signatures, runOptimistic, onBulkPaste, resync]);
+
+  useEffect(() => {
+    if (!experimentalActive) {
+      experimentalUndoSetExecutor('signatures', null);
+      return;
+    }
+    experimentalUndoSetExecutor('signatures', (payload, direction) => {
+      runSignatureUndoPayload(signatureUndoRuntime, payload as SignatureUndoPayload, direction);
+    });
+    experimentalUndoHydrateFromStorage();
+  }, [experimentalActive, signatureUndoRuntime]);
+
+  const pushSignatureUndo = useCallback(
+    (
+      label: string,
+      undoPayload: SignatureUndoPayload,
+      redoPayload: SignatureUndoPayload | undefined,
+    ) => {
+      if (!experimentalActive) return;
+      experimentalUndoPushSignature(label, undoPayload, redoPayload, signatureUndoRuntime);
+    },
+    [experimentalActive, signatureUndoRuntime],
+  );
+
+  const onSignatureCreateWithId = useCallback(
+    async (body: CreateSignatureBody): Promise<string | null> => {
+      const result = await createSignatureOnServer({ mapId, body });
+      if (!result.ok) {
+        void resync();
+        return null;
+      }
+      appliedEventIds.current.add(result.eventId);
+      setViewData((prev) => applyEvent(prev, result.data));
+      const created = result.data as MapSignature;
+      if (experimentalActive) {
+        pushSignatureUndo(
+          'Add signature',
+          { kind: 'delete', snapshot: created },
+          {
+            kind: 'create',
+            forward: body,
+            createdId: created.id,
+          },
+        );
+      }
+      return created.id;
+    },
+    [mapId, resync, experimentalActive, pushSignatureUndo],
+  );
+
   const onSignatureCreate = useCallback(
     (body: CreateSignatureBody) => {
-      awaitServer(() => createSignatureOnServer({ mapId, body }));
+      void onSignatureCreateWithId(body);
     },
-    [mapId, awaitServer],
+    [onSignatureCreateWithId],
   );
 
   const onSignaturePatch = useCallback(
     (signatureId: string, patch: UpdateSignatureBody) => {
+      const prev = viewData.signatures.find((s) => s.id === signatureId);
       const opt: MapEventPayload = {
         kind: 'signature.update',
         eventId: 0,
@@ -1551,8 +2080,16 @@ export function MapCanvas({
         ...patch,
       };
       runOptimistic(opt, () => updateSignatureOnServer({ mapId, signatureId, patch }));
+      if (experimentalActive && prev) {
+        const before = snapshotPatchInverse(prev, patch);
+        pushSignatureUndo(
+          'Edit signature',
+          { kind: 'patch', signatureId, before, after: patch },
+          { kind: 'patch', signatureId, before: patch, after: before },
+        );
+      }
     },
-    [mapId, runOptimistic],
+    [mapId, runOptimistic, viewData.signatures, experimentalActive, pushSignatureUndo],
   );
 
   // If a deleted sig resolved to a wormhole, build the "delete the subchain
@@ -1589,13 +2126,78 @@ export function MapCanvas({
   const onSignatureDelete = useCallback(
     (signatureId: string) => {
       const sig = viewData.signatures.find((s) => s.id === signatureId);
+      if (!sig) return;
       runOptimistic({ kind: 'signature.delete', eventId: 0, id: signatureId }, () =>
         deleteSignatureOnServer({ mapId, signatureId }),
       );
+      if (experimentalActive) {
+        pushSignatureUndo(
+          'Delete signature',
+          { kind: 'delete', snapshot: sig },
+          { kind: 'delete', snapshot: sig },
+        );
+      }
       const offer = buildSubchainSigOffer(sig);
       if (offer) setSubchainSigPrompts((q) => [...q, offer]);
     },
-    [mapId, runOptimistic, viewData, buildSubchainSigOffer],
+    [mapId, runOptimistic, viewData, buildSubchainSigOffer, experimentalActive, pushSignatureUndo],
+  );
+
+  const onBulkSignatureCleanup = useCallback(
+    (signatureIds: string[]) => {
+      const snapshots = signatureIds
+        .map((id) => viewData.signatures.find((s) => s.id === id))
+        .filter((s): s is MapSignature => s != null);
+      for (const id of signatureIds) {
+        const sig = viewData.signatures.find((s) => s.id === id);
+        runOptimistic({ kind: 'signature.delete', eventId: 0, id }, () =>
+          deleteSignatureOnServer({ mapId, signatureId: id }),
+        );
+        const offer = buildSubchainSigOffer(sig);
+        if (offer) setSubchainSigPrompts((q) => [...q, offer]);
+      }
+      if (experimentalActive && snapshots.length > 0) {
+        pushSignatureUndo(
+          'Clean up signatures',
+          { kind: 'bulkDelete', snapshots },
+          { kind: 'bulkDelete', snapshots },
+        );
+      }
+    },
+    [mapId, runOptimistic, viewData.signatures, experimentalActive, pushSignatureUndo, buildSubchainSigOffer],
+  );
+
+  const onSignatureLinkDrop = useCallback(
+    async (connectionId: string, signatureId: string) => {
+      const sig = viewData.signatures.find((s) => s.id === signatureId);
+      if (!sig) return;
+      const conn = viewData.connections.find((c) => c.id === connectionId);
+      if (!conn) return;
+      if (conn.source !== sig.mapSystemId && conn.target !== sig.mapSystemId) {
+        toast.error('That connection is not in this system.');
+        return;
+      }
+      if (
+        sig.mapConnectionId != null &&
+        sig.mapConnectionId !== connectionId &&
+        !viewData.connections.some((c) => c.id === sig.mapConnectionId)
+      ) {
+        const restored = await restoreConnectionOnServer({ mapId, connectionId: sig.mapConnectionId });
+        if (restored.ok) onBulkPaste(restored.data.payloads);
+      }
+      const patch: UpdateSignatureBody = { mapConnectionId: connectionId };
+      if (sig.groupKey !== 'wormhole') patch.groupKey = 'wormhole';
+      onSignaturePatch(signatureId, patch);
+      if (sig.typeId != null) {
+        void fetchWormholeCatalog().then((catalog) => {
+          if (!catalog.ok) return;
+          const row = catalog.data.find((o) => o.typeId === sig.typeId);
+          if (row?.jumpMassClass) onConnectionPatch(connectionId, { jumpMassClass: row.jumpMassClass });
+        });
+      }
+      if (sig.eolStage !== 'none') onConnectionPatch(connectionId, { eolStage: sig.eolStage });
+    },
+    [viewData, mapId, onBulkPaste, onSignaturePatch, onConnectionPatch],
   );
 
   // Scan committed paste payloads for wormhole sigs whose remembered connection
@@ -1634,11 +2236,32 @@ export function MapCanvas({
   // both signature-paste entry points (the CTRL+V hotkey and the panel dialog).
   const onSignaturePasteResult = useCallback(
     (payloads: MapEventPayload[]) => {
+      const systemIds = new Set<string>();
+      for (const p of payloads) {
+        if (p.kind === 'signature.create') {
+          const body = p as MapSignature;
+          if (body.mapSystemId) systemIds.add(body.mapSystemId);
+        } else if (p.kind === 'signature.update' || p.kind === 'signature.delete') {
+          const snap = viewData.signatures.find((s) => s.id === p.id);
+          if (snap) systemIds.add(snap.mapSystemId);
+        }
+      }
+      const beforeSnapshots =
+        systemIds.size > 0
+          ? viewData.signatures.filter((s) => systemIds.has(s.mapSystemId))
+          : [...viewData.signatures];
       const offers = buildRestoreOffers(payloads);
       onBulkPaste(payloads);
+      if (experimentalActive && beforeSnapshots.length > 0) {
+        pushSignatureUndo(
+          'Paste signatures',
+          { kind: 'bulkPaste', beforeSnapshots, forwardPayloads: payloads },
+          { kind: 'bulkPaste', beforeSnapshots: [], forwardPayloads: payloads },
+        );
+      }
       if (offers.length > 0) setRestoreConnPrompts((q) => [...q, ...offers]);
     },
-    [onBulkPaste, buildRestoreOffers],
+    [onBulkPaste, buildRestoreOffers, viewData.signatures, experimentalActive, pushSignatureUndo],
   );
 
   // Fold a lazy-delete paste into state, then offer the subchain prompt for each
@@ -1822,6 +2445,10 @@ export function MapCanvas({
     // multi-select set), so a note selection change must trigger a re-sync.
     selected: SelectionRef | null;
     intel: Record<number, SystemIntelSummary>;
+    pilotHoverSystemId: string | null;
+    signatureHoverFarSystemId: string | null;
+    routeHighlightMapSystemIds: ReadonlySet<string>;
+    routeFocusMapSystemId: string | null;
   } | null>(null);
   if (
     !lastSync ||
@@ -1829,6 +2456,10 @@ export function MapCanvas({
     lastSync.notes !== viewData.notes ||
     lastSync.selectedSystemIds !== selectedSystemIds ||
     lastSync.selected !== selected ||
+    lastSync.pilotHoverSystemId !== pilotHoverSystemId ||
+    lastSync.signatureHoverFarSystemId !== signatureHoverFarSystemId ||
+    lastSync.routeHighlightMapSystemIds !== routeHighlightMapSystemIds ||
+    lastSync.routeFocusMapSystemId !== routeFocusMapSystemId ||
     // `intel` is replaced by reference when a live-added system's data backfills;
     // re-sync so its decorators (sov/FW/incursion) appear without a systems change.
     lastSync.intel !== intel
@@ -1839,6 +2470,10 @@ export function MapCanvas({
       selectedSystemIds,
       selected,
       intel,
+      pilotHoverSystemId,
+      signatureHoverFarSystemId,
+      routeHighlightMapSystemIds,
+      routeFocusMapSystemId,
     });
     setNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]));
@@ -1859,6 +2494,13 @@ export function MapCanvas({
               isHome: s.id === viewData.map.homeMapSystemId,
               inFactionWarfare: intel[s.systemId]?.factionWar != null,
               hasIncursion: intel[s.systemId]?.incursion != null,
+              panelHoverLinked:
+                experimentalActive &&
+                (pilotHoverSystemId === s.id || signatureHoverFarSystemId === s.id),
+              onPanelHoverSync: experimentalActive ? setPilotHoverSystemId : undefined,
+              routePathLinked:
+                experimentalActive &&
+                (routeHighlightMapSystemIds.has(s.id) || routeFocusMapSystemId === s.id),
             },
             selected: selectedSystemIds.has(s.id),
             draggable: !s.locked,
@@ -1882,6 +2524,11 @@ export function MapCanvas({
       ];
     });
   }
+
+  const homePathEdges = useMemo(
+    () => homePathConnectionIds(viewData.map.homeMapSystemId, viewData.connections),
+    [viewData.map.homeMapSystemId, viewData.connections],
+  );
 
   const edges = useMemo<Edge<ConnectionEdgeData>[]>(() => {
     // Resolve each connection's source wormhole from its attached signatures,
@@ -1910,16 +2557,97 @@ export function MapCanvas({
           wormholeTypeId: wh?.typeId ?? null,
           wormholeCode: wh?.code ?? null,
           onEndpointContextMenu,
+          isOnHomePath: homePathEdges.has(c.id),
+          routeHighlighted: experimentalActive && routeHighlightConnectionIds.has(c.id),
+          onSignatureLinkDrop: experimentalActive ? onSignatureLinkDrop : undefined,
         },
         selected: selected?.kind === 'connection' && selected.id === c.id,
       };
     });
-  }, [viewData.connections, viewData.signatures, viewData.map.id, selected, onEndpointContextMenu]);
+  }, [
+    viewData.connections,
+    viewData.signatures,
+    viewData.map.id,
+    selected,
+    onEndpointContextMenu,
+    homePathEdges,
+    experimentalActive,
+    routeHighlightConnectionIds,
+    onSignatureLinkDrop,
+  ]);
 
   const selectedSystem: MapSystemNode | null = useMemo(() => {
     if (selected?.kind !== 'system') return null;
     return viewData.systems.find((s) => s.id === selected.id) ?? null;
   }, [selected, viewData.systems]);
+
+  const experimentalAutoCleanupInFlight = useRef(false);
+  const autoCleanupCtxRef = useRef({
+    experimentalActive,
+    settings,
+    signatureCleanupSettings,
+    signatureIndicators,
+    selectedSystem,
+    viewData,
+  });
+  useEffect(() => {
+    autoCleanupCtxRef.current = {
+      experimentalActive,
+      settings,
+      signatureCleanupSettings,
+      signatureIndicators,
+      selectedSystem,
+      viewData,
+    };
+  }, [
+    experimentalActive,
+    settings,
+    signatureCleanupSettings,
+    signatureIndicators,
+    selectedSystem,
+    viewData,
+  ]);
+
+  const onBulkSignatureCleanupRef = useRef(onBulkSignatureCleanup);
+  useEffect(() => {
+    onBulkSignatureCleanupRef.current = onBulkSignatureCleanup;
+  }, [onBulkSignatureCleanup]);
+
+  useEffect(() => {
+    if (!experimentalActive) return;
+    if (!settings.experimentalAutoSignatureCleanup) return;
+
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (experimentalAutoCleanupInFlight.current) return;
+      const snap = autoCleanupCtxRef.current;
+      if (!snap.experimentalActive || !snap.settings.experimentalAutoSignatureCleanup) return;
+
+      experimentalAutoCleanupInFlight.current = true;
+      try {
+        const isWormhole = (mapSystemId: string) => {
+          const sys = snap.viewData.systems.find((s) => s.id === mapSystemId);
+          return sys ? isWormholeSystem(sys) : false;
+        };
+        const matched = matchSignaturesForExperimentalCleanup({
+          settings: snap.signatureCleanupSettings,
+          selectedSystem: snap.selectedSystem,
+          systems: snap.viewData.systems,
+          signatures: snap.viewData.signatures,
+          connections: snap.viewData.connections,
+          indicatorPrefs: snap.signatureIndicators,
+          isWormholeSystem: isWormhole,
+        });
+        if (matched.length > 0) {
+          onBulkSignatureCleanupRef.current(matched.map((s) => s.id));
+        }
+      } finally {
+        experimentalAutoCleanupInFlight.current = false;
+      }
+    }, apertureConfig.EXPERIMENTAL_AUTO_CLEANUP_INTERVAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [experimentalActive, settings.experimentalAutoSignatureCleanup]);
 
   // EVE solar-system ids already placed — lets the add dialog flag duplicates.
   const existingSystemIds = useMemo(
@@ -1991,6 +2719,248 @@ export function MapCanvas({
   const visibleGroups = (layout.groups[breakpoint] ?? []).filter((g) =>
     g.members.some((m) => !layout.hidden.includes(m)),
   );
+
+  const focusPanelByShortcut = useCallback(
+    (index: 0 | 1 | 2 | 3) => {
+      const id = COMMAND_PANEL_FOCUS_ORDER[index]!;
+      const group = (layout.groups[breakpoint] ?? []).find((g) => g.members.includes(id));
+      if (!group) return;
+      if (group.active !== id) handleSetActiveTab(group.id, id);
+      requestAnimationFrame(() => {
+        document
+          .querySelector(`[data-layout-item-id="${group.id}"]`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    },
+    [breakpoint, handleSetActiveTab, layout.groups],
+  );
+
+  const fitMapView = useCallback(() => {
+    flowInstance.current?.fitView({ padding: 0.15, duration: 300 });
+  }, []);
+
+  const centerOnSelectedSystem = useCallback(() => {
+    const sys = selectedSystem;
+    const inst = flowInstance.current;
+    if (!sys || !inst) return;
+    const node = inst.getNode(sys.id);
+    if (!node) return;
+    const w = node.measured?.width ?? node.width ?? 0;
+    const h = node.measured?.height ?? node.height ?? 0;
+    inst.setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+      zoom: inst.getZoom(),
+      duration: 300,
+    });
+  }, [selectedSystem]);
+
+  const jumpToMapSystem = useCallback(
+    (mapSystemId: string) => {
+      const sys = viewData.systems.find((s) => s.id === mapSystemId);
+      if (!sys) return;
+      setSelected({ kind: 'system', id: mapSystemId });
+      setSelectedSystemIds(new Set([mapSystemId]));
+      setLastPrimarySystem(sys);
+      const inst = flowInstance.current;
+      if (!inst) return;
+      const node = inst.getNode(mapSystemId);
+      if (!node) return;
+      const w = node.measured?.width ?? node.width ?? 0;
+      const h = node.measured?.height ?? node.height ?? 0;
+      inst.setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+        zoom: inst.getZoom(),
+        duration: 300,
+      });
+    },
+    [viewData.systems],
+  );
+
+  const commandHandlersRef = useRef({
+    focusPanelByShortcut,
+    fitMapView,
+    centerOnSelectedSystem,
+    onConnectionPatch,
+    setExperimentalUi,
+    setSettingsOpen,
+    setMapInfoOpen,
+  });
+  useEffect(() => {
+    commandHandlersRef.current = {
+      focusPanelByShortcut,
+      fitMapView,
+      centerOnSelectedSystem,
+      onConnectionPatch,
+      setExperimentalUi,
+      setSettingsOpen,
+      setMapInfoOpen,
+    };
+  }, [
+    focusPanelByShortcut,
+    fitMapView,
+    centerOnSelectedSystem,
+    onConnectionPatch,
+    setExperimentalUi,
+    setSettingsOpen,
+    setMapInfoOpen,
+  ]);
+
+  /* eslint-disable react-hooks/refs -- palette `run` handlers read commandHandlersRef only when invoked */
+  const commandActions = useMemo((): import('./MapCommandPalette').MapCommandAction[] => {
+    const actions: import('./MapCommandPalette').MapCommandAction[] = [
+      {
+        id: 'settings',
+        label: 'Map settings',
+        keywords: 'preferences',
+        run: () => commandHandlersRef.current.setSettingsOpen(true),
+      },
+      {
+        id: 'info',
+        label: 'Map info',
+        run: () => commandHandlersRef.current.setMapInfoOpen(true),
+      },
+      {
+        id: 'fit',
+        label: 'Fit map',
+        hint: 'f',
+        run: () => commandHandlersRef.current.fitMapView(),
+      },
+      {
+        id: 'maps',
+        label: 'Go to maps list',
+        keywords: 'home',
+        run: () => {
+          window.location.href = '/maps';
+        },
+      },
+      {
+        id: 'exp-off',
+        label: 'Experimental UI: Off',
+        run: () => commandHandlersRef.current.setExperimentalUi('off'),
+      },
+      {
+        id: 'exp-aperture',
+        label: 'Theme: Aperture (default)',
+        run: () => commandHandlersRef.current.setExperimentalUi('aperture'),
+      },
+      {
+        id: 'exp-slate',
+        label: 'Theme: Experimental slate',
+        run: () => commandHandlersRef.current.setExperimentalUi('slate'),
+      },
+      {
+        id: 'exp-light',
+        label: 'Theme: Light',
+        run: () => commandHandlersRef.current.setExperimentalUi('light'),
+      },
+      {
+        id: 'exp-classic',
+        label: 'Theme: Pathfinder classic',
+        run: () => commandHandlersRef.current.setExperimentalUi('classic'),
+      },
+    ];
+    for (const [idx, panel] of COMMAND_PANEL_FOCUS_ORDER.entries()) {
+      actions.push({
+        id: `focus-${panel}`,
+        label: `Focus ${PANELS.find((p) => p.id === panel)?.title ?? panel}`,
+        hint: String(idx + 1),
+        run: () => commandHandlersRef.current.focusPanelByShortcut(idx as 0 | 1 | 2 | 3),
+      });
+    }
+  if (experimentalActive) {
+      const panelAddLabels: Partial<Record<PanelId, string>> = {
+        route: 'Routes: Add destination',
+        pilots: 'Pilots: Open roster',
+        kills: 'Kills: Refresh feed',
+        dscan: 'D-Scan: Focus paste',
+        thera: 'Eve-Scout: Sync missing',
+        inspector: 'Inspector: Add system',
+      };
+      for (const [panelId, label] of Object.entries(panelAddLabels) as [PanelId, string][]) {
+        if (!experimentalPanelSupportsAdd(panelId)) continue;
+        actions.push({
+          id: `panel-add-${panelId}`,
+          label,
+          keywords: 'add panel header',
+          run: () => requestExperimentalPanelAdd(panelId),
+        });
+      }
+      actions.push({
+        id: 'signature-cleanup',
+        label: 'Signatures: Clean up…',
+        keywords: 'delete stale bulk',
+        run: () => setSigCleanupOpen(true),
+      });
+      actions.push({
+        id: 'center-selected',
+        label: 'Jump to selected system (center map)',
+        keywords: 'pan focus navigate',
+        run: () => commandHandlersRef.current.centerOnSelectedSystem(),
+      });
+      actions.push({
+        id: 'jump-picker',
+        label: 'Jump to system on map…',
+        keywords: 'search pan focus navigate',
+        run: () => setJumpPickerOpen(true),
+      });
+      if (selected?.kind === 'connection') {
+        const connId = selected.id;
+        actions.push(
+          {
+            id: 'link-mass-fresh',
+            label: 'Selected link: Fresh mass',
+            hint: 'f',
+            run: () =>
+              commandHandlersRef.current.onConnectionPatch(connId, { massStatus: 'fresh' }),
+          },
+          {
+            id: 'link-mass-reduced',
+            label: 'Selected link: Reduced mass',
+            hint: 'r',
+            run: () =>
+              commandHandlersRef.current.onConnectionPatch(connId, { massStatus: 'reduced' }),
+          },
+          {
+            id: 'link-mass-critical',
+            label: 'Selected link: Critical mass',
+            hint: 'c',
+            run: () =>
+              commandHandlersRef.current.onConnectionPatch(connId, { massStatus: 'critical' }),
+          },
+          {
+            id: 'link-eol',
+            label: 'Selected link: Mark EOL',
+            hint: 'e',
+            run: () => commandHandlersRef.current.onConnectionPatch(connId, { eolStage: 'eol' }),
+          },
+        );
+      }
+    }
+    return actions;
+  }, [experimentalActive, selected]);
+  /* eslint-enable react-hooks/refs */
+
+  const resolveCommandPaletteQueryActions = useCallback(
+    (query: string) => {
+      if (!experimentalActive) return [];
+      return matchSystemsForFocus(viewData.systems, query).slice(0, 12).map((m) => ({
+        id: `focus-system-${m.system.id}`,
+        label: `Focus ${focusSystemActionLabel(m.system)}`,
+        hint: m.system.tag ?? m.system.name,
+        keywords: `${m.system.name} ${m.system.alias ?? ''} ${m.system.tag ?? ''}`,
+        run: () => jumpToMapSystem(m.system.id),
+      }));
+    },
+    [experimentalActive, jumpToMapSystem, viewData.systems],
+  );
+
+  useMapCommandPaletteKeyboard({
+    enabled: experimentalActive,
+    open: commandOpen,
+    actions: commandActions,
+    onOpenChange: setCommandOpen,
+    onFitView: fitMapView,
+    onFocusPanel: focusPanelByShortcut,
+    blockFitKey: selected?.kind === 'connection',
+  });
 
   // The JSX for one panel's body. The canvas keeps its own positioned wrapper
   // (overlays + menu + dialog); the rest are the existing sidebar/signature
@@ -2097,7 +3067,7 @@ export function MapCanvas({
               deleteKeyCode={null}
               connectionMode={ConnectionMode.Loose}
               edgesFocusable
-              colorMode="dark"
+              colorMode={experimentalActive && experimentalUi === 'light' ? 'light' : 'dark'}
               fitView={initialViewport === null}
               defaultViewport={initialViewport ?? undefined}
               zoomOnScroll={false}
@@ -2130,6 +3100,15 @@ export function MapCanvas({
               onAddNoteAt={onAddNoteAt}
               onNotePatch={onNotePatch}
               onNoteRemove={onNoteRemove}
+              experimentalFightMapSystemId={resolvedFightMapSystemId ?? undefined}
+              onSetFightMapSystem={
+                experimentalActive
+                  ? (id) => {
+                      writeExperimentalFightMapSystemId(id);
+                      toast.message(id ? 'Fight system set' : 'Fight system cleared');
+                    }
+                  : undefined
+              }
             />
           </div>
         );
@@ -2142,6 +3121,7 @@ export function MapCanvas({
             connections={viewData.connections}
             systems={viewData.systems}
             onCreate={onSignatureCreate}
+            onCreateWithId={experimentalActive ? onSignatureCreateWithId : undefined}
             onPatch={onSignaturePatch}
             onDelete={onSignatureDelete}
             onConnectionPatch={onConnectionPatch}
@@ -2149,6 +3129,25 @@ export function MapCanvas({
             flashSigId={flashSigId}
             pasteFlash={pasteFlash}
             tagScheme={viewData.map.tagScheme}
+            experimentalUi={experimentalActive}
+            onSignatureHover={
+              experimentalActive
+                ? (sig) => {
+                    if (!sig?.mapConnectionId) {
+                      setSignatureHoverFarSystemId(null);
+                      return;
+                    }
+                    const conn = viewData.connections.find((c) => c.id === sig.mapConnectionId);
+                    if (!conn) {
+                      setSignatureHoverFarSystemId(null);
+                      return;
+                    }
+                    setSignatureHoverFarSystemId(
+                      conn.source === sig.mapSystemId ? conn.target : conn.source,
+                    );
+                  }
+                : undefined
+            }
           />
         );
       case 'sigSearch':
@@ -2160,6 +3159,7 @@ export function MapCanvas({
             onFiltersChange={setSigSearchFilters}
             onNavigate={handleNavigateToSig}
             tagScheme={viewData.map.tagScheme}
+            onRowHover={experimentalActive ? setSignatureHoverFarSystemId : undefined}
           />
         );
       case 'inspector':
@@ -2185,6 +3185,21 @@ export function MapCanvas({
             systems={viewData.systems}
             connections={viewData.connections}
             signatures={viewData.signatures}
+            onPlanHighlight={experimentalActive ? onRoutePlanHighlight : undefined}
+            planHighlightSuppressed={experimentalActive ? planHighlightSuppressed : undefined}
+            onPlanHighlightEngaged={
+              experimentalActive ? () => setPlanHighlightSuppressedRouteId(null) : undefined
+            }
+            onHopClick={experimentalActive ? focusMapSystemByEveId : undefined}
+            mapRouteFavourites={experimentalActive ? mapRouteFavourites : undefined}
+            viewerCharacters={experimentalActive ? viewerCharacters : []}
+            onActiveRouteSaved={
+              experimentalActive ? () => router.refresh() : undefined
+            }
+            stats={experimentalActive ? stats : undefined}
+            intel={experimentalActive ? intel : undefined}
+            presence={experimentalActive ? viewData.presence : undefined}
+            homeMapSystemId={viewData.map.homeMapSystemId}
           />
         );
       case 'intel':
@@ -2221,8 +3236,87 @@ export function MapCanvas({
         return <TagsModule viewData={viewData} selectedSystemId={selectedSystem?.id ?? null} />;
       case 'thera':
         return <TheraModule mapId={mapId} viewData={viewData} onBulkPaste={onBulkPaste} />;
+      case 'currentRoute':
+        return experimentalActive ? (
+          <CurrentRoutePanel
+            activeRoute={mapActiveRoute}
+            viewData={viewData}
+            primaryCharacterId={mainCharacterId ?? viewerCharacterIds[0] ?? null}
+            onSetRoute={experimentalActive ? () => void refreshActiveRouteWaypoints() : undefined}
+            onStopRoute={experimentalActive ? () => void stopActiveRoute() : undefined}
+            onHopClick={experimentalActive ? focusMapSystemByEveId : undefined}
+          />
+        ) : null;
+      case 'pilots':
+        return experimentalActive ? (
+          <ExperimentalPilotsPanel
+            viewData={viewData}
+            stats={stats}
+            linkedMapSystemId={
+              pilotHoverSystemId ??
+              (selected?.kind === 'system' ? selected.id : null)
+            }
+            onHoverSystem={setPilotHoverSystemId}
+            onSelectSystem={(id) => {
+              setSelected({ kind: 'system', id });
+              setSelectedSystemIds(new Set([id]));
+            }}
+          />
+        ) : null;
+      case 'kills':
+        return experimentalActive ? <ExperimentalKillsPanel system={selectedSystem ?? undefined} /> : null;
+      case 'dscan':
+        return experimentalActive ? <ExperimentalDscanPanel /> : null;
     }
   };
+
+  const renderPanelGearBody = useCallback(
+    (id: PanelId): ReactNode => {
+      if (!experimentalActive) return null;
+      switch (id) {
+        case 'canvas':
+          return (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={soundLayoutSettings.followSelectedPilot === true}
+                onChange={(e) => {
+                  persistSoundLayoutSettings({
+                    ...soundLayoutSettings,
+                    followSelectedPilot: e.target.checked,
+                  });
+                }}
+              />
+              {experimentalSettingLabel('Follow selected pilot')}
+            </label>
+          );
+        case 'route':
+          return (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={panelGearJumpBridge}
+                onChange={(e) => {
+                  setPanelGearJumpBridge(e.target.checked);
+                  writeExperimentalIncludeJumpBridge(e.target.checked);
+                }}
+              />
+              {experimentalSettingLabel('Include jump bridges')}
+            </label>
+          );
+        default:
+          return null;
+      }
+    },
+    [
+      experimentalActive,
+      panelGearJumpBridge,
+      persistSoundLayoutSettings,
+      soundLayoutSettings,
+    ],
+  );
 
   const panelHeaderRight = (id: PanelId): ReactNode => {
     if (id === 'signatures') {
@@ -2234,21 +3328,30 @@ export function MapCanvas({
           onBulkPaste={onSignaturePasteResult}
           lazyDelete={lazyDeleteSigs}
           onLazyDeleteChange={setLazyDeleteSigs}
+          showCleanup={experimentalActive}
+          onOpenCleanup={() => setSigCleanupOpen(true)}
         />
       );
+    }
+    if (experimentalActive && experimentalPanelSupportsAdd(id)) {
+      return <ExperimentalPanelAddButton panelId={id} />;
     }
     return undefined;
   };
 
   return (
+    <MapStyleProvider value={mapStyleOpts}>
+    <MapLinkHoverProvider>
     <MapPresenceProvider
       initial={data.presence}
       mapId={data.map.id}
       blackout={blackout}
       viewerUserId={viewerUserId}
     >
+      <ExperimentalPanelGearProvider renderGearBody={renderPanelGearBody}>
       <MapActiveCharProvider viewerCharacters={viewerCharacters} mainCharacterId={mainCharacterId}>
         <MapTravelProvider>
+          <ExperimentalCombatRingProvider>
           <MapUnderglowProvider>
             <MapSignatureIndicatorProvider
               signatures={viewData.signatures}
@@ -2276,6 +3379,28 @@ export function MapCanvas({
                   viewerCharacterIds={viewerCharacterIds}
                 />
               )}
+              {experimentalActive ? (
+                <ExperimentalFollowPilotBridge
+                  enabled={soundLayoutSettings.followSelectedPilot === true}
+                  focusEveSystemId={focusMapSystemByEveId}
+                  systems={viewData.systems}
+                />
+              ) : null}
+              {experimentalActive ? (
+                <ExperimentalActiveRouteBridge
+                  mapId={mapId}
+                  activeRoute={mapActiveRoute ?? null}
+                  routePrefs={routePrefs}
+                  presence={viewData.presence}
+                  connections={viewData.connections}
+                  primaryCharacterId={mainCharacterId ?? viewerCharacterIds[0] ?? null}
+                  onRouteUpdated={() => router.refresh()}
+                />
+              ) : null}
+              {experimentalActive ? <ExperimentalUndoHotkeys /> : null}
+              {experimentalActive ? (
+                <ExperimentalCombatKillBridge mapId={mapId} systems={viewData.systems} />
+              ) : null}
               {(killInSystemOn || systemPingedOn) && (
                 <SystemNotificationSoundBridge
                   mapId={mapId}
@@ -2293,19 +3418,21 @@ export function MapCanvas({
               <SignaturePasteHotkey
                 mapId={mapId}
                 selectedSystem={selectedSystem}
+                fallbackSystem={experimentalActive ? lastPrimarySystem : null}
                 systems={viewData.systems}
+                signatures={viewData.signatures}
                 viewerCharacterIds={viewerCharacterIds}
                 onBulkPaste={onSignaturePasteResult}
                 lazyDelete={lazyDeleteSigs}
                 onLazyDeleteConsume={() => setLazyDeleteSigs(false)}
                 onLazyDeletePasteResult={onLazyDeletePasteResult}
               />
-              <div className="flex flex-col gap-2">
+              <div className="ap-map-dashboard flex flex-col gap-2">
                 <BlackoutBanner blackout={blackout} />
                 <div className="flex items-center justify-between gap-1">
                   <div className="flex min-w-0 items-center gap-2">
                     <div className="min-w-0">
-                      <div className="font-heading truncate text-base font-semibold tracking-tight">
+                      <div className="font-heading truncate text-base font-semibold tracking-tight experimental:text-lg">
                         {viewData.map.name}
                       </div>
                       <div className="text-muted-foreground truncate text-xs capitalize">
@@ -2315,7 +3442,24 @@ export function MapCanvas({
                     </div>
                     <MapShareIndicator shares={liveShares} />
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="ap-map-toolbar flex shrink-0 items-center gap-1">
+                    {experimentalActive ? (
+                      <ExperimentalThemeToggle
+                        mode={experimentalUi}
+                        onModeChange={setExperimentalUi}
+                      />
+                    ) : null}
+                    {experimentalActive ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSigCleanupOpen(true)}
+                        title="Clean up signatures"
+                      >
+                        <Sparkles />
+                        Clean up
+                      </Button>
+                    ) : null}
                     <ActiveCharSelector />
                     <PilotRosterButton
                       viewData={viewData}
@@ -2343,6 +3487,29 @@ export function MapCanvas({
                           </MenuCheckboxItem>
                         ))}
                         <MenuSeparator />
+                        {experimentalActive ? (
+                          <>
+                            <MenuGroupLabel>Layout presets</MenuGroupLabel>
+                            <MenuItem onClick={() => applyLayoutPreset('scanning')}>
+                              Scanning focus
+                            </MenuItem>
+                            <MenuItem onClick={() => applyLayoutPreset('combat')}>
+                              Combat focus
+                            </MenuItem>
+                            <MenuItem onClick={() => applyLayoutPreset('travel')}>
+                              Travel focus
+                            </MenuItem>
+                            <MenuSeparator />
+                          </>
+                        ) : null}
+                        {experimentalActive ? (
+                          <MenuItem
+                            icon={<Copy className="size-3.5" />}
+                            onClick={handleCopyLayout}
+                          >
+                            Copy layout JSON
+                          </MenuItem>
+                        ) : null}
                         <MenuItem
                           icon={<Download className="size-3.5" />}
                           onClick={handleExportLayout}
@@ -2397,6 +3564,9 @@ export function MapCanvas({
                     onLayoutChange={handleLayoutChange}
                     onBreakpointChange={setBreakpoint}
                     onTearOff={tearOffTab}
+                    experimentalCollapsedGroupIds={
+                      experimentalActive ? experimentalCollapsedGroups : undefined
+                    }
                   >
                     {visibleGroups.map((g) => (
                       <div key={g.id}>
@@ -2405,11 +3575,19 @@ export function MapCanvas({
                           hidden={layout.hidden}
                           onSetActive={handleSetActiveTab}
                           onHideMember={handleHide}
+                          onExperimentalCollapseChange={
+                            experimentalActive ? handleExperimentalPanelCollapse : undefined
+                          }
                           renderContent={panelContent}
                           renderHeaderRight={panelHeaderRight}
-                          contentClassName={(id) =>
-                            id === 'canvas' ? 'min-h-0 flex-1 overflow-hidden p-0' : undefined
-                          }
+                          contentClassName={(id) => {
+                            if (id === 'canvas') {
+                              return experimentalActive
+                                ? 'min-h-[40vh] flex-1 overflow-hidden p-0'
+                                : 'min-h-0 flex-1 overflow-hidden p-0';
+                            }
+                            return undefined;
+                          }}
                         />
                       </div>
                     ))}
@@ -2417,6 +3595,29 @@ export function MapCanvas({
                 </PanelDndContext>
               </div>
 
+              {experimentalActive ? (
+                <MapCommandPalette
+                  open={commandOpen}
+                  onOpenChange={setCommandOpen}
+                  actions={commandActions}
+                  resolveQueryActions={resolveCommandPaletteQueryActions}
+                />
+              ) : null}
+              {experimentalActive ? (
+                <SignatureCleanupDialog
+                  open={sigCleanupOpen}
+                  onOpenChange={setSigCleanupOpen}
+                  mapId={mapId}
+                  selectedSystem={selectedSystem}
+                  systems={viewData.systems}
+                  signatures={viewData.signatures}
+                  connections={viewData.connections}
+                  indicatorPrefs={signatureIndicators}
+                  settings={signatureCleanupSettings}
+                  onSettingsChange={persistSignatureCleanupSettings}
+                  onDeleteSignatures={onBulkSignatureCleanup}
+                />
+              ) : null}
               <MapInfoDialog open={mapInfoOpen} onOpenChange={setMapInfoOpen} viewData={viewData} />
               <MapSettingsDialog
                 open={settingsOpen}
@@ -2445,10 +3646,22 @@ export function MapCanvas({
                 existingSystemIds={existingSystemIds}
                 onAdd={onAddSystem}
               />
+              {experimentalActive ? (
+                <MapJumpToSystemDialog
+                  open={jumpPickerOpen}
+                  onOpenChange={setJumpPickerOpen}
+                  systems={viewData.systems}
+                  onJump={jumpToMapSystem}
+                />
+              ) : null}
             </MapSignatureIndicatorProvider>
           </MapUnderglowProvider>
+          </ExperimentalCombatRingProvider>
         </MapTravelProvider>
       </MapActiveCharProvider>
+      </ExperimentalPanelGearProvider>
     </MapPresenceProvider>
+    </MapLinkHoverProvider>
+    </MapStyleProvider>
   );
 }

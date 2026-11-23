@@ -1,8 +1,10 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./themes/experimental.css";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant experimental (&:is([data-ui="experimental"] *));
 
 @theme inline {
     --font-heading: var(--font-sans);
@@ -279,8 +281,9 @@
 }
 
 /* Canvas pane surface. xyflow's dark colorMode defaults the pane to ~#141414;
-   nudge it lighter so the map reads a touch softer behind the nodes. */
-.react-flow {
+   nudge it lighter so the map reads a touch softer behind the nodes.
+   Skip when experimental light sets --xy-background-color on <html>. */
+html:not([data-ui='experimental'][data-theme='light']) .react-flow {
   --xy-background-color: oklch(0.215 0 0);
 }
 

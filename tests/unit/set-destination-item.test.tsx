@@ -75,7 +75,13 @@ function makeCtx(
   locatedChars: { id: number; name: string }[],
   activeCharId: number | null = null,
 ) {
-  return { activeCharId, activeCharSystemId: null, locatedChars, setPickedCharId: vi.fn() };
+  return {
+    activeCharId,
+    activeCharSystemId: null,
+    pickedCharId: null,
+    locatedChars,
+    setPickedCharId: vi.fn(),
+  };
 }
 
 // ---------------------------------------------------------------------------

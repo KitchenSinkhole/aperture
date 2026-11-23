@@ -12,11 +12,14 @@ import type {
   SoundPrefs,
 } from '@/types';
 import {
+  EXPERIMENTAL_ALERT_TOAST_EVENTS,
+  EXPERIMENTAL_SOUND_EVENTS,
   SOUND_EVENTS,
   SOUND_MUTE_GROUPS,
   removeSystemSoundMute,
   setSystemSoundMute,
 } from '@/lib/sounds/prefs';
+import { migrateLegacyExperimentalAlerts } from '@/lib/sounds/migrateLegacyExperimentalAlerts';
 import { SOUND_EVENT_LABELS, SOUND_MUTE_GROUP_LABELS } from '@/lib/sounds/catalog';
 import { getCustomSoundStore, useCustomSounds } from '@/lib/sounds/customStore';
 import { getSoundEngine, useSoundPrefs } from '@/lib/sounds/engine';
@@ -40,6 +43,43 @@ import {
 import { AccountApiTokens } from './AccountApiTokens';
 import { DeleteAccountDialog } from './DeleteAccountDialog';
 import { SoundPicker } from './SoundPicker';
+import { useExperimentalUi } from '@/lib/experimentalUi.client';
+import type { ExperimentalUiMode } from '@/lib/experimentalUi';
+import {
+  DEFAULT_EXPERIMENTAL_HOVER_DELAY_MS,
+  EXPERIMENTAL_HOVER_DELAY_MAX_MS,
+  EXPERIMENTAL_HOVER_DELAY_MIN_MS,
+  clampExperimentalHoverDelayMs,
+} from '@/lib/experimentalHoverDelay';
+import {
+  DEFAULT_EXPERIMENTAL_COMBAT_RING_MINUTES,
+  EXPERIMENTAL_COMBAT_RING_MAX_MINUTES,
+  EXPERIMENTAL_COMBAT_RING_MIN_MINUTES,
+  clampExperimentalCombatRingMinutes,
+  readExperimentalCombatRingMinutes,
+  writeExperimentalCombatRingMinutes,
+} from '@/lib/experimentalCombatRingDuration';
+import { useExperimentalHoverDelayContext } from '@/lib/experimentalHoverDelay.client';
+import { isExperimentalUiActive } from '@/lib/experimentalUi';
+import { experimentalSettingLabel } from '@/lib/experimentalSettingLabel';
+import {
+  readExperimentalAutoMassFromLog,
+  readExperimentalPointerCursor,
+  readKeepMapSelection,
+  readPastePreviewOnCtrlV,
+  writeExperimentalAutoMassFromLog,
+  writeExperimentalPointerCursor,
+  writeKeepMapSelection,
+  writePastePreviewOnCtrlV,
+} from '@/lib/experimentalQolPrefs';
+
+const EXPERIMENTAL_UI_CHOICES: { value: ExperimentalUiMode; label: string }[] = [
+  { value: 'off', label: 'Off' },
+  { value: 'aperture', label: 'Aperture (default)' },
+  { value: 'slate', label: 'Experimental slate' },
+  { value: 'light', label: 'Light' },
+  { value: 'classic', label: 'Pathfinder classic' },
+];
 
 /** Trim a minutes value to a compact hours string for an input ("" when null). */
 function minutesToHoursInput(minutes: number | null): string {
@@ -86,6 +126,24 @@ export function AccountSettingsDialog({
   const [mainId, setMainId] = useState(mainCharacterId);
   const [travelOn, setTravelOn] = useState(travelAnimation);
   const [pending, startTransition] = useTransition();
+  const [experimentalUi, setExperimentalUi] = useExperimentalUi();
+  const { delayMs: hoverDelayMs, setDelayMs: setHoverDelayMs } = useExperimentalHoverDelayContext();
+  const [hoverDelayInput, setHoverDelayInput] = useState(String(hoverDelayMs));
+  const [combatRingMinutes, setCombatRingMinutes] = useState(readExperimentalCombatRingMinutes);
+  const [combatRingInput, setCombatRingInput] = useState(String(combatRingMinutes));
+  const experimentalOn = isExperimentalUiActive(experimentalUi);
+  const [keepSelection, setKeepSelection] = useState(readKeepMapSelection);
+  const [pointerCursor, setPointerCursor] = useState(readExperimentalPointerCursor);
+  const [pastePreview, setPastePreview] = useState(readPastePreviewOnCtrlV);
+  const [autoMass, setAutoMass] = useState(readExperimentalAutoMassFromLog);
+  const [experimentalSettingsQuery, setExperimentalSettingsQuery] = useState('');
+
+  function experimentalSectionVisible(...labels: string[]): boolean {
+    if (!experimentalOn) return true;
+    const q = experimentalSettingsQuery.trim().toLowerCase();
+    if (!q) return true;
+    return labels.some((label) => label.toLowerCase().includes(q));
+  }
 
   // Signature-indicator prefs. The threshold is edited in hours; blank ⇒ use the
   // corp default. The override can never exceed the global cap (server-enforced).
@@ -148,6 +206,7 @@ export function AccountSettingsDialog({
   const engine = getSoundEngine();
   const sounds = useSoundPrefs();
   const committedVolume = useRef(soundPrefs.volume);
+  const migratedLegacyAlerts = useRef(false);
 
   // Adopt the server's copy whenever its content changes (first mount, a save
   // on another device picked up by any refresh). Comparing content, not
@@ -180,6 +239,27 @@ export function AccountSettingsDialog({
     });
   }
 
+  useEffect(() => {
+    if (!open) return;
+    const onCombatRing = () => {
+      const next = readExperimentalCombatRingMinutes();
+      setCombatRingMinutes(next);
+      setCombatRingInput(String(next));
+    };
+    window.addEventListener('aperture:experimental-combat-ring-duration', onCombatRing);
+    return () => window.removeEventListener('aperture:experimental-combat-ring-duration', onCombatRing);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || migratedLegacyAlerts.current) return;
+    migratedLegacyAlerts.current = true;
+    const prev = engine.getPrefs();
+    const migrated = migrateLegacyExperimentalAlerts(prev);
+    if (JSON.stringify(migrated) !== JSON.stringify(prev)) {
+      void saveSoundPrefs(migrated, prev);
+    }
+  }, [engine, open]);
+
   // The slider drags (and arrows) ahead of the server; every gesture that can
   // end a volume change funnels through here so a keyboard-only adjustment is
   // saved even if the dialog closes without the slider ever blurring.
@@ -187,12 +267,24 @@ export function AccountSettingsDialog({
     if (sounds.volume !== committedVolume.current) commitSounds(sounds);
   }
 
-  function commitEvent(event: SoundEvent, patch: { enabled?: boolean; sound?: SoundId }) {
+  function commitEvent(
+    event: SoundEvent,
+    patch: {
+      enabled?: boolean;
+      sound?: SoundId;
+      toast?: boolean;
+      desktopNotification?: boolean;
+    },
+  ) {
     commitSounds({
       ...sounds,
       events: { ...sounds.events, [event]: { ...sounds.events[event], ...patch } },
     });
   }
+
+  const accountSoundEvents = SOUND_EVENTS.filter(
+    (event) => experimentalOn || !EXPERIMENTAL_SOUND_EVENTS.has(event),
+  );
 
   function onSetMain(id: string) {
     if (id === mainId) return;
@@ -269,6 +361,191 @@ export function AccountSettingsDialog({
               );
             })}
           </div>
+
+          <fieldset className="mt-2 flex flex-col gap-2 rounded-lg border border-border p-3">
+            <legend className="px-1 flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
+              Experimental UI
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                Device
+              </span>
+            </legend>
+            <p className="text-xs text-muted-foreground">
+              Opt-in preview styling on this device. Stored in a cookie; no page reload.
+            </p>
+            {experimentalOn ? (
+              <input
+                type="search"
+                placeholder="Filter experimental sections…"
+                value={experimentalSettingsQuery}
+                onChange={(e) => setExperimentalSettingsQuery(e.target.value)}
+                className="border-input h-8 w-full max-w-sm rounded-md border px-2 text-sm"
+                aria-label="Filter experimental settings"
+              />
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              {EXPERIMENTAL_UI_CHOICES.map(({ value, label }) => (
+                <label
+                  key={value}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm',
+                    experimentalUi === value && 'border-primary bg-muted',
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="experimental-ui"
+                    className="size-4 accent-primary"
+                    checked={experimentalUi === value}
+                    onChange={() => setExperimentalUi(value)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            {experimentalOn && experimentalSectionVisible('hover delay') ? (
+              <div className="mt-1 flex flex-col gap-1">
+                <label htmlFor="experimental-hover-delay" className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  {experimentalSettingLabel('Hover delay (ms)')}
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                    Device
+                  </span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Tooltips and hover cards on the map wait this long before opening. Stored on this device.
+                </p>
+                <input
+                  id="experimental-hover-delay"
+                  type="number"
+                  min={EXPERIMENTAL_HOVER_DELAY_MIN_MS}
+                  max={EXPERIMENTAL_HOVER_DELAY_MAX_MS}
+                  step={25}
+                  className="border-input bg-background h-9 w-full max-w-[8rem] rounded-md border px-2 text-sm"
+                  value={hoverDelayInput}
+                  onChange={(e) => setHoverDelayInput(e.target.value)}
+                  onBlur={() => {
+                    const trimmed = hoverDelayInput.trim();
+                    if (trimmed === '') {
+                      setHoverDelayInput(String(DEFAULT_EXPERIMENTAL_HOVER_DELAY_MS));
+                      setHoverDelayMs(DEFAULT_EXPERIMENTAL_HOVER_DELAY_MS);
+                      return;
+                    }
+                    const parsed = Number(trimmed);
+                    if (!Number.isFinite(parsed)) {
+                      setHoverDelayInput(String(hoverDelayMs));
+                      toast.error('Enter a number of milliseconds.');
+                      return;
+                    }
+                    const next = clampExperimentalHoverDelayMs(parsed);
+                    setHoverDelayInput(String(next));
+                    setHoverDelayMs(next);
+                  }}
+                />
+              </div>
+            ) : null}
+            {experimentalOn && experimentalSectionVisible('combat', 'ring') ? (
+              <div className="mt-1 flex flex-col gap-1">
+                <label
+                  htmlFor="experimental-combat-ring"
+                  className="flex items-center gap-2 text-sm font-medium text-foreground"
+                >
+                  {experimentalSettingLabel('Combat ring duration (minutes)')}
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                    Device
+                  </span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  After a kill on a map system, highlight it for this many minutes. 0 turns the ring off.
+                </p>
+                <input
+                  id="experimental-combat-ring"
+                  type="number"
+                  min={EXPERIMENTAL_COMBAT_RING_MIN_MINUTES}
+                  max={EXPERIMENTAL_COMBAT_RING_MAX_MINUTES}
+                  step={1}
+                  className="border-input bg-background h-9 w-full max-w-[8rem] rounded-md border px-2 text-sm"
+                  value={combatRingInput}
+                  onChange={(e) => setCombatRingInput(e.target.value)}
+                  onBlur={() => {
+                    const trimmed = combatRingInput.trim();
+                    if (trimmed === '') {
+                      setCombatRingInput(String(DEFAULT_EXPERIMENTAL_COMBAT_RING_MINUTES));
+                      setCombatRingMinutes(DEFAULT_EXPERIMENTAL_COMBAT_RING_MINUTES);
+                      writeExperimentalCombatRingMinutes(DEFAULT_EXPERIMENTAL_COMBAT_RING_MINUTES);
+                      return;
+                    }
+                    const parsed = Number(trimmed);
+                    if (!Number.isFinite(parsed)) {
+                      setCombatRingInput(String(combatRingMinutes));
+                      toast.error('Enter a number of minutes.');
+                      return;
+                    }
+                    const next = clampExperimentalCombatRingMinutes(parsed);
+                    setCombatRingInput(String(next));
+                    setCombatRingMinutes(next);
+                    writeExperimentalCombatRingMinutes(next);
+                  }}
+                />
+              </div>
+            ) : null}
+            {experimentalOn && experimentalSectionVisible('qol', 'selection', 'pointer', 'paste', 'mass') ? (
+              <div className="mt-2 flex flex-col gap-2 border-t border-border pt-2">
+                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  {experimentalSettingLabel('Quality of life')}
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                    Device
+                  </span>
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={keepSelection}
+                    onChange={(e) => {
+                      setKeepSelection(e.target.checked);
+                      writeKeepMapSelection(e.target.checked);
+                    }}
+                  />
+                  Keep selection when clicking empty map
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={pointerCursor}
+                    onChange={(e) => {
+                      setPointerCursor(e.target.checked);
+                      writeExperimentalPointerCursor(e.target.checked);
+                    }}
+                  />
+                  Pointer cursor on buttons
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={pastePreview}
+                    onChange={(e) => {
+                      setPastePreview(e.target.checked);
+                      writePastePreviewOnCtrlV(e.target.checked);
+                    }}
+                  />
+                  Preview signature paste on Ctrl+V
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={autoMass}
+                    onChange={(e) => {
+                      setAutoMass(e.target.checked);
+                      writeExperimentalAutoMassFromLog(e.target.checked);
+                    }}
+                  />
+                  Auto-set link mass from jump log
+                </label>
+              </div>
+            ) : null}
+          </fieldset>
 
           <label className="mt-2 flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted">
             <div className="flex flex-1 flex-col gap-0.5">
@@ -350,7 +627,9 @@ export function AccountSettingsDialog({
 
           <div className="mt-2 flex flex-col gap-1 rounded-lg border border-border p-3">
             <label className="flex items-center gap-3 text-sm">
-              <span className="flex-1 font-medium text-foreground">Sounds</span>
+              <span className="flex-1 font-medium text-foreground">
+                {experimentalOn ? 'Sounds & notifications' : 'Sounds'}
+              </span>
               <input
                 type="checkbox"
                 className="size-4 accent-primary"
@@ -361,7 +640,9 @@ export function AccountSettingsDialog({
               />
             </label>
             <span className="text-xs text-muted-foreground">
-              Audio cues for things happening off-screen. Preview works even with sounds off.
+              {experimentalOn
+                ? 'Per-event sounds, in-app toasts, and desktop notifications. Preview works even with master sound off.'
+                : 'Audio cues for things happening off-screen. Preview works even with sounds off.'}
             </span>
 
             <div className="mt-2 flex items-center gap-3 px-1 text-sm">
@@ -388,33 +669,95 @@ export function AccountSettingsDialog({
             </div>
 
             <div className="mt-1 flex flex-col gap-1">
-              {SOUND_EVENTS.map((event) => {
+              {accountSoundEvents.map((event) => {
                 const { label, description } = SOUND_EVENT_LABELS[event];
                 const eventPrefs = sounds.events[event];
+                const alertRow = experimentalOn && EXPERIMENTAL_ALERT_TOAST_EVENTS.has(event);
                 return (
                   <div key={event} className="flex items-center gap-3 rounded-lg px-1 py-1 text-sm">
-                    <label className="flex flex-1 cursor-pointer items-start gap-3">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 size-4 accent-primary"
-                        checked={eventPrefs.enabled}
-                        disabled={pending || !sounds.enabled}
-                        onChange={(e) => {
-                          commitEvent(event, { enabled: e.target.checked });
-                          if (e.target.checked) engine.preview(eventPrefs.sound);
-                        }}
-                        aria-label={label}
-                      />
-                      <span className="flex flex-col gap-0.5">
-                        <span>{label}</span>
-                        <span className="text-xs text-muted-foreground">{description}</span>
-                      </span>
-                    </label>
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      {alertRow ? (
+                        <>
+                          <div className="flex flex-col gap-0.5 pl-1">
+                            <span>{label}</span>
+                            <span className="text-xs text-muted-foreground">{description}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 pl-1 text-xs text-muted-foreground">
+                            <label className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="checkbox"
+                                className="size-3.5 accent-primary"
+                                checked={eventPrefs.enabled}
+                                disabled={pending}
+                                onChange={(e) => {
+                                  commitEvent(event, { enabled: e.target.checked });
+                                  if (e.target.checked) engine.preview(eventPrefs.sound);
+                                }}
+                                aria-label={`${label} sound`}
+                              />
+                              Sound
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="checkbox"
+                                className="size-3.5 accent-primary"
+                                checked={eventPrefs.toast === true}
+                                disabled={pending || !eventPrefs.enabled}
+                                onChange={(e) => {
+                                  commitEvent(event, { toast: e.target.checked });
+                                }}
+                                aria-label={`${label} toast`}
+                              />
+                              {experimentalSettingLabel('Toast')}
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="checkbox"
+                                className="size-3.5 accent-primary"
+                                checked={eventPrefs.desktopNotification === true}
+                                disabled={pending}
+                                onChange={(e) => {
+                                  const on = e.target.checked;
+                                  commitEvent(event, { desktopNotification: on });
+                                  if (
+                                    on &&
+                                    typeof Notification !== 'undefined' &&
+                                    Notification.permission === 'default'
+                                  ) {
+                                    void Notification.requestPermission();
+                                  }
+                                }}
+                                aria-label={`${label} desktop notification`}
+                              />
+                              {experimentalSettingLabel('Desktop notification')}
+                            </label>
+                          </div>
+                        </>
+                      ) : (
+                        <label className="flex cursor-pointer items-start gap-3">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 size-4 accent-primary"
+                            checked={eventPrefs.enabled}
+                            disabled={pending || !sounds.enabled}
+                            onChange={(e) => {
+                              commitEvent(event, { enabled: e.target.checked });
+                              if (e.target.checked) engine.preview(eventPrefs.sound);
+                            }}
+                            aria-label={label}
+                          />
+                          <span className="flex flex-col gap-0.5">
+                            <span>{label}</span>
+                            <span className="text-xs text-muted-foreground">{description}</span>
+                          </span>
+                        </label>
+                      )}
+                    </div>
                     <SoundPicker
                       event={event}
                       value={eventPrefs.sound}
                       ariaLabel={`${label} sound`}
-                      disabled={pending}
+                      disabled={pending || (!alertRow && !sounds.enabled)}
                       onValueChange={(sound) => {
                         commitEvent(event, { sound });
                         engine.preview(sound);

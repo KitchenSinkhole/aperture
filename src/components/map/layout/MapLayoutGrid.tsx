@@ -11,7 +11,7 @@ import {
   type Layout,
   type ResponsiveLayouts,
 } from 'react-grid-layout';
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { PANEL_BREAKPOINTS, PANEL_COLS, PANEL_MIN } from '@/lib/map/layout/panels';
 import type { Breakpoint, PanelId } from '@/types';
@@ -19,7 +19,8 @@ import type { Breakpoint, PanelId } from '@/types';
 import { PANEL_DRAG_HANDLE_CLASS, PANEL_NO_DRAG_CLASS } from './MapPanelGroup';
 
 // Pixel height of one grid row; a layout item's `h` multiplies this.
-const ROW_HEIGHT = 40;
+export const MAP_LAYOUT_ROW_HEIGHT = 40;
+const ROW_HEIGHT = MAP_LAYOUT_ROW_HEIGHT;
 // [horizontal, vertical] gap between grid items, in px. Also used as the grid's
 // `containerPadding` so RGL's own placement math (reused for the tear-off ghost)
 // is fully determined by these constants rather than RGL's implicit default.
@@ -51,6 +52,8 @@ export interface MapLayoutGridProps {
   onTearOff?: (panel: PanelId, x: number, y: number) => void;
   /** One element per visible group, each keyed by its group id. */
   children: ReactNode;
+  /** Experimental collapsed group ids — use a lower `minH` so header-only height applies. */
+  experimentalCollapsedGroupIds?: ReadonlySet<string>;
 }
 
 export function MapLayoutGrid({
@@ -59,6 +62,7 @@ export function MapLayoutGrid({
   onBreakpointChange,
   onTearOff,
   children,
+  experimentalCollapsedGroupIds,
 }: MapLayoutGridProps) {
   // ResizeObserver-based width (replaces the SSR-hostile WidthProvider). `mounted`
   // gates the grid until a real width is measured, avoiding a hydration flash.
@@ -105,6 +109,7 @@ export function MapLayoutGrid({
   // The snapped cell a tab would tear off into. Non-null only while a tab hovers the
   // grid surface (outside any header); drives the ghost outline.
   const [ghost, setGhost] = useState<GhostCell | null>(null);
+  const lastGhostKey = useRef<string | null>(null);
 
   // Translate the live pointer (activator + accumulated delta) to a snapped grid
   // cell for the dragged panel, using the panel's `PANEL_MIN` footprint.
@@ -127,18 +132,29 @@ export function MapLayoutGrid({
     [containerRef, cols, positionParams],
   );
 
+  const setGhostCell = useCallback((cell: GhostCell | null) => {
+    const key = cell ? `${cell.x},${cell.y},${cell.w},${cell.h}` : null;
+    if (key === lastGhostKey.current) return;
+    lastGhostKey.current = key;
+    setGhost(cell);
+  }, []);
+
   useDndMonitor({
     onDragMove: (e) => {
-      setGhost(e.over?.id === GRID_DROPPABLE_ID ? pointerCell(e) : null);
+      setGhostCell(e.over?.id === GRID_DROPPABLE_ID ? pointerCell(e) : null);
     },
     onDragEnd: (e) => {
       if (e.over?.id === GRID_DROPPABLE_ID) {
         const cell = pointerCell(e);
         if (cell) onTearOff?.(e.active.id as PanelId, cell.x, cell.y);
       }
+      lastGhostKey.current = null;
       setGhost(null);
     },
-    onDragCancel: () => setGhost(null),
+    onDragCancel: () => {
+      lastGhostKey.current = null;
+      setGhost(null);
+    },
   });
 
   const ghostRect = ghost && calcGridItemPosition(positionParams, ghost.x, ghost.y, ghost.w, ghost.h);
@@ -156,14 +172,20 @@ export function MapLayoutGrid({
     for (const bp of Object.keys(layouts) as Breakpoint[]) {
       out[bp] = layouts[bp].map((item) => {
         const min = PANEL_MIN[item.i as PanelId];
-        return min ? { ...item, minW: min.minW, minH: min.minH } : item;
+        if (!min) return item;
+        const collapsed = experimentalCollapsedGroupIds?.has(item.i);
+        return {
+          ...item,
+          minW: min.minW,
+          minH: collapsed ? 1 : min.minH,
+        };
       });
     }
     return out;
-  }, [layouts]);
+  }, [layouts, experimentalCollapsedGroupIds]);
 
   return (
-    <div ref={setContainerRefs} className="relative h-full w-full">
+    <div ref={setContainerRefs} className="ap-map-dashboard relative h-full w-full">
       {mounted ? (
         <ResponsiveGridLayout<Breakpoint>
           width={width}
@@ -185,14 +207,18 @@ export function MapLayoutGrid({
       {ghostRect && (
         <div
           aria-hidden
-          className="pointer-events-none absolute z-10 rounded-md border-2 border-dashed border-primary bg-primary/10"
+          className="ap-panel-tearoff-ghost pointer-events-none absolute z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-primary/15 shadow-[inset_0_0_0_1px_rgb(91_157_255/0.25)]"
           style={{
             left: ghostRect.left,
             top: ghostRect.top,
             width: ghostRect.width,
             height: ghostRect.height,
           }}
-        />
+        >
+          <span className="rounded-md bg-background/90 px-2 py-0.5 text-xs font-medium text-primary shadow-sm">
+            Drop panel here
+          </span>
+        </div>
       )}
     </div>
   );

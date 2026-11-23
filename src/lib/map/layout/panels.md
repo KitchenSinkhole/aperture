@@ -21,7 +21,13 @@
 `Record<PanelId, { minW: number; minH: number }>` — the resize floors derived from `PANELS`. Authoritative: `MapLayoutGrid` re-applies these over each stored layout item at render time, so lowering a floor takes effect for already-saved per-account layouts without disturbing their persisted positions.
 
 ### DEFAULT_MAP_LAYOUT
-`MapLayoutConfig` — the fallback used when `ap_user.map_layout` is NULL. The built-in fixed layout: a tall `canvas` top-left, full-width `signatures` beneath it, and the info modules stacked in a right column. Built per breakpoint — `lg`/`md` via `wideLayout(cols)` (left canvas+signatures, right module stack), `sm` via a single-column stack in registry order. `groups` holds one singleton group per layout item (`id === its PanelId`); `hidden: []`.
+`MapLayoutConfig` — the fallback used when `ap_user.map_layout` is NULL and experimental UI is off. The built-in fixed layout: a tall `canvas` top-left, full-width `signatures` beneath it, and the info modules stacked in a right column. Built per breakpoint — `lg`/`md` via `wideLayout(cols)` (left canvas+signatures, right module stack), `sm` via a single-column stack in registry order. `groups` holds one singleton group per layout item (`id === its PanelId`); `hidden: []`.
+
+### EXPERIMENTAL_DEFAULT_MAP_LAYOUT
+`MapLayoutConfig` — the fallback when `ap_user.map_layout` is NULL **and** experimental UI is on. Left column: `canvas` (most of the height) with `signatures` beneath. Right column: compact stacked tab groups sized to fit a desktop viewport — Inspector+Intel; Route+Current Route; Pilots+Kills; Eve-Scout+D-Scan; System graph+System Killboard+Tags; Structures. Panel bodies scroll inside their grid cells.
+
+### defaultMapLayoutForUi(experimental: boolean): MapLayoutConfig
+Returns `EXPERIMENTAL_DEFAULT_MAP_LAYOUT` when `experimental` is true, else `DEFAULT_MAP_LAYOUT`.
 
 ### ensurePanelsPlaced(config: MapLayoutConfig): MapLayoutConfig
 Forward-compat normaliser run when seeding layout state on load and when re-showing a hidden panel. Ensures every registered, **non-hidden** panel is placed in every breakpoint. "Placed" means a **member of some group in `groups[bp]`** (not merely a layout item id) — a tabbed member shares its group's cell and has no layout id of its own, so keying off layout ids would wrongly duplicate it. A panel that is a member of no group and not in `config.hidden` is appended below the existing items at `x: 0`, stacked by its `minH`, sized `Math.min(cols, max(minW, 4)) × max(minH, 4)`, and added as a matching singleton group in `groups[bp]`. Panels in `hidden` are skipped, so a hidden panel (whose layout item was removed by `removePanelFromLayout`) is not resurrected on reload, and dropping a panel from `hidden` makes it reappear here as a fresh singleton. No data migration needed for future panels.
@@ -47,6 +53,9 @@ Removes `panel` from the group model in every breakpoint (the hide pathway). The
 - `panel` — the panel to remove from its group.
 
 **Returns:** The updated config. Returns the input **unchanged by reference** when `panel` is in no group.
+
+### mergePanelIntoGroup(config, bp, sourcePanel, targetGroupId): MapLayoutConfig
+Moves a tabbed member from its source group into another group on one breakpoint (dnd-kit header/tab merge). Dropped empty sources, anchor re-keying, and layout item renaming follow the same rules as hide. Returns the input unchanged on a no-op.
 
 ### dedupeGroups(config: MapLayoutConfig): MapLayoutConfig
 Repair normaliser run in the seed/import pipeline (after `migrateLayout`, before `ensurePanelsPlaced`). Enforces that a panel is a member of at most one group per breakpoint: the first occurrence in `groups[bp]` order wins, later duplicate memberships are stripped. A group emptied by de-duplication is dropped along with its grid item; a group whose anchor id was a stripped duplicate is re-keyed to a surviving member. Heals layouts saved while a stale `ensurePanelsPlaced` resurrected a tabbed member as a second standalone cell (the trailing duplicate loses).

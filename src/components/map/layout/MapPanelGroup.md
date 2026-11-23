@@ -14,9 +14,10 @@
 | renderContent | (id: PanelId) => ReactNode | yes | Renders the active member's body |
 | renderHeaderRight | (id: PanelId) => ReactNode | yes | Renders header actions for the active member (right of the tabs) |
 | contentClassName | (id: PanelId) => string \| undefined | no | Resolves the body class for the active member; the canvas passes `overflow-hidden` so ReactFlow fills a padding-free cell |
+| onExperimentalCollapseChange | (groupId: string, collapsed: boolean) => void | no | Experimental only: notifies the parent to shrink or restore the group's RGL height (not persisted) |
 
 ### Renders
-A full-height `Card` (`gap-0 py-0`) with a thin header bar and a body. The header holds a grip icon then a horizontal tab strip (one draggable tab per visible member: title button + a close ✕ when the group has more than one member, active tab highlighted), followed by the active member's `renderHeaderRight` and — only in the single-member case — a whole-panel hide (✕) button. The body renders `renderContent(active)`.
+A full-height `Card` (`gap-0 py-0`) with a thin header bar and a body. The header holds a grip icon then a horizontal tab strip (one draggable tab per visible member: title button + a close ✕ when the group has more than one member, active tab highlighted), followed by an experimental `ExperimentalPanelGear` control when supported, then the active member's `renderHeaderRight` and — only in the single-member case — a whole-panel hide (✕) button. The body renders `renderContent(active)`.
 
 ### Behaviour & Interactions
 - The active member is `group.active` when it is still visible, else the first visible member.
@@ -25,6 +26,7 @@ A full-height `Card` (`gap-0 py-0`) with a thin header bar and a body. The heade
 - **Tab drag (dnd-kit):** each tab (including a singleton's sole tab) is a `useSortable` draggable whose id is its member `PanelId`, inside a `SortableContext` (horizontal). Dragging reorders within the header or, dropped on another group, merges — resolved by the parent via `PanelDndContext`. The header is a `useDroppable` (`grp:<group.id>`); while a foreign panel (one not already a member) hovers it, the header shows a merge-target highlight.
 - **Card-in-card dedupe:** the body carries `[&>[data-slot=card]]:rounded-none [&>[data-slot=card]]:ring-0`, so a module rendering its own `<Card>` as the body's direct child loses that card's frame and the panel reads as a single card. The canvas body is a plain div, so the variant doesn't match it.
 - RGL's resize handle is a sibling of the `Card` inside the grid item, so the card's `overflow-hidden` does not clip it.
+- **Experimental collapse:** a chevron toggles the body; `onExperimentalCollapseChange` drives grid `h` and reflow. The `Card` uses `h-auto` when collapsed so the cell is not filled with empty space.
 
 ### Exports
 - `MapPanelGroup` — the component.

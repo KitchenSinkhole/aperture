@@ -314,10 +314,14 @@ export async function planRoutes(args: {
       loadMapSystems(mapId),
       loadConnectionSigs(mapId),
     ]);
+    const includeJb = prefs.includeJumpBridge !== false;
+    const mappedOverlay = includeJb
+      ? whEdges
+      : whEdges.filter((e) => e.kind !== 'jumpbridge');
     const raw = planRoutesOnGraph({
       adjacency,
       trueSec,
-      overlay: [...whEdges, ...scoutEdges],
+      overlay: [...mappedOverlay, ...scoutEdges],
       onMapSystemIds: mapSystems.ids,
       sourceSystemId,
       destinationSystemIds,

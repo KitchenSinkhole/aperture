@@ -71,6 +71,8 @@ export const mapLayoutConfigSchema = z.object({
     })
     .optional(),
   hidden: z.array(panelId).max(50),
+  panelSettings: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+  layoutPreset: z.enum(['scanning', 'combat', 'travel']).optional(),
 });
 
 // Compile-time guarantee the parser's output is a valid pre-normalisation layout

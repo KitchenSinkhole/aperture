@@ -45,9 +45,12 @@ import {
   type WhMass,
 } from '@/lib/map/enumLabels';
 import { systemDisplayName } from '@/lib/eve/drifterSystems';
+import { cn } from '@/lib/utils';
 import { NoteContent } from '@/components/map/NoteContent';
 import { NOTE_TEXT_COLOR_NAMES } from '@/lib/map/noteMarkdown';
 import { apertureConfig } from '../../../aperture.config';
+import { isExperimentalUiActive, readExperimentalUiFromHtml } from '@/lib/experimentalUi';
+import { ExperimentalMapSummary } from './ExperimentalMapSummary';
 
 const NONE_JUMP_MASS = '__none__';
 
@@ -68,7 +71,13 @@ export function InspectorModule(props: {
 }) {
   const { selected, viewData } = props;
 
-  if (!selected) return <EmptyInspector />;
+  if (!selected) {
+  return isExperimentalUiActive(readExperimentalUiFromHtml()) ? (
+      <ExperimentalMapSummary viewData={viewData} />
+    ) : (
+      <EmptyInspector />
+    );
+  }
 
   if (selected.kind === 'system') {
     const system = viewData.systems.find((s) => s.id === selected.id);
@@ -143,6 +152,7 @@ function SystemInspector({
   const [tagDraft, setTagDraft] = useState(system.tag ?? '');
   const [intelDraft, setIntelDraft] = useState(system.intelNotes ?? '');
   const displayName = systemDisplayName(system.systemId, system.name);
+  const experimental = isExperimentalUiActive(readExperimentalUiFromHtml());
 
   return (
     <Card size="sm" className="data-[size=sm]:pb-0">
@@ -166,6 +176,17 @@ function SystemInspector({
         </Tooltip.Root>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 text-xs">
+        {experimental ? (
+          <ExperimentalSystemSummaryFields
+            system={system}
+            aliasDraft={aliasDraft}
+            setAliasDraft={setAliasDraft}
+            tagDraft={tagDraft}
+            setTagDraft={setTagDraft}
+            displayName={displayName}
+            onPatch={onPatch}
+          />
+        ) : null}
         <Row label="Status">
           <Select<string>
             value={system.status}
@@ -534,6 +555,108 @@ function ConnectionInspector({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ExperimentalSystemSummaryFields({
+  system,
+  aliasDraft,
+  setAliasDraft,
+  tagDraft,
+  setTagDraft,
+  displayName,
+  onPatch,
+}: {
+  system: MapSystemNode;
+  aliasDraft: string;
+  setAliasDraft: (v: string) => void;
+  tagDraft: string;
+  setTagDraft: (v: string) => void;
+  displayName: string;
+  onPatch: (patch: UpdateSystemBody) => void;
+}) {
+  const [editAlias, setEditAlias] = useState(false);
+  const [editTag, setEditTag] = useState(false);
+  const aliasUnset = !(system.alias?.trim());
+  const tagUnset = !(system.tag?.trim());
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-dashed border-border/80 bg-muted/20 p-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] uppercase text-muted-foreground">Summary</span>
+        <button
+          type="button"
+          className="rounded-md bg-background px-2 py-0.5 capitalize ring-1 ring-border"
+          onClick={() => {
+            const i = SYSTEM_STATUSES.indexOf(system.status);
+            const next = SYSTEM_STATUSES[(i + 1) % SYSTEM_STATUSES.length]!;
+            onPatch({ status: next });
+          }}
+        >
+          {system.status}
+        </button>
+      </div>
+      <div className="flex flex-col gap-1">
+        {editAlias ? (
+          <Input
+            autoFocus
+            value={aliasDraft}
+            onChange={(e) => setAliasDraft(e.target.value)}
+            onBlur={() => {
+              const next = aliasDraft.length > 0 ? aliasDraft : null;
+              if (next !== (system.alias ?? null)) onPatch({ alias: next });
+              setEditAlias(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') setEditAlias(false);
+            }}
+            className="h-7"
+          />
+        ) : (
+          <button
+            type="button"
+            className={cn(
+              'truncate text-left',
+              aliasUnset ? 'text-muted-foreground/60 italic' : 'text-foreground',
+            )}
+            onClick={() => setEditAlias(true)}
+          >
+            Alias: {aliasUnset ? 'unset — click to set' : aliasDraft}
+          </button>
+        )}
+        {editTag ? (
+          <Input
+            autoFocus
+            value={tagDraft}
+            onChange={(e) => setTagDraft(e.target.value)}
+            onBlur={() => {
+              const next = tagDraft.length > 0 ? tagDraft : null;
+              if (next !== (system.tag ?? null)) onPatch({ tag: next });
+              setEditTag(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') setEditTag(false);
+            }}
+            className="h-7"
+            maxLength={50}
+          />
+        ) : (
+          <button
+            type="button"
+            className={cn(
+              'truncate text-left',
+              tagUnset ? 'text-muted-foreground/60 italic' : 'text-foreground',
+            )}
+            onClick={() => setEditTag(true)}
+          >
+            Tag: {tagUnset ? 'unset — click to set' : tagDraft}
+          </button>
+        )}
+      </div>
+      <p className="text-[10px] text-muted-foreground">Canonical: {displayName}</p>
+    </div>
   );
 }
 

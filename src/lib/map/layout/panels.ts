@@ -7,7 +7,7 @@ import type { Breakpoint, MapLayoutConfig, PanelGroup, PanelId, StoredMapLayout 
 // modules stacked in a right column.
 
 /** Bumped when the stored shape changes incompatibly; gates a reset/migration. */
-export const LAYOUT_CONFIG_VERSION = 2;
+export const LAYOUT_CONFIG_VERSION = 3;
 
 /** Responsive breakpoint min-widths (px) and column counts, shared by the grid. */
 export const PANEL_BREAKPOINTS: Record<Breakpoint, number> = { lg: 1200, md: 768, sm: 0 };
@@ -28,6 +28,10 @@ export const PANELS: PanelDef[] = [
   { id: 'sigSearch', title: 'Signature Search', defaultVisible: true, minW: 4, minH: 3 },
   { id: 'inspector', title: 'Inspector', defaultVisible: true, minW: 1, minH: 3 },
   { id: 'route', title: 'Routes', defaultVisible: true, minW: 2, minH: 2 },
+  { id: 'currentRoute', title: 'Current Route', defaultVisible: true, minW: 2, minH: 2 },
+  { id: 'pilots', title: 'Pilots', defaultVisible: true, minW: 2, minH: 3 },
+  { id: 'kills', title: 'Kills', defaultVisible: true, minW: 2, minH: 3 },
+  { id: 'dscan', title: 'D-Scan', defaultVisible: true, minW: 2, minH: 3 },
   { id: 'intel', title: 'Intel', defaultVisible: true, minW: 1, minH: 2 },
   { id: 'structure', title: 'Structures', defaultVisible: true, minW: 2, minH: 2 },
   { id: 'killStats', title: 'Kill Statistics', defaultVisible: true, minW: 1, minH: 2 },
@@ -118,6 +122,75 @@ export const DEFAULT_MAP_LAYOUT: MapLayoutConfig = {
   },
   hidden: [],
 };
+
+type ExperimentalRightGroup = { id: PanelId; anchor: PanelId; h: number };
+
+const EXPERIMENTAL_RIGHT_STACK: ExperimentalRightGroup[] = [
+  { id: 'inspector', anchor: 'inspector', h: 3 },
+  { id: 'route', anchor: 'route', h: 2 },
+  { id: 'pilots', anchor: 'pilots', h: 2 },
+  { id: 'thera', anchor: 'thera', h: 2 },
+  { id: 'systemGraph', anchor: 'systemGraph', h: 3 },
+  { id: 'structure', anchor: 'structure', h: 2 },
+];
+
+function experimentalWideLayout(cols: number) {
+  const leftW = cols === 12 ? 8 : 5;
+  const rightX = leftW;
+  const rightW = cols - leftW;
+  let yRight = 0;
+  const rightCells = EXPERIMENTAL_RIGHT_STACK.map(({ id, anchor, h }) => {
+    const item = {
+      i: id,
+      x: rightX,
+      y: yRight,
+      w: rightW,
+      h,
+      ...PANEL_MIN[anchor],
+    };
+    yRight += h;
+    return item;
+  });
+  return [
+    { i: 'canvas' as PanelId, x: 0, y: 0, w: leftW, h: 10, ...PANEL_MIN.canvas },
+    { i: 'signatures' as PanelId, x: 0, y: 10, w: leftW, h: 4, ...PANEL_MIN.signatures },
+    ...rightCells,
+  ];
+}
+
+const experimentalLayouts: Record<Breakpoint, Layout> = {
+  lg: experimentalWideLayout(12),
+  md: experimentalWideLayout(8),
+  sm: stackedLayout,
+};
+
+const experimentalGroupsLg: PanelGroup[] = [
+  { id: 'canvas', members: ['canvas'], active: 'canvas' },
+  { id: 'signatures', members: ['signatures'], active: 'signatures' },
+  { id: 'inspector', members: ['inspector', 'intel'], active: 'inspector' },
+  { id: 'route', members: ['route', 'currentRoute'], active: 'route' },
+  { id: 'pilots', members: ['pilots', 'kills'], active: 'pilots' },
+  { id: 'thera', members: ['thera', 'dscan'], active: 'thera' },
+  { id: 'systemGraph', members: ['systemGraph', 'systemKillboard', 'tags'], active: 'systemGraph' },
+  { id: 'structure', members: ['structure'], active: 'structure' },
+];
+
+/** Default dashboard when `ap_user.map_layout` is null and experimental UI is on. */
+export const EXPERIMENTAL_DEFAULT_MAP_LAYOUT: MapLayoutConfig = {
+  version: LAYOUT_CONFIG_VERSION,
+  layouts: experimentalLayouts,
+  groups: {
+    lg: experimentalGroupsLg,
+    md: experimentalGroupsLg,
+    sm: singletonGroups(stackedLayout),
+  },
+  hidden: [],
+};
+
+/** Pick the built-in default for users without a saved layout. */
+export function defaultMapLayoutForUi(experimental: boolean): MapLayoutConfig {
+  return experimental ? EXPERIMENTAL_DEFAULT_MAP_LAYOUT : DEFAULT_MAP_LAYOUT;
+}
 
 // Fallback geometry for a panel that shipped after the user last saved their
 // layout — auto-placed at the bottom of each breakpoint on load.
@@ -245,6 +318,58 @@ export function removePanelFromLayout(config: MapLayoutConfig, panel: PanelId): 
  * member as a second standalone cell). Returns the input unchanged when every
  * panel already appears once.
  */
+/**
+ * Move `sourcePanel` from its current group into `targetGroupId` as an active tab
+ * on one breakpoint. Empty source groups and their grid items are dropped; anchor
+ * re-keying matches `removePanelFromLayout`. Returns the input unchanged when
+ * source or target is missing, or when source already belongs to the target group.
+ */
+export function mergePanelIntoGroup(
+  config: MapLayoutConfig,
+  bp: Breakpoint,
+  sourcePanel: PanelId,
+  targetGroupId: string,
+): MapLayoutConfig {
+  const source = config.groups[bp]?.find((g) => g.members.includes(sourcePanel));
+  const target = config.groups[bp]?.find((g) => g.id === targetGroupId);
+  if (!source || !target || source.id === targetGroupId) return config;
+  const droppedIds = new Set<string>();
+  const renamed = new Map<string, PanelId>();
+  const groupsBp = config.groups[bp].flatMap((g) => {
+    if (g.id === source.id) {
+      const members = g.members.filter((m) => m !== sourcePanel);
+      if (members.length === 0) {
+        droppedIds.add(g.id);
+        return [];
+      }
+      const active = g.active === sourcePanel ? members[0]! : g.active;
+      if (g.id === sourcePanel) {
+        renamed.set(g.id, active);
+        return [{ id: active, members, active }];
+      }
+      return [{ ...g, members, active }];
+    }
+    if (g.id === targetGroupId) {
+      return [{ ...g, members: [...g.members, sourcePanel], active: sourcePanel }];
+    }
+    return [g];
+  });
+  const groups = { ...config.groups, [bp]: groupsBp };
+  const layouts =
+    droppedIds.size > 0 || renamed.size > 0
+      ? {
+          ...config.layouts,
+          [bp]: config.layouts[bp]
+            .filter((i) => !droppedIds.has(i.i))
+            .map((it) => {
+              const newId = renamed.get(it.i);
+              return newId ? { ...it, i: newId, ...PANEL_MIN[newId] } : it;
+            }),
+        }
+      : config.layouts;
+  return { ...config, groups, layouts };
+}
+
 export function dedupeGroups(config: MapLayoutConfig): MapLayoutConfig {
   let changed = false;
   const layouts = { ...config.layouts };

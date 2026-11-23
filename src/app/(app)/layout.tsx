@@ -18,6 +18,8 @@ import { RealtimeStatusBanner } from '@/components/RealtimeStatusBanner';
 import { SdeStatusBanner } from '@/components/SdeStatusBanner';
 import { AppUpdateBanner } from '@/components/AppUpdateBanner';
 import { LowContrastController } from '@/components/LowContrastController';
+import { ExperimentalHoverDelayProvider } from '@/lib/experimentalHoverDelay.client';
+import { ExperimentalQolController } from '@/components/ExperimentalQolController';
 import { ClientErrorReporter } from '@/components/ClientErrorReporter';
 import { ClientErrorBoundary } from '@/components/ClientErrorBoundary';
 import { getSdeStatus } from '@/lib/sde/status';
@@ -37,6 +39,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     <RealtimeProvider>
       <CurrentMapScopeProvider>
         <LowContrastController />
+        <ExperimentalQolController />
         <ClientErrorReporter />
         <div className="flex min-h-screen flex-col">
           <RealtimeStatusBanner />
@@ -51,7 +54,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             soundPrefs={soundPrefs}
           />
           <main className="w-full flex-1 px-4 py-3">
-            <ClientErrorBoundary>{children}</ClientErrorBoundary>
+            <ExperimentalHoverDelayProvider>
+              <ClientErrorBoundary>{children}</ClientErrorBoundary>
+            </ExperimentalHoverDelayProvider>
           </main>
           <AppFooter />
           <Toaster />

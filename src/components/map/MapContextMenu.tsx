@@ -47,6 +47,7 @@ import { cn } from '@/lib/utils';
 import { SetDestinationItem } from './SetDestinationItem';
 import { WatchConnectionItem } from './WatchConnectionItem';
 import { AddToRoutesItem } from './AddToRoutesItem';
+import { RouteHereItem } from './RouteHereItem';
 import { SystemSoundMuteItem } from './SystemSoundMuteItem';
 
 /** Sentinel radio value for "jump mass unknown" — mirrors `InspectorModule.tsx`. */
@@ -135,6 +136,8 @@ export function MapContextMenu({
   onAddNoteAt,
   onNotePatch,
   onNoteRemove,
+  experimentalFightMapSystemId,
+  onSetFightMapSystem,
 }: {
   target: MapContextMenuTarget | null;
   onClose: () => void;
@@ -168,6 +171,9 @@ export function MapContextMenu({
   onAddNoteAt: (clientX: number, clientY: number) => void;
   onNotePatch: (id: string, patch: UpdateNoteBody) => void;
   onNoteRemove: (id: string) => void;
+  /** Experimental route shortcut: persisted fight map-system id. */
+  experimentalFightMapSystemId?: string | null;
+  onSetFightMapSystem?: (mapSystemId: string | null) => void;
 }) {
   // A zero-size virtual element at the cursor point; recreated per render so the
   // rect tracks the current target's coordinates.
@@ -237,6 +243,8 @@ export function MapContextMenu({
               onAddNoteAt,
               onNotePatch,
               onNoteRemove,
+              experimentalFightMapSystemId,
+              onSetFightMapSystem,
             })}
           </MenuPrimitive.Popup>
         </MenuPrimitive.Positioner>
@@ -267,6 +275,8 @@ function renderItems({
   onAddNoteAt,
   onNotePatch,
   onNoteRemove,
+  experimentalFightMapSystemId,
+  onSetFightMapSystem,
 }: {
   target: MapContextMenuTarget | null;
   onClose: () => void;
@@ -290,6 +300,9 @@ function renderItems({
   onAddNoteAt: (clientX: number, clientY: number) => void;
   onNotePatch: (id: string, patch: UpdateNoteBody) => void;
   onNoteRemove: (id: string) => void;
+  /** Experimental route shortcut: persisted fight map-system id. */
+  experimentalFightMapSystemId?: string | null;
+  onSetFightMapSystem?: (mapSystemId: string | null) => void;
 }) {
   if (!target) return null;
 
@@ -331,6 +344,8 @@ function renderItems({
             onPingSystem(system.id);
             onClose();
           }}
+          experimentalFightMapSystemId={experimentalFightMapSystemId}
+          onSetFightMapSystem={onSetFightMapSystem}
         />
       );
     }
@@ -459,6 +474,8 @@ function SystemItems({
   onDeleteSubchainPick,
   onPing,
   onClose,
+  experimentalFightMapSystemId,
+  onSetFightMapSystem,
 }: {
   system: MapSystemNode;
   systems: MapSystemNode[];
@@ -475,8 +492,11 @@ function SystemItems({
   onPing: () => void;
   /** Dismiss the menu — "Set destination" closes it itself (self-contained action). */
   onClose: () => void;
+  experimentalFightMapSystemId?: string | null;
+  onSetFightMapSystem?: (mapSystemId: string | null) => void;
 }) {
   const isHome = homeMapSystemId === system.id;
+  const isFight = experimentalFightMapSystemId === system.id;
   const hasHome = homeMapSystemId !== null;
   const byId = new Map(systems.map((s) => [s.id, s]));
 
@@ -507,9 +527,25 @@ function SystemItems({
         Ping
       </MenuItem>
 
+      <SystemSoundMuteItem system={system} isHome={isHome} onClose={onClose} />
+
       <SetDestinationItem system={system} onClose={onClose} />
 
       <AddToRoutesItem system={system} onClose={onClose} />
+
+      <RouteHereItem system={system} onClose={onClose} />
+
+      {onSetFightMapSystem ? (
+        <MenuItem
+          inset
+          onClick={() => {
+            onSetFightMapSystem(isFight ? null : system.id);
+            onClose();
+          }}
+        >
+          {isFight ? 'Clear fight' : 'Set fight'}
+        </MenuItem>
+      ) : null}
 
       <MenuSubmenu>
         <MenuSubmenuTrigger inset>Status</MenuSubmenuTrigger>

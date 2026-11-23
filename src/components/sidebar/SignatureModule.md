@@ -20,13 +20,16 @@
 | flashSigId | string \| null | no | When set, the matching signature row flashes with `ap-sig-flash` for 3 s. Cleared by MapCanvas after the timeout. Known limitation: if the target sig is hidden by the in-panel group/scan filter, the flash silently no-ops. |
 | pasteFlash | Record<string, 'created' \| 'updated'> | no | Sig ids a local bulk paste just created/updated, mapped to which. Matching rows get a sonar-ping highlight (`ap-sig-flash-created` green / `ap-sig-flash-updated` blue). Set + auto-cleared by MapCanvas. A row hidden by the group/scan filter no-ops like `flashSigId`. |
 | tagScheme | TagScheme | yes | The map's `ap_map.tag_scheme`, forwarded to each `ConnectionSelect` so the far end's class+tag label matches the scheme in use. |
+| experimentalUi | boolean | no | Experimental BUILD 2: in-table draft row, default sort (unscanned→group), row age and WH-dest accents, WH row map highlight, drag-to-link. |
+| onCreateWithId | (body) => Promise\<string \| null\> | no | Server create for the in-table draft row; returns the new `ap_map_signature.id`. |
+| onSignatureHover | (sig \| null) => void | no | Fired when the pointer enters/leaves a linked wormhole row (for map endpoint highlight). |
 
 The **Lazy delete** and **Paste from scanner** actions are no longer rendered by this card — they live in `SignatureModuleHeaderActions` (also exported from this file), which `MapCanvas` renders into the `MapPanelGroup` header (for the active tab) via `renderHeaderRight`. See that component's props below.
 
 ### Renders
 A frameless `Card` (no card header) with:
-- Body only: when no system is selected, a placeholder message. When a system is selected: a **filter bar** (`SignatureFilterBar`) above the table, the eleven-column TanStack Table, and a draft-input row below. Created and Updated are backward "time ago" strings (`formatAgoFromMs`). The panel name ("Signatures"), drag handle and hide button come from the surrounding `MapPanelGroup` chrome.
-- **Static controls, scrollable table:** the filter bar and the bottom draft "Add" row stay pinned while only the table region scrolls, so a long signature list scrolls within the panel without moving the filters or add form.
+- Body only: when no system is selected, a placeholder message. When a system is selected: a **filter bar** (`SignatureFilterBar`) above the table, the eleven-column TanStack Table, and (legacy UI) a draft-input row below the table — or (experimental UI) a blank **draft table row** at the bottom of the tbody that syncs to the server once a Sig id is entered (`shouldSyncSignatureDraft`). Created and Updated are backward "time ago" strings (`formatAgoFromMs`). The panel name ("Signatures"), drag handle and hide button come from the surrounding `MapPanelGroup` chrome.
+- **Static controls, scrollable table:** the filter bar and the draft add chrome stay pinned while only the table region scrolls, so a long signature list scrolls within the panel without moving the filters or add form.
 - **Zebra striping:** body rows alternate background (even rows tinted) to aid scanning down the list.
 - The **Sig**, **Group**, **Created**, and **Updated** column headers are sortable (click to sort ascending, click again to reverse, arrow indicator shows active sort). Default sort is Sig ascending. Other columns (class-kind icon, Type, Description, Leads to, delete) are non-interactive headers.
 - **Class-kind icon column:** the headerless left-most column (`ClassKindCell`) shows whether the row is a Cosmic Signature (`SignatureIcon`, ＋) or a Cosmic Anomaly (`AnomalyIcon`, ◯), driven by `MapSignature.classKind`. Unknown (`null` — manual or pre-paste sigs) renders nothing. Each icon carries its own colour (signature red `#E30001`, anomaly green `#038005`) and `<title>` ("Signature"/"Anomaly") for the hover hint since the column has no header. The two glyphs are swappable app-wide via `@/components/icons/SignatureIcon` and `@/components/icons/AnomalyIcon`.
@@ -63,7 +66,7 @@ A frameless `Card` (no card header) with:
 
 ## SignatureModuleHeaderActions
 
-**Purpose:** The **Lazy delete** arm toggle and **Paste from scanner** button for the Signatures panel, rendered into the `MapPanelGroup` header (via `renderHeaderRight` for the active tab) beside the panel title rather than inside the card.
+**Purpose:** The **Lazy delete** arm toggle and **Paste from scanner** button for the Signatures panel, rendered into the `MapPanelGroup` header (via `renderHeaderRight` for the active tab) beside the panel title rather than inside the card. Experimental UI also renders **Clean up** (`onOpenCleanup` / `showCleanup`).
 **Exported from:** `src/components/sidebar/SignatureModule.tsx`
 
 ### Props

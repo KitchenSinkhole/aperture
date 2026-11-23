@@ -58,7 +58,7 @@ export function ConnectionDetailPopover({
     <Tooltip.Root onOpenChange={(open) => open && load()}>
       <Tooltip.Trigger
         render={<div />}
-        className="nodrag nopan pointer-events-auto flex items-center gap-1 rounded bg-card/90 px-1.5 py-0.5 text-[11px] font-semibold leading-none ring-1 ring-foreground/10"
+        className="ap-connection-badge-trigger nodrag nopan pointer-events-auto flex items-center gap-1 rounded bg-card/90 px-1.5 py-0.5 text-[11px] font-semibold leading-none ring-1 ring-foreground/10"
       >
         {children}
       </Tooltip.Trigger>

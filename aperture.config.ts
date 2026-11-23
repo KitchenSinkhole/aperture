@@ -341,6 +341,9 @@ export const apertureConfig = {
    */
   SIGNATURE_DEFAULT_TTL_MS: 172_800_000,
 
+  /** Interval for experimental per-map automatic signature cleanup on an open chart. */
+  EXPERIMENTAL_AUTO_CLEANUP_INTERVAL_MS: 30 * 60 * 1000,
+
   /**
    * graphile-worker concurrency: how many task handlers may run in parallel in
    * one worker process. The current task set is light (housekeeping deletes +

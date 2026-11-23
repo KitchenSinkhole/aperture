@@ -164,6 +164,18 @@ describe('system mutes', () => {
     expect(isCueMutedInSystem(prefs, 'watchedJump', HOME)).toBe(false);
   });
 
+  it('never mutes active-route alert cues', () => {
+    let prefs = resolveSoundPrefs(null);
+    for (const group of ['kills', 'pilots', 'alerts'] as const) {
+      prefs = setSystemSoundMute(prefs, JITA, group, true);
+      prefs = setSystemSoundMute(prefs, HOME, group, true);
+    }
+    for (const event of ['activeRouteOffRoute', 'activeRouteLinkAlert'] as const) {
+      expect(isCueMutedInSystem(prefs, event, JITA)).toBe(false);
+      expect(isCueMutedInSystem(prefs, event, HOME)).toBe(false);
+    }
+  });
+
   it('maps each cue to its group', () => {
     const prefs = setSystemSoundMute(resolveSoundPrefs(null), JITA, 'alerts', true);
     expect(isCueMutedInSystem(prefs, 'rallySet', JITA)).toBe(true);

@@ -14,6 +14,8 @@ export * from './ap/instance';
 export * from './ap/access_grant';
 export * from './ap/user';
 export * from './ap/route_destination';
+export * from './ap/map_active_route';
+export * from './ap/map_route_favourite';
 export * from './ap/character';
 export * from './ap/map';
 export * from './ap/map_system';

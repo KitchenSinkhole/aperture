@@ -101,6 +101,8 @@ interface Props {
   onFiltersChange: (f: SigSearchFilters) => void;
   onNavigate: (systemId: string, sigId: string) => void;
   tagScheme: TagScheme;
+  /** Experimental: highlight the signature's system on the map while hovering a row. */
+  onRowHover?: (mapSystemId: string | null) => void;
 }
 
 export function SignatureSearchModule({
@@ -110,6 +112,7 @@ export function SignatureSearchModule({
   onFiltersChange,
   onNavigate,
   tagScheme,
+  onRowHover,
 }: Props) {
   const [sortField, setSortField] = useState<SigSortField>('sigId');
   const [sortDir, setSortDir] = useState<SigSortDir>('asc');
@@ -348,6 +351,8 @@ export function SignatureSearchModule({
                 <tr
                   key={sig.id}
                   className="group border-t border-foreground/10 align-middle even:bg-foreground/[0.03] hover:bg-muted/30"
+                  onMouseEnter={() => onRowHover?.(system.id)}
+                  onMouseLeave={() => onRowHover?.(null)}
                 >
                   <td className="px-1 py-px">
                     <ActivityGlyph sig={sig} />

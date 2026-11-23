@@ -4,6 +4,8 @@ import { Geist } from 'next/font/google';
 
 import { cn } from '@/lib/utils';
 import { env } from '@/lib/env';
+import { experimentalUiHtmlAttributes } from '@/lib/experimentalUi';
+import { getExperimentalUiFromCookies } from '@/lib/experimentalUi.server';
 import './globals.css';
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
@@ -16,9 +18,12 @@ export const metadata: Metadata = {
   metadataBase: env.AUTH_URL ? new URL(env.AUTH_URL) : undefined,
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const experimentalUi = await getExperimentalUiFromCookies();
+  const uiAttrs = experimentalUiHtmlAttributes(experimentalUi);
+
   return (
-    <html lang="en" className={cn('dark font-sans', geist.variable)}>
+    <html lang="en" className={cn('dark font-sans', geist.variable)} {...uiAttrs}>
       <body>{children}</body>
     </html>
   );

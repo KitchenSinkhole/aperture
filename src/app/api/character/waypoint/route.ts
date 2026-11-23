@@ -1,6 +1,7 @@
 import 'server-only';
 import { type NextRequest } from 'next/server';
 import { z } from 'zod';
+import { characterWaypointBodySchema } from '@/lib/character/waypointRequestSchema';
 import { getSession, assertCharacterOwnership } from '@/lib/session';
 import {
   esiCall,
@@ -22,10 +23,7 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 export const runtime = 'nodejs';
 
-const bodySchema = z.object({
-  characterId: z.number().int().positive(),
-  destinationId: z.number().int().positive(),
-});
+export { characterWaypointBodySchema };
 
 export const POST = withApiMetrics('/api/character/waypoint', async function POST(request: NextRequest) {
   const session = await getSession();
@@ -40,7 +38,7 @@ export const POST = withApiMetrics('/api/character/waypoint', async function POS
     return Response.json({ ok: false, error: 'Invalid JSON.' }, { status: 400 });
   }
 
-  const parsed = bodySchema.safeParse(raw);
+  const parsed = characterWaypointBodySchema.safeParse(raw);
   if (!parsed.success) {
     return Response.json(
       { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid input.' },
@@ -48,23 +46,30 @@ export const POST = withApiMetrics('/api/character/waypoint', async function POS
     );
   }
 
-  const { characterId, destinationId } = parsed.data;
+  const { characterId } = parsed.data;
   const owns = await assertCharacterOwnership(BigInt(characterId), session.userId);
   if (!owns) {
     return Response.json({ ok: false, error: 'That character is not yours.' }, { status: 403 });
   }
 
+  const destinations =
+    'waypointSystemIds' in parsed.data
+      ? parsed.data.waypointSystemIds
+      : [parsed.data.destinationId];
+
   try {
-    await esiCall('setWaypoint', {
-      schema: z.null(),
-      characterId: BigInt(characterId),
-      query: {
-        destination_id: destinationId,
-        add_to_beginning: false,
-        clear_other_waypoints: true,
-      },
-    });
-    return Response.json({ ok: true });
+    for (let i = 0; i < destinations.length; i++) {
+      await esiCall('setWaypoint', {
+        schema: z.null(),
+        characterId: BigInt(characterId),
+        query: {
+          destination_id: destinations[i]!,
+          add_to_beginning: false,
+          clear_other_waypoints: i === 0,
+        },
+      });
+    }
+    return Response.json({ ok: true, pushed: destinations.length });
   } catch (err) {
     if (err instanceof EsiTokenTransientError) {
       return Response.json(

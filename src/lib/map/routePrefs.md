@@ -6,4 +6,4 @@
 ---
 
 ### routePrefsSchema: z.ZodType<RoutePrefs>
-Validates `{ safety, minShipClass (nullable), avoidReduced, avoidCritical, avoidEol, includeEveScout }` against the `route_safety` / `wh_jump_mass` enum values. Lives outside the `'use server'` action file (which may only export async functions); imported by `actions/routes.ts` (`setRoutePrefsAction`) and `api/map/[mapId]/route-plan/route.ts`.
+Validates `{ safety, minShipClass (nullable), avoidReduced, avoidCritical, avoidEol, includeEveScout, includeJumpBridge? }` against the `route_safety` / `wh_jump_mass` enum values. `includeJumpBridge` is optional on the wire (defaults to included in the planner when omitted). Lives outside the `'use server'` action file (which may only export async functions); imported by `actions/routes.ts` (`setRoutePrefsAction`) and `api/map/[mapId]/route-plan/route.ts`.

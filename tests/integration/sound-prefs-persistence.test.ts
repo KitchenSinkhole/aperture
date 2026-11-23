@@ -39,11 +39,12 @@ const VALID_PREFS: SoundPrefs = {
   enabled: true,
   volume: 0.4,
   events: {
+    ...DEFAULT_SOUND_PREFS.events,
     pilotArrived: { enabled: true, sound: 'tick' },
     pilotLeft: { enabled: false, sound: 'chime-down' },
     watchedJump: { enabled: true, sound: 'alarm' },
     killInSystem: { enabled: false, sound: 'alarm' },
-    rallySet: { enabled: true, sound: 'bell' },
+    rallySet: { enabled: true, sound: 'bell', toast: false, desktopNotification: false },
     systemPinged: { enabled: false, sound: 'ping' },
   },
   homeMutes: { kills: true, pilots: false, alerts: false },

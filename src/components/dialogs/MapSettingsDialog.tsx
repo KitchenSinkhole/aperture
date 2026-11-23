@@ -17,8 +17,10 @@ import { Input } from '@/components/ui/input';
 import { updateMapSettingsAction } from '@/app/(app)/actions/map';
 import { exportMapOnServer, importMapOnServer } from '@/lib/map/client';
 import { readLowContrast, writeLowContrast } from '@/lib/lowContrast';
+import { isExperimentalUiActive, readExperimentalUiFromHtml } from '@/lib/experimentalUi';
 import { readWhPickerPrefs, writeWhPickerPrefs } from '@/lib/wormholePickerPrefs';
 import { MapBehaviorForm } from '@/components/map/manage/MapBehaviorForm';
+import { MapExperimentalCleanupForm } from '@/components/map/manage/MapExperimentalCleanupForm';
 import { MapTaggingForm } from '@/components/map/manage/MapTaggingForm';
 import { MapWebhooksPanel } from '@/components/map/manage/MapWebhooksPanel';
 import { MapRolesForm } from '@/components/map/manage/MapRolesForm';
@@ -70,6 +72,8 @@ export function MapSettingsDialog({
 }) {
   const can = (capability: MapCapability) => capabilities.includes(capability);
   const showApi = apiEnabled || can('api_manage');
+  const [experimentalUi] = useState(readExperimentalUiFromHtml);
+  const experimentalActive = isExperimentalUiActive(experimentalUi);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-4xl flex-col">
@@ -113,6 +117,14 @@ export function MapSettingsDialog({
                     trackAbyssalJumps: settings.trackAbyssalJumps,
                   }}
                 />
+                {experimentalActive ? (
+                  <MapExperimentalCleanupForm
+                    mapId={mapId}
+                    initialExperimentalAutoSignatureCleanup={
+                      settings.experimentalAutoSignatureCleanup
+                    }
+                  />
+                ) : null}
               </TabsPanel>
             )}
             {can('settings_manage') && (
@@ -169,6 +181,8 @@ function SettingsPanel() {
   // the dialog opens (never during SSR), so there's no hydration mismatch.
   const [lowContrast, setLowContrast] = useState(readLowContrast);
   const [whPicker, setWhPicker] = useState(readWhPickerPrefs);
+  const [experimentalUi] = useState(readExperimentalUiFromHtml);
+  const hideLowContrast = isExperimentalUiActive(experimentalUi);
 
   function onToggleLowContrast(next: boolean) {
     setLowContrast(next);
@@ -187,21 +201,23 @@ function SettingsPanel() {
         These preferences are stored on this device only.
       </p>
 
-      <label className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted">
-        <div className="flex flex-1 flex-col gap-0.5">
-          <span className="font-medium text-foreground">Low-contrast theme</span>
-          <span className="text-xs text-muted-foreground">
-            Softens the interface contrast. Off by default.
-          </span>
-        </div>
-        <input
-          type="checkbox"
-          className="size-4 accent-primary"
-          checked={lowContrast}
-          onChange={(e) => onToggleLowContrast(e.target.checked)}
-          aria-label="Low-contrast theme"
-        />
-      </label>
+      {!hideLowContrast ? (
+        <label className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted">
+          <div className="flex flex-1 flex-col gap-0.5">
+            <span className="font-medium text-foreground">Low-contrast theme</span>
+            <span className="text-xs text-muted-foreground">
+              Softens the interface contrast. Off by default.
+            </span>
+          </div>
+          <input
+            type="checkbox"
+            className="size-4 accent-primary"
+            checked={lowContrast}
+            onChange={(e) => onToggleLowContrast(e.target.checked)}
+            aria-label="Low-contrast theme"
+          />
+        </label>
+      ) : null}
 
       <label className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted">
         <div className="flex flex-1 flex-col gap-0.5">
@@ -220,6 +236,7 @@ function SettingsPanel() {
           aria-label="Group wormhole types by category"
         />
       </label>
+
     </div>
   );
 }
