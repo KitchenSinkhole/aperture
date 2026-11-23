@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { apertureConfig } from '../../../../aperture.config';
 import { db } from '@/db/client';
 import { apMap, apMapConnection } from '@/db/schema';
+import { readConnectionDeathSnapshot } from '@/lib/map/connectionDeathSnapshot';
 import { commitMapEvent } from '@/lib/map/mutations/core';
 import { withInstrumentation } from '../withInstrumentation';
 import type { JobModule } from '../registry';
@@ -57,6 +58,12 @@ async function expire(): Promise<{ scanned: number; deleted: number; failed: num
       characterId: null,
       kind: 'connection.delete',
       mutate: async (tx) => {
+        const snapshot = await readConnectionDeathSnapshot(tx, {
+          connectionId: row.connectionId,
+          mapId: row.mapId,
+          cause: 'expired_swept',
+        });
+        if (!snapshot) throw new Error('Connection already gone.');
         const [del] = await tx
           .delete(apMapConnection)
           .where(eq(apMapConnection.id, row.connectionId))
@@ -70,6 +77,7 @@ async function expire(): Promise<{ scanned: number; deleted: number; failed: num
           id: del.id.toString(),
           source: del.source.toString(),
           target: del.target.toString(),
+          ...snapshot,
         };
       },
     });

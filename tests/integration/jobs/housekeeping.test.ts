@@ -8,6 +8,7 @@ import {
   apJobRun,
   apMap,
   apMapConnection,
+  apMapConnectionLog,
   apMapEvent,
   apMapSignature,
   apMapSystem,
@@ -207,8 +208,23 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         scope: 'wh',
         eolStage: 'eol',
         eolAt: sql`now() - interval '5 hours'`,
+        createdAt: sql`now() - interval '20 hours'`,
+        isStatic: true,
       })
-      .returning({ id: apMapConnection.id });
+      .returning({
+        id: apMapConnection.id,
+        createdAt: apMapConnection.createdAt,
+        eolAt: apMapConnection.eolAt,
+        massStatus: apMapConnection.massStatus,
+      });
+    const [staleEolJump] = await db
+      .insert(apMapConnectionLog)
+      .values({
+        connectionId: staleEol!.id,
+        mass: 1_000_000n,
+        jumpedAt: sql`now() - interval '2 hours'`,
+      })
+      .returning({ jumpedAt: apMapConnectionLog.jumpedAt });
     const [freshEol] = await db
       .insert(apMapConnection)
       .values({
@@ -232,6 +248,8 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         scope: 'wh',
         eolStage: 'critical',
         eolAt: sql`now() - interval '90 minutes'`,
+        // Mid-roll when reaped: the cron cause stands; roll state rides isRolling.
+        isRolling: true,
       })
       .returning({ id: apMapConnection.id });
     const [freshCritical] = await db
@@ -307,6 +325,35 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
       .where(and(eq(apMapEvent.mapId, activeMapId), eq(apMapEvent.kind, 'connection.delete')));
     expect(events.length).toBeGreaterThanOrEqual(3);
 
+    const eolPayload = await deletePayload(activeMapId, staleEol!.id);
+    expect(eolPayload).toMatchObject({
+      id: staleEol!.id.toString(),
+      source: mapSystemA.toString(),
+      target: mapSystemB.toString(),
+      cause: 'eol_reaped',
+      bornAt: staleEol!.createdAt.toISOString(),
+      scope: 'wh',
+      massStatus: staleEol!.massStatus,
+      isRolling: false,
+      isStatic: true,
+      eolStage: 'eol',
+      eolAt: staleEol!.eolAt!.toISOString(),
+      wasDormant: false,
+      wormholeCode: null,
+    });
+    expect(Date.parse(eolPayload.lastAliveAt as string)).toBeGreaterThanOrEqual(
+      staleEolJump!.jumpedAt.getTime(),
+    );
+    expect(await deletePayload(activeMapId, staleCritical!.id)).toMatchObject({
+      cause: 'eol_reaped',
+      isRolling: true,
+      eolStage: 'critical',
+    });
+    expect(await deletePayload(activeMapId, staleExpired!.id)).toMatchObject({
+      cause: 'eol_reaped',
+      eolStage: 'expired',
+    });
+
     const runRow = await lastJobRun('eol-expiry');
     expect(runRow!.success).toBe(true);
     expect(runRow!.notes).toMatchObject({ deleted: 3, failed: 0 });
@@ -335,8 +382,15 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         targetMapSystemId: mapSystemB,
         scope: 'wh',
         createdAt: sql`now() - interval '49 hours'`,
+        // Dormant: an endpoint system was removed and the hole was never restored.
+        confirmedAt: null,
       })
-      .returning({ id: apMapConnection.id });
+      .returning({
+        id: apMapConnection.id,
+        createdAt: apMapConnection.createdAt,
+        updatedAt: apMapConnection.updatedAt,
+        massStatus: apMapConnection.massStatus,
+      });
     // A spent filament trace ages out the same way — nothing else ever removes
     // one, so without the reap a map that folds abyssal runs grows forever.
     const [oldAbyssal] = await db
@@ -380,6 +434,28 @@ describe.skipIf(!run)('Stage 11.2 housekeeping jobs (real Postgres)', () => {
         inArray(apMapConnection.id, [oldWh!.id, oldAbyssal!.id, oldGate!.id, optOutOldWh!.id]),
       );
     expect(new Set(survivors.map((r) => r.id))).toEqual(new Set([oldGate!.id, optOutOldWh!.id]));
+
+    expect(await deletePayload(activeMapId, oldWh!.id)).toMatchObject({
+      id: oldWh!.id.toString(),
+      source: mapSystemA.toString(),
+      target: mapSystemB.toString(),
+      cause: 'expired_swept',
+      bornAt: oldWh!.createdAt.toISOString(),
+      lastAliveAt: oldWh!.updatedAt.toISOString(),
+      scope: 'wh',
+      massStatus: oldWh!.massStatus,
+      isRolling: false,
+      isStatic: false,
+      eolStage: 'none',
+      eolAt: null,
+      wasDormant: true,
+      wormholeCode: null,
+    });
+    expect(await deletePayload(activeMapId, oldAbyssal!.id)).toMatchObject({
+      cause: 'expired_swept',
+      scope: 'abyssal',
+      wasDormant: false,
+    });
 
     const runRow = await lastJobRun('expired-connections');
     expect(runRow!.success).toBe(true);
@@ -436,6 +512,22 @@ async function lastJobRun(name: string) {
     .orderBy(sql`${apJobRun.startedAt} desc`)
     .limit(1);
   return rows[0];
+}
+
+/** The stored `connection.delete` payload for one connection — what the zod schema let through. */
+async function deletePayload(mapId: bigint, connectionId: bigint): Promise<Record<string, unknown>> {
+  const [row] = await db
+    .select({ payload: apMapEvent.payload })
+    .from(apMapEvent)
+    .where(
+      and(
+        eq(apMapEvent.mapId, mapId),
+        eq(apMapEvent.kind, 'connection.delete'),
+        sql`${apMapEvent.payload}->>'id' = ${connectionId.toString()}`,
+      ),
+    );
+  expect(row).toBeDefined();
+  return row!.payload as Record<string, unknown>;
 }
 
 async function cleanup() {
