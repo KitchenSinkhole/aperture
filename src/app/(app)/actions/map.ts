@@ -13,7 +13,6 @@ import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
 import { canCreateMap, requireMapCapability } from '@/lib/auth/rights';
 import { logger } from '@/lib/log/logger';
 import { invalidateUserApiMap } from '@/lib/userApi/authorize';
-import { mergeExperimentalAutoCleanupIntoNextBookmarks } from '@/lib/map/experimentalAutoCleanupSettings';
 
 /**
  * Low-frequency, user-initiated map mutations via Server Actions (CLAUDE.md
@@ -222,6 +221,11 @@ export async function updateMapSettingsAction(
         set.deleteEolConnections = out.deleteEolConnections = patch.deleteEolConnections;
       if ('trackAbyssalJumps' in patch)
         set.trackAbyssalJumps = out.trackAbyssalJumps = patch.trackAbyssalJumps;
+      if ('experimentalAutoSignatureCleanup' in patch)
+        set.experimentalSignatureCleanup = out.experimentalAutoSignatureCleanup =
+          patch.experimentalAutoSignatureCleanup;
+      if ('experimentalAutoMapCleanup' in patch)
+        set.experimentalMapCleanup = out.experimentalAutoMapCleanup = patch.experimentalAutoMapCleanup;
       if ('tagScheme' in patch) set.tagScheme = patch.tagScheme;
       if ('exemptHomeStaticFromTag' in patch)
         set.exemptHomeStaticFromTag = patch.exemptHomeStaticFromTag;
@@ -243,29 +247,6 @@ export async function updateMapSettingsAction(
         } else {
           set.homeMapSystemId = null;
         }
-      }
-
-      const touchesExperimentalAutoCleanup =
-        'experimentalAutoSignatureCleanup' in patch || 'experimentalAutoMapCleanup' in patch;
-      if (touchesExperimentalAutoCleanup) {
-        const [cur] = await tx
-          .select({ nextBookmarks: apMap.nextBookmarks })
-          .from(apMap)
-          .where(eq(apMap.id, id));
-        const autoPatch: {
-          autoSignatureCleanup?: boolean;
-          autoMapCleanup?: boolean;
-        } = {};
-        if ('experimentalAutoSignatureCleanup' in patch) {
-          autoPatch.autoSignatureCleanup = patch.experimentalAutoSignatureCleanup;
-        }
-        if ('experimentalAutoMapCleanup' in patch) {
-          autoPatch.autoMapCleanup = patch.experimentalAutoMapCleanup;
-        }
-        set.nextBookmarks = mergeExperimentalAutoCleanupIntoNextBookmarks(
-          cur?.nextBookmarks ?? [],
-          autoPatch,
-        );
       }
 
       const [row] = await tx

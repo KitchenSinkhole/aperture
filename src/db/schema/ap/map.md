@@ -13,6 +13,7 @@
 - `name` — `text`, required.
 - `delete_expired_connections`, `delete_eol_connections` — `boolean`, default `true`. Per-map behaviour toggles.
 - `track_abyssal_jumps` — `boolean`, default `false` (migration 0069). Abyssal folding is opt-in per map.
+- `experimental_signature_cleanup`, `experimental_map_cleanup` — `boolean`, default `false` (migration 0076). Experimental UI per-map automatic signature / chart cleanup toggles.
 - `next_bookmarks` — `jsonb`, default `'[]'`.
 - `owner_character_id` — `bigint`, nullable, FK → `ap_character.id` `ON DELETE SET NULL`. Required when `type='private'`; NULL otherwise.
 - `owner_corporation_id` — `bigint`, nullable. Required when `type='corp'`; NULL otherwise. No FK to `ap_corporation`.

@@ -11,7 +11,7 @@
 | initialValues | Record | yes | `experimentalAutoSignatureCleanup` and `experimentalAutoMapCleanup` |
 
 ### Behaviour & Interactions
-- Persists via `updateMapSettingsAction` into `ap_map.next_bookmarks.experimentalAutoCleanup`.
+- Persists via `updateMapSettingsAction` into `ap_map.experimental_signature_cleanup` / `experimental_map_cleanup` (same `settings_manage` gate as other behavior toggles).
 - Shown only when experimental UI is active and the viewer holds `settings_manage`.
 
 ### Depends On
