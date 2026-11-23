@@ -19,6 +19,7 @@ Sample every gauge once (DB counts run concurrently; process vitals are synchron
 - `dbPoolTotal` / `dbPoolIdle` / `dbPoolWaiting` — `pool.totalCount` / `idleCount` / `waitingCount` (synchronous `pg.Pool` reads; pool-saturation signal).
 - `processRssBytes` / `processHeapUsedBytes` / `processHeapTotalBytes` — `process.memoryUsage()`.
 - `eventLoopLagMs` — mean event-loop delay since the previous sample.
+- `userApiTokensLive` / `userApiTokensSuspended` — `ap_map_api_token` rows neither revoked nor expired, and how many of those have `suspended_until` in the future. Prometheus-only: not persisted to `ap_metric_snapshot`.
 - `tableRows` — `TableRowEstimate[]`, one entry per logical `ap_*` / `universe_*` table.
 
 ### countJobBacklog(): Promise<number>

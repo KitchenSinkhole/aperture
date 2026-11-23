@@ -24,10 +24,8 @@ import { MapTaggingForm } from '@/components/map/manage/MapTaggingForm';
 import { MapWebhooksPanel } from '@/components/map/manage/MapWebhooksPanel';
 import { MapRolesForm } from '@/components/map/manage/MapRolesForm';
 import { MapSharePanel } from '@/components/map/manage/MapSharePanel';
-import { ExperimentalMapSoundMutesPanel } from '@/components/map/manage/ExperimentalMapSoundMutesPanel';
-import { experimentalSettingLabel } from '@/lib/experimentalSettingLabel';
-import type { ExperimentalSoundLayoutSettings } from '@/lib/experimentalSoundLayout';
-import type { MapCapability, MapEventPayload, MapSettings } from '@/types';
+import { MapApiPanel } from '@/components/map/manage/MapApiPanel';
+import type { ApiScope, MapCapability, MapEventPayload, MapSettings } from '@/types';
 
 /**
  * Map Settings dialog — the consolidated edit / settings / management /
@@ -37,9 +35,10 @@ import type { MapCapability, MapEventPayload, MapSettings } from '@/types';
  * `resolveMapCapabilities`; a manager holds all): Behavior + Auto-tagging ←
  * `settings_manage`, Webhooks ← `webhooks_manage`, Share links ←
  * `share_manage`, Export ← `map_export`, Import ← `map_import` — all
- * re-checked server-side. The Roles & Permissions tab (delegating features
- * to titles) is manager-only (`canManage`) and corp-map-only. The audit log
- * lives in its own dialog (`MapAuditDialog`).
+ * re-checked server-side. The API tab shows to every viewer while the map's API
+ * is on, and to a holder of `api_manage` always. The Roles & Permissions tab
+ * (delegating features to titles) is manager-only (`canManage`) and
+ * corp-map-only. The audit log lives in its own dialog (`MapAuditDialog`).
  */
 export function MapSettingsDialog({
   open,
@@ -49,8 +48,9 @@ export function MapSettingsDialog({
   canManage,
   capabilities,
   systems,
+  apiEnabled,
+  apiScopes,
   onImported,
-  experimentalSoundMutes,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -62,16 +62,15 @@ export function MapSettingsDialog({
   capabilities: MapCapability[];
   /** Visible map systems for the Auto-tagging Home picker. */
   systems: { id: string; name: string; alias: string | null }[];
+  /** The map's live user API switch (`MapViewData.map.apiEnabled`). */
+  apiEnabled: boolean;
+  /** The map's live exposed API scopes (`MapViewData.map.apiScopes`). */
+  apiScopes: ApiScope[];
   /** Fold imported event payloads onto the live canvas (reuses the bulk-paste handler). */
   onImported: (payloads: MapEventPayload[]) => void;
-  /** Experimental UI: layout-backed per-system sound mutes for this map. */
-  experimentalSoundMutes?: {
-    settings: ExperimentalSoundLayoutSettings;
-    onSettingsChange: (next: ExperimentalSoundLayoutSettings) => void;
-    mapSystems: { id: string; name: string; alias: string | null }[];
-  };
 }) {
   const can = (capability: MapCapability) => capabilities.includes(capability);
+  const showApi = apiEnabled || can('api_manage');
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-4xl flex-col">
@@ -90,6 +89,7 @@ export function MapSettingsDialog({
             {can('settings_manage') && <TabsTab value="tagging">Auto-tagging</TabsTab>}
             {can('webhooks_manage') && <TabsTab value="webhooks">Webhooks</TabsTab>}
             {can('share_manage') && <TabsTab value="shares">Share links</TabsTab>}
+            {showApi && <TabsTab value="api">API</TabsTab>}
             {can('map_export') && <TabsTab value="export">Export</TabsTab>}
             {can('map_import') && <TabsTab value="import">Import</TabsTab>}
             {canManage && settings.type === 'corp' && (
@@ -102,7 +102,7 @@ export function MapSettingsDialog({
               <GeneralPanel mapId={mapId} settings={settings} canEdit={can('settings_manage')} />
             </TabsPanel>
             <TabsPanel value="settings">
-              <SettingsPanel experimentalSoundMutes={experimentalSoundMutes} mapId={mapId} />
+              <SettingsPanel mapId={mapId} />
             </TabsPanel>
             {can('settings_manage') && (
               <TabsPanel value="behavior">
@@ -137,6 +137,11 @@ export function MapSettingsDialog({
                 <MapSharePanel mapId={mapId} />
               </TabsPanel>
             )}
+            {showApi && (
+              <TabsPanel value="api">
+                <MapApiPanel mapId={mapId} apiEnabled={apiEnabled} apiScopes={apiScopes} />
+              </TabsPanel>
+            )}
             {can('map_export') && (
               <TabsPanel value="export">
                 <ExportPanel mapId={mapId} mapName={settings.name} />
@@ -159,17 +164,7 @@ export function MapSettingsDialog({
   );
 }
 
-function SettingsPanel({
-  mapId,
-  experimentalSoundMutes,
-}: {
-  mapId: string;
-  experimentalSoundMutes?: {
-    settings: ExperimentalSoundLayoutSettings;
-    onSettingsChange: (next: ExperimentalSoundLayoutSettings) => void;
-    mapSystems: { id: string; name: string; alias: string | null }[];
-  };
-}) {
+function SettingsPanel(_props: { mapId: string }) {
   // Client-only display prefs, persisted to localStorage. The lazy initializer
   // reads localStorage on first render; safe because this panel only mounts once
   // the dialog opens (never during SSR), so there's no hydration mismatch.
@@ -231,24 +226,6 @@ function SettingsPanel({
         />
       </label>
 
-      {experimentalSoundMutes ? (
-        <div className="flex flex-col gap-2 border-t border-border pt-4">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-medium text-foreground">
-              {experimentalSettingLabel('Muted system sounds')}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Saved in your layout for this map. Context-menu mute is unchanged.
-            </span>
-          </div>
-          <ExperimentalMapSoundMutesPanel
-            mapId={mapId}
-            mapSystems={experimentalSoundMutes.mapSystems}
-            settings={experimentalSoundMutes.settings}
-            onSettingsChange={experimentalSoundMutes.onSettingsChange}
-          />
-        </div>
-      ) : null}
     </div>
   );
 }

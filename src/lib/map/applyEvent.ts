@@ -198,6 +198,19 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
     case 'note.deleted':
       return { ...state, notes: state.notes.filter((n) => n.id !== payload.id) };
 
+    case 'api.enabled':
+      return { ...state, map: { ...state.map, apiEnabled: true, apiScopes: payload.scopes } };
+
+    case 'api.disabled':
+      return { ...state, map: { ...state.map, apiEnabled: false } };
+
+    case 'api.scopes_changed': {
+      const removed = new Set(payload.removed);
+      const kept = state.map.apiScopes.filter((s) => !removed.has(s));
+      const added = payload.added.filter((s) => !kept.includes(s));
+      return { ...state, map: { ...state.map, apiScopes: [...kept, ...added] } };
+    }
+
     case 'map.create':
     case 'map.delete':
     case 'map.restore':
@@ -209,6 +222,10 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
     case 'access.revoked':
     case 'share.created':
     case 'share.revoked':
+    // Token lifecycle changes no canvas state.
+    case 'api.token_created':
+    case 'api.token_revoked':
+    case 'api.token_suspended':
       return state;
 
     default:

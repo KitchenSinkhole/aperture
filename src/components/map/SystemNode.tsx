@@ -48,6 +48,8 @@ import { SystemUnderglow } from './SystemUnderglow';
 import { RALLY_UNDERGLOW } from './underglowPresets';
 import { useIsLinkEndpointLit, useIsLinkHoverDimActive } from './MapLinkHoverContext';
 import { useExperimentalCombatRingActive } from './ExperimentalCombatRingContext';
+import { SOUND_MUTE_GROUP_LABELS } from '@/lib/sounds/catalog';
+import { useMutedSoundGroups } from '@/lib/sounds/engine';
 import React from 'react';
 
 // System tile. Status stripe + security badge + tag + alias/name + presence
@@ -73,7 +75,6 @@ export type SystemNodeData = MapSystemNode & {
   /** Experimental: active route path or hop focus on the map. */
   routePathLinked?: boolean;
   /** Experimental: per-system sound mute from saved layout. */
-  soundMuted?: boolean;
 };
 
 function securityLabel(node: MapSystemNode): string {
@@ -96,6 +97,7 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
   const pilots = usePresenceForSystem(data.systemId);
   const glow = useUnderglowForSystem(data.id);
   const sigIndicator = useSignatureIndicator(data.id, isWormhole);
+  const mutedSoundGroups = useMutedSoundGroups(data.systemId, data.isHome ?? false);
 
   const classColor = systemClassColor(data.security, styleOpts);
   const displayName = systemDisplayName(data.systemId, data.name);
@@ -306,8 +308,14 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
               <Home className="size-3" style={{ color: home }} aria-label="Home system" />
             )}
             {data.locked && <Lock className="size-3 text-muted-foreground" />}
-            {experimentalUi && data.soundMuted && (
-              <VolumeX className="size-3 text-muted-foreground" aria-label="Sounds muted" />
+            {mutedSoundGroups.length > 0 && (
+              <SystemKindIcon
+                icon={VolumeX}
+                label={`Sounds muted: ${mutedSoundGroups
+                  .map((g) => SOUND_MUTE_GROUP_LABELS[g].label.toLowerCase())
+                  .join(', ')}`}
+                className="text-muted-foreground"
+              />
             )}
           </div>
 

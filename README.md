@@ -22,6 +22,8 @@ What it does:
   mass log built from observed jumps.
 - **Corp/alliance access control** — opt-in allowlist login, per-corp map scoping, and an
   admin console at `/setup` for first-run operator setup.
+- **User API**: read-only, per-map bearer tokens so members can feed map data to their own
+  tools (a Discord bot, a spreadsheet, an overlay). See the [API reference](docs/api/README.md).
 
 > Aperture began as a ground-up rebuild of the Pathfinder wormhole mapper; the legacy PHP app
 > is preserved at the [`legacy-archive`](../../tree/legacy-archive) tag. Aperture shares none
@@ -146,6 +148,7 @@ See [`.env.example`](.env.example) for the full list.
 | `AUTH_EVE_CLIENT_ID` / `AUTH_EVE_CLIENT_SECRET` | EVE SSO OAuth2 credentials. |
 | `ESI_TOKEN_ENC_KEY` | 32 random bytes (base64). Encrypts ESI access/refresh tokens at rest. |
 | `SETUP_PASSWORD` | Gates the `/setup` operator console. Pick a long random string; rotating it invalidates active unlock cookies. |
+| `TRUSTED_PROXY_HOPS` | How many reverse proxies sit in front of the app (default `1`). See [Behind a reverse proxy](#behind-a-reverse-proxy). |
 
 The wizard at `/setup` deliberately bypasses EVE SSO so an operator can recover from a broken
 auth deploy. The floor under that bypass is the in-app `SETUP_PASSWORD` check, which mints a
@@ -155,6 +158,49 @@ signed, 4-hour `ap_setup` cookie. A deployment with `NODE_ENV=production` and an
 **Defense in depth (optional).** Operators MAY front `/setup` with proxy-level auth (nginx
 Basic, Cloudflare Access, etc.); the app gate is the floor, and the deployment is safe without
 it provided `SETUP_PASSWORD` is set.
+
+#### Behind a reverse proxy
+
+The per-IP rate limits on the user API (`/api/v1/*`) and on public share links need each caller's
+real address. A proxy adds the address it received a request from to the end of
+`X-Forwarded-For`, so Aperture counts `TRUSTED_PROXY_HOPS` entries from the right and ignores
+everything further left, which the client wrote itself.
+
+| Setup | `TRUSTED_PROXY_HOPS` |
+|---|---|
+| Browsers reach the app directly | `0` |
+| One proxy (nginx, Caddy, Traefik) | `1` |
+| Cloudflare in front of your own proxy | `2` |
+
+Getting the number wrong is not harmless. Too low, and a client can choose the address it is
+limited under, so it can dodge a block or get someone else's address blocked. Too high, and every
+caller looks like one of your proxies and shares a single limit.
+
+As a second safeguard, have the outermost proxy **replace** `X-Forwarded-For` with the address it
+sees rather than append to what the client sent. In nginx, that is
+`proxy_set_header X-Forwarded-For $remote_addr;` instead of `$proxy_add_x_forwarded_for`. A proxy
+that only sets `X-Real-IP` also works: it is used when a request carries no `X-Forwarded-For` at
+all.
+
+### User API
+
+Aperture serves a read-only JSON API at `/api/v1/*` so members can pull a map's data into their
+own tools. A request is authorised by a bearer token that a member creates for one map, and it
+works only while three switches are all on:
+
+1. **The instance.** Operators turn the whole API on or off in **Admin, Settings, User API**.
+2. **The map.** A map's managers enable it in **Map Settings, API** and choose which scopes it
+   exposes: `map`, `signatures`, `pilots`, `notes`, `mass_log` and `kills`.
+3. **The token.** Any member who can view the map creates one in the same tab, picking a subset
+   of the exposed scopes and an expiry.
+
+A token follows its owner's access: it stops working when they leave the corp or lose access
+to the map, with no revocation needed. Requests are rate limited per token, per account, per IP
+and globally, and clients that keep sending after a 429 are suspended and eventually blocked.
+The per-IP limits depend on [`TRUSTED_PROXY_HOPS`](#behind-a-reverse-proxy) being set correctly.
+
+The [API reference](docs/api/README.md) covers every endpoint and field, error codes, rate
+limits, caching and abuse handling.
 
 ### Contributing
 

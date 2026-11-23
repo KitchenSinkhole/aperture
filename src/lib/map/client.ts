@@ -307,15 +307,19 @@ export function restoreConnectionOnServer(args: {
 }
 
 /**
- * List a connection's per-jump mass-log (read; view rights). Returns a plain
- * `FetchResult` — no `eventId`. The log is server-derived; the
- * inspector refetches on the `connectionMassLog` realtime task.
+ * List a connection's per-jump mass-log (read; view rights). No `eventId`. The
+ * log is server-derived; the inspector refetches on the `connectionMassLog`
+ * realtime task. `hidden: true` (with empty `data`) means Blackout withholds the
+ * log from this viewer.
  */
 export function fetchConnectionMassLog(args: {
   mapId: string;
   connectionId: string;
-}): Promise<FetchResult<ConnectionMassLogEntry[]>> {
-  return readFetch<ConnectionMassLogEntry[]>(
+}): Promise<
+  { ok: true; data: ConnectionMassLogEntry[]; hidden?: true } | { ok: false; error: string }
+> {
+  return requestJson<{ ok: true; data: ConnectionMassLogEntry[]; hidden?: true }>(
+    'GET',
     `/api/map/${args.mapId}/connections/${args.connectionId}/mass-log`,
   );
 }

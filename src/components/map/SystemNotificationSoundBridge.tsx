@@ -10,7 +10,6 @@ import {
 import { useRealtimeEvents } from '@/lib/realtime/useRealtime';
 import { getSoundEngine } from '@/lib/sounds/engine';
 import type { SoundEvent } from '@/types';
-import { shouldPlaySystemSound, useExperimentalSoundGate } from './ExperimentalSoundGate';
 
 const CUE_FOR_KIND: Record<SystemNotificationLoad['kind'], SoundEvent> = {
   killmail: 'killInSystem',
@@ -26,11 +25,13 @@ const CUE_FOR_KIND: Record<SystemNotificationLoad['kind'], SoundEvent> = {
 export function SystemNotificationSoundBridge({
   mapId,
   systems,
+  homeSystemId,
 }: {
   mapId: string;
   systems: MapSystemNode[];
+  /** EVE solar-system id of the map's Home, or null. */
+  homeSystemId: number | null;
 }) {
-  const soundGate = useExperimentalSoundGate();
   const systemsRef = useRef(systems);
   useEffect(() => {
     systemsRef.current = systems;
@@ -50,12 +51,11 @@ export function SystemNotificationSoundBridge({
         const { systemId } = parsed.data;
         const row = systemsRef.current.find((s) => s.systemId === systemId);
         if (!row) return;
-        const event = CUE_FOR_KIND[parsed.data.kind];
-        if (!shouldPlaySystemSound(soundGate, row.id, event)) return;
-
-        getSoundEngine().play(event);
+        getSoundEngine().play(CUE_FOR_KIND[parsed.data.kind], {
+          system: { systemId, isHome: systemId === homeSystemId },
+        });
       },
-      [mapId, soundGate],
+      [mapId, homeSystemId],
     ),
   );
 

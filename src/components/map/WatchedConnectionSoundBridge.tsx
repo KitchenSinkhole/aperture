@@ -8,7 +8,6 @@ import { watchedJumpVariant } from '@/lib/sounds/presenceEvents';
 import { useMapActiveChar } from './MapActiveCharContext';
 import { usePresenceStore, useTraversals } from './MapPresenceContext';
 import { resolveTraversalEdges } from './MapTravelContext';
-import { shouldPlaySystemSound, useExperimentalSoundGate } from './ExperimentalSoundGate';
 
 /** Whether a jump crossed a connection this device watches on the map. */
 export function crossesWatchedConnection(
@@ -47,7 +46,6 @@ export function WatchedConnectionSoundBridge({
   viewerCharacterIds: number[];
 }) {
   const { activeCharId } = useMapActiveChar();
-  const soundGate = useExperimentalSoundGate();
   const store = usePresenceStore();
   const viewerIds = useMemo(() => new Set(viewerCharacterIds), [viewerCharacterIds]);
 
@@ -63,14 +61,6 @@ export function WatchedConnectionSoundBridge({
     if (!crossesWatchedConnection(t, mapId, systemsRef.current, connectionsRef.current)) return;
     const mySystemId =
       activeCharId === null ? null : (store?.getSystemForCharacter(activeCharId) ?? null);
-    if (soundGate) {
-      const fromId = soundGate.mapSystemIdForEve(t.fromSystemId);
-      const toId = soundGate.mapSystemIdForEve(t.toSystemId);
-      const blocked =
-        (fromId && !shouldPlaySystemSound(soundGate, fromId, 'watchedJump')) ||
-        (toId && !shouldPlaySystemSound(soundGate, toId, 'watchedJump'));
-      if (blocked) return;
-    }
     getSoundEngine().play('watchedJump', { variant: watchedJumpVariant(t, mySystemId) });
   });
 

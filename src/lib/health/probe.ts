@@ -86,9 +86,11 @@ async function checkDb(): Promise<HealthComponent> {
 }
 
 function checkRealtimeBus(): HealthComponent {
-  // A bus with no subscribers is intentionally disconnected (lazy connect), not
-  // unhealthy — only flag degraded when subscribers exist but the LISTEN dropped.
-  if (bus.isHealthy() || bus.subscriberCount() === 0) return { status: 'ok' };
+  // A bus nobody listens on has no reason to be connected. The WS server's
+  // instance listener holds it open even with no map open, because Blackout
+  // flips arrive over it.
+  const idle = bus.subscriberCount() === 0 && bus.instanceListenerCount() === 0;
+  if (bus.isHealthy() || idle) return { status: 'ok' };
   return { status: 'degraded', detail: 'Realtime LISTEN connection down.' };
 }
 

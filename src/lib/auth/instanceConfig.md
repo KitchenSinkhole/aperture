@@ -8,7 +8,7 @@ Pure DB layer — no auth gating (the caller, `(setup)/actions.ts`, gates on the
 ---
 
 ### getInstanceConfig(): Promise<InstanceConfig>
-Reads the whole config in one shot for the setup page: the singleton `access_mode` + `updated_at`, all `ap_instance_owner` rows (ordered kind, id), and all instance-scoped `ap_access_grant` rows (ordered capability, kind, id). A missing singleton row reports `accessMode: 'restricted'` (a fresh deployment is locked down, matching `loginGate.getAccessMode`).
+Reads the whole config in one shot for the setup page: the singleton `access_mode` + `updated_at`, all `ap_instance_owner` rows (ordered kind, id), and the instance-scoped `login` / `admin` `ap_access_grant` rows (ordered capability, kind, id). Blackout cleared-list (`blackout_view`) grants are not part of the allowlist and are excluded. A missing singleton row reports `accessMode: 'restricted'` (a fresh deployment is locked down, matching `loginGate.getAccessMode`).
 
 **Returns:** `{ accessMode, updatedAt, owners: InstanceOwnerRow[], grants: InstanceGrantRow[] }`. Bigint ids are `bigint`; the `/setup` actions serialize them to strings for the client.
 

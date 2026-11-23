@@ -98,6 +98,7 @@ import {
 } from '@/lib/structures/client';
 import { connectionMassLogLoadSchema, mapUpdateLoadSchema, type Envelope } from '@/lib/realtime/protocol';
 import {
+  useBlackoutStatus,
   useMapSubscription,
   useRealtimeEvents,
   useReconnectResync,
@@ -151,6 +152,7 @@ import { MapInfoDialog } from '@/components/dialogs/MapInfoDialog';
 import { dropWatchedConnection } from '@/lib/connectionWatchPrefs';
 import { getSoundEngine, useSoundCueOn } from '@/lib/sounds/engine';
 import { PilotRosterButton } from './PilotRosterButton';
+import { BlackoutBanner } from './BlackoutBanner';
 import { SoundToolbarButton } from './SoundToolbarButton';
 import { SystemOverlayButton } from './SystemOverlayButton';
 import { MapShareIndicator } from './MapShareIndicator';
@@ -174,19 +176,13 @@ import { ExperimentalPanelGearProvider } from './experimentalPanelGear';
 import { pushKspaceWaypointsForCharacter } from '@/lib/character/pushRouteWaypoints';
 import { ExperimentalCombatRingProvider } from './ExperimentalCombatRingContext';
 import { ExperimentalCombatKillBridge } from './ExperimentalCombatKillBridge';
-import { ExperimentalSoundGateProvider } from './ExperimentalSoundGate';
 import { ExperimentalFollowPilotBridge } from './ExperimentalFollowPilotBridge';
 import {
-  isSystemMutedForDisplay,
   mergeSoundPanelSettings,
-  mutedSystemsForMap,
   parseExperimentalSoundLayoutSettings,
-  setSystemMuteAll,
-  toggleSystemMuteEvent,
   type ExperimentalSoundLayoutSettings,
 } from '@/lib/experimentalSoundLayout';
 import { activeRouteConnectionIds, remainingActiveRouteHops } from '@/lib/map/activeRouteMonitor';
-import type { SoundEvent } from '@/lib/sounds/prefs';
 import { MapJumpToSystemDialog } from './MapJumpToSystemDialog';
 import { ExperimentalUndoHotkeys } from './ExperimentalUndoHotkeys';
 import { CurrentRoutePanel } from '@/components/sidebar/CurrentRoutePanel';
@@ -423,6 +419,7 @@ export function MapCanvas({
   viewerCharacterIds,
   viewerCharacters,
   mainCharacterId,
+  viewerUserId,
   routePrefs,
   routeDestinations,
   mapLayout,
@@ -465,6 +462,8 @@ export function MapCanvas({
   viewerCharacters: { id: number; name: string }[];
   /** The account's main character id (route planner's default source), or null. */
   mainCharacterId: number | null;
+  /** The viewer's account id: the account Blackout restricts presence to. */
+  viewerUserId: number;
   /** Per-account route-planner settings (routes-module). */
   routePrefs: RoutePrefs;
   /** The account's saved route destinations (routes-module). */
@@ -542,6 +541,7 @@ export function MapCanvas({
   );
   const [viewData, setViewData] = useState<MapViewData>(data);
   const [liveShares, setLiveShares] = useState<LiveShareBadge[]>(initialLiveShares);
+  const blackout = useBlackoutStatus(viewData.blackout);
   // Captured via ReactFlow's onInit so the manual-add flow can place new nodes
   // at the current viewport centre rather than (0,0).
   const flowInstance = useRef<ReactFlowInstance<CanvasNode, Edge<ConnectionEdgeData>> | null>(null);
@@ -1422,39 +1422,6 @@ export function MapCanvas({
     router.refresh();
   }, [mapActiveRoute?.id, mapId, router]);
 
-  const mapMutedSystems = useMemo(
-    () => mutedSystemsForMap(soundLayoutSettings, mapId),
-    [soundLayoutSettings, mapId],
-  );
-
-  const experimentalContextMenuSound = useMemo(() => {
-    if (!experimentalActive || contextMenu?.kind !== 'system') return undefined;
-    const mapSystemId = contextMenu.id;
-    const entry = mapMutedSystems?.[mapSystemId];
-    return {
-      isMuted: isSystemMutedForDisplay(mapMutedSystems, mapSystemId),
-      isEventMuted: (event: SoundEvent) =>
-        entry?.all === true || entry?.events?.[event] === true,
-      onMuteAll: (mute: boolean) => {
-        persistSoundLayoutSettings(
-          setSystemMuteAll(soundLayoutSettings, mapId, mapSystemId, mute),
-        );
-      },
-      onToggleEventMute: (event: SoundEvent, muted: boolean) => {
-        persistSoundLayoutSettings(
-          toggleSystemMuteEvent(soundLayoutSettings, mapId, mapSystemId, event, muted),
-        );
-      },
-    };
-  }, [
-    experimentalActive,
-    contextMenu,
-    mapMutedSystems,
-    mapId,
-    persistSoundLayoutSettings,
-    soundLayoutSettings,
-  ]);
-
   // Only the tab holding this map's lock plays its cues; standing down on
   // unmount hands the lock to the next waiter.
   useEffect(() => {
@@ -1895,6 +1862,13 @@ export function MapCanvas({
     const locked = new Set(viewData.systems.filter((s) => s.locked).map((s) => s.id));
     return [...selectedSystemIds].filter((id) => id !== homeId && !locked.has(id));
   }, [selectedSystemIds, viewData.map.homeMapSystemId, viewData.systems]);
+
+  // EVE id of the Home, for the sound bridges' per-system mute gate.
+  const homeSystemId = useMemo(
+    () =>
+      viewData.systems.find((s) => s.id === viewData.map.homeMapSystemId)?.systemId ?? null,
+    [viewData.map.homeMapSystemId, viewData.systems],
+  );
 
   // How many of the current selection are locked (and so excluded from the group
   // delete) — feeds the "Remove N" button's hint so the count discrepancy is
@@ -2472,7 +2446,6 @@ export function MapCanvas({
     signatureHoverFarSystemId: string | null;
     routeHighlightMapSystemIds: ReadonlySet<string>;
     routeFocusMapSystemId: string | null;
-    mapMutedSystems: ReturnType<typeof mutedSystemsForMap>;
   } | null>(null);
   if (
     !lastSync ||
@@ -2484,7 +2457,6 @@ export function MapCanvas({
     lastSync.signatureHoverFarSystemId !== signatureHoverFarSystemId ||
     lastSync.routeHighlightMapSystemIds !== routeHighlightMapSystemIds ||
     lastSync.routeFocusMapSystemId !== routeFocusMapSystemId ||
-    lastSync.mapMutedSystems !== mapMutedSystems ||
     // `intel` is replaced by reference when a live-added system's data backfills;
     // re-sync so its decorators (sov/FW/incursion) appear without a systems change.
     lastSync.intel !== intel
@@ -2499,7 +2471,6 @@ export function MapCanvas({
       signatureHoverFarSystemId,
       routeHighlightMapSystemIds,
       routeFocusMapSystemId,
-      mapMutedSystems,
     });
     setNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]));
@@ -2527,8 +2498,6 @@ export function MapCanvas({
               routePathLinked:
                 experimentalActive &&
                 (routeHighlightMapSystemIds.has(s.id) || routeFocusMapSystemId === s.id),
-              soundMuted:
-                experimentalActive && isSystemMutedForDisplay(mapMutedSystems, s.id),
             },
             selected: selectedSystemIds.has(s.id),
             draggable: !s.locked,
@@ -3060,7 +3029,6 @@ export function MapCanvas({
               onAddNoteAt={onAddNoteAt}
               onNotePatch={onNotePatch}
               onNoteRemove={onNoteRemove}
-              experimentalSound={experimentalContextMenuSound}
               experimentalFightMapSystemId={resolvedFightMapSystemId ?? undefined}
               onSetFightMapSystem={
                 experimentalActive
@@ -3303,7 +3271,12 @@ export function MapCanvas({
   return (
     <MapStyleProvider value={mapStyleOpts}>
     <MapLinkHoverProvider>
-    <MapPresenceProvider initial={data.presence} mapId={data.map.id}>
+    <MapPresenceProvider
+      initial={data.presence}
+      mapId={data.map.id}
+      blackout={blackout}
+      viewerUserId={viewerUserId}
+    >
       <ExperimentalPanelGearProvider renderGearBody={renderPanelGearBody}>
       <MapActiveCharProvider viewerCharacters={viewerCharacters} mainCharacterId={mainCharacterId}>
         <MapTravelProvider>
@@ -3317,58 +3290,23 @@ export function MapCanvas({
                 <TravelBridge systems={viewData.systems} connections={viewData.connections} />
               )}
               <MapUnderglowBridge systems={viewData.systems} mapId={data.map.id} />
-              {experimentalActive ? (
-                <ExperimentalSoundGateProvider
+              {(pilotArrivedOn || pilotLeftOn) && (
+                <PresenceSoundBridge
                   mapId={mapId}
-                  settings={soundLayoutSettings}
                   systems={viewData.systems}
-                >
-                  {(pilotArrivedOn || pilotLeftOn) && (
-                    <PresenceSoundBridge
-                      mapId={mapId}
-                      systems={viewData.systems}
-                      connections={viewData.connections}
-                      viewerCharacterIds={viewerCharacterIds}
-                      watchedJumpOn={watchedJumpOn}
-                    />
-                  )}
-                  {watchedJumpOn && (
-                    <WatchedConnectionSoundBridge
-                      mapId={mapId}
-                      systems={viewData.systems}
-                      connections={viewData.connections}
-                      viewerCharacterIds={viewerCharacterIds}
-                    />
-                  )}
-                  {(killInSystemOn || systemPingedOn) && (
-                    <SystemNotificationSoundBridge mapId={mapId} systems={viewData.systems} />
-                  )}
-                  {rallySetOn && <RallySoundBridge mapId={mapId} />}
-                </ExperimentalSoundGateProvider>
-              ) : (
-                <>
-                  {(pilotArrivedOn || pilotLeftOn) && (
-                    <PresenceSoundBridge
-                      mapId={mapId}
-                      systems={viewData.systems}
-                      connections={viewData.connections}
-                      viewerCharacterIds={viewerCharacterIds}
-                      watchedJumpOn={watchedJumpOn}
-                    />
-                  )}
-                  {watchedJumpOn && (
-                    <WatchedConnectionSoundBridge
-                      mapId={mapId}
-                      systems={viewData.systems}
-                      connections={viewData.connections}
-                      viewerCharacterIds={viewerCharacterIds}
-                    />
-                  )}
-                  {(killInSystemOn || systemPingedOn) && (
-                    <SystemNotificationSoundBridge mapId={mapId} systems={viewData.systems} />
-                  )}
-                  {rallySetOn && <RallySoundBridge mapId={mapId} />}
-                </>
+                  connections={viewData.connections}
+                  viewerCharacterIds={viewerCharacterIds}
+                  watchedJumpOn={watchedJumpOn}
+                  homeSystemId={homeSystemId}
+                />
+              )}
+              {watchedJumpOn && (
+                <WatchedConnectionSoundBridge
+                  mapId={mapId}
+                  systems={viewData.systems}
+                  connections={viewData.connections}
+                  viewerCharacterIds={viewerCharacterIds}
+                />
               )}
               {experimentalActive ? (
                 <ExperimentalFollowPilotBridge
@@ -3392,6 +3330,20 @@ export function MapCanvas({
               {experimentalActive ? (
                 <ExperimentalCombatKillBridge mapId={mapId} systems={viewData.systems} />
               ) : null}
+              {(killInSystemOn || systemPingedOn) && (
+                <SystemNotificationSoundBridge
+                  mapId={mapId}
+                  systems={viewData.systems}
+                  homeSystemId={homeSystemId}
+                />
+              )}
+              {rallySetOn && (
+                <RallySoundBridge
+                  mapId={mapId}
+                  systems={viewData.systems}
+                  homeMapSystemId={viewData.map.homeMapSystemId}
+                />
+              )}
               <SignaturePasteHotkey
                 mapId={mapId}
                 selectedSystem={selectedSystem}
@@ -3405,6 +3357,7 @@ export function MapCanvas({
                 onLazyDeletePasteResult={onLazyDeletePasteResult}
               />
               <div className="ap-map-dashboard flex flex-col gap-2">
+                <BlackoutBanner blackout={blackout} />
                 <div className="flex items-center justify-between gap-1">
                   <div className="flex min-w-0 items-center gap-2">
                     <div className="min-w-0">
@@ -3437,7 +3390,10 @@ export function MapCanvas({
                       </Button>
                     ) : null}
                     <ActiveCharSelector />
-                    <PilotRosterButton viewData={viewData} />
+                    <PilotRosterButton
+                      viewData={viewData}
+                      pilotsHidden={blackout.active && !blackout.cleared}
+                    />
                     {soundsOn && <SoundToolbarButton />}
                     <SystemOverlayButton viewData={viewData} />
                     <Menu>
@@ -3600,20 +3556,9 @@ export function MapCanvas({
                 canManage={canManage}
                 capabilities={capabilities}
                 systems={manageSystems}
+                apiEnabled={viewData.map.apiEnabled}
+                apiScopes={viewData.map.apiScopes}
                 onImported={onBulkPaste}
-                experimentalSoundMutes={
-                  experimentalActive
-                    ? {
-                        settings: soundLayoutSettings,
-                        onSettingsChange: persistSoundLayoutSettings,
-                        mapSystems: viewData.systems.map((s) => ({
-                          id: s.id,
-                          name: s.name,
-                          alias: s.alias,
-                        })),
-                      }
-                    : undefined
-                }
               />
               {capabilities.includes('audit_view') && (
                 <MapAuditDialog

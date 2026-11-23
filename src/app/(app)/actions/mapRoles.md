@@ -15,12 +15,13 @@ Loads the map, then returns `{ available: false }` for non-`corp` maps (or a cor
 ---
 
 ### setMapDelegation(input): Promise<ActionResult>
-`input` = `{ mapId, roleId, capability, enabled }`; `capability` is any delegatable `map_capability` value (`view` is rejected). Re-validates that `roleId` is a `corp_title` of this map's owning corp — a forged id from another corp is rejected. Inserts (`onConflictDoNothing`) or deletes the grant row inside `commitMapEvent`, which writes one `ap_map_event` (`access.granted` / `access.revoked`) naming the title + capability so the change shows in the map audit log and Discord history. No `revalidatePath` — the tab refetches `getMapDelegationState`.
+`input` = `{ mapId, roleId, capability, enabled }`; `capability` is any delegatable `map_capability` value (`view` is rejected). Re-validates that `roleId` is a `corp_title` of this map's owning corp — a forged id from another corp is rejected. Inserts (`onConflictDoNothing`) or deletes the grant row inside `commitMapEvent`, which writes one `ap_map_event` (`access.granted` / `access.revoked`) naming the title + capability so the change shows in the map audit log and Discord history. After the commit it drops the map's cached user API auth records (`invalidateUserApiMap`), since a title's grants decide whether its holders' tokens can still view the map. No `revalidatePath` — the tab refetches `getMapDelegationState`.
 
 **Returns:** `{ ok: false, error }` on validation / gate / not-found / commit failure; `{ ok: true }` on success.
 
 ### Depends On
 - `canManageMap` (`@/lib/auth/rights`) — the manager gate for both actions.
 - `commitMapEvent` (`@/lib/map/mutations/core`) — the single map-event commit point.
+- `invalidateUserApiMap` (`@/lib/userApi/authorize`).
 - `requireSession` (`@/lib/session`), `apMap` / `apRole` / `apMapRoleAccess` (`@/db/schema`), `mapCapability` enum (`@/db/schema/ap/enums`).
 - `DelegationRole` / `MapDelegationState` (`@/types`).

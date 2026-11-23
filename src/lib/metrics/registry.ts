@@ -11,6 +11,8 @@ import type {
   MetricsSnapshot,
   PublicWsUpgradeOutcome,
   TokenRefreshOutcome,
+  UserApiEndpoint,
+  UserApiRequestOutcome,
   WebhookOutcome,
 } from '@/types';
 
@@ -62,6 +64,10 @@ export const ESI_TOKEN_REFRESH_TOTAL = 'esi_token_refresh_total';
 export const JWK_CACHE_REFRESH_TOTAL = 'jwk_cache_refresh_total';
 /** Counter: public spectator WebSocket upgrade handshakes, by outcome. */
 export const PUBLIC_WS_UPGRADES_TOTAL = 'public_ws_upgrades_total';
+/** Counter: `/api/v1/*` user API requests, by endpoint + outcome. */
+export const USER_API_REQUESTS_TOTAL = 'user_api_requests_total';
+/** Counter: user API token strikes, by strike level. */
+export const USER_API_STRIKES_TOTAL = 'user_api_strikes_total';
 
 /** Histogram: in-process realtime dispatch→deliver span. */
 export const REALTIME_FANOUT_DURATION_MS = 'realtime_fanout_duration_ms';
@@ -129,6 +135,8 @@ class MetricsRegistry {
       PUBLIC_WS_UPGRADES_TOTAL,
       'Public spectator WebSocket upgrade handshakes, by outcome.',
     );
+    this.defineCounter(USER_API_REQUESTS_TOTAL, 'User API requests, by endpoint and outcome.');
+    this.defineCounter(USER_API_STRIKES_TOTAL, 'User API token strikes, by strike level.');
     this.defineHistogram(
       REALTIME_FANOUT_DURATION_MS,
       'In-process realtime dispatch-to-deliver span in milliseconds.',
@@ -312,4 +320,14 @@ export function recordJwkRefresh(outcome: JwkRefreshOutcome): void {
 /** Tally one public spectator WebSocket upgrade handshake by outcome. */
 export function recordPublicWsUpgrade(outcome: PublicWsUpgradeOutcome): void {
   metrics.incrementCounter(PUBLIC_WS_UPGRADES_TOTAL, { outcome });
+}
+
+/** Tally one `/api/v1/*` user API request by endpoint and outcome. */
+export function recordUserApiRequest(endpoint: UserApiEndpoint, outcome: UserApiRequestOutcome): void {
+  metrics.incrementCounter(USER_API_REQUESTS_TOTAL, { endpoint, outcome });
+}
+
+/** Tally one strike on a user API token (`level` is the strike's number, 1 to 3). */
+export function recordUserApiStrike(level: number): void {
+  metrics.incrementCounter(USER_API_STRIKES_TOTAL, { level: String(level) });
 }

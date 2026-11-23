@@ -1,5 +1,5 @@
 {
-  "id": "aa15eff3-fa22-46f2-bf52-7bd15020f651",
+  "id": "0756a0c6-2399-4d2e-aace-a3732c3efe01",
   "prevId": "423fdc3c-46a2-467b-9bff-14f6a48b7d4e",
   "version": "7",
   "dialect": "postgresql",
@@ -1236,6 +1236,18 @@
           "notNull": true,
           "default": 240
         },
+        "blackout_since": {
+          "name": "blackout_since",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blackout_by_character_id": {
+          "name": "blackout_by_character_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
@@ -1245,7 +1257,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "ap_instance_blackout_by_character_id_ap_character_id_fk": {
+          "name": "ap_instance_blackout_by_character_id_ap_character_id_fk",
+          "tableFrom": "ap_instance",
+          "tableTo": "ap_character",
+          "columnsFrom": [
+            "blackout_by_character_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -1460,7 +1486,11 @@
         },
         "ap_access_grant_capability_scope_chk": {
           "name": "ap_access_grant_capability_scope_chk",
-          "value": "(\"ap_access_grant\".\"scope\" = 'instance' and \"ap_access_grant\".\"capability\" in ('login', 'admin'))\n          or (\"ap_access_grant\".\"scope\" = 'map' and \"ap_access_grant\".\"capability\" in ('view', 'edit'))"
+          "value": "(\"ap_access_grant\".\"scope\" = 'instance' and \"ap_access_grant\".\"capability\"::text in ('login', 'admin', 'blackout_view'))\n          or (\"ap_access_grant\".\"scope\" = 'map' and \"ap_access_grant\".\"capability\"::text in ('view', 'edit'))"
+        },
+        "ap_access_grant_blackout_principal_chk": {
+          "name": "ap_access_grant_blackout_principal_chk",
+          "value": "\"ap_access_grant\".\"capability\"::text <> 'blackout_view' or \"ap_access_grant\".\"principal_kind\" in ('character', 'role')"
         }
       },
       "isRLSEnabled": false
@@ -1668,243 +1698,6 @@
           "name": "ap_route_destination_user_id_system_id_key",
           "nullsNotDistinct": false,
           "columns": [
-            "user_id",
-            "system_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.ap_map_active_route": {
-      "name": "ap_map_active_route",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "bigserial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "map_id": {
-          "name": "map_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner_user_id": {
-          "name": "owner_user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "primary_character_id": {
-          "name": "primary_character_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "destination_system_id": {
-          "name": "destination_system_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "plan_json": {
-          "name": "plan_json",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "follower_character_ids": {
-          "name": "follower_character_ids",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "waypoint_cursor": {
-          "name": "waypoint_cursor",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "ap_map_active_route_map_id_ap_map_id_fk": {
-          "name": "ap_map_active_route_map_id_ap_map_id_fk",
-          "tableFrom": "ap_map_active_route",
-          "tableTo": "ap_map",
-          "columnsFrom": [
-            "map_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "ap_map_active_route_owner_user_id_ap_user_id_fk": {
-          "name": "ap_map_active_route_owner_user_id_ap_user_id_fk",
-          "tableFrom": "ap_map_active_route",
-          "tableTo": "ap_user",
-          "columnsFrom": [
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "ap_map_active_route_primary_character_id_ap_character_id_fk": {
-          "name": "ap_map_active_route_primary_character_id_ap_character_id_fk",
-          "tableFrom": "ap_map_active_route",
-          "tableTo": "ap_character",
-          "columnsFrom": [
-            "primary_character_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "ap_map_active_route_destination_system_id_universe_system_id_fk": {
-          "name": "ap_map_active_route_destination_system_id_universe_system_id_fk",
-          "tableFrom": "ap_map_active_route",
-          "tableTo": "universe_system",
-          "columnsFrom": [
-            "destination_system_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.ap_map_route_favourite": {
-      "name": "ap_map_route_favourite",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "bigserial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "map_id": {
-          "name": "map_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "system_id": {
-          "name": "system_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "label": {
-          "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "shared": {
-          "name": "shared",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "ap_map_route_favourite_map_id_ap_map_id_fk": {
-          "name": "ap_map_route_favourite_map_id_ap_map_id_fk",
-          "tableFrom": "ap_map_route_favourite",
-          "tableTo": "ap_map",
-          "columnsFrom": [
-            "map_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "ap_map_route_favourite_user_id_ap_user_id_fk": {
-          "name": "ap_map_route_favourite_user_id_ap_user_id_fk",
-          "tableFrom": "ap_map_route_favourite",
-          "tableTo": "ap_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "ap_map_route_favourite_system_id_universe_system_id_fk": {
-          "name": "ap_map_route_favourite_system_id_universe_system_id_fk",
-          "tableFrom": "ap_map_route_favourite",
-          "tableTo": "universe_system",
-          "columnsFrom": [
-            "system_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "ap_map_route_favourite_map_user_system_key": {
-          "name": "ap_map_route_favourite_map_user_system_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "map_id",
             "user_id",
             "system_id"
           ]
@@ -4928,7 +4721,8 @@
         "login",
         "admin",
         "view",
-        "edit"
+        "edit",
+        "blackout_view"
       ]
     },
     "public.access_mode": {

@@ -10,9 +10,10 @@
 | presence | readonly MapPresenceEntry[] | yes | The online + located pilot roster (from `usePresenceForMap()`). Each entry carries `userId`/`mainCharacterId`/`mainCharacterName` for grouping. |
 | systemNameById | Map<number, MapSystemNode> | yes | EVE solar-system id → placed map node, for resolving the map-specific tag. |
 | viewerIds | ReadonlySet<number> | yes | Character ids whose account currently has this map open in a live socket (from `GET /api/map/[id]/viewers`, polled by `PilotRosterButton`; account-level coverage, so an account's alts all count as "viewing" when it has the map open). |
+| pilotsHidden | boolean | yes | Blackout hides every pilot outside the viewer's account; `presence` then holds only the viewer's own characters. |
 
 ### Renders
-A toolbar (free-text filter `Input` with a `Search` icon + a `Group` toggle `Button` + a `Mains` toggle `Button`) above a `PilotRosterTable` (with the Location column shown). Empty states: a standalone message when no tracked pilots are online at all (skips the toolbar entirely); "No pilots match your filter" comes from `PilotRosterTable` when the filter excludes everyone.
+A toolbar (free-text filter `Input` with a `Search` icon + a `Group` toggle `Button` + a `Mains` toggle `Button`) above a `PilotRosterTable` (with the Location column shown). While `pilotsHidden`, a muted line above the toolbar says pilot locations are hidden during Blackout and only the viewer's own characters are shown. Empty states: a standalone message when no tracked pilots are online at all (skips the toolbar entirely), which while `pilotsHidden` says locations are hidden during Blackout and none of the viewer's own characters are online; "No pilots match your filter" comes from `PilotRosterTable` when the filter excludes everyone.
 
 ### Behaviour & Interactions
 - **Filter** (local `query`): case-insensitive substring match across character name, **main name**, system name, ship type, and custom ship name. Applied before passing presence to `PilotRosterTable`.

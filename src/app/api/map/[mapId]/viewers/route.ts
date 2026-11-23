@@ -5,6 +5,7 @@ import { db } from '@/db/client';
 import { apCharacter } from '@/db/schema';
 import { getSession } from '@/lib/session';
 import { getMapViewerUserIds } from '@/lib/realtime/mapViewers';
+import { getBlackoutStatus, isPilotHidden } from '@/lib/auth/blackout';
 import { requireMapView } from '../../utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
@@ -21,7 +22,8 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
  * roster) while their account isn't viewing the map here. The pilot roster
  * popover polls this to flag those pilots.
  *
- * Access: `map_view` — any viewer may see who else has the map open.
+ * Access: `map_view` — any viewer may see who else has the map open, except
+ * that while Blackout restricts the viewer only their own account is listed.
  * Returns `{ ok, characterIds }`.
  */
 
@@ -38,7 +40,9 @@ export const GET = withApiMetrics('/api/map/:mapId/viewers', async function GET(
     return Response.json({ ok: false, error: guard.error }, { status: guard.status });
   }
 
-  const userIds = getMapViewerUserIds(guard.mapId);
+  const viewerUserId = session!.userId;
+  const viewer = { ...(await getBlackoutStatus(viewerUserId)), userId: viewerUserId };
+  const userIds = getMapViewerUserIds(guard.mapId).filter((id) => !isPilotHidden(viewer, id));
   if (userIds.length === 0) {
     return Response.json({ ok: true, characterIds: [] });
   }

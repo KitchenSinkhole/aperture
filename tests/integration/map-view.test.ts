@@ -138,7 +138,7 @@ describe('read-only map view (real Postgres)', () => {
       confirmedAt: new Date(),
     });
 
-    const data = await loadMapForView(mapId, TEST_VIEWER_ID);
+    const data = await loadMapForView(mapId, TEST_VIEWER_ID, testUserId);
     expect(data).not.toBeNull();
     expect(data!.systems).toHaveLength(2); // invisible K1 excluded
     const wh = data!.systems.find((s) => s.systemId === WH)!;
@@ -155,7 +155,7 @@ describe('read-only map view (real Postgres)', () => {
 
   it('returns null for a soft-deleted map', async () => {
     await db.update(apMap).set({ deletedAt: new Date() }).where(eq(apMap.id, mapId));
-    expect(await loadMapForView(mapId, TEST_VIEWER_ID)).toBeNull();
+    expect(await loadMapForView(mapId, TEST_VIEWER_ID, testUserId)).toBeNull();
     await db.update(apMap).set({ deletedAt: null }).where(eq(apMap.id, mapId));
   });
 

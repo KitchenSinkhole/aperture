@@ -502,8 +502,29 @@
     {
       "idx": 72,
       "version": "7",
-      "when": 1794498004735,
-      "tag": "0072_build2_active_route_favourites",
+      "when": 1792270333660,
+      "tag": "0072_blackout",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1795275085747,
+      "tag": "0073_user_api_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1795281630966,
+      "tag": "0074_killmail_system_value",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1795439453296,
+      "tag": "0075_build2_active_route_favourites",
       "breakpoints": true
     }
   ]

@@ -7,6 +7,7 @@ import { db } from '@/db/client';
 import { apInstance } from '@/db/schema';
 import { auth } from '@/lib/auth';
 import { isAdmin } from '@/lib/auth/rights';
+import { invalidateUserApiInstanceSwitch } from '@/lib/userApi/instance';
 
 /**
  * Admin instance-settings actions, exposed at `/admin/settings`. Global-admin
@@ -43,6 +44,36 @@ export async function adminSetStaleSignatureThreshold(
     .update(apInstance)
     .set({ staleSignatureThresholdMinutes: parsed.data.minutes, updatedAt: new Date() })
     .where(eq(apInstance.id, 1));
+
+  revalidatePath('/admin/settings');
+  return { ok: true };
+}
+
+const userApiSwitchSchema = z.object({ enabled: z.boolean() });
+
+/**
+ * Turn the per-map user API on or off for the whole instance
+ * (`ap_instance.user_api_enabled`), gated to global admins. Off answers 404 on
+ * every `/api/v1/*` route and refuses minting, whatever each map says.
+ */
+export async function adminSetUserApiEnabled(
+  input: z.input<typeof userApiSwitchSchema>,
+): Promise<ActionResult> {
+  const parsed = userApiSwitchSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]!.message };
+
+  const session = await auth();
+  if (!(await isAdmin(session))) return { ok: false, error: 'Forbidden.' };
+
+  await db
+    .insert(apInstance)
+    .values({ id: 1, userApiEnabled: parsed.data.enabled })
+    .onConflictDoUpdate({
+      target: apInstance.id,
+      set: { userApiEnabled: parsed.data.enabled, updatedAt: new Date() },
+    });
+  // After the write commits, so no read can cache the old value under the new generation.
+  invalidateUserApiInstanceSwitch();
 
   revalidatePath('/admin/settings');
   return { ok: true };

@@ -7,12 +7,22 @@ import type { MapConnectionEdge, MapSignature, MapSystemNode, MapViewData } from
 // ---------------------------------------------------------------------------
 
 const makeState = (overrides?: Partial<MapViewData>): MapViewData => ({
-  map: { id: '1', name: 'Test Map', scope: 'wh', type: 'private', tagScheme: 'none', homeMapSystemId: null },
+  map: {
+    id: '1',
+    name: 'Test Map',
+    scope: 'wh',
+    type: 'private',
+    tagScheme: 'none',
+    homeMapSystemId: null,
+    apiEnabled: false,
+    apiScopes: [],
+  },
   systems: [],
   connections: [],
   signatures: [],
   notes: [],
   presence: [],
+  blackout: { active: false, since: null, cleared: false },
   ...overrides,
 });
 
@@ -393,6 +403,29 @@ describe('applyEvent — no-op events', () => {
   const noopKinds = [
     { kind: 'map.create' as const, eventId: 30, id: '2', name: 'New Map', scope: 'wh' as const, type: 'private' as const },
     { kind: 'map.delete' as const, eventId: 31, id: '1' },
+    {
+      kind: 'api.token_created' as const,
+      eventId: 32,
+      tokenId: '9',
+      label: 'chain bot',
+      scopes: ['map' as const],
+      expiresAt: null,
+    },
+    {
+      kind: 'api.token_revoked' as const,
+      eventId: 33,
+      tokenId: '9',
+      label: 'chain bot',
+      reason: 'creator' as const,
+    },
+    {
+      kind: 'api.token_suspended' as const,
+      eventId: 34,
+      tokenId: '9',
+      label: 'chain bot',
+      until: '2026-11-21T14:30:00.000Z',
+      strike: 1,
+    },
   ];
 
   for (const payload of noopKinds) {
@@ -402,4 +435,44 @@ describe('applyEvent — no-op events', () => {
       expect(next).toBe(state);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// User API header state
+// ---------------------------------------------------------------------------
+
+describe('applyEvent — user API header', () => {
+  it('api.enabled turns the API on with the scopes it carries', () => {
+    const next = applyEvent(makeState(), {
+      kind: 'api.enabled',
+      eventId: 40,
+      scopes: ['map', 'pilots'],
+    });
+    expect(next.map.apiEnabled).toBe(true);
+    expect(next.map.apiScopes).toEqual(['map', 'pilots']);
+  });
+
+  it('api.disabled turns the API off and keeps the scope selection', () => {
+    const state = makeState({
+      map: { ...makeState().map, apiEnabled: true, apiScopes: ['map'] },
+    });
+    const next = applyEvent(state, { kind: 'api.disabled', eventId: 41 });
+    expect(next.map.apiEnabled).toBe(false);
+    expect(next.map.apiScopes).toEqual(['map']);
+  });
+
+  it('api.scopes_changed adds and removes scopes without duplicating', () => {
+    const state = makeState({
+      map: { ...makeState().map, apiEnabled: true, apiScopes: ['map', 'pilots', 'notes'] },
+    });
+    const next = applyEvent(state, {
+      kind: 'api.scopes_changed',
+      eventId: 42,
+      added: ['kills', 'map'],
+      removed: ['pilots'],
+    });
+    expect(next.map.apiScopes).toEqual(['map', 'notes', 'kills']);
+    expect(next.map.apiEnabled).toBe(true);
+    expect(state.map.apiScopes).toEqual(['map', 'pilots', 'notes']);
+  });
 });

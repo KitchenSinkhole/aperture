@@ -359,7 +359,7 @@ export async function addSystemWithStargateLinks(
     // Webhook fanout for the system add (preserves the standalone-add behaviour
     // the joined transaction would otherwise skip). The auto gate links are
     // structural and deliberately do NOT notify — they'd only add noise.
-    await enqueueWebhookDispatch(input.mapId, payloads[0]!.eventId, new Date());
+    await enqueueWebhookDispatch(input.mapId, payloads[0]!.eventId);
 
     return { ok: true, data: { payloads }, eventId: 0 };
   } catch (err) {

@@ -19,6 +19,7 @@ import {
   whMass,
 } from '@/db/schema';
 import type { ShipClass } from '@/types';
+import { getBlackoutState } from '@/lib/auth/blackout';
 import { apertureConfig } from '../../../aperture.config';
 import { loadMapPresence, loadStatics } from './loadMap';
 import { derivePublicEntrances, type PublicMapEntrance } from './publicEntrances';
@@ -235,7 +236,13 @@ export async function loadPublicMapView(token: string): Promise<PublicMapViewDat
     ? await loadPublicSignatures(visibleSystemIds)
     : null;
 
-  const presence = await loadPublicPresence(mapId, profile.presenceMode, visibleEveSystemIds);
+  // Blackout hides presence from every public link, whatever its profile.
+  const { active: blackoutActive } = await getBlackoutState();
+  const presence = await loadPublicPresence(
+    mapId,
+    blackoutActive ? 'none' : profile.presenceMode,
+    visibleEveSystemIds,
+  );
 
   const systems: PublicMapSystemNode[] = systemRows.map((s) => ({
     id: s.id.toString(),
@@ -390,7 +397,7 @@ async function loadPublicPresence(
 ): Promise<PublicMapPresence> {
   if (presenceMode === 'none') return { mode: 'none' };
 
-  const roster = (await loadMapPresence(mapId)).filter((p) => visibleEveSystemIds.has(p.systemId));
+  const roster = (await loadMapPresence(mapId, null)).filter((p) => visibleEveSystemIds.has(p.systemId));
 
   if (presenceMode === 'full') {
     return {

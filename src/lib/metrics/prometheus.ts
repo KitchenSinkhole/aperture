@@ -36,6 +36,8 @@ const GAUGE_METRICS: ReadonlyArray<{
   { key: 'processHeapUsedBytes', name: 'process_heap_used_bytes', help: 'V8 heap used in bytes.' },
   { key: 'processHeapTotalBytes', name: 'process_heap_total_bytes', help: 'V8 heap total in bytes.' },
   { key: 'eventLoopLagMs', name: 'event_loop_lag_ms', help: 'Mean event-loop delay since the previous scrape, in milliseconds.' },
+  { key: 'userApiTokensLive', name: 'user_api_tokens_live', help: 'User API tokens neither revoked nor expired.' },
+  { key: 'userApiTokensSuspended', name: 'user_api_tokens_suspended', help: 'Live user API tokens currently suspended.' },
 ];
 
 /** `# HELP` text escaping: backslash and newline only (quotes are literal here). */

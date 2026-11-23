@@ -23,7 +23,14 @@ const VIEWERS_POLL_MS = 15_000;
  * who are online but don't have the map open in Aperture. Must render inside
  * `MapPresenceProvider`.
  */
-export function PilotRosterButton({ viewData }: { viewData: MapViewData }) {
+export function PilotRosterButton({
+  viewData,
+  pilotsHidden,
+}: {
+  viewData: MapViewData;
+  /** Blackout hides every pilot outside the viewer's account from this viewer. */
+  pilotsHidden: boolean;
+}) {
   const presence = usePresenceForMap();
   const [open, setOpen] = useState(false);
 
@@ -88,7 +95,12 @@ export function PilotRosterButton({ viewData }: { viewData: MapViewData }) {
         }
       />
       <PopoverContent className="w-[28rem] p-0">
-        <PilotRoster presence={presence} systemNameById={systemNameById} viewerIds={viewerIds} />
+        <PilotRoster
+          presence={presence}
+          systemNameById={systemNameById}
+          viewerIds={viewerIds}
+          pilotsHidden={pilotsHidden}
+        />
       </PopoverContent>
     </Popover>
   );

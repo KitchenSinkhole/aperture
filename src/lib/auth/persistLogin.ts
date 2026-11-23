@@ -3,6 +3,7 @@ import { db } from '@/db/client';
 import { apCharacter, apUser } from '@/db/schema';
 import { encryptToken } from '@/lib/crypto';
 import type { EveProfile } from '@/lib/auth/eve-provider';
+import { invalidateUserApiAccount } from '@/lib/userApi/authorize';
 
 /**
  * Upsert the user + character on initial sign-in and store the (encrypted) ESI
@@ -27,7 +28,7 @@ export async function persistLogin(
   tokens: { accessToken: string; refreshToken: string; expiresAt: number },
   linkUserId?: number | null,
 ): Promise<number> {
-  return db.transaction(async (tx) => {
+  const resolved = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select({ userId: apCharacter.userId })
       .from(apCharacter)
@@ -89,6 +90,10 @@ export async function persistLogin(
       }
     }
 
-    return userId;
+    return { userId, rehomedFrom };
   });
+  // The old account lost a character and maybe its main or its whole row, so
+  // its user API tokens must be judged afresh.
+  if (resolved.rehomedFrom != null) invalidateUserApiAccount(resolved.rehomedFrom);
+  return resolved.userId;
 }

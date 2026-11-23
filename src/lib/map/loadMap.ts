@@ -30,8 +30,9 @@ import {
   whMass,
 } from '@/db/schema';
 import { canViewMap, viewableMapPredicate } from '@/lib/auth/rights';
+import { getBlackoutStatus, isPilotHidden } from '@/lib/auth/blackout';
 import { resolveShipClass } from '@/lib/eve/shipClass';
-import type { ShipClass } from '@/types';
+import type { ApiScope, BlackoutStatus, BlackoutViewer, ShipClass } from '@/types';
 import { loadSignaturesForSystems } from './systemNode';
 import { apertureConfig } from '../../../aperture.config';
 
@@ -214,13 +215,19 @@ export type MapViewData = {
     tagScheme: TagScheme;
     /** `ap_map_system.id` of the designated Home (the 0121 root), or null. */
     homeMapSystemId: string | null;
+    /** Whether the map's user API is on; `api.enabled` / `api.disabled` keep it live. */
+    apiEnabled: boolean;
+    /** Scopes the map's user API exposes; `api.enabled` / `api.scopes_changed` keep it live. */
+    apiScopes: ApiScope[];
   };
   systems: MapSystemNode[];
   connections: MapConnectionEdge[];
   signatures: MapSignature[];
   notes: MapNote[];
-  /** Tracked characters online + located on this map at load time. Realtime updates fold on top of this on the client. */
+  /** Tracked characters online + located on this map at load time, as this viewer may see them. Realtime updates fold on top of this on the client. */
   presence: MapPresenceEntry[];
+  /** The viewer's standing under Blackout at load time; `healthCheck.blackout` carries the same shape live. */
+  blackout: BlackoutStatus;
 };
 
 /** A map row for the maps list. */
@@ -275,11 +282,13 @@ export type AdminMapListItem = {
  * Load one map for the read-only view. Returns `null` when the map does not
  * exist, is soft-deleted, or the viewer is not allowed to see it
  * (`canViewMap`). The viewer-id parameter is required — passing the wrong id
- * is an access-control bug that the type system should catch.
+ * is an access-control bug that the type system should catch. `viewerUserId`
+ * is the viewer's account, which Blackout scopes the presence roster to.
  */
 export async function loadMapForView(
   mapId: bigint,
   viewerCharacterId: bigint,
+  viewerUserId: number,
 ): Promise<MapViewData | null> {
   if (!(await canViewMap(viewerCharacterId, mapId))) return null;
 
@@ -291,11 +300,47 @@ export async function loadMapForView(
       type: apMap.type,
       tagScheme: apMap.tagScheme,
       homeMapSystemId: apMap.homeMapSystemId,
+      apiEnabled: apMap.apiEnabled,
+      apiScopes: apMap.apiScopes,
     })
     .from(apMap)
     .where(and(eq(apMap.id, mapId), isNull(apMap.deletedAt)));
   if (!map) return null;
 
+  const systems = await loadVisibleMapSystems(mapId);
+  const visibleSystemIds = systems.map((s) => BigInt(s.id));
+  const connections = await loadVisibleMapConnections(mapId, visibleSystemIds);
+  const signatures = await loadSignaturesForSystems(visibleSystemIds);
+  const notes = await loadMapNotes(mapId);
+
+  const blackout = await getBlackoutStatus(viewerUserId);
+  const presence = await loadMapPresence(mapId, { ...blackout, userId: viewerUserId });
+
+  return {
+    map: {
+      id: map.id.toString(),
+      name: map.name,
+      scope: map.scope,
+      type: map.type,
+      tagScheme: map.tagScheme,
+      homeMapSystemId: map.homeMapSystemId === null ? null : map.homeMapSystemId.toString(),
+      apiEnabled: map.apiEnabled,
+      apiScopes: map.apiScopes,
+    },
+    systems,
+    connections,
+    signatures,
+    notes,
+    presence,
+    blackout,
+  };
+}
+
+/**
+ * The map's visible systems, flattened with their universe metadata and
+ * statics. No access check: callers gate the map first.
+ */
+export async function loadVisibleMapSystems(mapId: bigint): Promise<MapSystemNode[]> {
   const systemLocker = alias(apCharacter, 'system_locker');
   const systemRows = await db
     .select({
@@ -330,49 +375,108 @@ export async function loadMapForView(
 
   const staticsBySystem = await loadStatics(systemRows.map((s) => s.systemId));
 
-  const visibleSystemIds = systemRows.map((s) => s.id);
+  return systemRows.map((s) => ({
+    id: s.id.toString(),
+    systemId: s.systemId,
+    name: s.name,
+    alias: s.alias,
+    tag: s.tag,
+    intelNotes: s.intelNotes,
+    status: s.status,
+    security: s.security,
+    trueSec: s.trueSec,
+    effect: s.effect,
+    regionName: s.regionName,
+    constellationName: s.constellationName,
+    statics: staticsBySystem.get(s.systemId)?.display ?? [],
+    staticTypeIds: staticsBySystem.get(s.systemId)?.typeIds ?? [],
+    tradeHub:
+      s.nearestTradeHubId != null && s.nearestTradeHubJumps != null
+        ? {
+            name: HUB_NAME_BY_ID.get(s.nearestTradeHubId) ?? 'trade hub',
+            jumps: s.nearestTradeHubJumps,
+          }
+        : null,
+    locked: s.locked,
+    lockedByCharacterId:
+      s.lockedByCharacterId === null ? null : Number(s.lockedByCharacterId),
+    lockedByName: s.lockedByName,
+    rallyAt: s.rallyAt ? s.rallyAt.toISOString() : null,
+    positionX: s.positionX,
+    positionY: s.positionY,
+  }));
+}
 
+/**
+ * The map's connections that are confirmed and have both endpoints among
+ * `visibleSystemIds` (`ap_map_system.id`s, normally from
+ * `loadVisibleMapSystems`). No access check: callers gate the map first.
+ */
+export async function loadVisibleMapConnections(
+  mapId: bigint,
+  visibleSystemIds: bigint[],
+): Promise<MapConnectionEdge[]> {
+  if (visibleSystemIds.length === 0) return [];
   // Only connections whose *both* endpoints are currently visible. Removing a
   // system flips `visible = false` but leaves its connection rows intact (intel
   // survives), so without this filter those orphan edges leak into the view —
   // harmlessly dropped by xyflow on the canvas, but rendered as "Unknown" rows
   // by consumers that iterate connections directly (e.g. SystemOverlay).
-  const connectionRows = visibleSystemIds.length
-    ? await db
-        .select({
-          id: apMapConnection.id,
-          source: apMapConnection.sourceMapSystemId,
-          target: apMapConnection.targetMapSystemId,
-          scope: apMapConnection.scope,
-          massStatus: apMapConnection.massStatus,
-          jumpMassClass: apMapConnection.jumpMassClass,
-          eolStage: apMapConnection.eolStage,
-          preserveMass: apMapConnection.preserveMass,
-          isRolling: apMapConnection.isRolling,
-          isStatic: apMapConnection.isStatic,
-          sourceBubbled: apMapConnection.sourceBubbled,
-          targetBubbled: apMapConnection.targetBubbled,
-          eolAt: apMapConnection.eolAt,
-          createdAt: apMapConnection.createdAt,
-        })
-        .from(apMapConnection)
-        .where(
-          and(
-            eq(apMapConnection.mapId, mapId),
-            inArray(apMapConnection.sourceMapSystemId, visibleSystemIds),
-            inArray(apMapConnection.targetMapSystemId, visibleSystemIds),
-            // Dormant `wh` connections (endpoint removed, sig not re-pasted) carry
-            // a NULL `confirmed_at` and must not resurface on reload. Non-`wh` rows
-            // are always confirmed, so this never hides structural links.
-            isNotNull(apMapConnection.confirmedAt),
-          ),
-        )
-        .orderBy(apMapConnection.id)
-    : [];
-  const signatures = await loadSignaturesForSystems(visibleSystemIds);
+  const connectionRows = await db
+    .select({
+      id: apMapConnection.id,
+      source: apMapConnection.sourceMapSystemId,
+      target: apMapConnection.targetMapSystemId,
+      scope: apMapConnection.scope,
+      massStatus: apMapConnection.massStatus,
+      jumpMassClass: apMapConnection.jumpMassClass,
+      eolStage: apMapConnection.eolStage,
+      preserveMass: apMapConnection.preserveMass,
+      isRolling: apMapConnection.isRolling,
+      isStatic: apMapConnection.isStatic,
+      sourceBubbled: apMapConnection.sourceBubbled,
+      targetBubbled: apMapConnection.targetBubbled,
+      eolAt: apMapConnection.eolAt,
+      createdAt: apMapConnection.createdAt,
+    })
+    .from(apMapConnection)
+    .where(
+      and(
+        eq(apMapConnection.mapId, mapId),
+        inArray(apMapConnection.sourceMapSystemId, visibleSystemIds),
+        inArray(apMapConnection.targetMapSystemId, visibleSystemIds),
+        // Dormant `wh` connections (endpoint removed, sig not re-pasted) carry
+        // a NULL `confirmed_at` and must not resurface on reload. Non-`wh` rows
+        // are always confirmed, so this never hides structural links.
+        isNotNull(apMapConnection.confirmedAt),
+      ),
+    )
+    .orderBy(apMapConnection.id);
 
-  // Notes are independent of systems (no `visible` join) — load every note on the
-  // map, resolving creator + last-editor names via two LEFT JOINs on ap_character.
+  return connectionRows.map((c) => ({
+    id: c.id.toString(),
+    source: c.source.toString(),
+    target: c.target.toString(),
+    scope: c.scope,
+    massStatus: c.massStatus,
+    jumpMassClass: c.jumpMassClass,
+    eolStage: c.eolStage,
+    preserveMass: c.preserveMass,
+    isRolling: c.isRolling,
+    isStatic: c.isStatic,
+    sourceBubbled: c.sourceBubbled,
+    targetBubbled: c.targetBubbled,
+    eolAt: c.eolAt ? c.eolAt.toISOString() : null,
+    createdAt: c.createdAt.toISOString(),
+  }));
+}
+
+/**
+ * Every free-standing note on the map, with creator and last-editor names.
+ * Notes are independent of system visibility. No access check: callers gate
+ * the map first.
+ */
+export async function loadMapNotes(mapId: bigint): Promise<MapNote[]> {
   const noteCreator = alias(apCharacter, 'note_creator');
   const noteEditor = alias(apCharacter, 'note_editor');
   const noteRows = await db
@@ -397,82 +501,22 @@ export async function loadMapForView(
     .where(eq(apMapNote.mapId, mapId))
     .orderBy(apMapNote.id);
 
-  const presence = await loadMapPresence(mapId);
-
-  return {
-    map: {
-      id: map.id.toString(),
-      name: map.name,
-      scope: map.scope,
-      type: map.type,
-      tagScheme: map.tagScheme,
-      homeMapSystemId: map.homeMapSystemId === null ? null : map.homeMapSystemId.toString(),
-    },
-    systems: systemRows.map((s) => ({
-      id: s.id.toString(),
-      systemId: s.systemId,
-      name: s.name,
-      alias: s.alias,
-      tag: s.tag,
-      intelNotes: s.intelNotes,
-      status: s.status,
-      security: s.security,
-      trueSec: s.trueSec,
-      effect: s.effect,
-      regionName: s.regionName,
-      constellationName: s.constellationName,
-      statics: staticsBySystem.get(s.systemId)?.display ?? [],
-      staticTypeIds: staticsBySystem.get(s.systemId)?.typeIds ?? [],
-      tradeHub:
-        s.nearestTradeHubId != null && s.nearestTradeHubJumps != null
-          ? {
-              name: HUB_NAME_BY_ID.get(s.nearestTradeHubId) ?? 'trade hub',
-              jumps: s.nearestTradeHubJumps,
-            }
-          : null,
-      locked: s.locked,
-      lockedByCharacterId:
-        s.lockedByCharacterId === null ? null : Number(s.lockedByCharacterId),
-      lockedByName: s.lockedByName,
-      rallyAt: s.rallyAt ? s.rallyAt.toISOString() : null,
-      positionX: s.positionX,
-      positionY: s.positionY,
-    })),
-    connections: connectionRows.map((c) => ({
-      id: c.id.toString(),
-      source: c.source.toString(),
-      target: c.target.toString(),
-      scope: c.scope,
-      massStatus: c.massStatus,
-      jumpMassClass: c.jumpMassClass,
-      eolStage: c.eolStage,
-      preserveMass: c.preserveMass,
-      isRolling: c.isRolling,
-      isStatic: c.isStatic,
-      sourceBubbled: c.sourceBubbled,
-      targetBubbled: c.targetBubbled,
-      eolAt: c.eolAt ? c.eolAt.toISOString() : null,
-      createdAt: c.createdAt.toISOString(),
-    })),
-    signatures,
-    notes: noteRows.map((n) => ({
-      id: n.id.toString(),
-      title: n.title,
-      content: n.content,
-      severity: n.severity,
-      locked: n.locked,
-      positionX: n.positionX,
-      positionY: n.positionY,
-      createdByCharacterId: n.createdByCharacterId === null ? null : Number(n.createdByCharacterId),
-      createdByName: n.createdByName,
-      lastEditedByCharacterId:
-        n.lastEditedByCharacterId === null ? null : Number(n.lastEditedByCharacterId),
-      lastEditedByName: n.lastEditedByName,
-      createdAt: n.createdAt.toISOString(),
-      updatedAt: n.updatedAt.toISOString(),
-    })),
-    presence,
-  };
+  return noteRows.map((n) => ({
+    id: n.id.toString(),
+    title: n.title,
+    content: n.content,
+    severity: n.severity,
+    locked: n.locked,
+    positionX: n.positionX,
+    positionY: n.positionY,
+    createdByCharacterId: n.createdByCharacterId === null ? null : Number(n.createdByCharacterId),
+    createdByName: n.createdByName,
+    lastEditedByCharacterId:
+      n.lastEditedByCharacterId === null ? null : Number(n.lastEditedByCharacterId),
+    lastEditedByName: n.lastEditedByName,
+    createdAt: n.createdAt.toISOString(),
+    updatedAt: n.updatedAt.toISOString(),
+  }));
 }
 
 /**
@@ -516,8 +560,14 @@ export async function loadMapSettings(
  * system need not be placed on the map). Filters to
  * `last_online = true AND last_system_id IS NOT NULL` — offline pilots are hidden
  * per the presence-badge UX (see SystemNode).
+ *
+ * `viewer` applies the Blackout rule (`isPilotHidden`); `null` returns every
+ * pilot, for a caller that has already decided Blackout doesn't apply.
  */
-export async function loadMapPresence(mapId: bigint): Promise<MapPresenceEntry[]> {
+export async function loadMapPresence(
+  mapId: bigint,
+  viewer: BlackoutViewer | null,
+): Promise<MapPresenceEntry[]> {
   // Self-join on ap_character to resolve the account's main character name from
   // ap_user.main_character_id (so the roster can label an alt's owner).
   const mainCharacter = alias(apCharacter, 'main_character');
@@ -563,6 +613,7 @@ export async function loadMapPresence(mapId: bigint): Promise<MapPresenceEntry[]
     // nullable; the locationAt invariant follows from `lastOnline = true`
     // because the online branch of the poll stamps both atomically.
     if (r.systemId === null || r.locationAt === null) return [];
+    if (viewer && isPilotHidden(viewer, r.userId)) return [];
     return [{
       characterId: Number(r.characterId),
       characterName: r.characterName,

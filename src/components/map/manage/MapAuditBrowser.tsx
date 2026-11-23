@@ -29,7 +29,18 @@ const CATEGORY_KINDS: Record<AuditEventCategory, MapEventKind[]> = {
   signature: ['signature.create', 'signature.update', 'signature.delete'],
   note: ['note.created', 'note.updated', 'note.deleted'],
   map: ['map.create', 'map.update', 'map.delete', 'map.restore', 'map.purge'],
-  access: ['access.granted', 'access.revoked', 'share.created', 'share.revoked'],
+  access: [
+    'access.granted',
+    'access.revoked',
+    'share.created',
+    'share.revoked',
+    'api.enabled',
+    'api.disabled',
+    'api.scopes_changed',
+    'api.token_created',
+    'api.token_revoked',
+    'api.token_suspended',
+  ],
 };
 const CATEGORIES: AuditEventCategory[] = [
   'system',
@@ -49,6 +60,8 @@ const DESTRUCTIVE_KINDS: MapEventKind[] = [
   'map.purge',
   'access.revoked',
   'share.revoked',
+  'api.disabled',
+  'api.token_revoked',
 ];
 
 const CATEGORY_LABEL: Record<AuditEventCategory, string> = {
@@ -86,6 +99,8 @@ interface AuditApiData {
   actorSummary: ActorSummary | null;
   /** Present only on the first page (no cursor) — backs the actor dropdown. */
   actors?: AuditActor[];
+  /** Blackout restricts this viewer: rows carry no actor and no actor list is sent. */
+  actorsHidden?: boolean;
 }
 
 function computeKinds(
@@ -108,6 +123,7 @@ function localDateToIso(value: string, endOfDay: boolean): string | null {
 export function MapAuditBrowser({ mapId }: { mapId: string }) {
   const [actors, setActors] = useState<AuditActor[]>([]);
   const [actor, setActor] = useState<ActorFilter>('all');
+  const [actorsHidden, setActorsHidden] = useState(false);
   const [categories, setCategories] = useState<Set<AuditEventCategory>>(new Set());
   const [destructiveOnly, setDestructiveOnly] = useState(false);
   const [fromDate, setFromDate] = useState('');
@@ -172,7 +188,14 @@ export function MapAuditBrowser({ mapId }: { mapId: string }) {
         setRows(json.data.rows);
         setNextCursor(json.data.nextCursor);
         setActorSummary(json.data.actorSummary);
-        if (json.data.actors) setActors(json.data.actors);
+        if (json.data.actorsHidden) {
+          setActorsHidden(true);
+          setActors([]);
+          setActor('all');
+        } else {
+          setActorsHidden(false);
+          if (json.data.actors) setActors(json.data.actors);
+        }
       } catch (err) {
         if (active && !(err instanceof DOMException && err.name === 'AbortError')) {
           setError('Failed to load audit log.');
@@ -260,19 +283,21 @@ export function MapAuditBrowser({ mapId }: { mapId: string }) {
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       {/* Toolbar */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
-        <select
-          value={actor}
-          onChange={(e) => setActor(e.target.value)}
-          className="h-8 rounded-md border border-border bg-background px-2 text-sm"
-          aria-label="Filter by actor"
-        >
-          <option value="all">All actors</option>
-          {actors.map((a) => (
-            <option key={a.characterId ?? 'none'} value={a.characterId ?? 'none'}>
-              {a.name} ({a.eventCount})
-            </option>
-          ))}
-        </select>
+        {!actorsHidden && (
+          <select
+            value={actor}
+            onChange={(e) => setActor(e.target.value)}
+            className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+            aria-label="Filter by actor"
+          >
+            <option value="all">All actors</option>
+            {actors.map((a) => (
+              <option key={a.characterId ?? 'none'} value={a.characterId ?? 'none'}>
+                {a.name} ({a.eventCount})
+              </option>
+            ))}
+          </select>
+        )}
 
         <div className="flex items-center gap-1">
           {CATEGORIES.map((c) => {
@@ -340,7 +365,7 @@ export function MapAuditBrowser({ mapId }: { mapId: string }) {
             type="search"
             value={qInput}
             onChange={(e) => setQInput(e.target.value)}
-            placeholder="Search sig, system, actor…"
+            placeholder={actorsHidden ? 'Search sig, system…' : 'Search sig, system, actor…'}
             className="h-8 w-52 rounded-md border border-border bg-background pl-7 pr-2 text-sm"
           />
         </div>
@@ -383,8 +408,14 @@ export function MapAuditBrowser({ mapId }: { mapId: string }) {
         </div>
       </div>
 
+      {actorsHidden && (
+        <div className="shrink-0 rounded-lg border border-border bg-muted/30 px-4 py-2 text-sm text-muted-foreground">
+          Blackout is in effect. Who made each change is hidden until it lifts.
+        </div>
+      )}
+
       {/* Actor drill-down summary */}
-      {selectedActor && actorSummary && (
+      {!actorsHidden && selectedActor && actorSummary && (
         <div className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/30 px-4 py-2 text-sm">
           <span className="font-medium">{selectedActor.name}</span>
           <span className="text-muted-foreground">
@@ -430,7 +461,9 @@ export function MapAuditBrowser({ mapId }: { mapId: string }) {
                   {relativeTime(row.occurredAt)}
                 </td>
                 <td className="px-3 py-2">
-                  {row.characterId ? (
+                  {actorsHidden ? (
+                    <span className="text-muted-foreground">Hidden</span>
+                  ) : row.characterId ? (
                     <button
                       type="button"
                       onClick={() => setActor(row.characterId!)}

@@ -17,7 +17,7 @@
 A base-ui `Tooltip` whose trigger is the styled badge-cluster box (`ap-connection-badge-trigger`, neutral `ring-foreground/10`; live EOL urgency colours only the inner countdown pill in `ConnectionEdge`) wrapping `children`, and whose popup is a header line plus a compact key/value list:
 - **Header** (bordered): the wormhole code (`wormholeCode` or `unknown`), the size class (`connection.jumpMassClass`), and the leads-to class (`targetClass`) coloured by `systemClassColor` — e.g. `B274  L  H` with `H` in the shared class colour.
 - Body (only when the type is known): Total mass / Max jump / Max lifetime.
-- **Mass logged**: the mass-log cumulative plus its share of the WH type's total stable mass, e.g. `350 kt (32%)`; the percentage is omitted when the total mass is unknown.
+- **Mass logged**: the mass-log cumulative plus its share of the WH type's total stable mass, e.g. `350 kt (32%)`; the percentage is omitted when the total mass is unknown. Reads `Hidden during Blackout` when the mass-log fetch comes back `hidden`.
 - **EOL row** (when `eolStage !== 'none'`): for `eol`/`critical`, the stage label (`EOL 4h` / `EOL 1h`) and an `H:MM` countdown, e.g. `EOL 4h   1:24` — the colon carries the `ap-blink` utility (1s CSS on/off) to read as a live clock. For the manual `expired` stage it counts *up* instead: `Expired   3h 12m ago`, elapsed since the flag (`connectionExpiredSinceMs`).
 
 ### Behaviour & Interactions

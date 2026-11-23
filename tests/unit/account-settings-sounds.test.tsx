@@ -16,6 +16,8 @@ vi.mock('@/app/(app)/actions/account', () => ({
   setSoundPrefsAction: vi.fn(async () => ({ ok: true })),
   deleteAccountAction: vi.fn(async () => ({ ok: true })),
 }));
+// The API tokens section loads through its own Server Actions; covered by account-api-tokens.
+vi.mock('@/components/account/AccountApiTokens', () => ({ AccountApiTokens: () => null }));
 // A real engine on a silent backend, so the dialog reads and writes the same
 // prefs store the map's cue surfaces read.
 let engine!: SoundEngine;
@@ -56,11 +58,14 @@ vi.mock('@/components/ui/button', async () => {
       children,
       disabled,
       onClick,
+      'aria-label': ariaLabel,
     }: {
       children?: React.ReactNode;
       disabled?: boolean;
       onClick?: () => void;
-    }) => createElement('button', { type: 'button', disabled, onClick }, children),
+      'aria-label'?: string;
+    }) =>
+      createElement('button', { type: 'button', disabled, onClick, 'aria-label': ariaLabel }, children),
   };
 });
 vi.mock('@/components/account/SoundPicker', () => ({ SoundPicker: () => null }));
@@ -232,5 +237,41 @@ describe('AccountSettingsDialog — sound prefs source', () => {
     await rerender({ ...soundPrefs });
 
     expect(engine.getPrefs().volume).toBe(0.4);
+  });
+});
+
+describe('AccountSettingsDialog — muted systems', () => {
+  function chip(label: string): HTMLButtonElement {
+    const el = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    if (!el) throw new Error(`chip ${label} not rendered`);
+    return el;
+  }
+
+  it('shows the Home pilots mute pressed by default and saves a Home toggle', async () => {
+    await render();
+    expect(chip('Mute Pilots in Home system').getAttribute('aria-pressed')).toBe('true');
+    expect(chip('Mute Kills in Home system').getAttribute('aria-pressed')).toBe('false');
+
+    await act(async () => {
+      chip('Mute Kills in Home system').click();
+    });
+
+    expect(mockSetSoundPrefs).toHaveBeenCalledWith(
+      expect.objectContaining({ homeMutes: { kills: true, pilots: true, alerts: false } }),
+    );
+  });
+
+  it('lists a muted system and drops it on remove', async () => {
+    await render({
+      ...soundPrefs,
+      systemMutes: [{ systemId: 30000142, name: 'Jita', kills: true, pilots: false, alerts: false }],
+    });
+    expect(chip('Mute Kills in Jita').getAttribute('aria-pressed')).toBe('true');
+
+    await act(async () => {
+      chip('Stop muting Jita').click();
+    });
+
+    expect(mockSetSoundPrefs).toHaveBeenCalledWith(expect.objectContaining({ systemMutes: [] }));
   });
 });

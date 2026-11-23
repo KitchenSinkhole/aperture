@@ -51,12 +51,15 @@ function viewData(overrides: Partial<MapViewData> = {}): MapViewData {
       type: 'corp',
       tagScheme: 'none',
       homeMapSystemId: null,
+      apiEnabled: false,
+      apiScopes: [],
     },
     systems: [],
     connections: [],
     signatures: [],
     notes: [],
     presence: [],
+    blackout: { active: false, since: null, cleared: false },
     ...overrides,
   };
 }

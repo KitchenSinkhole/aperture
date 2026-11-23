@@ -1,19 +1,30 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
-import { Star, Trash2, Volume2 } from 'lucide-react';
+import { useEffect, useRef, useState, useTransition } from 'react';
+import { Star, Trash2, Volume2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import type { SignatureIndicatorAccountSettings, SoundEvent, SoundId, SoundPrefs } from '@/types';
+import type {
+  SignatureIndicatorAccountSettings,
+  SoundEvent,
+  SoundId,
+  SoundMuteGroup,
+  SoundMutes,
+  SoundPrefs,
+} from '@/types';
 import {
   EXPERIMENTAL_ALERT_TOAST_EVENTS,
   EXPERIMENTAL_SOUND_EVENTS,
   SOUND_EVENTS,
+  SOUND_MUTE_GROUPS,
+  removeSystemSoundMute,
+  setSystemSoundMute,
 } from '@/lib/sounds/prefs';
 import { migrateLegacyExperimentalAlerts } from '@/lib/sounds/migrateLegacyExperimentalAlerts';
-import { SOUND_EVENT_LABELS } from '@/lib/sounds/catalog';
+import { SOUND_EVENT_LABELS, SOUND_MUTE_GROUP_LABELS } from '@/lib/sounds/catalog';
 import { getCustomSoundStore, useCustomSounds } from '@/lib/sounds/customStore';
 import { getSoundEngine, useSoundPrefs } from '@/lib/sounds/engine';
-import { announceSoundPrefs, subscribeSoundPrefs } from '@/lib/sounds/prefsSync';
+import { subscribeSoundPrefs } from '@/lib/sounds/prefsSync';
+import { saveSoundPrefs } from '@/lib/sounds/savePrefs';
 import {
   Dialog,
   DialogContent,
@@ -28,8 +39,8 @@ import {
   setConnectionTravelAnimationAction,
   setMainCharacterAction,
   setSignatureIndicatorPrefsAction,
-  setSoundPrefsAction,
 } from '@/app/(app)/actions/account';
+import { AccountApiTokens } from './AccountApiTokens';
 import { DeleteAccountDialog } from './DeleteAccountDialog';
 import { SoundPicker } from './SoundPicker';
 import { useExperimentalUi } from '@/lib/experimentalUi.client';
@@ -220,6 +231,14 @@ export function AccountSettingsDialog({
     [engine],
   );
 
+  function commitSounds(next: SoundPrefs) {
+    const prev = { ...sounds, volume: committedVolume.current };
+    committedVolume.current = next.volume;
+    startTransition(async () => {
+      if (!(await saveSoundPrefs(next, prev))) committedVolume.current = prev.volume;
+    });
+  }
+
   useEffect(() => {
     if (!open) return;
     const onCombatRing = () => {
@@ -231,33 +250,15 @@ export function AccountSettingsDialog({
     return () => window.removeEventListener('aperture:experimental-combat-ring-duration', onCombatRing);
   }, [open]);
 
-  const commitSounds = useCallback(
-    (next: SoundPrefs) => {
-      const prev = { ...engine.getPrefs(), volume: committedVolume.current };
-      engine.setPrefs(next);
-      committedVolume.current = next.volume;
-      startTransition(async () => {
-        const result = await setSoundPrefsAction(next);
-        if (result.ok) {
-          announceSoundPrefs(next);
-        } else {
-          engine.setPrefs(prev);
-          committedVolume.current = prev.volume;
-          toast.error(result.error);
-        }
-      });
-    },
-    [engine, startTransition],
-  );
-
   useEffect(() => {
     if (!open || migratedLegacyAlerts.current) return;
     migratedLegacyAlerts.current = true;
-    const migrated = migrateLegacyExperimentalAlerts(engine.getPrefs());
-    if (JSON.stringify(migrated) !== JSON.stringify(engine.getPrefs())) {
-      commitSounds(migrated);
+    const prev = engine.getPrefs();
+    const migrated = migrateLegacyExperimentalAlerts(prev);
+    if (JSON.stringify(migrated) !== JSON.stringify(prev)) {
+      void saveSoundPrefs(migrated, prev);
     }
-  }, [commitSounds, engine, open]);
+  }, [engine, open]);
 
   // The slider drags (and arrows) ahead of the server; every gesture that can
   // end a volume change funnels through here so a keyboard-only adjustment is
@@ -768,8 +769,49 @@ export function AccountSettingsDialog({
               })}
             </div>
 
+            <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
+              <div className="flex flex-col gap-0.5 px-1">
+                <span className="text-sm">Muted systems</span>
+                <span className="text-xs text-muted-foreground">
+                  Highlighted cues stay silent in that system. Watched wormholes always play.
+                </span>
+              </div>
+              <MuteRow
+                label="Home system"
+                mutes={sounds.homeMutes}
+                disabled={pending || !sounds.enabled}
+                onToggle={(group, muted) =>
+                  commitSounds({ ...sounds, homeMutes: { ...sounds.homeMutes, [group]: muted } })
+                }
+              />
+              {sounds.systemMutes.map((entry) => (
+                <MuteRow
+                  key={entry.systemId}
+                  label={entry.name}
+                  mutes={entry}
+                  disabled={pending || !sounds.enabled}
+                  onToggle={(group, muted) =>
+                    commitSounds(
+                      setSystemSoundMute(
+                        sounds,
+                        { systemId: entry.systemId, name: entry.name, isHome: false },
+                        group,
+                        muted,
+                      ),
+                    )
+                  }
+                  onRemove={() => commitSounds(removeSystemSoundMute(sounds, entry.systemId))}
+                />
+              ))}
+              <span className="px-1 text-xs text-muted-foreground">
+                Right-click a system on the map to mute it.
+              </span>
+            </div>
+
             <CustomSoundsSection />
           </div>
+
+          <AccountApiTokens />
 
           <div className="mt-2 flex flex-col gap-2 rounded-lg border border-destructive/40 p-3">
             <div className="flex flex-col gap-0.5">
@@ -783,6 +825,67 @@ export function AccountSettingsDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * One system's mute chips: a pressed chip silences that group's cues there.
+ * `onRemove`, when given, adds a button that clears the whole row.
+ */
+function MuteRow({
+  label,
+  mutes,
+  disabled,
+  onToggle,
+  onRemove,
+}: {
+  label: string;
+  mutes: SoundMutes;
+  disabled: boolean;
+  onToggle: (group: SoundMuteGroup, muted: boolean) => void;
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 px-1 py-0.5 text-sm">
+      <span className="flex-1 truncate">{label}</span>
+      {SOUND_MUTE_GROUPS.map((group) => {
+        const { label: groupLabel, description } = SOUND_MUTE_GROUP_LABELS[group];
+        return (
+          <button
+            key={group}
+            type="button"
+            aria-pressed={mutes[group]}
+            aria-label={`Mute ${groupLabel} in ${label}`}
+            title={`Mute ${description}`}
+            disabled={disabled}
+            onClick={() => onToggle(group, !mutes[group])}
+            className={cn(
+              'rounded-full border px-2 py-0.5 text-xs whitespace-nowrap transition-colors disabled:opacity-50',
+              mutes[group]
+                ? 'border-primary/50 bg-primary/15 text-primary'
+                : 'border-border text-muted-foreground hover:bg-muted',
+            )}
+          >
+            {groupLabel}
+          </button>
+        );
+      })}
+      {onRemove ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={disabled}
+          onClick={onRemove}
+          aria-label={`Stop muting ${label}`}
+          title="Remove"
+        >
+          <X />
+        </Button>
+      ) : (
+        <span className="w-7 shrink-0" aria-hidden />
+      )}
+    </div>
   );
 }
 

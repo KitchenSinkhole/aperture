@@ -7,7 +7,6 @@ import { classifyTraversal } from '@/lib/sounds/presenceEvents';
 import { useMapActiveChar } from './MapActiveCharContext';
 import { usePresenceStore, useTraversals } from './MapPresenceContext';
 import { crossesWatchedConnection } from './WatchedConnectionSoundBridge';
-import { shouldPlaySystemSound, useExperimentalSoundGate } from './ExperimentalSoundGate';
 
 /**
  * Turns pilot jumps into arrive/leave cues. Renders nothing. Mounted only when
@@ -32,15 +31,17 @@ export function PresenceSoundBridge({
   connections,
   viewerCharacterIds,
   watchedJumpOn,
+  homeSystemId,
 }: {
   mapId: string;
   systems: MapSystemNode[];
   connections: MapConnectionEdge[];
   viewerCharacterIds: number[];
   watchedJumpOn: boolean;
+  /** EVE solar-system id of the map's Home, or null. */
+  homeSystemId: number | null;
 }) {
   const { activeCharId } = useMapActiveChar();
-  const soundGate = useExperimentalSoundGate();
   const store = usePresenceStore();
   const viewerIds = useMemo(() => new Set(viewerCharacterIds), [viewerCharacterIds]);
 
@@ -61,9 +62,8 @@ export function PresenceSoundBridge({
     ) {
       return;
     }
-    const mapSystemId = soundGate?.mapSystemIdForEve(mySystemId ?? -1) ?? null;
-    if (!shouldPlaySystemSound(soundGate, mapSystemId, event)) return;
-    getSoundEngine().play(event);
+    const systemId = event === 'pilotArrived' ? t.toSystemId : t.fromSystemId;
+    getSoundEngine().play(event, { system: { systemId, isHome: systemId === homeSystemId } });
   });
 
   return null;

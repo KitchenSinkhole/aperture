@@ -14,16 +14,19 @@ import {
   universeRegion,
   universeSystem,
 } from '@/db/schema';
-import { commitMapEvent } from '@/lib/map/mutations/core';
+import { commitMapEvent, enqueueWebhookDispatch } from '@/lib/map/mutations/core';
 import { runWebhookDispatch } from '@/lib/webhooks/dispatcher';
 
 /**
  * DB-gated:
  *   docker compose up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test
  *
- * Covers: per-event dispatch (success, retriable 5xx, terminal 404), the
+ * Covers: per-event dispatch (success, retriable 5xx, terminal 404, a stored
+ * non-Discord URL refused without a fetch), the
  * rally-vs-history routing rule, the no-webhook short-circuit in
- * `commitMapEvent`, and the graphile-worker enqueue when a webhook exists.
+ * `commitMapEvent`, the graphile-worker enqueue when a webhook exists, a
+ * joined-tx event enqueued without its timestamp reaching Discord, and
+ * audit-only token events neither enqueued nor posted.
  */
 const run = process.env.RUN_DB_TESTS === '1';
 
@@ -107,7 +110,7 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
         mapId,
         channel: 'discord',
         event: 'history',
-        url: 'https://discord.example/webhooks/A',
+        url: 'https://discord.com/api/webhooks/1/A',
         consecutiveFailures: 3,
       })
       .returning({ id: apMapWebhook.id });
@@ -118,7 +121,7 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
     const notes = await runWebhookDispatch(mapId, event.id, event.occurredAt);
     expect(notes).toMatchObject({ attempted: 1, succeeded: 1, failed: 0, skipped: 0 });
     expect(fetchCalls).toHaveLength(1);
-    expect(fetchCalls[0]!.url).toBe('https://discord.example/webhooks/A');
+    expect(fetchCalls[0]!.url).toBe('https://discord.com/api/webhooks/1/A');
 
     const [updated] = await db
       .select({
@@ -142,7 +145,7 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
         mapId,
         channel: 'discord',
         event: 'history',
-        url: 'https://discord.example/webhooks/gone',
+        url: 'https://discord.com/api/webhooks/1/gone',
       })
       .returning({ id: apMapWebhook.id });
 
@@ -165,6 +168,37 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
     expect(updated!.consecutiveFailures).toBe(1);
   });
 
+  it('refuses a stored non-Discord URL without fetching it', async () => {
+    const [wh] = await db
+      .insert(apMapWebhook)
+      .values({
+        mapId,
+        channel: 'discord',
+        event: 'history',
+        url: 'http://169.254.169.254/latest/meta-data/',
+      })
+      .returning({ id: apMapWebhook.id });
+
+    mockFetchOnce(200, 'secret');
+    const event = await insertMockEvent('system.removed', { id: mapSystemA.toString() });
+
+    const notes = await runWebhookDispatch(mapId, event.id, event.occurredAt);
+    expect(notes).toMatchObject({ attempted: 1, succeeded: 0, failed: 1 });
+    expect(fetchCalls).toHaveLength(0);
+
+    const [updated] = await db
+      .select({
+        lastStatus: apMapWebhook.lastStatus,
+        lastError: apMapWebhook.lastError,
+        consecutiveFailures: apMapWebhook.consecutiveFailures,
+      })
+      .from(apMapWebhook)
+      .where(eq(apMapWebhook.id, wh!.id));
+    expect(updated!.lastStatus).toBeNull();
+    expect(updated!.lastError).toBe('Not a Discord webhook URL; delivery refused.');
+    expect(updated!.consecutiveFailures).toBe(1);
+  });
+
   it('records a 503 as a failure but still ends successfully (no retry)', async () => {
     const [wh] = await db
       .insert(apMapWebhook)
@@ -172,7 +206,7 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
         mapId,
         channel: 'discord',
         event: 'history',
-        url: 'https://discord.example/webhooks/down',
+        url: 'https://discord.com/api/webhooks/1/down',
       })
       .returning({ id: apMapWebhook.id });
 
@@ -196,13 +230,13 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
         mapId,
         channel: 'discord',
         event: 'history',
-        url: 'https://discord.example/webhooks/history',
+        url: 'https://discord.com/api/webhooks/1/history',
       },
       {
         mapId,
         channel: 'discord',
         event: 'rally',
-        url: 'https://discord.example/webhooks/rally',
+        url: 'https://discord.com/api/webhooks/1/rally',
       },
     ]);
 
@@ -216,8 +250,8 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
     expect(setNotes.attempted).toBe(2);
     expect(setNotes.succeeded).toBe(2);
     expect(fetchCalls.map((c) => c.url).sort()).toEqual([
-      'https://discord.example/webhooks/history',
-      'https://discord.example/webhooks/rally',
+      'https://discord.com/api/webhooks/1/history',
+      'https://discord.com/api/webhooks/1/rally',
     ]);
 
     // Rally cleared: only history fires.
@@ -230,7 +264,7 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
     const clearNotes = await runWebhookDispatch(mapId, clear.id, clear.occurredAt);
     expect(clearNotes.attempted).toBe(1);
     expect(fetchCalls).toHaveLength(1);
-    expect(fetchCalls[0]!.url).toBe('https://discord.example/webhooks/history');
+    expect(fetchCalls[0]!.url).toBe('https://discord.com/api/webhooks/1/history');
   });
 
   it('returns missingEvent when the event row is not found', async () => {
@@ -238,10 +272,73 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
       mapId,
       channel: 'discord',
       event: 'history',
-      url: 'https://discord.example/webhooks/A',
+      url: 'https://discord.com/api/webhooks/1/A',
     });
     const notes = await runWebhookDispatch(mapId, 999_999_999n, new Date());
     expect(notes.missingEvent).toBe(true);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it('posts a joined-tx event enqueued without its timestamp', async () => {
+    await db.insert(apMapWebhook).values({
+      mapId,
+      channel: 'discord',
+      event: 'history',
+      url: 'https://discord.com/api/webhooks/1/A',
+    });
+    const eventId = await db.transaction(async (tx) => {
+      const committed = await commitMapEvent({
+        tx,
+        mapId,
+        characterId: null,
+        kind: 'api.enabled',
+        mutate: async () => ({ scopes: ['map' as const] }),
+      });
+      if (!committed.ok) throw new Error(committed.error);
+      return committed.eventId;
+    });
+    expect(await countQueuedJobs()).toBe(0);
+
+    await enqueueWebhookDispatch(mapId, eventId);
+    expect(await countQueuedJobs()).toBe(1);
+    const job = await firstQueuedJob();
+    const queued = job.payload as { eventId: string; occurredAt: string };
+    const [row] = await db
+      .select({ occurredAt: apMapEvent.occurredAt })
+      .from(apMapEvent)
+      .where(eq(apMapEvent.id, BigInt(eventId)));
+    expect(queued.occurredAt).toBe(row!.occurredAt.toISOString());
+
+    mockFetchOnce(204);
+    const notes = await runWebhookDispatch(mapId, BigInt(queued.eventId), new Date(queued.occurredAt));
+    expect(notes).toMatchObject({ attempted: 1, succeeded: 1 });
+    expect(String(fetchCalls[0]!.init?.body).toLowerCase()).toContain('enabled the user api');
+  });
+
+  it('never posts or enqueues an audit-only token event', async () => {
+    await db.insert(apMapWebhook).values({
+      mapId,
+      channel: 'discord',
+      event: 'history',
+      url: 'https://discord.com/api/webhooks/1/A',
+    });
+    const result = await commitMapEvent({
+      mapId,
+      characterId: null,
+      kind: 'api.token_created',
+      mutate: async () => ({ tokenId: '1', label: '@everyone', scopes: ['map' as const], expiresAt: null }),
+    });
+    expect(result.ok).toBe(true);
+    expect(await countQueuedJobs()).toBe(0);
+
+    const ev = await insertMockEvent('api.token_revoked', {
+      tokenId: '1',
+      label: 'chain bot',
+      reason: 'manager',
+    });
+    mockFetchOnce(204);
+    const notes = await runWebhookDispatch(mapId, ev.id, ev.occurredAt);
+    expect(notes).toEqual({ attempted: 0, succeeded: 0, failed: 0, skipped: 0 });
     expect(fetchCalls).toHaveLength(0);
   });
 
@@ -260,7 +357,7 @@ describe.skipIf(!run)('Stage 14 webhook dispatch (real Postgres)', () => {
       mapId,
       channel: 'discord',
       event: 'history',
-      url: 'https://discord.example/webhooks/A',
+      url: 'https://discord.com/api/webhooks/1/A',
     });
     const result = await commitMapEvent({
       mapId,

@@ -4,7 +4,7 @@
 **File:** `src/app/(admin)/admin/members/page.tsx`
 
 ### Renders
-A header and an HTML table with columns: Name, Corp (`corporationId` string or em-dash), Level (authz badge — admin pill or plain "Member" text), Status (status badge — `Active` neutral pill, `Kicked (until <date>)` amber pill with reason on hover, `Banned` destructive pill with reason on hover), Last seen (`lastLocationAt` formatted, em-dash when null), and the per-row action cell.
+A header and an HTML table with columns: Name, Corp (`corporationId` string or em-dash), Level (authz badge — admin pill or plain "Member" text), Status (status badge — `Active` neutral pill, `Kicked (until <date>)` amber pill with reason on hover, `Banned` destructive pill with reason on hover, followed on every character of an API-blocked account by an `API blocked` destructive pill with its end and reason on hover), Last seen (`lastLocationAt` formatted, em-dash when null), and the per-row action cell.
 
 ### Behaviour & Interactions
 - `auth()` then `isAdmin(session)`; non-admin redirects to `/maps` (defence in depth — the layout already gates).

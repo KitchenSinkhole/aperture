@@ -10,12 +10,12 @@ Access for every action: `requireSession` → `requireMapCapability(session, map
 ### createWebhook(input): Promise<ActionResult<{ id: string }>>
 Insert an `ap_map_webhook` row. Surfaces the `ap_map_webhook_map_channel_event_uq` unique violation as a friendly conflict message.
 
-**Parameters:** `input` — `{ mapId, channel, event, url, username? }` (Zod-validated; `channel`/`event` are the schema enums).
+**Parameters:** `input` — `{ mapId, channel, event, url, username? }` (Zod-validated; `channel`/`event` are the schema enums; `url` is trimmed and must pass `isDiscordWebhookUrl`, else the action returns a "must be a Discord webhook URL" error).
 
 ### updateWebhook(input): Promise<ActionResult>
 Patch `url` / `username` only (channel + event immutable). No-op when the patch is empty.
 
-**Parameters:** `input` — `{ id, url?, username? }`.
+**Parameters:** `input` — `{ id, url?, username? }`. `url` carries the same Discord-only check as create.
 
 ### deleteWebhook(id: string): Promise<ActionResult>
 Hard-delete the row (no `active` flag).

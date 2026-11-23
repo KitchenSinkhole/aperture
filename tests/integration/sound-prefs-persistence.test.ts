@@ -47,6 +47,8 @@ const VALID_PREFS: SoundPrefs = {
     rallySet: { enabled: true, sound: 'bell' },
     systemPinged: { enabled: false, sound: 'ping' },
   },
+  homeMutes: { kills: true, pilots: false, alerts: false },
+  systemMutes: [{ systemId: 30000142, name: 'Jita', kills: true, pilots: false, alerts: true }],
 };
 
 describe.skipIf(!run)('sound preferences persistence (real Postgres)', () => {

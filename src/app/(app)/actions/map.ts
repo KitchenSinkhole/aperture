@@ -12,6 +12,7 @@ import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 import { applyHomeStaticExemption } from '@/lib/tagging/exemption';
 import { canCreateMap, requireMapCapability } from '@/lib/auth/rights';
 import { logger } from '@/lib/log/logger';
+import { invalidateUserApiMap } from '@/lib/userApi/authorize';
 
 /**
  * Low-frequency, user-initiated map mutations via Server Actions (CLAUDE.md
@@ -139,7 +140,10 @@ export async function createMapAction(
   return result;
 }
 
-/** Soft-delete a map (two-phase: set `deleted_at`, cron purges later). Emits `map.delete`. */
+/**
+ * Soft-delete a map (two-phase: set `deleted_at`, cron purges later). Emits
+ * `map.delete`; the map's user API tokens stop answering on the next request.
+ */
 export async function deleteMapAction(mapId: string): Promise<ActionResult<MapEventPayload>> {
   const session = await requireSession();
   if (!/^\d+$/.test(mapId)) return { ok: false, error: 'Invalid map id.' };
@@ -166,7 +170,10 @@ export async function deleteMapAction(mapId: string): Promise<ActionResult<MapEv
     },
   });
 
-  if (result.ok) revalidatePath('/maps');
+  if (result.ok) {
+    invalidateUserApiMap(id);
+    revalidatePath('/maps');
+  }
   return result;
 }
 

@@ -8,9 +8,10 @@
 | Prop | Type | Required | Description |
 |---|---|---|---|
 | viewData | MapViewData | yes | The canvas's live map data; used to build the `systemId → node` tag map. |
+| pilotsHidden | boolean | yes | True while Blackout hides other accounts' pilots from this viewer; passed through to `PilotRoster`. |
 
 ### Renders
-A ghost `Button` (`Users` icon, `Pilots (n)` with the live online count) that toggles a `Popover` containing `<PilotRoster>`. The roster popover owns its own sort / filter / group-by-main controls (see `PilotRoster.md`); this button just supplies presence, the tag map, and `viewerIds`.
+A ghost `Button` (`Users` icon, `Pilots (n)` with the live online count) that toggles a `Popover` containing `<PilotRoster>`. The roster popover owns its own sort / filter / group-by-main controls (see `PilotRoster.md`); this button just supplies presence, the tag map, `viewerIds`, and `pilotsHidden`.
 
 ### Behaviour & Interactions
 - Reads the roster from `usePresenceForMap()` (context) — **must render inside `MapPresenceProvider`**. The count and table track realtime `characterUpdate` movement while mounted.

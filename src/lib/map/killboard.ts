@@ -69,6 +69,7 @@ async function loadKillmails(kills: RecentKillSummary[]): Promise<Map<number, Es
       hash: k.hash!,
       body: km,
       killmailTime: new Date(km.killmail_time),
+      totalValue: k.totalValue,
     });
   });
   if (inserts.length > 0) {

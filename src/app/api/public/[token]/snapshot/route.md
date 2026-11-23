@@ -10,10 +10,10 @@ No session, no cookie, no `mapId`: the token alone selects the map, so a client 
 
 **Responses:** 200 ok, 429 rate-limited, 404 unknown / expired / revoked token. All three token failures answer the same bare 404, so the response never distinguishes "no such token" from "that one was revoked".
 
-The rate limit is checked before the token is resolved, so guessing costs the guesser rather than the database. Every response carries `cache-control: no-store` and `x-robots-tag: noindex` — the payload is public but revocable, so it must never sit in a shared cache the app cannot purge. The client IP is read best-effort from `x-forwarded-for` (first entry) then `x-real-ip`, via the same derivation the public WS upgrade handler uses.
+The rate limit is checked before the token is resolved, so guessing costs the guesser rather than the database. Every response carries `cache-control: no-store` and `x-robots-tag: noindex` — the payload is public but revocable, so it must never sit in a shared cache the app cannot purge. The client address is the one `server.ts` resolved for the request (`clientIpOfRequest`), by the same `TRUSTED_PROXY_HOPS` rule the public WS upgrade handler uses.
 
 ### Depends On
 - `getPublicSnapshot`, `allowPublicSnapshotRequest` (`src/lib/map/publicSnapshot.ts`).
-- `clientKeyFromForwardedFor` (`src/lib/http/clientKey.ts`).
+- `clientIpOfRequest` (`src/lib/http/clientKey.ts`).
 - `getBuildId` (`src/lib/buildId.ts`).
 - `withApiMetrics` (`src/lib/metrics/httpInstrumentation.ts`) — route label `/api/public/:token/snapshot`.

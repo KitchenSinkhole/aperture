@@ -10,9 +10,11 @@ The single human-readable description of a map event — **the action only, with
 
 `*.update` lines **enumerate every changed field** as a `field → value` clause list in parentheses, so the trail shows exactly what changed rather than "made a change": `connection.update` → `"updated **A** ↔ **B** (max ship size → large, mass → \`critical\`)"` (covers `scope`/`massStatus`/`jumpMassClass`/`eolStage`/`isRolling`/`preserveMass`/`isStatic`/`sourceBubbled`/`targetBubbled`; `jumpMassClass` maps `s`/`m`/`l`/`xl` → small/medium/large/x-large via `JUMP_MASS_LABEL`; a bubbled-flag change names the end it happened at — `"bubbled at **Jita**"` / `"bubble cleared at **Jita**"` — from `ctx.sourceSystemName`/`targetSystemName`); `signature.update` → `"updated signature \`AUQ\` in **Jita** (type → \`B274\`)"`. `describeSignatureChanges` **suppresses the housekeeping field-resets** the client folds into a primary edit — picking a WH type clears `name` (the code-mirror), and changing the group clears `typeId`+`name` — so the line reports intent, not noise. A `mapConnectionId` change reads `"leads to **<dest>**"` / `"unlinked from **<dest>**"`, where `<dest>` is `ctx.targetSystemName` (resolved from the payload's `leadsToMapSystemId`). `sigId`/`mapSystemId` are descriptor-only and never counted as changes. `describeSignatureCreate` summarizes a new sig as `"(wormhole \`C008\`, leads to **<dest>**)"` (WH) or `"(relic site)"` (cosmic) via `signatureClassification`. Destructive lines name their target from descriptors embedded in the payload: `connection.delete` reads `ctx.sourceSystemName`/`targetSystemName`, `signature.delete` reads `event.sigId` + `ctx.systemName`. Pre-fix historical events lacking the descriptors fall back to generic placeholders.
 
-**Feature delegation** is named directly from the payload (no `ctx` lookup): `access.granted` → `"granted title **<title>** audit-log access"`, `access.revoked` → `"revoked title **<title>**'s webhook management"`, mapping each `map_capability` value to a human phrase via `CAPABILITY_LABEL` (including `share_manage` → share-link management).
+**Feature delegation** is named directly from the payload (no `ctx` lookup): `access.granted` → `"granted title **<title>** audit-log access"`, `access.revoked` → `"revoked title **<title>**'s webhook management"`, mapping each `map_capability` value to a human phrase via `CAPABILITY_LABEL` (including `share_manage` → share-link management, `api_manage` → user API management).
 
 **Public share links** are named directly from the payload: `share.created` → `"published public share link **<label>** (pilot counts only, hole sig IDs shown, expires 2026-08-10)"`, `share.revoked` → `"revoked public share link **<label>**"`. The parenthetical is `describeShareProfile` — presence mode via `PRESENCE_LABEL`, each enabled disclosure flag, then the expiry date or `no expiry` — so the line states what the link exposed rather than merely that one exists. The token never appears (it is not in the payload).
+
+**User API** events are named directly from the payload, scopes backticked: `api.enabled` → `"enabled the user API (scopes \`map\`, \`pilots\`)"` (or `(no scopes)`), `api.disabled` → `"disabled the user API"`, `api.scopes_changed` → `"changed the user API scopes (added \`kills\`; removed \`pilots\`)"` with an empty side omitted (both empty returns `null`), `api.token_created` → `"created API token **<label>** (scopes \`map\`, expires 2027-02-19)"` (or `no expiry`), `api.token_revoked` → `"revoked API token **<label>** owned by **<owner>**"` plus `" after repeated rate-limit abuse"` when `reason` is `abuse`, `api.token_suspended` → `"suspended API token **<label>** owned by **<owner>** for rate-limit abuse (strike 1, until 2026-11-21 14:30 UTC)"`. `<owner>` is `ctx.tokenOwnerName`, `an unknown pilot` when null; with `ctx.hideActor` the ` owned by **<owner>**` clause is left out.
 
 **Map notes** are named directly from the payload (no `ctx` lookup — the title rides every note event): `note.created` → `"added note **<title>**"` (plus `(\`severity\`)` when non-neutral); `note.deleted` → `"removed note **<title>**"`; `note.updated` reports the single primary change — severity (`"changed note **<title>** severity to \`red\`"`), lock (`"locked/unlocked note **<title>**"`), body (`"updated/cleared the body of note **<title>**"`), else a title-only edit (`"renamed note to **<title>**"`). A pure position drag (`positionX`/`positionY` only) returns `null` like a system drag.
 
@@ -29,24 +31,24 @@ Returns true when `event.kind === 'system.updated'` AND `event.rallyAt` is a non
 ---
 
 ### formatHistoryMessage(event, ctx, mapName?): DiscordWebhookPayload | null
-Build a Discord payload (single-line `content`) describing the event for a `history` webhook. Composes `**<map>** — <who> <action>.` from `describeMapEvent` (which omits the actor) — `<who>` is `ctx.characterName ?? 'Aperture'`. Returns `null` for events that are nothing but cosmetic position updates / no-op updates (skip silently).
+Build a Discord payload (single-line `content`) describing the event for a `history` webhook. Composes `**<map>**: <who> <action>.` from `describeMapEvent` (which omits the actor) — `<who>` is `ctx.characterName ?? 'Aperture'`. With `ctx.hideActor` it names no actor at all: `**<map>**: <Action>.`, the action sentence-cased. Returns `null` for events that are nothing but cosmetic position updates / no-op updates (skip silently).
 
 **Parameters:**
 - `event` — the `ap_map_event.payload` validated against `mapEventPayloadSchema`.
 - `ctx` — pre-resolved names (`mapName`, `characterName`, `systemName`, `sourceSystemName`, `targetSystemName`).
 - `mapName` — defaults to `ctx.mapName`; override only for special cases.
 
-**Returns:** `{ content: '**<map>** — <who> added **<system>** to the map.' }` shape.
+**Returns:** `{ content: '**<map>**: <who> added **<system>** to the map.' }` shape.
 
 ---
 
 ### formatRallyMessage(event, ctx): DiscordWebhookPayload | null
 Build a Discord embed payload for a `rally` webhook. Returns `null` if the event is not a rally-set event (defensive — callers should check `isRallySetEvent` first).
 
-The embed is red (`0xE74C3C`), titled `"Rally point set in <system>"`, and timestamped with the event's `rallyAt` ISO string.
+The embed is red, titled `"Rally point set in <system>"`, described as `"Set by **<who>** on **<map>**."` (`"Set on **<map>**."` with `ctx.hideActor`), and timestamped with the event's `rallyAt` ISO string.
 
 ---
 
 ### Types
 
-- `WebhookEventContext` — `{ mapName, characterName, systemName, sourceSystemName, targetSystemName }`. Every name field is `string | null`; the dispatcher fills what it can resolve and the formatter falls back to generic placeholders ("a system", "Aperture", …) for missing pieces. For connection events `source`/`targetSystemName` are the two endpoints; for signature events `systemName` is the sig's own system and `targetSystemName` doubles as the sig's leads-to destination (resolved from `leadsToMapSystemId`).
+- `WebhookEventContext` — `{ mapName, characterName, systemName, sourceSystemName, targetSystemName, tokenOwnerName?, hideActor? }`. `tokenOwnerName` is the current main of the account owning a token event's token, resolved by the audit read. `hideActor` (Blackout restricts the reader) makes both Discord formatters name no actor and the token lines name no owner. Every name field is `string | null`; the dispatcher fills what it can resolve and the formatter falls back to generic placeholders ("a system", "Aperture", …) for missing pieces. For connection events `source`/`targetSystemName` are the two endpoints; for signature events `systemName` is the sig's own system and `targetSystemName` doubles as the sig's leads-to destination (resolved from `leadsToMapSystemId`).

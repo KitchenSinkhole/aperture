@@ -1,7 +1,7 @@
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { eq, isNull, sql } from 'drizzle-orm';
 import { db, pool } from '@/db/client';
-import { apJobRun, apMapCharacterTracking, apMapSystem } from '@/db/schema';
+import { apJobRun, apMapApiToken, apMapCharacterTracking, apMapSystem } from '@/db/schema';
 import { openBreakerCount } from '@/lib/esi/breaker';
 import { publicSocketTotal } from '@/lib/realtime/publicSockets';
 import { wsConnectionCount } from '@/lib/realtime/wsConnections';
@@ -24,10 +24,11 @@ loopDelay.enable();
 
 /** Sample every gauge once. DB counts run concurrently; process vitals are sync. */
 export async function sampleGauges(): Promise<GaugeReadings> {
-  const [trackedCharacters, visibleSystems, jobQueue, tableRows] = await Promise.all([
+  const [trackedCharacters, visibleSystems, jobQueue, userApiTokens, tableRows] = await Promise.all([
     countTrackedCharacters(),
     countVisibleSystems(),
     sampleJobQueue(),
+    countUserApiTokens(),
     sampleTableRows(),
   ]);
 
@@ -54,6 +55,8 @@ export async function sampleGauges(): Promise<GaugeReadings> {
     processHeapUsedBytes: mem.heapUsed,
     processHeapTotalBytes: mem.heapTotal,
     eventLoopLagMs: Number.isFinite(lagMeanMs) ? lagMeanMs : 0,
+    userApiTokensLive: userApiTokens.live,
+    userApiTokensSuspended: userApiTokens.suspended,
     tableRows,
   };
 }
@@ -101,6 +104,20 @@ async function countVisibleSystems(): Promise<number> {
     .from(apMapSystem)
     .where(eq(apMapSystem.visible, true));
   return row?.n ?? 0;
+}
+
+/** Live user API tokens (neither revoked nor expired), and how many of them are suspended. */
+async function countUserApiTokens(): Promise<{ live: number; suspended: number }> {
+  const [row] = await db
+    .select({
+      live: sql<number>`count(*)::int`,
+      suspended: sql<number>`count(*) FILTER (WHERE ${apMapApiToken.suspendedUntil} > now())::int`,
+    })
+    .from(apMapApiToken)
+    .where(
+      sql`${apMapApiToken.revokedAt} IS NULL AND (${apMapApiToken.expiresAt} IS NULL OR ${apMapApiToken.expiresAt} > now())`,
+    );
+  return { live: row?.live ?? 0, suspended: row?.suspended ?? 0 };
 }
 
 /**

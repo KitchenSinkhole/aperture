@@ -1,9 +1,21 @@
-## RallySoundBridge
+## RallySoundBridge.tsx
 
-**Purpose:** Plays `rallySet` when a system on the map gets a rally point; optional experimental toast and desktop notification from account prefs.
+**Purpose:** Plays the `rallySet` sound cue when any system on the open map gets a rally point, with optional experimental toast and desktop notification.
 **File:** `src/components/map/RallySoundBridge.tsx`
 
-### Behaviour
-- Sound plays when `shouldPlaySystemSound` allows (per-system mute) and the engine master/event gates pass.
-- In-app toast when experimental UI is on and `shouldShowExperimentalAlertToast` is true for the rally row (independent of master and per-system mutes).
-- Desktop notification when experimental UI is on, sound gate allows, and `desktopNotification` is enabled on the row.
+### Props
+
+| Prop | Type | Required | Description |
+|---|---|---|---|
+| mapId | string | yes | Open map id |
+| systems | MapSystemNode[] | yes | Current systems for EVE id / Home resolution |
+| homeMapSystemId | string \| null | yes | Home `ap_map_system.id` for mute resolution |
+
+### Behaviour & Interactions
+- Subscribes to `mapUpdate` envelopes; fires on `system.updated` with non-null `rallyAt` only.
+- Chime uses `getSoundEngine().play('rallySet', { system })` so upstream `sound_prefs` mutes apply.
+- Experimental UI: toast when `shouldShowExperimentalAlertToast` for `rallySet`; desktop when `desktopNotification` and alerts are not muted for that system.
+
+### Emits / Calls
+- `useRealtimeEvents` — realtime subscription
+- `getSoundEngine().play` — cue playback

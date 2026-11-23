@@ -2,9 +2,7 @@
 
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 import { ContextMenu } from '@base-ui/react/context-menu';
-import { Plus, Radar, Scissors, StickyNote, Trash2, Unlink, VolumeX } from 'lucide-react';
-import { SOUND_EVENTS, type SoundEvent } from '@/lib/sounds/prefs';
-import { SOUND_EVENT_MENU_LABELS } from '@/lib/experimentalSoundLayout';
+import { Plus, Radar, Scissors, StickyNote, Trash2, Unlink } from 'lucide-react';
 
 import type {
   MapContextMenuTarget,
@@ -50,6 +48,7 @@ import { SetDestinationItem } from './SetDestinationItem';
 import { WatchConnectionItem } from './WatchConnectionItem';
 import { AddToRoutesItem } from './AddToRoutesItem';
 import { RouteHereItem } from './RouteHereItem';
+import { SystemSoundMuteItem } from './SystemSoundMuteItem';
 
 /** Sentinel radio value for "jump mass unknown" — mirrors `InspectorModule.tsx`. */
 const NONE_JUMP_MASS = '__none__';
@@ -137,7 +136,6 @@ export function MapContextMenu({
   onAddNoteAt,
   onNotePatch,
   onNoteRemove,
-  experimentalSound,
   experimentalFightMapSystemId,
   onSetFightMapSystem,
 }: {
@@ -173,12 +171,6 @@ export function MapContextMenu({
   onAddNoteAt: (clientX: number, clientY: number) => void;
   onNotePatch: (id: string, patch: UpdateNoteBody) => void;
   onNoteRemove: (id: string) => void;
-  experimentalSound?: {
-    isMuted: boolean;
-    isEventMuted: (event: SoundEvent) => boolean;
-    onMuteAll: (mute: boolean) => void;
-    onToggleEventMute: (event: SoundEvent, muted: boolean) => void;
-  };
   /** Experimental route shortcut: persisted fight map-system id. */
   experimentalFightMapSystemId?: string | null;
   onSetFightMapSystem?: (mapSystemId: string | null) => void;
@@ -251,7 +243,6 @@ export function MapContextMenu({
               onAddNoteAt,
               onNotePatch,
               onNoteRemove,
-              experimentalSound,
               experimentalFightMapSystemId,
               onSetFightMapSystem,
             })}
@@ -284,7 +275,6 @@ function renderItems({
   onAddNoteAt,
   onNotePatch,
   onNoteRemove,
-  experimentalSound,
   experimentalFightMapSystemId,
   onSetFightMapSystem,
 }: {
@@ -310,12 +300,6 @@ function renderItems({
   onAddNoteAt: (clientX: number, clientY: number) => void;
   onNotePatch: (id: string, patch: UpdateNoteBody) => void;
   onNoteRemove: (id: string) => void;
-  experimentalSound?: {
-    isMuted: boolean;
-    isEventMuted: (event: SoundEvent) => boolean;
-    onMuteAll: (mute: boolean) => void;
-    onToggleEventMute: (event: SoundEvent, muted: boolean) => void;
-  };
   /** Experimental route shortcut: persisted fight map-system id. */
   experimentalFightMapSystemId?: string | null;
   onSetFightMapSystem?: (mapSystemId: string | null) => void;
@@ -360,7 +344,6 @@ function renderItems({
             onPingSystem(system.id);
             onClose();
           }}
-          experimentalSound={experimentalSound}
           experimentalFightMapSystemId={experimentalFightMapSystemId}
           onSetFightMapSystem={onSetFightMapSystem}
         />
@@ -491,7 +474,6 @@ function SystemItems({
   onDeleteSubchainPick,
   onPing,
   onClose,
-  experimentalSound,
   experimentalFightMapSystemId,
   onSetFightMapSystem,
 }: {
@@ -510,12 +492,6 @@ function SystemItems({
   onPing: () => void;
   /** Dismiss the menu — "Set destination" closes it itself (self-contained action). */
   onClose: () => void;
-  experimentalSound?: {
-    isMuted: boolean;
-    isEventMuted: (event: SoundEvent) => boolean;
-    onMuteAll: (mute: boolean) => void;
-    onToggleEventMute: (event: SoundEvent, muted: boolean) => void;
-  };
   experimentalFightMapSystemId?: string | null;
   onSetFightMapSystem?: (mapSystemId: string | null) => void;
 }) {
@@ -551,33 +527,7 @@ function SystemItems({
         Ping
       </MenuItem>
 
-      {experimentalSound ? (
-        <>
-          <MenuItem
-            icon={<VolumeX className="size-3.5" />}
-            onClick={() => experimentalSound.onMuteAll(!experimentalSound.isMuted)}
-          >
-            {experimentalSound.isMuted ? 'Unmute sounds' : 'Mute sounds'}
-          </MenuItem>
-          <MenuSubmenu>
-            <MenuSubmenuTrigger inset>Mute notification types…</MenuSubmenuTrigger>
-            <MenuSubmenuContent>
-              {SOUND_EVENTS.map((event) => (
-                <MenuCheckboxItem
-                  key={event}
-                  checked={experimentalSound.isEventMuted(event)}
-                  onCheckedChange={(checked) =>
-                    experimentalSound.onToggleEventMute(event, checked === true)
-                  }
-                >
-                  {SOUND_EVENT_MENU_LABELS[event]}
-                </MenuCheckboxItem>
-              ))}
-            </MenuSubmenuContent>
-          </MenuSubmenu>
-          <MenuSeparator />
-        </>
-      ) : null}
+      <SystemSoundMuteItem system={system} isHome={isHome} onClose={onClose} />
 
       <SetDestinationItem system={system} onClose={onClose} />
 
@@ -628,6 +578,8 @@ function SystemItems({
       >
         Locked
       </MenuCheckboxItem>
+
+      <SystemSoundMuteItem system={system} isHome={isHome} onClose={onClose} />
 
       <MenuSeparator />
 

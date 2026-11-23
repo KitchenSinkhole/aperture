@@ -95,6 +95,13 @@ export default function PrivacyPage() {
           mapping service to you and your group.
         </p>
         <p className="text-muted-foreground">
+          A map&apos;s managers can let its members export the map&apos;s data to their own
+          tools through read-only API tokens. Depending on what the managers allow, that export
+          can include the names and locations of the pilots tracked on the map. Once data leaves
+          Aperture through a token, this instance no longer controls what the tool holding it does
+          with it.
+        </p>
+        <p className="text-muted-foreground">
           To exercise your rights of access, correction, or erasure, contact the operator of
           this instance. Removing a character deletes it and its tokens; mapping history it
           produced is retained but detached from the character.

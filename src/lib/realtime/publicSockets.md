@@ -9,7 +9,7 @@
 Fixed-window rate limiter on the public WS upgrade handshake, mirroring `allowPublicSnapshotRequest` (`src/lib/map/publicSnapshot.ts`): per-IP and global counters (`PUBLIC_WS_MAX_UPGRADES_PER_IP` / `PUBLIC_WS_MAX_UPGRADES_GLOBAL`) over a `PUBLIC_WS_UPGRADE_WINDOW_MS` window, with the per-IP map cleared whenever the global window rolls.
 
 **Parameters:**
-- `clientKey` — best-effort caller IP (`clientKeyFromForwardedFor`).
+- `clientKey` — the caller's address (`clientIpOfNodeRequest`).
 - `now` — injectable clock for tests.
 
 **Returns:** `false` once either cap is exceeded for the window (the caller answers with a rejected upgrade).
