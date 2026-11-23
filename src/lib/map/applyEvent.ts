@@ -233,3 +233,25 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
       return state;
   }
 }
+
+/**
+ * Folds the server-derived EOL fields (`eolAt`, `eolSource`) of a committed
+ * `connection.update` into the tab that issued it. That tab's optimistic patch
+ * carries only what the user picked, and its realtime echo is skipped, so
+ * without this a confirmed estimate would stay marked as one on the
+ * confirmer's own screen. Only those two fields are taken: a later optimistic
+ * edit to any user-picked field must not be overwritten by an older response.
+ */
+export function applyCommittedEolFields(
+  state: MapViewData,
+  committed: MapEventPayload,
+): MapViewData {
+  if (committed.kind !== 'connection.update' || committed.eolSource === undefined) return state;
+  return applyEvent(state, {
+    kind: 'connection.update',
+    eventId: committed.eventId,
+    id: committed.id,
+    eolAt: committed.eolAt,
+    eolSource: committed.eolSource,
+  });
+}

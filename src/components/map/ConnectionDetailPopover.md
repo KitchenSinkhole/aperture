@@ -18,7 +18,7 @@ A base-ui `Tooltip` whose trigger is the styled badge-cluster box (wrapping `chi
 - **Header** (bordered): the wormhole code (`wormholeCode` or `unknown`), the size class (`connection.jumpMassClass`), and the leads-to class (`targetClass`) coloured by `systemClassColor` — e.g. `B274  L  H` with `H` in the shared class colour.
 - Body (only when the type is known): Total mass / Max jump / Max lifetime.
 - **Mass logged**: the mass-log cumulative plus its share of the WH type's total stable mass, e.g. `350 kt (32%)`; the percentage is omitted when the total mass is unknown. Reads `Hidden during Blackout` when the mass-log fetch comes back `hidden`.
-- **EOL row** (when `eolStage !== 'none'`): for `eol`/`critical`, the stage label (`EOL 4h` / `EOL 1h`) and an `H:MM` countdown, e.g. `EOL 4h   1:24` — the colon carries the `ap-blink` utility (1s CSS on/off) to read as a live clock. For the manual `expired` stage it counts *up* instead: `Expired   3h 12m ago`, elapsed since the flag (`connectionExpiredSinceMs`).
+- **EOL row** (when `eolStage !== 'none'`): for `eol`/`critical`, the stage label (`EOL 4h` / `EOL 1h`) and an `H:MM` countdown, e.g. `EOL 4h   1:24` — the colon carries the `ap-blink` utility (1s CSS on/off) to read as a live clock. An estimated EOL (`isEolEstimate`) reads `EOL 4h (estimated)` with an italic line beneath saying it was guessed from the hole's age, not seen in game. For the manual `expired` stage it counts *up* instead: `Expired   3h 12m ago`, elapsed since the flag (`connectionExpiredSinceMs`).
 
 ### Behaviour & Interactions
 - Opens on hover (base-ui default delay; the popup is itself hoverable). The mass-log cumulative (`fetchConnectionMassLog`) is refetched on every open, so re-hovering an active hole reflects newly logged jumps. Static wormhole data (`fetchWormholeJumpInfo`, session-cached) is fetched once per known wormhole type and held in local state; a WH signature attached after the first hover flips `wormholeTypeId` null → known and the next open fetches the reference. Mass logged reads `…` until the fetch resolves, then the cumulative (0 when no jumps logged).
@@ -31,3 +31,4 @@ A base-ui `Tooltip` whose trigger is the styled badge-cluster box (wrapping `chi
 - `@/lib/map/connectionState` (`connectionTimeLeftMs`, `connectionExpiredSinceMs`) for the countdown / expired-since readout.
 - `@/lib/eve/wormholeFormat` (`formatWormholeMass`) for the mass-logged row.
 - `./WormholeDetailRows` (`WormholeReferenceRows` for the header + static rows, `Row` for the mass-logged line).
+- `./styling` (`isEolEstimate`) for the estimate wording.
