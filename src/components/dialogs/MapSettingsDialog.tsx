@@ -120,10 +120,9 @@ export function MapSettingsDialog({
                 {experimentalActive ? (
                   <MapExperimentalCleanupForm
                     mapId={mapId}
-                    initialValues={{
-                      experimentalAutoSignatureCleanup: settings.experimentalAutoSignatureCleanup,
-                      experimentalAutoMapCleanup: settings.experimentalAutoMapCleanup,
-                    }}
+                    initialExperimentalAutoSignatureCleanup={
+                      settings.experimentalAutoSignatureCleanup
+                    }
                   />
                 ) : null}
               </TabsPanel>

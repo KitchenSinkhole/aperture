@@ -2242,13 +2242,6 @@
           "notNull": true,
           "default": false
         },
-        "experimental_map_cleanup": {
-          "name": "experimental_map_cleanup",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "next_bookmarks": {
           "name": "next_bookmarks",
           "type": "jsonb",

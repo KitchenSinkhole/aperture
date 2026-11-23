@@ -51,7 +51,6 @@ const updateMapSettingsSchema = z.object({
   homeMapSystemId: z.string().regex(/^\d+$/, 'Invalid system id.').nullable().optional(),
   exemptHomeStaticFromTag: z.boolean().optional(),
   experimentalAutoSignatureCleanup: z.boolean().optional(),
-  experimentalAutoMapCleanup: z.boolean().optional(),
 });
 
 /** Denial copy per map type, naming the requirement `canCreateMap` enforces. */
@@ -224,8 +223,6 @@ export async function updateMapSettingsAction(
       if ('experimentalAutoSignatureCleanup' in patch)
         set.experimentalSignatureCleanup = out.experimentalAutoSignatureCleanup =
           patch.experimentalAutoSignatureCleanup;
-      if ('experimentalAutoMapCleanup' in patch)
-        set.experimentalMapCleanup = out.experimentalAutoMapCleanup = patch.experimentalAutoMapCleanup;
       if ('tagScheme' in patch) set.tagScheme = patch.tagScheme;
       if ('exemptHomeStaticFromTag' in patch)
         set.exemptHomeStaticFromTag = patch.exemptHomeStaticFromTag;

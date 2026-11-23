@@ -254,10 +254,8 @@ export type MapSettings = {
   homeMapSystemId: string | null;
   /** ABC-only: leave the Home system's static target untagged. */
   exemptHomeStaticFromTag: boolean;
-  /** Experimental UI: periodic signature Clean up (off by default). Stored in `next_bookmarks`. */
+  /** Experimental UI: periodic signature Clean up (off by default). `experimental_signature_cleanup` on `ap_map`. */
   experimentalAutoSignatureCleanup: boolean;
-  /** Experimental UI: remove chart connections already marked expired (off by default). Stored in `next_bookmarks`. */
-  experimentalAutoMapCleanup: boolean;
 };
 
 /**
@@ -548,7 +546,6 @@ export async function loadMapSettings(
       homeMapSystemId: apMap.homeMapSystemId,
       exemptHomeStaticFromTag: apMap.exemptHomeStaticFromTag,
       experimentalSignatureCleanup: apMap.experimentalSignatureCleanup,
-      experimentalMapCleanup: apMap.experimentalMapCleanup,
     })
     .from(apMap)
     .where(and(eq(apMap.id, mapId), isNull(apMap.deletedAt)));
@@ -557,7 +554,6 @@ export async function loadMapSettings(
     ...row,
     homeMapSystemId: row.homeMapSystemId === null ? null : row.homeMapSystemId.toString(),
     experimentalAutoSignatureCleanup: row.experimentalSignatureCleanup,
-    experimentalAutoMapCleanup: row.experimentalMapCleanup,
   };
 }
 

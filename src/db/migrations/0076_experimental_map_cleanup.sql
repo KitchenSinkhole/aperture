@@ -1,2 +1,0 @@
-ALTER TABLE "ap_map" ADD COLUMN "experimental_signature_cleanup" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "ap_map" ADD COLUMN "experimental_map_cleanup" boolean DEFAULT false NOT NULL;
