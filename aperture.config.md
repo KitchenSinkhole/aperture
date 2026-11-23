@@ -33,6 +33,7 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 **Realtime / WebSocket**
 - `APP_UPDATE_IDLE_RELOAD_MS` — how long a tab must stay continuously hidden, with a newer build deployed, before it reloads itself in the background. A visible tab is never reloaded from under the pilot; it gets a banner instead.
 - `MAP_EVENT_NOTIFY_CHANNEL_PREFIX` — `pg_notify` channel prefix for `ap_map_event` fanout.
+- `INSTANCE_NOTIFY_CHANNEL` — `pg_notify` channel for instance-wide state changes (the Blackout switch and cleared list). Not a map channel.
 - `WS_PATH` — WebSocket upgrade path on the same Next.js deployment.
 - `WS_HEARTBEAT_MS`, `WS_RECONNECT_BASE_MS`, `WS_RECONNECT_MAX_MS`, `WS_HEALTH_STALE_MS` — heartbeat, client reconnect backoff, and the staleness threshold that flips the degraded-mode banner.
 - `PRESENCE_SESSION_GAP_MS` — reconnect window within which `ap_character_presence` adopts the still-open session instead of opening a second one. `PRESENCE_LIVE_GRACE_MS` (2x `WS_HEARTBEAT_MS`) — how fresh `ended_at` must be for a session to read as live. `PRESENCE_RETENTION_DAYS` — prune horizon for the presence table.
@@ -50,6 +51,17 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `PUBLIC_WS_UPGRADE_WINDOW_MS`, `PUBLIC_WS_MAX_UPGRADES_PER_IP`, `PUBLIC_WS_MAX_UPGRADES_GLOBAL` — fixed-window rate limits on the public WS upgrade handler.
 - `PUBLIC_WS_NUDGE_MIN_INTERVAL_MS` — minimum spacing between `publicUpdate` nudges sent to one public socket.
 - `PUBLIC_REFETCH_JITTER_MS`, `PUBLIC_POLL_INTERVAL_MS`, `PUBLIC_IDLE_REFRESH_MS` — spectator client refetch jitter, socket-down poll cadence, and the idle-map refetch backstop.
+
+**User API**
+- `USER_API_AUTH_CACHE_TTL_MS`, `USER_API_AUTH_CACHE_MAX_ENTRIES` — lifetime and LRU size of the user API's resolved-token cache (`src/lib/userApi/authorize.ts`); the TTL bounds how long an access loss the server only observes takes to stop a token.
+- `USER_API_PROJECTION_TTL_MS`, `USER_API_PROJECTION_CACHE_MAX_ENTRIES` — lifetime and LRU size of the user API's resource projection cache (`src/lib/userApi/cache.ts`).
+- `USER_API_KILLS_DEFAULT_SINCE_MS`, `USER_API_KILLS_MAX_AGE_DAYS`, `USER_API_KILLS_MAX_LIMIT` — `GET /api/v1/kills`: the default `since` lookback, the `since` floor (the window the `kills` projection spans), and the `limit` cap and default (which also caps the projection).
+- `USER_API_RATE_WINDOW_MS`, `USER_API_MAX_PER_TOKEN`, `USER_API_MAX_PER_ACCOUNT`, `USER_API_MAX_GLOBAL`, `USER_API_MAX_PER_IP` — the one shared fixed window and its request caps (`src/lib/userApi/rateLimit.ts`); the account cap sums every token the account owns.
+- `USER_API_MAX_AUTH_FAILURES_PER_IP`, `USER_API_IP_BLOCK_STEPS_MS` — failed auths an IP may make per window, and the escalating block lengths once it exceeds them.
+- `USER_API_MAX_TOKENS_PER_ACCOUNT_PER_MAP`, `USER_API_MAX_TOKENS_PER_ACCOUNT` — live-token caps per account, per map and overall.
+- `USER_API_HOT_WINDOW_REJECTS`, `USER_API_STRIKE_HOT_WINDOWS`, `USER_API_STRIKE_SPAN_MS` — refusals that make a window hot, and hot windows within the span that make a strike.
+- `USER_API_STRIKE_DECAY_DAYS`, `USER_API_STRIKE_SUSPENSIONS_MS`, `USER_API_FIRST_BLOCK_DAYS`, `USER_API_REPEAT_OFFENCE_WINDOW_DAYS` — the abuse ladder (`src/lib/userApi/abuse.ts`): strike decay, the strike 1 and 2 suspensions, and the first and repeat automatic account blocks.
+- `USER_API_USAGE_FLUSH_MS` — minimum interval between batched token-usage writes (`src/lib/userApi/usage.ts`).
 
 **Authz / character cleanup**
 - `CHARACTER_CLEANUP_CRON`, `CHARACTER_AUTHZ_RESYNC_STALE_AFTER_MS`, `CHARACTER_AUTHZ_RESYNC_BATCH_SIZE` — cadence and throttle for the `character-cleanup` job's kick-expiry + authz resync passes.

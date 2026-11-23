@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.3.0
+
+More control over who sees what. Blackout hides pilot locations across the whole instance from everyone who isn't cleared, and the new user API lets members read a map into their own tools, but only on maps whose managers have switched it on. Sounds can also be muted per system, and pilots coming and going in your Home system are quiet by default.
+
+### New features
+
+- **Blackout** - a global admin switch in Admin Settings hides pilot locations from everyone who isn't on the cleared list. You can clear individual characters or corp titles, each with an optional expiry. While Blackout is on, a viewer who isn't cleared sees only their own characters: other pilots drop off the map and the pilot roster, a connection's logged mass reads "Hidden during Blackout", and webhook posts and the map's audit log hide who made each change. A banner on every map says Blackout is in effect and whether you are cleared. The switch applies at once to every open tab and to public share pages. *(MonoliYoda)*
+  - Tracked pilots' jumps don't add systems or connections to any map while Blackout is on, so chains have to be mapped by hand. Jumps through wormholes already on the map are still mass-logged, and those entries appear when Blackout lifts.
+- **Per-map user API** - read a map from your own tools, scripts or bots with a read-only token. A map manager switches the API on in Map Settings, API and picks which of six scopes the map exposes: map, signatures, pilots, notes, mass log and kills. Then any member who can view the map can mint up to three tokens for it, each with its own scopes and an optional expiry. A token is shown once when it's created. Tokens are listed and revoked in Map Settings and in Account Settings, and managers can revoke any token on their map. Access follows your main character: a token stops working when its owner loses access to the map, and it sees only what its owner may see during Blackout. *(MonoliYoda)* Closes #293
+  - Requests are rate-limited per token, per account and per IP. A token that keeps hammering past its limit is suspended for 15 minutes, then 6 hours, and finally revoked with a 7-day block on the account's API use. Admins can switch the API off for the whole instance and block or unblock accounts by hand. Every switch, scope change, token created, revoked or suspended is written to the map's audit log.
+  - The `kills` scope is served from the kills Aperture has already recorded for on-map systems, so API traffic never adds load on zKillboard or ESI.
+  - The full reference is in [`docs/api/README.md`](docs/api/README.md).
+- **Mute sounds per system** - right-click a system and open Sounds to mute its kills, its pilot arrivals and departures, or its rally and ping cues. Muted systems show a muted-speaker badge, and Account Settings, Sounds lists them all with a toggle for each group (up to 50 systems). Mutes follow the EVE system on every map. Your Home system has its own row there, which mutes pilot cues by default. A watched wormhole always plays. *(MonoliYoda)* Closes #289
+
+### Fixes
+
+- **Webhooks only post to Discord** - a webhook URL has to be a Discord webhook (`https://discord.com/api/webhooks/...` or its `discordapp.com`, `canary` and `ptb` forms). Before, any well-formed URL was accepted, so a map manager could point the server at an internal address and read the reply back in the Webhooks panel. A stored webhook with any other URL is refused at send time, and its row says "Not a Discord webhook URL; delivery refused." Webhook posts don't follow redirects. *(MonoliYoda)*
+- **Public share links rate-limit each visitor** - the per-IP limits on public share pages read the caller's address from the entries your own proxies added to `X-Forwarded-For`, so a client can't dodge the limit by writing its own address. *(MonoliYoda)*
+
+### Upgrading
+
+- Run `pnpm db:migrate` (migrations 0072-0074). These add the Blackout switch and its cleared list, the API token table and the map, account and instance API settings, and two killmail columns with an index. Adding the killmail column rewrites `universe_killmail` once, which is quick because the table only keeps recent kills.
+- **Set `TRUSTED_PROXY_HOPS`** to the number of reverse proxies in front of Aperture: `0` if browsers connect directly, `1` for one nginx/Caddy/Traefik, `2` for Cloudflare in front of your own proxy. It defaults to `1`. If it's wrong, the rate limits on public share links and on the user API either let clients pick their own address or put every caller in one shared bucket. See [Behind a reverse proxy](README.md#behind-a-reverse-proxy).
+- The user API is on for the instance and off on every map. Nothing is exposed until a map manager switches it on. To keep it off entirely, turn off the instance switch in Admin Settings.
+- Webhooks saved with a URL that isn't a Discord webhook stop delivering. Check the Webhooks panel in Map Settings for the "delivery refused" notice.
+- Members who already have sounds on stop hearing pilot cues in their Home system. They can turn this back on in Account Settings, Sounds, Muted systems.
+
+### Contributors
+
+- **MonoliYoda** - Blackout, the user API, per-system sound mutes, and the webhook URL allowlist
+
 ## v1.2.0
 
 The map can make sound. Pick the events you want to hear: a pilot jumping in or out of your system, a jump through a wormhole you're watching, a kill on the map, a rally point being set, or a system being pinged. Each one can play a chime, a recorded voice line or a sound file of your own.

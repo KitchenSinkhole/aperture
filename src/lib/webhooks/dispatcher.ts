@@ -9,12 +9,18 @@ import {
   universeSystem,
 } from '@/db/schema';
 import {
+  isDiscordWebhookUrl,
   postDiscordWebhook,
   type DiscordDispatchResult,
   type DiscordWebhookPayload,
 } from '@/lib/integrations/discord';
+import { getBlackoutState } from '@/lib/auth/blackout';
 import { recordWebhookDelivery } from '@/lib/metrics/registry';
-import { mapEventPayloadSchema, type MapEventPayload } from '@/lib/realtime/protocol';
+import {
+  AUDIT_ONLY_EVENT_KINDS,
+  mapEventPayloadSchema,
+  type MapEventPayload,
+} from '@/lib/realtime/protocol';
 import type { WebhookOutcome } from '@/types';
 import {
   formatHistoryMessage,
@@ -82,6 +88,9 @@ export async function runWebhookDispatch(
     return { attempted: 0, succeeded: 0, failed: 0, skipped: 0 };
   }
   const event = parsed.data;
+  if (AUDIT_ONLY_EVENT_KINDS.has(event.kind)) {
+    return { attempted: 0, succeeded: 0, failed: 0, skipped: 0 };
+  }
 
   const ctx = await resolveContext(mapId, event, eventRow.characterId);
   if (!ctx) {
@@ -92,7 +101,6 @@ export async function runWebhookDispatch(
   const webhooks = await db
     .select({
       id: apMapWebhook.id,
-      channel: apMapWebhook.channel,
       event: apMapWebhook.event,
       url: apMapWebhook.url,
       username: apMapWebhook.username,
@@ -109,7 +117,6 @@ export async function runWebhookDispatch(
     // Rally webhooks only fire on rally-set events; rally-clear and other
     // system updates flow to history only.
     if (wh.event === 'rally' && !isRally) continue;
-    if (wh.channel !== 'discord') continue;
 
     const payload =
       wh.event === 'rally'
@@ -148,7 +155,6 @@ export async function runTestWebhookDispatch(
 ): Promise<WebhookDispatchNotes> {
   const [wh] = await db
     .select({
-      channel: apMapWebhook.channel,
       url: apMapWebhook.url,
       username: apMapWebhook.username,
       mapId: apMapWebhook.mapId,
@@ -158,9 +164,6 @@ export async function runTestWebhookDispatch(
   if (!wh) {
     return { attempted: 0, succeeded: 0, failed: 0, skipped: 0, test: true, missingWebhook: true };
   }
-  if (wh.channel !== 'discord') {
-    return { attempted: 0, succeeded: 0, failed: 0, skipped: 1, test: true };
-  }
 
   const [mapRow] = await db
     .select({ name: apMap.name })
@@ -169,7 +172,7 @@ export async function runTestWebhookDispatch(
   const mapName = mapRow?.name ?? `map ${wh.mapId.toString()}`;
 
   const payload: DiscordWebhookPayload = {
-    content: `**${mapName}** — [test] Aperture webhook test fired at ${sentAt.toISOString()}.`,
+    content: `**${mapName}**: [test] Aperture webhook test fired at ${sentAt.toISOString()}.`,
   };
   if (wh.username) payload.username = wh.username;
 
@@ -197,11 +200,18 @@ async function deliver(
   url: string,
   payload: DiscordWebhookPayload,
 ): Promise<{ ok: boolean }> {
+  // Re-checked at send time so a row stored before the allowlist existed is refused too.
+  if (!isDiscordWebhookUrl(url)) {
+    recordWebhookDelivery('blocked_url');
+    await recordFailure(webhookId, null, 'Not a Discord webhook URL; delivery refused.');
+    return { ok: false };
+  }
+
   const result = await postDiscordWebhook(url, payload);
   recordWebhookDelivery(webhookOutcome(result));
-  const attemptedAt = new Date();
 
   if (result.ok) {
+    const attemptedAt = new Date();
     await db
       .update(apMapWebhook)
       .set({
@@ -215,17 +225,26 @@ async function deliver(
     return { ok: true };
   }
 
+  await recordFailure(webhookId, result.status ?? null, result.error);
+  return { ok: false };
+}
+
+async function recordFailure(
+  webhookId: bigint,
+  status: number | null,
+  error: string,
+): Promise<void> {
+  const attemptedAt = new Date();
   await db
     .update(apMapWebhook)
     .set({
-      lastStatus: result.status ?? null,
-      lastError: result.error.slice(0, LAST_ERROR_MAX),
+      lastStatus: status,
+      lastError: error.slice(0, LAST_ERROR_MAX),
       lastAttemptedAt: attemptedAt,
       consecutiveFailures: sql`${apMapWebhook.consecutiveFailures} + 1`,
       updatedAt: attemptedAt,
     })
     .where(eq(apMapWebhook.id, webhookId));
-  return { ok: false };
 }
 
 async function resolveContext(
@@ -236,8 +255,10 @@ async function resolveContext(
   const [mapRow] = await db.select({ name: apMap.name }).from(apMap).where(eq(apMap.id, mapId));
   if (!mapRow) return null;
 
+  // Blackout is read at dispatch time; the actor's name is never loaded while it is on.
+  const hideActor = (await getBlackoutState()).active;
   let characterName: string | null = null;
-  if (characterId !== null) {
+  if (characterId !== null && !hideActor) {
     const [charRow] = await db
       .select({ name: apCharacter.name })
       .from(apCharacter)
@@ -256,6 +277,7 @@ async function resolveContext(
   return {
     mapName: mapRow.name,
     characterName,
+    hideActor,
     systemName:
       payloadSystemName ??
       (refs.primaryMapSystemId

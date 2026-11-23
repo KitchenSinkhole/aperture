@@ -120,6 +120,12 @@ export const apertureConfig = {
   /** `pg_notify` channel prefix for `ap_map_event` fanout. */
   MAP_EVENT_NOTIFY_CHANNEL_PREFIX: 'map:',
 
+  /**
+   * `pg_notify` channel for instance-wide state changes: the Blackout switch
+   * and its cleared list. Not a map channel; it carries no map envelope.
+   */
+  INSTANCE_NOTIFY_CHANNEL: 'instance',
+
   /** Path the WebSocket upgrade handler listens on (same Next.js deployment). */
   WS_PATH: '/ws/map/update',
 
@@ -512,6 +518,94 @@ export const apertureConfig = {
 
   /** Max snapshot requests accepted across all clients per window (flood ceiling). */
   PUBLIC_SNAPSHOT_MAX_GLOBAL: 6_000,
+
+  /**
+   * Lifetime of a resolved user API token record (token, map, owning account,
+   * the main's access) in the in-process auth cache. Explicit changes
+   * invalidate it at once; this bounds how long a change the server only
+   * observes (kick, ban, leaving the corp) takes to stop a token.
+   */
+  USER_API_AUTH_CACHE_TTL_MS: 10_000,
+
+  /** Distinct token hashes (misses included) held in the user API auth cache before LRU eviction. */
+  USER_API_AUTH_CACHE_MAX_ENTRIES: 10_000,
+
+  /** Lifetime of a cached user API resource projection; data cannot be fresher than this, so polling faster buys nothing. */
+  USER_API_PROJECTION_TTL_MS: 5_000,
+
+  /** Cached user API projections (one per map, resource and Blackout visibility) held before LRU eviction. */
+  USER_API_PROJECTION_CACHE_MAX_ENTRIES: 1_000,
+
+  /** How far back `GET /api/v1/kills?since=` reaches when `since` is absent or unparseable. */
+  USER_API_KILLS_DEFAULT_SINCE_MS: 86_400_000,
+
+  /** Floor of `GET /api/v1/kills?since=`, in days; the `kills` projection spans this window. */
+  USER_API_KILLS_MAX_AGE_DAYS: 7,
+
+  /** Most kills one `GET /api/v1/kills` answers, and its default `limit`; also caps the `kills` projection. */
+  USER_API_KILLS_MAX_LIMIT: 200,
+
+  /**
+   * The one fixed window every user API counter shares (per IP, failed auths
+   * per IP, per token, per account, global). Every per-key counter is
+   * discarded when it rolls.
+   */
+  USER_API_RATE_WINDOW_MS: 60_000,
+
+  /** Requests accepted per token per window. All seven endpoints every 10s is 42. */
+  USER_API_MAX_PER_TOKEN: 60,
+
+  /** Requests accepted per account per window, summed over every token it owns, so minting more tokens does not multiply the budget. */
+  USER_API_MAX_PER_ACCOUNT: 150,
+
+  /** Requests accepted across the whole user API per window. */
+  USER_API_MAX_GLOBAL: 6_000,
+
+  /** Requests accepted per client IP per window; generous because many tokens can sit behind one NAT. */
+  USER_API_MAX_PER_IP: 600,
+
+  /** Failed auths an IP may make in one window; the next one blocks the IP. */
+  USER_API_MAX_AUTH_FAILURES_PER_IP: 20,
+
+  /**
+   * Escalating IP block lengths for repeat failed-auth windows. An IP's step is
+   * remembered for the longest step after its block ends, then forgotten.
+   */
+  USER_API_IP_BLOCK_STEPS_MS: [60_000, 300_000, 1_800_000],
+
+  /** Live tokens one account may hold on one map. */
+  USER_API_MAX_TOKENS_PER_ACCOUNT_PER_MAP: 3,
+
+  /** Live tokens one account may hold across every map. */
+  USER_API_MAX_TOKENS_PER_ACCOUNT: 20,
+
+  /**
+   * Refusals of one token within one rate window that make the window "hot".
+   * Token-limit and account-limit refusals and requests sent while suspended
+   * count; global-ceiling refusals do not.
+   */
+  USER_API_HOT_WINDOW_REJECTS: 60,
+
+  /** Hot windows inside `USER_API_STRIKE_SPAN_MS` that make one strike. */
+  USER_API_STRIKE_HOT_WINDOWS: 3,
+
+  /** Span over which hot windows are counted towards a strike. */
+  USER_API_STRIKE_SPAN_MS: 600_000,
+
+  /** A token's strike count restarts from zero when its previous strike is older than this. */
+  USER_API_STRIKE_DECAY_DAYS: 7,
+
+  /** Suspension lengths for strike 1 and strike 2. Strike 3 revokes the token and blocks the account. */
+  USER_API_STRIKE_SUSPENSIONS_MS: [900_000, 21_600_000],
+
+  /** Length of an account's first automatic API block. */
+  USER_API_FIRST_BLOCK_DAYS: 7,
+
+  /** An automatic block that lands within this many days of the previous block's start is indefinite. */
+  USER_API_REPEAT_OFFENCE_WINDOW_DAYS: 180,
+
+  /** Minimum interval between two batched writes of token usage (`last_used_at`, `request_count`). */
+  USER_API_USAGE_FLUSH_MS: 60_000,
 
   /**
    * Outbound links the spectator view's promo bar offers a logged-out visitor.

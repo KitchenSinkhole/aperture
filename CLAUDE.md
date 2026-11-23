@@ -23,7 +23,7 @@ The companion `.md` files (see below) are the index of the codebase: read them f
 | Client realtime provider + degraded banner | `src/lib/realtime/useRealtime.md`, `src/components/RealtimeStatusBanner.md` |
 | Map engine (xyflow) | `src/components/map/MapCanvas.md` |
 | Map mutation pathways (Server Actions / API) | `src/app/api/map/README.md` |
-| Webhook fan-out (Slack / Discord) | `src/lib/webhooks/dispatcher.md` |
+| Webhook fan-out (Discord) | `src/lib/webhooks/dispatcher.md` |
 | SDE / ESI static-data ingest | `src/lib/sde/ingest.md`, `src/lib/jobs/tasks/sdeIngest.md` |
 
 ---

@@ -23,7 +23,8 @@ import { MapTaggingForm } from '@/components/map/manage/MapTaggingForm';
 import { MapWebhooksPanel } from '@/components/map/manage/MapWebhooksPanel';
 import { MapRolesForm } from '@/components/map/manage/MapRolesForm';
 import { MapSharePanel } from '@/components/map/manage/MapSharePanel';
-import type { MapCapability, MapEventPayload, MapSettings } from '@/types';
+import { MapApiPanel } from '@/components/map/manage/MapApiPanel';
+import type { ApiScope, MapCapability, MapEventPayload, MapSettings } from '@/types';
 
 /**
  * Map Settings dialog — the consolidated edit / settings / management /
@@ -33,9 +34,10 @@ import type { MapCapability, MapEventPayload, MapSettings } from '@/types';
  * `resolveMapCapabilities`; a manager holds all): Behavior + Auto-tagging ←
  * `settings_manage`, Webhooks ← `webhooks_manage`, Share links ←
  * `share_manage`, Export ← `map_export`, Import ← `map_import` — all
- * re-checked server-side. The Roles & Permissions tab (delegating features
- * to titles) is manager-only (`canManage`) and corp-map-only. The audit log
- * lives in its own dialog (`MapAuditDialog`).
+ * re-checked server-side. The API tab shows to every viewer while the map's API
+ * is on, and to a holder of `api_manage` always. The Roles & Permissions tab
+ * (delegating features to titles) is manager-only (`canManage`) and
+ * corp-map-only. The audit log lives in its own dialog (`MapAuditDialog`).
  */
 export function MapSettingsDialog({
   open,
@@ -45,6 +47,8 @@ export function MapSettingsDialog({
   canManage,
   capabilities,
   systems,
+  apiEnabled,
+  apiScopes,
   onImported,
 }: {
   open: boolean;
@@ -57,10 +61,15 @@ export function MapSettingsDialog({
   capabilities: MapCapability[];
   /** Visible map systems for the Auto-tagging Home picker. */
   systems: { id: string; name: string; alias: string | null }[];
+  /** The map's live user API switch (`MapViewData.map.apiEnabled`). */
+  apiEnabled: boolean;
+  /** The map's live exposed API scopes (`MapViewData.map.apiScopes`). */
+  apiScopes: ApiScope[];
   /** Fold imported event payloads onto the live canvas (reuses the bulk-paste handler). */
   onImported: (payloads: MapEventPayload[]) => void;
 }) {
   const can = (capability: MapCapability) => capabilities.includes(capability);
+  const showApi = apiEnabled || can('api_manage');
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-4xl flex-col">
@@ -79,6 +88,7 @@ export function MapSettingsDialog({
             {can('settings_manage') && <TabsTab value="tagging">Auto-tagging</TabsTab>}
             {can('webhooks_manage') && <TabsTab value="webhooks">Webhooks</TabsTab>}
             {can('share_manage') && <TabsTab value="shares">Share links</TabsTab>}
+            {showApi && <TabsTab value="api">API</TabsTab>}
             {can('map_export') && <TabsTab value="export">Export</TabsTab>}
             {can('map_import') && <TabsTab value="import">Import</TabsTab>}
             {canManage && settings.type === 'corp' && (
@@ -124,6 +134,11 @@ export function MapSettingsDialog({
             {can('share_manage') && (
               <TabsPanel value="shares">
                 <MapSharePanel mapId={mapId} />
+              </TabsPanel>
+            )}
+            {showApi && (
+              <TabsPanel value="api">
+                <MapApiPanel mapId={mapId} apiEnabled={apiEnabled} apiScopes={apiScopes} />
               </TabsPanel>
             )}
             {can('map_export') && (

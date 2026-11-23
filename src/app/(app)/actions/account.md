@@ -6,7 +6,7 @@
 ---
 
 ### setMainCharacterAction(targetCharacterId: string): Promise<AccountActionResult>
-Sets `ap_user.main_character_id` to `targetCharacterId` for the current account. Validates the target is an active, owned character via `assertCharacterOwnership`. Revalidates the `/` layout so the header / switcher reflect the new main. Returns `{ ok: false, error }` on an invalid or unowned target.
+Sets `ap_user.main_character_id` to `targetCharacterId` for the current account. Validates the target is an active, owned character via `assertCharacterOwnership`. After the write, drops the account's cached user API authorisations (`invalidateUserApiAccount`), since every token the account owns is judged by its current main. Revalidates the `/` layout so the header / switcher reflect the new main. Returns `{ ok: false, error }` on an invalid or unowned target.
 
 **Returns:** `{ ok: true }` on success.
 
@@ -28,12 +28,12 @@ Persists the account's free-form map dashboard layout (map-layout-builder) to `a
 ---
 
 ### setSoundPrefsAction(prefs: unknown): Promise<AccountActionResult>
-Persists the account's audio-cue preferences to `ap_user.sound_prefs`. `prefs` is unknown user JSON (the whole `SoundPrefs` blob sent by the Account Settings dialog) — validated at this boundary with `soundPrefsSchema` (`src/lib/sounds/prefs.ts`); a parse failure returns `{ ok: false, error: 'Invalid sound settings.' }` and writes nothing. On success updates the column + `updated_at`, revalidates the `/` layout, and returns `{ ok: true }`.
+Persists the account's audio-cue preferences to `ap_user.sound_prefs`. `prefs` is unknown user JSON (the whole `SoundPrefs` blob, sent through `saveSoundPrefs` by the Account Settings dialog or the map's system menu) — validated at this boundary with `soundPrefsSchema` (`src/lib/sounds/prefs.ts`); a parse failure returns `{ ok: false, error: 'Invalid sound settings.' }` and writes nothing. On success updates the column + `updated_at`, revalidates the `/` layout, and returns `{ ok: true }`.
 
 ---
 
 ### deleteAccountAction(): Promise<AccountActionResult>
-Hard-deletes the `ap_user` row for the current session. The FK cascade removes characters / roles / tracking; `ap_map_event` and `ap_structure_event` rows keep their history with `character_id` set null; owned maps are orphaned (`owner_character_id` set null). No soft-delete grace — irreversible. On success calls `signOut({ redirectTo: '/' })`, which throws a redirect (the trailing `{ ok: true }` is unreachable but satisfies the type). Returns `{ ok: false, error }` only if the delete itself fails.
+Hard-deletes the `ap_user` row for the current session. The FK cascade removes characters / roles / tracking; `ap_map_event` and `ap_structure_event` rows keep their history with `character_id` set null; owned maps are orphaned (`owner_character_id` set null); its user API tokens cascade away and their cached authorisations are dropped (`invalidateUserApiAccount`), so they answer 401 on their next request. No soft-delete grace — irreversible. On success calls `signOut({ redirectTo: '/' })`, which throws a redirect (the trailing `{ ok: true }` is unreachable but satisfies the type). Returns `{ ok: false, error }` only if the delete itself fails.
 
 ---
 

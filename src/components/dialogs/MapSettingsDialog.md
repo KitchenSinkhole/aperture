@@ -14,10 +14,12 @@
 | canManage | boolean | yes | Derived `canManageMap` — reveals the manager-only Roles & Permissions tab. |
 | capabilities | MapCapability[] | yes | Delegated capabilities the viewer holds (`resolveMapCapabilities`; a manager holds all) — reveals each management tab. |
 | systems | { id; name; alias }[] | yes | Visible map systems for the Auto-tagging Home picker. |
+| apiEnabled | boolean | yes | The map's live user API switch (`MapViewData.map.apiEnabled`); reveals the API tab to every viewer while on. |
+| apiScopes | ApiScope[] | yes | The map's live exposed API scopes, passed to `MapApiPanel`. |
 | onImported | (payloads: MapEventPayload[]) => void | yes | Folds imported event payloads onto the live canvas (wired to the canvas's `onBulkPaste`). |
 
 ### Renders
-A wide, height-capped tabbed dialog (`Tabs`); the tab-panel area scrolls on its own so a tall tab never pushes the dialog past the viewport. **General** (a name input when the viewer holds `settings_manage`, otherwise the name as static read-only text with no Save button; scope/visibility are always read-only) and **Settings** (per-device display preferences — low-contrast theme toggle plus wormhole-type-picker grouping toggles) always show. Each management tab is revealed by the viewer's capability: **Behavior** + **Auto-tagging** (`settings_manage`, `MapBehaviorForm` / `MapTaggingForm`), **Webhooks** (`webhooks_manage`, `MapWebhooksPanel`), **Share links** (`share_manage`, `MapSharePanel`), **Export** (`map_export`), **Import** (`map_import`). **Roles & Permissions** (`MapRolesForm`) shows only for a manager (`canManage`) on a corp map.
+A wide, height-capped tabbed dialog (`Tabs`); the tab-panel area scrolls on its own so a tall tab never pushes the dialog past the viewport. **General** (a name input when the viewer holds `settings_manage`, otherwise the name as static read-only text with no Save button; scope/visibility are always read-only) and **Settings** (per-device display preferences — low-contrast theme toggle plus wormhole-type-picker grouping toggles) always show. Each management tab is revealed by the viewer's capability: **Behavior** + **Auto-tagging** (`settings_manage`, `MapBehaviorForm` / `MapTaggingForm`), **Webhooks** (`webhooks_manage`, `MapWebhooksPanel`), **Share links** (`share_manage`, `MapSharePanel`), **API** (`MapApiPanel`; shown to every viewer while the map's API is on, and always to a holder of `api_manage`), **Export** (`map_export`), **Import** (`map_import`). **Roles & Permissions** (`MapRolesForm`) shows only for a manager (`canManage`) on a corp map.
 
 ### Behaviour & Interactions
 - General Save → `updateMapSettingsAction({ mapId, name })` (`settings_manage`); on success calls `router.refresh()` so the reopened dialog reflects the saved values. A name change also reflects live on the canvas via the realtime `map.update` echo. Save is only offered to a viewer holding `settings_manage`; others see the name as static text.
@@ -36,4 +38,4 @@ A wide, height-capped tabbed dialog (`Tabs`); the tab-panel area scrolls on its 
 - `Dialog`, `Tabs`, `Button`, `Input` primitives; `sonner` toasts; lucide `Download`/`Save`/`Upload`.
 - `@/lib/lowContrast` — `readLowContrast` / `writeLowContrast` for the Settings-tab low-contrast toggle.
 - `@/lib/wormholePickerPrefs` — `readWhPickerPrefs` / `writeWhPickerPrefs` for the Settings-tab wormhole-picker grouping toggle.
-- `MapBehaviorForm`, `MapTaggingForm`, `MapWebhooksPanel`, `MapSharePanel`, `MapRolesForm` (`@/components/map/manage/*`) — the management tabs.
+- `MapBehaviorForm`, `MapTaggingForm`, `MapWebhooksPanel`, `MapSharePanel`, `MapApiPanel`, `MapRolesForm` (`@/components/map/manage/*`) — the management tabs.

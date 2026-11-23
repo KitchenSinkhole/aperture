@@ -60,6 +60,15 @@ const schema = z
     // operator channel (PII-scrubbed detail); `STATUS_WEBHOOK_URL` is the terse,
     // user-facing public channel. Plain strings (not `.url()`) so an empty
     // default stays valid, matching `METRICS_TOKEN`.
+    // How many reverse proxies the operator runs in front of this process. The
+    // rate limiters take the caller's address from that many entries from the
+    // right of `X-Forwarded-For`; 0 means no proxy (the socket peer is the
+    // caller). See `src/lib/http/clientKey.ts`.
+    TRUSTED_PROXY_HOPS: z
+      .string()
+      .regex(/^\d+$/, 'TRUSTED_PROXY_HOPS must be a whole number of proxies')
+      .default('1')
+      .transform(Number),
     ALERT_WEBHOOK_URL: z.string().default(''),
     STATUS_WEBHOOK_URL: z.string().default(''),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

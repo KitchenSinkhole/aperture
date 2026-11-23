@@ -30,9 +30,12 @@ app.prepare().then(async () => {
   const { startZkbFeed, stopZkbFeed } = await import('@/lib/integrations/zkbFeed');
   const { startAlertLoop, stopAlertLoop } = await import('@/lib/alerts/scheduler');
   const { getLogger } = await import('@/lib/log/logger');
+  const { CLIENT_IP_HEADER, clientIpOfNodeRequest } = await import('@/lib/http/clientKey');
   const log = getLogger('server');
 
   const server = createServer((req, res) => {
+    // Overwrites whatever the client sent under this name.
+    req.headers[CLIENT_IP_HEADER] = clientIpOfNodeRequest(req);
     handle(req, res);
   });
 

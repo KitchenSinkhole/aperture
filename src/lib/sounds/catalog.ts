@@ -5,6 +5,7 @@ import {
   type ChimeSoundId,
   type SoundEvent,
   type SoundId,
+  type SoundMuteGroup,
   type SoundVariant,
   type VoicePackId,
   type VoiceSoundId,
@@ -294,3 +295,11 @@ export const SOUND_EVENT_LABELS: Record<SoundEvent, { label: string; description
     description: 'Someone pings a system on this map.',
   },
 };
+
+/** Name and tooltip for each system mute group, shared by the settings dialog, the map menu and the node badge. */
+export const SOUND_MUTE_GROUP_LABELS: Record<SoundMuteGroup, { label: string; description: string }> =
+  {
+    kills: { label: 'Kills', description: 'Kill on the map' },
+    pilots: { label: 'Pilots', description: 'Pilot arrives and Pilot leaves' },
+    alerts: { label: 'Rally & ping', description: 'Rally set and System pinged' },
+  };

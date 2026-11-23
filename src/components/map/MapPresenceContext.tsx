@@ -17,6 +17,7 @@ import {
   type CharacterUpdateLoad,
   type Envelope,
 } from '@/lib/realtime/protocol';
+import type { BlackoutStatus } from '@/types';
 import { useRealtimeEvents } from '@/lib/realtime/useRealtime';
 
 // Client-side fan-in for the pilot-presence badge on `SystemNode`.
@@ -161,6 +162,15 @@ export class PresenceStore {
     this.notify(changed);
   }
 
+  /** Drop every pilot outside one account (Blackout restricts this viewer to their own). */
+  pruneToAccount(userId: number): void {
+    const removed: number[] = [];
+    for (const list of this.bySystem.values()) {
+      for (const e of list) if (e.userId !== userId) removed.push(e.characterId);
+    }
+    if (removed.length > 0) this.remove(removed);
+  }
+
   subscribe(systemId: number, sub: Subscriber): () => void {
     let set = this.subs.get(systemId);
     if (!set) {
@@ -239,10 +249,14 @@ const PresenceContext = createContext<PresenceStore | null>(null);
 export function MapPresenceProvider({
   initial,
   mapId,
+  blackout,
+  viewerUserId,
   children,
 }: {
   initial: MapPresenceEntry[];
   mapId: string;
+  blackout: BlackoutStatus;
+  viewerUserId: number;
   children: ReactNode;
 }) {
   // Seed synchronously so the first paint shows badges instead of empty +
@@ -262,6 +276,11 @@ export function MapPresenceProvider({
     seededRef.current = initial;
     store.seed(initial);
   }, [initial, store]);
+
+  const restricted = blackout.active && !blackout.cleared;
+  useEffect(() => {
+    if (restricted) store.pruneToAccount(viewerUserId);
+  }, [restricted, viewerUserId, store, initial]);
 
   useRealtimeEvents(
     useCallback(

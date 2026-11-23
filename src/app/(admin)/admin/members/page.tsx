@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { isAdmin } from '@/lib/auth/rights';
 import { listAdminMembers } from '@/lib/auth/members';
 import { MemberActionsMenu } from '@/components/admin/MemberActionsMenu';
+import type { UserApiAccountBlock } from '@/types';
 
 const DATE_FORMAT = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
@@ -48,6 +49,21 @@ function StatusBadge({
       title={statusReason ?? undefined}
     >
       Banned
+    </span>
+  );
+}
+
+function ApiBlockBadge({ block }: { block: UserApiAccountBlock }) {
+  const until =
+    block.until === null
+      ? 'until an admin lifts it'
+      : `until ${DATE_FORMAT.format(new Date(block.until))}`;
+  return (
+    <span
+      className="inline-flex items-center rounded-md bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
+      title={block.reason === null ? until : `${until}: ${block.reason}`}
+    >
+      API blocked
     </span>
   );
 }
@@ -102,11 +118,14 @@ export default async function AdminMembersPage() {
                     <AuthzBadge level={m.authzLevel} />
                   </td>
                   <td className="px-3 py-2 align-middle">
-                    <StatusBadge
-                      status={m.status}
-                      statusExpiresAt={m.statusExpiresAt}
-                      statusReason={m.statusReason}
-                    />
+                    <div className="flex flex-wrap items-center gap-1">
+                      <StatusBadge
+                        status={m.status}
+                        statusExpiresAt={m.statusExpiresAt}
+                        statusReason={m.statusReason}
+                      />
+                      {m.apiBlock !== null && <ApiBlockBadge block={m.apiBlock} />}
+                    </div>
                   </td>
                   <td className="px-3 py-2 align-middle text-muted-foreground">
                     {m.lastLocationAt !== null

@@ -14,11 +14,15 @@ Wraps the canvas subtree. Owns one `PresenceStore` instance.
 |---|---|---|---|
 | initial | MapPresenceEntry[] | yes | The server-loaded initial roster from `loadMapPresence` (via `MapViewData.presence`). |
 | mapId | string | yes | The map this subtree renders, used to reject foreign-map envelopes. |
+| blackout | BlackoutStatus | yes | The viewer's live standing under Blackout (`useBlackoutStatus`). |
+| viewerUserId | number | yes | The viewer's account id: the account a restricted viewer's roster is pruned to. |
 | children | ReactNode | yes | The canvas subtree. |
 
 The provider seeds the store synchronously inside `useState`'s init so the first paint already shows badges; an effect re-seeds when the `initial` reference actually changes (e.g. soft navigation back to this map). It also registers a `useRealtimeEvents` listener: it calls `store.apply()` for every parsed `characterUpdate` envelope and `store.remove()` for every parsed `characterLogout` envelope — every envelope is delivered exactly once (no `lastEvent` coalescing), so a burst of presence updates in one tick all fold in rather than dropping to the last. `apply()` copies the account/main identity (`userId`/`mainCharacterId`/`mainCharacterName`) from the load onto the rebuilt entry, so the roster keeps grouping alts under their main across live moves.
 
 Like `MapCanvas`/`MapUnderglowBridge`/`ConnectionMassLog`, the listener drops any envelope whose `mapId` names a different map before touching the store. The check is on the envelope, not the load — `characterUpdateLoadSchema`'s load carries no `mapId`, since a pilot's presence isn't scoped to a single map. The SharedWorker already routes map-scoped envelopes only to ports subscribed to that map, so a foreign `mapId` reaching here means a routing regression rather than a legitimate cross-map move.
+
+**Blackout pruning.** While `blackout` is active and not cleared, an effect calls `store.pruneToAccount(viewerUserId)`: on the change into that state, on mount when the initial state already restricts, and after a re-seed. The server sends no presence for other accounts while it holds, so nothing re-adds them; once Blackout lifts, the next `characterUpdate`s repopulate the store. A cleared viewer is never pruned.
 
 ### usePresenceForSystem(systemId: number): readonly MapPresenceEntry[]
 
@@ -48,9 +52,10 @@ Subscribes to pilot jumps. The store emits a `Traversal` (`{ characterId, fromSy
 
 ### PresenceStore (exported)
 
-The store class is exported for unit testing. Relevant methods beyond the internal subscribe/notify plumbing: `seed(initial)`, `apply(load)`, `remove(characterIds)` (drop pilots outright on a `characterLogout`), `getForSystem(id)`, `getAll()`, and `getSystemForCharacter(characterId)` (the EVE system id that character is online+located in, else null — read live for the CTRL+V location check).
+The store class is exported for unit testing. Relevant methods beyond the internal subscribe/notify plumbing: `seed(initial)`, `apply(load)`, `remove(characterIds)` (drop pilots outright on a `characterLogout`), `pruneToAccount(userId)` (drop every pilot outside one account), `getForSystem(id)`, `getAll()`, and `getSystemForCharacter(characterId)` (the EVE system id that character is online+located in, else null — read live for the CTRL+V location check).
 
 ### Depends On
 - `@/lib/map/loadMap` (`MapPresenceEntry` type)
 - `@/lib/realtime/protocol` (`characterUpdateLoadSchema`, `characterLogoutLoadSchema`, `CharacterUpdateLoad`, `Envelope`)
 - `@/lib/realtime/useRealtime` (`useRealtimeEvents`)
+- `@/types` (`BlackoutStatus` type)

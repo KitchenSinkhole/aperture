@@ -13,6 +13,7 @@ import {
 import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
 import { migrateLayout } from '@/lib/map/layout/panels';
 import { soundPrefsSchema } from '@/lib/sounds/prefs';
+import { invalidateUserApiAccount } from '@/lib/userApi/authorize';
 
 // Account self-service. Low-frequency, user-initiated state changes
 // over ap_user — Server Actions per the CLAUDE.md mutation pathways.
@@ -22,7 +23,8 @@ export type AccountActionResult = { ok: true } | { ok: false; error: string };
 /**
  * Set the account's main character — the identity login lands on and that
  * statistics / activity roll up to. The target must be an active character on
- * the current account.
+ * the current account. The account's user API tokens are judged by its main,
+ * so their cached authorisations are dropped once the change commits.
  */
 export async function setMainCharacterAction(
   targetCharacterId: string,
@@ -41,6 +43,7 @@ export async function setMainCharacterAction(
     .update(apUser)
     .set({ mainCharacterId: target, updatedAt: new Date() })
     .where(eq(apUser.id, session.userId));
+  invalidateUserApiAccount(session.userId);
   revalidatePath('/', 'layout');
   return { ok: true };
 }
@@ -149,7 +152,8 @@ export async function setSoundPrefsAction(prefs: unknown): Promise<AccountAction
  * Delete the account and every character on it. The FK rules do the rest:
  * characters / roles / tracking cascade away, audit rows (`ap_map_event`,
  * `ap_structure_event`) keep their history with `character_id` set null, and
- * owned maps are orphaned (`owner_character_id` set null). Irreversible — there
+ * owned maps are orphaned (`owner_character_id` set null). Its user API tokens
+ * cascade away and stop answering on the next request. Irreversible: there
  * is no soft-delete grace for accounts. On success the user is signed out and
  * returned to the public splash (`signOut` throws a redirect and never returns).
  */
@@ -160,6 +164,7 @@ export async function deleteAccountAction(): Promise<AccountActionResult> {
   } catch {
     return { ok: false, error: 'Could not delete account.' };
   }
+  invalidateUserApiAccount(session.userId);
   await signOut({ redirectTo: '/' });
   return { ok: true };
 }

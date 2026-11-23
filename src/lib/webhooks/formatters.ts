@@ -16,6 +16,14 @@ export interface WebhookEventContext {
   /** Connection events have two endpoints — set both when known. */
   sourceSystemName: string | null;
   targetSystemName: string | null;
+  /**
+   * The current main of the account owning the token an `api.token_revoked` /
+   * `api.token_suspended` event names, resolved at read time; null when the
+   * account has no main or no longer exists.
+   */
+  tokenOwnerName?: string | null;
+  /** Blackout restricts the reader: lines name no actor and no token owner. */
+  hideActor?: boolean;
 }
 
 const RALLY_EMBED_COLOR = 0xe74c3c; // Discord red
@@ -36,12 +44,15 @@ export function formatHistoryMessage(
   ctx: WebhookEventContext,
   mapName: string = ctx.mapName,
 ): DiscordWebhookPayload | null {
-  const who = ctx.characterName ?? 'Aperture';
   const line = describeMapEvent(event, ctx);
   if (!line) return null;
+  if (ctx.hideActor) {
+    return { content: `**${mapName}**: ${line.charAt(0).toUpperCase()}${line.slice(1)}.` };
+  }
+  const who = ctx.characterName ?? 'Aperture';
   // Discord has no actor column, so the name leads the sentence here. The audit
   // console (its own actor column) renders `describeMapEvent` without this prefix.
-  return { content: `**${mapName}** — ${who} ${line}.` };
+  return { content: `**${mapName}**: ${who} ${line}.` };
 }
 
 /** Build the Discord payload for a `rally` webhook. Caller should only invoke for `isRallySetEvent`. */
@@ -53,11 +64,11 @@ export function formatRallyMessage(
   // Narrowed by isRallySetEvent.
   const rallyAt = (event as Extract<MapEventPayload, { kind: 'system.updated' }>).rallyAt as string;
   const system = ctx.systemName ?? 'an unknown system';
-  const setter = ctx.characterName ?? 'Aperture';
-
   const embed: DiscordWebhookEmbed = {
     title: `Rally point set in ${system}`,
-    description: `Set by **${setter}** on **${ctx.mapName}**.`,
+    description: ctx.hideActor
+      ? `Set on **${ctx.mapName}**.`
+      : `Set by **${ctx.characterName ?? 'Aperture'}** on **${ctx.mapName}**.`,
     color: RALLY_EMBED_COLOR,
     timestamp: rallyAt,
   };
@@ -196,9 +207,48 @@ export function describeMapEvent(event: MapEventPayload, ctx: WebhookEventContex
       return `published public share link **${event.label}** (${describeShareProfile(event)})`;
     case 'share.revoked':
       return `revoked public share link **${event.label}**`;
+    case 'api.enabled':
+      return `enabled the user API (${describeScopes(event.scopes)})`;
+    case 'api.disabled':
+      return `disabled the user API`;
+    case 'api.scopes_changed': {
+      const clauses: string[] = [];
+      if (event.added.length > 0) clauses.push(`added ${scopeList(event.added)}`);
+      if (event.removed.length > 0) clauses.push(`removed ${scopeList(event.removed)}`);
+      if (clauses.length === 0) return null;
+      return `changed the user API scopes (${clauses.join('; ')})`;
+    }
+    case 'api.token_created': {
+      const expiry = event.expiresAt ? `expires ${event.expiresAt.slice(0, 10)}` : 'no expiry';
+      return `created API token **${event.label}** (${describeScopes(event.scopes)}, ${expiry})`;
+    }
+    case 'api.token_revoked': {
+      const why = event.reason === 'abuse' ? ' after repeated rate-limit abuse' : '';
+      return `revoked API token **${event.label}**${ownedBy(ctx)}${why}`;
+    }
+    case 'api.token_suspended': {
+      const until = `${event.until.slice(0, 16).replace('T', ' ')} UTC`;
+      return `suspended API token **${event.label}**${ownedBy(ctx)} for rate-limit abuse (strike ${event.strike}, until ${until})`;
+    }
     default:
       return null;
   }
+}
+
+/** ` owned by **<main>**` for a token event, or nothing while actors are hidden. */
+function ownedBy(ctx: WebhookEventContext): string {
+  if (ctx.hideActor) return '';
+  return ` owned by **${ctx.tokenOwnerName ?? 'an unknown pilot'}**`;
+}
+
+/** Backticked, comma-joined scope names. */
+function scopeList(scopes: readonly string[]): string {
+  return scopes.map((s) => `\`${s}\``).join(', ');
+}
+
+/** `scopes \`map\`, \`pilots\`` or `no scopes`, for a parenthetical. */
+function describeScopes(scopes: readonly string[]): string {
+  return scopes.length > 0 ? `scopes ${scopeList(scopes)}` : 'no scopes';
 }
 
 /** Human phrase for each share presence mode (what a spectator sees of the roster). */
@@ -240,6 +290,7 @@ const CAPABILITY_LABEL: Record<
   map_export: 'map export',
   map_delete: 'map deletion',
   share_manage: 'share-link management',
+  api_manage: 'user API management',
 };
 
 /** Per-field `field → value` clauses for a `connection.update` patch (only changed keys). */

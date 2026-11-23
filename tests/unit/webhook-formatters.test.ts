@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  describeMapEvent,
   formatHistoryMessage,
   formatRallyMessage,
   isRallySetEvent,
@@ -80,7 +81,7 @@ describe('formatHistoryMessage', () => {
       positionY: 0,
     };
     const payload = formatHistoryMessage(event, baseCtx);
-    expect(payload?.content).toBe('**Test Map** — Pilot Foo added **Jita** to the map.');
+    expect(payload?.content).toBe('**Test Map**: Pilot Foo added **Jita** to the map.');
   });
 
   it('renders a rally-set update with the rally phrasing', () => {
@@ -91,7 +92,7 @@ describe('formatHistoryMessage', () => {
       rallyAt: '2026-05-27T12:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo set a rally point in **Jita**.',
+      '**Test Map**: Pilot Foo set a rally point in **Jita**.',
     );
   });
 
@@ -103,7 +104,7 @@ describe('formatHistoryMessage', () => {
       rallyAt: null,
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo cleared the rally point in **Jita**.',
+      '**Test Map**: Pilot Foo cleared the rally point in **Jita**.',
     );
   });
 
@@ -114,7 +115,19 @@ describe('formatHistoryMessage', () => {
       id: '42',
     };
     const payload = formatHistoryMessage(event, { ...baseCtx, characterName: null });
-    expect(payload?.content).toBe('**Test Map** — Aperture removed **Jita** from the map.');
+    expect(payload?.content).toBe('**Test Map**: Aperture removed **Jita** from the map.');
+  });
+
+  it('names no actor while Blackout hides it', () => {
+    const event: MapEventPayload = {
+      kind: 'system.removed',
+      eventId: 4,
+      id: '42',
+    };
+    const payload = formatHistoryMessage(event, { ...baseCtx, hideActor: true });
+    expect(payload?.content).toBe('**Test Map**: Removed **Jita** from the map.');
+    expect(payload?.content).not.toContain('Pilot Foo');
+    expect(payload?.content).not.toContain('Aperture');
   });
 
   it('returns null for a position-only update (nothing worth saying)', () => {
@@ -148,7 +161,7 @@ describe('formatHistoryMessage', () => {
       createdAt: '2026-05-27T12:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo connected **Jita** ↔ **Amarr**.',
+      '**Test Map**: Pilot Foo connected **Jita** ↔ **Amarr**.',
     );
   });
 
@@ -162,7 +175,7 @@ describe('formatHistoryMessage', () => {
       eolStage: 'eol',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated **Jita** ↔ **Amarr** (EOL → ~4h).',
+      '**Test Map**: Pilot Foo updated **Jita** ↔ **Amarr** (EOL → ~4h).',
     );
   });
 
@@ -176,7 +189,7 @@ describe('formatHistoryMessage', () => {
       eolStage: 'critical',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated **Jita** ↔ **Amarr** (EOL → critical (~1h)).',
+      '**Test Map**: Pilot Foo updated **Jita** ↔ **Amarr** (EOL → critical (~1h)).',
     );
   });
 
@@ -190,7 +203,7 @@ describe('formatHistoryMessage', () => {
       jumpMassClass: 'l',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated **Jita** ↔ **Amarr** (max ship size → large).',
+      '**Test Map**: Pilot Foo updated **Jita** ↔ **Amarr** (max ship size → large).',
     );
   });
 
@@ -205,7 +218,7 @@ describe('formatHistoryMessage', () => {
       isRolling: true,
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated **Jita** ↔ **Amarr** (mass → `critical`, rolling started).',
+      '**Test Map**: Pilot Foo updated **Jita** ↔ **Amarr** (mass → `critical`, rolling started).',
     );
   });
 
@@ -241,7 +254,7 @@ describe('formatHistoryMessage', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo added signature `ABC-123` in **Jita**.',
+      '**Test Map**: Pilot Foo added signature `ABC-123` in **Jita**.',
     );
   });
 
@@ -257,7 +270,7 @@ describe('formatHistoryMessage', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated signature `AUQ` in **Jita** (type → `B274`).',
+      '**Test Map**: Pilot Foo updated signature `AUQ` in **Jita** (type → `B274`).',
     );
   });
 
@@ -271,7 +284,7 @@ describe('formatHistoryMessage', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated signature `AUQ` in **Jita**.',
+      '**Test Map**: Pilot Foo updated signature `AUQ` in **Jita**.',
     );
   });
 
@@ -290,7 +303,7 @@ describe('formatHistoryMessage', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated signature `AUQ` in **Jita** (type → `B274`).',
+      '**Test Map**: Pilot Foo updated signature `AUQ` in **Jita** (type → `B274`).',
     );
   });
 
@@ -306,7 +319,7 @@ describe('formatHistoryMessage', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo updated signature `AUQ` in **Jita** (unlinked from **Amarr**).',
+      '**Test Map**: Pilot Foo updated signature `AUQ` in **Jita** (unlinked from **Amarr**).',
     );
   });
 
@@ -332,7 +345,7 @@ describe('formatHistoryMessage', () => {
       leadsToMapSystemId: '7', // → 'Amarr'
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo added signature `LBS-432` in **Jita** (wormhole `C008`, leads to **Amarr**).',
+      '**Test Map**: Pilot Foo added signature `LBS-432` in **Jita** (wormhole `C008`, leads to **Amarr**).',
     );
   });
 
@@ -358,7 +371,7 @@ describe('formatHistoryMessage', () => {
       leadsToMapSystemId: null,
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo added signature `XYZ-111` in **Jita** (relic site).',
+      '**Test Map**: Pilot Foo added signature `XYZ-111` in **Jita** (relic site).',
     );
   });
 
@@ -371,7 +384,7 @@ describe('formatHistoryMessage', () => {
       target: '2',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo removed the connection **Jita** ↔ **Amarr**.',
+      '**Test Map**: Pilot Foo removed the connection **Jita** ↔ **Amarr**.',
     );
   });
 
@@ -384,7 +397,125 @@ describe('formatHistoryMessage', () => {
       sigId: 'ABC-123',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
-      '**Test Map** — Pilot Foo removed signature `ABC-123` from **Jita**.',
+      '**Test Map**: Pilot Foo removed signature `ABC-123` from **Jita**.',
+    );
+  });
+});
+
+describe('describeMapEvent — user API', () => {
+  const ownerCtx = { ...baseCtx, tokenOwnerName: 'Pilot Bar' };
+  const cases: Array<[MapEventPayload, string | null, WebhookEventContext?]> = [
+    [
+      { kind: 'api.enabled', eventId: 1, scopes: ['map', 'pilots'] },
+      'enabled the user API (scopes `map`, `pilots`)',
+    ],
+    [{ kind: 'api.enabled', eventId: 2, scopes: [] }, 'enabled the user API (no scopes)'],
+    [{ kind: 'api.disabled', eventId: 3 }, 'disabled the user API'],
+    [
+      { kind: 'api.scopes_changed', eventId: 4, added: ['kills', 'notes'], removed: ['pilots'] },
+      'changed the user API scopes (added `kills`, `notes`; removed `pilots`)',
+    ],
+    [
+      { kind: 'api.scopes_changed', eventId: 5, added: [], removed: ['mass_log'] },
+      'changed the user API scopes (removed `mass_log`)',
+    ],
+    [{ kind: 'api.scopes_changed', eventId: 6, added: [], removed: [] }, null],
+    [
+      {
+        kind: 'api.token_created',
+        eventId: 7,
+        tokenId: '12',
+        label: 'chain bot',
+        scopes: ['map', 'signatures'],
+        expiresAt: '2027-02-19T10:00:00.000Z',
+      },
+      'created API token **chain bot** (scopes `map`, `signatures`, expires 2027-02-19)',
+    ],
+    [
+      {
+        kind: 'api.token_created',
+        eventId: 8,
+        tokenId: '12',
+        label: 'chain bot',
+        scopes: ['map'],
+        expiresAt: null,
+      },
+      'created API token **chain bot** (scopes `map`, no expiry)',
+    ],
+    [
+      {
+        kind: 'api.token_revoked',
+        eventId: 9,
+        tokenId: '12',
+        label: 'chain bot',
+        reason: 'manager',
+      },
+      'revoked API token **chain bot** owned by **Pilot Bar**',
+      ownerCtx,
+    ],
+    [
+      {
+        kind: 'api.token_revoked',
+        eventId: 10,
+        tokenId: '12',
+        label: 'chain bot',
+        reason: 'abuse',
+      },
+      'revoked API token **chain bot** owned by **Pilot Bar** after repeated rate-limit abuse',
+      ownerCtx,
+    ],
+    [
+      {
+        kind: 'api.token_revoked',
+        eventId: 11,
+        tokenId: '12',
+        label: 'chain bot',
+        reason: 'creator',
+      },
+      'revoked API token **chain bot** owned by **an unknown pilot**',
+    ],
+    [
+      {
+        kind: 'api.token_suspended',
+        eventId: 12,
+        tokenId: '12',
+        label: 'chain bot',
+        until: '2026-11-21T14:30:00.000Z',
+        strike: 1,
+      },
+      'suspended API token **chain bot** owned by **Pilot Bar** for rate-limit abuse (strike 1, until 2026-11-21 14:30 UTC)',
+      ownerCtx,
+    ],
+    [
+      {
+        kind: 'api.token_revoked',
+        eventId: 14,
+        tokenId: '12',
+        label: 'chain bot',
+        reason: 'manager',
+      },
+      'revoked API token **chain bot**',
+      { ...ownerCtx, hideActor: true },
+    ],
+  ];
+
+  for (const [event, expected, ctx] of cases) {
+    it(`renders ${event.kind} (event ${event.eventId}) with no actor`, () => {
+      expect(describeMapEvent(event, ctx ?? baseCtx)).toBe(expected);
+    });
+  }
+
+  it('prefixes the actor in the Discord history line, and Aperture for automation', () => {
+    const event: MapEventPayload = {
+      kind: 'api.token_suspended',
+      eventId: 13,
+      tokenId: '12',
+      label: 'chain bot',
+      until: '2026-11-21T20:30:00.000Z',
+      strike: 2,
+    };
+    expect(formatHistoryMessage(event, { ...ownerCtx, characterName: null })?.content).toBe(
+      '**Test Map**: Aperture suspended API token **chain bot** owned by **Pilot Bar** for rate-limit abuse (strike 2, until 2026-11-21 20:30 UTC).',
     );
   });
 });
@@ -404,6 +535,17 @@ describe('formatRallyMessage', () => {
     expect(embed.description).toBe('Set by **Pilot Foo** on **Test Map**.');
     expect(embed.color).toBe(0xe74c3c);
     expect(embed.timestamp).toBe('2026-05-27T12:00:00.000Z');
+  });
+
+  it('names no setter while Blackout hides it', () => {
+    const event: MapEventPayload = {
+      kind: 'system.updated',
+      eventId: 9,
+      id: '42',
+      rallyAt: '2026-05-27T12:00:00.000Z',
+    };
+    const embed = formatRallyMessage(event, { ...baseCtx, hideActor: true })!.embeds![0]!;
+    expect(embed.description).toBe('Set on **Test Map**.');
   });
 
   it('returns null when the event is not a rally-set event', () => {

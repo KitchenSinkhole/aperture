@@ -1,17 +1,21 @@
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 
-// The feed's index query and pg_notify both go through `@/db/client`; mock it so
-// the loop logic can be exercised without a database. `loadActiveSystemIndex`
-// awaits `db.select(...).from(...).innerJoin(...).where(...)`; `notify` awaits
-// `db.execute(...)`.
+// The feed's index query, pg_notify and killmail persistence all go through
+// `@/db/client`; mock it so the loop logic can be exercised without a database.
+// `loadActiveSystemIndex` awaits `db.select(...).from(...).innerJoin(...).where(...)`;
+// `notify` awaits `db.execute(...)`; persistence awaits
+// `db.insert(...).values(row).onConflictDoNothing()`.
 const INDEX_ROWS = [{ systemId: 30000142, mapId: 1n }];
+const { values } = vi.hoisted(() => ({ values: vi.fn() }));
 vi.mock('@/db/client', () => {
   const where = vi.fn(async () => INDEX_ROWS);
   const innerJoin = vi.fn(() => ({ where }));
   const from = vi.fn(() => ({ innerJoin }));
   const select = vi.fn(() => ({ from }));
   const execute = vi.fn(async () => ({ rows: [] }));
-  return { db: { select, execute } };
+  values.mockImplementation(() => ({ onConflictDoNothing: vi.fn(async () => undefined) }));
+  const insert = vi.fn(() => ({ values }));
+  return { db: { select, execute, insert } };
 });
 
 // Capture warns/infos so the seed-failure path can assert `zkb.seed_failed` and
@@ -30,7 +34,10 @@ import {
   pollOnce,
   type SystemIndex,
 } from '@/lib/integrations/zkbFeed';
+import { killmailSchema } from '@/lib/esi/decoders';
 import type { ZkbKill } from '@/lib/integrations/zkb';
+import type { NewUniverseKillmail } from '@/types';
+import { r2z2Kill } from '../fixtures/zkbR2z2';
 
 const originalFetch = globalThis.fetch;
 
@@ -43,6 +50,19 @@ afterEach(() => {
   vi.clearAllMocks();
   __resetZkbFeedState();
 });
+
+/** Serves the live seed at sequence 100, then `entries` from 101 upward, then 404s. */
+function feedOf(...entries: unknown[]): typeof fetch {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith('/sequence.json')) return jsonResponse({ sequence: 100 });
+    const seq = Number(url.match(/\/(\d+)\.json$/)?.[1]);
+    const entry = entries[seq - 101];
+    return entry === undefined ? new Response('', { status: 404 }) : jsonResponse(entry);
+  }) as unknown as typeof fetch;
+}
+
+const insertedRows = (): NewUniverseKillmail[] => values.mock.calls.map(([row]) => row as NewUniverseKillmail);
 
 describe('correlateKill', () => {
   const index: SystemIndex = new Map([[30000142, new Set([1n, 7n])]]);
@@ -86,7 +106,7 @@ describe('pollOnce', () => {
     globalThis.fetch = vi.fn(async () => jsonResponse({ sequence: 100 })) as unknown as typeof fetch;
 
     const result = await pollOnce();
-    expect(result).toEqual({ processed: 0, notified: 0, cursor: 100 });
+    expect(result).toEqual({ processed: 0, notified: 0, persisted: 0, cursor: 100 });
     expect(db.execute as Mock).not.toHaveBeenCalled();
   });
 
@@ -128,12 +148,12 @@ describe('pollOnce', () => {
     }) as unknown as typeof fetch;
 
     const failed = await pollOnce();
-    expect(failed).toEqual({ processed: 0, notified: 0, cursor: null });
+    expect(failed).toEqual({ processed: 0, notified: 0, persisted: 0, cursor: null });
     expect(warn).toHaveBeenCalledWith('zkb.seed_failed', { status: 500 });
 
     // Next tick must re-seed from the live sequence, NOT walk from a 0 cursor.
     const seeded = await pollOnce();
-    expect(seeded).toEqual({ processed: 0, notified: 0, cursor: 100 });
+    expect(seeded).toEqual({ processed: 0, notified: 0, persisted: 0, cursor: 100 });
     expect(db.execute as Mock).not.toHaveBeenCalled();
   });
 
@@ -145,7 +165,7 @@ describe('pollOnce', () => {
     }) as unknown as typeof fetch;
 
     const result = await pollOnce();
-    expect(result).toEqual({ processed: 0, notified: 0, cursor: null });
+    expect(result).toEqual({ processed: 0, notified: 0, persisted: 0, cursor: null });
     expect(warn).toHaveBeenCalledWith('zkb.seed_failed', { status: 200 });
   });
 
@@ -153,18 +173,7 @@ describe('pollOnce', () => {
     // R2Z2 wraps the ESI killmail under `esi` with `zkb` alongside at the top
     // level — solar_system_id is NOT at the top level. Regression: this shape
     // previously decoded to a system-less kill and fanned no notification.
-    const ephemeral = {
-      killmail_id: 555,
-      hash: 'abc',
-      esi: {
-        killmail_id: 555,
-        killmail_time: new Date().toISOString(),
-        solar_system_id: 30000142,
-        victim: { ship_type_id: 587 },
-        attackers: [{}, {}],
-      },
-      zkb: { totalValue: 8_000_000 },
-    };
+    const ephemeral = r2z2Kill();
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/sequence.json')) return jsonResponse({ sequence: 100 });
@@ -230,5 +239,75 @@ describe('pollOnce', () => {
     expect(result.notified).toBe(0);
     expect(db.execute as Mock).not.toHaveBeenCalled();
     expect(info).toHaveBeenCalledWith('zkb.stale_skipped', { killmailId: 999, ageMs: null });
+  });
+});
+
+describe('pollOnce killmail persistence', () => {
+  it('persists an on-map R2Z2 kill as a cache row killmailSchema parses', async () => {
+    globalThis.fetch = feedOf(r2z2Kill());
+    await pollOnce();
+    const result = await pollOnce();
+
+    expect(result).toMatchObject({ processed: 1, notified: 1, persisted: 1 });
+    const [row] = insertedRows();
+    expect(row).toMatchObject({ id: 555n, hash: 'abc', totalValue: 8_000_000 });
+    expect(row!.killmailTime).toBeInstanceOf(Date);
+    const body = killmailSchema.parse(row!.body);
+    expect(body.solar_system_id).toBe(30000142);
+    expect(body).not.toHaveProperty('zkb');
+  });
+
+  it('persists a stale on-map kill without flashing it', async () => {
+    const old = new Date(Date.now() - apertureConfig.ZKB_FEED_MAX_KILL_AGE_MS - 60_000).toISOString();
+    globalThis.fetch = feedOf(r2z2Kill({ killmailTime: old }));
+    await pollOnce();
+    const result = await pollOnce();
+
+    expect(result).toMatchObject({ processed: 1, notified: 0, persisted: 1 });
+    expect(db.execute as Mock).not.toHaveBeenCalled();
+  });
+
+  it('skips persistence for a body that fails killmailSchema and still flashes', async () => {
+    const entry = r2z2Kill();
+    const esi: Partial<typeof entry.esi> = { ...entry.esi };
+    delete esi.attackers;
+    globalThis.fetch = feedOf({ ...entry, esi });
+    await pollOnce();
+    const result = await pollOnce();
+
+    expect(result).toMatchObject({ processed: 1, notified: 1, persisted: 0 });
+    expect(values).not.toHaveBeenCalled();
+    expect(db.execute as Mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips persistence for a kill with no hash and still flashes', async () => {
+    const entry: Partial<ReturnType<typeof r2z2Kill>> = r2z2Kill();
+    delete entry.hash;
+    globalThis.fetch = feedOf(entry);
+    await pollOnce();
+    const result = await pollOnce();
+
+    expect(result).toMatchObject({ notified: 1, persisted: 0 });
+    expect(values).not.toHaveBeenCalled();
+  });
+
+  it('does not persist a kill in a system on no active map', async () => {
+    globalThis.fetch = feedOf(r2z2Kill({ systemId: 30002053 }));
+    await pollOnce();
+    const result = await pollOnce();
+
+    expect(result).toMatchObject({ processed: 1, notified: 0, persisted: 0 });
+    expect(values).not.toHaveBeenCalled();
+  });
+
+  it('strips the zKB fields from a flat-shape body and reads the hash from the zkb block', async () => {
+    const { esi } = r2z2Kill();
+    globalThis.fetch = feedOf({ ...esi, zkb: { hash: 'flat-hash', totalValue: 1 } });
+    await pollOnce();
+    await pollOnce();
+
+    const [row] = insertedRows();
+    expect(row).toMatchObject({ hash: 'flat-hash', totalValue: 1 });
+    expect(row!.body).not.toHaveProperty('zkb');
   });
 });

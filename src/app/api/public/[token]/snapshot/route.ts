@@ -1,7 +1,7 @@
 import 'server-only';
 import { type NextRequest } from 'next/server';
 import { getBuildId } from '@/lib/buildId';
-import { clientKeyFromForwardedFor } from '@/lib/http/clientKey';
+import { clientIpOfRequest } from '@/lib/http/clientKey';
 import { allowPublicSnapshotRequest, getPublicSnapshot } from '@/lib/map/publicSnapshot';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
@@ -27,17 +27,10 @@ const PUBLIC_HEADERS = {
   'x-robots-tag': 'noindex',
 };
 
-function clientKey(request: NextRequest): string {
-  return clientKeyFromForwardedFor(
-    request.headers.get('x-forwarded-for'),
-    request.headers.get('x-real-ip'),
-  );
-}
-
 export const GET = withApiMetrics(
   '/api/public/:token/snapshot',
   async function GET(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
-    if (!allowPublicSnapshotRequest(clientKey(request))) {
+    if (!allowPublicSnapshotRequest(clientIpOfRequest(request.headers))) {
       return Response.json(
         { ok: false, error: 'rate_limited' },
         { status: 429, headers: PUBLIC_HEADERS },

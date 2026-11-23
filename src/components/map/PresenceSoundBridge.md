@@ -12,6 +12,7 @@
 | connections | MapConnectionEdge[] | yes | Current connections, for resolving a jump to a connection. |
 | viewerCharacterIds | number[] | yes | The viewer's own characters; their jumps never make a sound. |
 | watchedJumpOn | boolean | yes | Whether the account has `watchedJump` enabled. |
+| homeSystemId | number \| null | yes | EVE id of the map's Home, for the engine's per-system mute gate. |
 
 ### Renders
 Nothing.
@@ -28,7 +29,7 @@ Nothing.
 - `useTraversals(cb)` — subscribes to pilot jumps from `MapPresenceContext`.
 - `useMapActiveChar()` — reads `activeCharId`.
 - `usePresenceStore()` — `getSystemForCharacter(activeCharId)`, the viewer's system at event time.
-- `getSoundEngine().play(event)` — `'pilotArrived'` or `'pilotLeft'`.
+- `getSoundEngine().play(event, { system })` — `'pilotArrived'` or `'pilotLeft'`, with `system` the viewer's system (the jump's destination on arrival, its origin on departure) and whether it is Home, so a pilots mute there silences it.
 
 ### Depends On
 - `@/lib/sounds/presenceEvents` (`classifyTraversal`)

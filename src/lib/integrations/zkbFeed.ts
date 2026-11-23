@@ -2,9 +2,11 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { apertureConfig } from '../../../aperture.config';
 import { db } from '@/db/client';
-import { apMap, apMapSystem } from '@/db/schema';
+import { apMap, apMapSystem, universeKillmail } from '@/db/schema';
+import { killmailSchema } from '@/lib/esi/decoders';
 import { getLogger } from '@/lib/log/logger';
 import type { SystemNotificationLoad } from '@/lib/realtime/protocol';
+import type { NewUniverseKillmail } from '@/types';
 import { zkbKillSchema, type ZkbKill } from './zkb';
 
 const jobLog = getLogger('job');
@@ -24,6 +26,10 @@ const jobLog = getLogger('job');
  * R2Z2 (the RedisQ replacement): walk `<base>/<seq>.json` upward from a cursor
  * until a 404 (caught up), sleep ≥6s, repeat. The cursor starts at the feed's
  * current sequence on boot — we surface kills happening *now*, never backfill.
+ *
+ * Every kill in a system on an active map is also written to the
+ * `universe_killmail` cache, whatever its age, so the user API's `kills` scope
+ * can serve on-map kills without an upstream call on its request path.
  */
 
 const BASE = apertureConfig.ZKB_R2Z2_BASE;
@@ -179,6 +185,55 @@ function decodeKill(raw: unknown): ZkbKill | null {
   return null;
 }
 
+/**
+ * The `universe_killmail` row for one feed entry, or null when the entry's ESI
+ * body fails `killmailSchema` or no hash came with it. The ESI body sits under
+ * `esi` (R2Z2) or `killmail` (RedisQ), else it is the entry itself minus the
+ * zKB fields; the hash rides at the top level or in the `zkb` block.
+ */
+function toCacheRow(raw: unknown, kill: ZkbKill): NewUniverseKillmail | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const container = raw as { esi?: unknown; killmail?: unknown; hash?: unknown };
+  const inner =
+    container.esi ??
+    container.killmail ??
+    Object.fromEntries(Object.entries(raw).filter(([key]) => key !== 'zkb' && key !== 'hash'));
+  const parsed = killmailSchema.safeParse(inner);
+  if (!parsed.success) return null;
+  const hash = typeof container.hash === 'string' ? container.hash : kill.zkb?.hash;
+  const killmailTime = new Date(parsed.data.killmail_time);
+  if (!hash || Number.isNaN(killmailTime.getTime())) return null;
+  return {
+    id: BigInt(parsed.data.killmail_id),
+    hash,
+    body: parsed.data,
+    killmailTime,
+    totalValue: kill.zkb?.totalValue ?? null,
+  };
+}
+
+/**
+ * Writes one on-map kill to the cache. Best-effort: a failed write is logged
+ * and the kill still flashes.
+ */
+async function persistKill(raw: unknown, kill: ZkbKill): Promise<boolean> {
+  const row = toCacheRow(raw, kill);
+  if (!row) {
+    jobLog.info('zkb.persist_skipped', { killmailId: kill.killmail_id });
+    return false;
+  }
+  try {
+    await db.insert(universeKillmail).values(row).onConflictDoNothing();
+    return true;
+  } catch (err) {
+    jobLog.warn('zkb.persist_failed', {
+      killmailId: kill.killmail_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
 async function fetchJson(url: string, signal: AbortSignal): Promise<{ status: number; body: unknown }> {
   // Per-request timeout, plus the loop's stop signal — whichever fires first.
   const timeout = AbortSignal.timeout(apertureConfig.INTEGRATION_REQUEST_TIMEOUT_MS);
@@ -203,6 +258,7 @@ async function refreshIndexIfStale(signal: AbortSignal): Promise<void> {
 interface PollResult {
   processed: number;
   notified: number;
+  persisted: number;
   cursor: number | null;
 }
 
@@ -226,14 +282,15 @@ export async function pollOnce(): Promise<PollResult> {
         // long since aged out of the ephemeral feed, so a 0 cursor 404s on the
         // first walk step and wedges the feed dead (never re-seeds).
         jobLog.warn('zkb.seed_failed', { status });
-        return { processed: 0, notified: 0, cursor: null };
+        return { processed: 0, notified: 0, persisted: 0, cursor: null };
       }
       state.cursor = parsed.data.sequence;
-      return { processed: 0, notified: 0, cursor: state.cursor };
+      return { processed: 0, notified: 0, persisted: 0, cursor: state.cursor };
     }
 
     let processed = 0;
     let notified = 0;
+    let persisted = 0;
     let cursor: number = state.cursor;
     for (let i = 0; i < apertureConfig.ZKB_FEED_MAX_CATCHUP; i++) {
       const seq = cursor + 1;
@@ -248,6 +305,8 @@ export async function pollOnce(): Promise<PollResult> {
       processed++;
       const kill = decodeKill(body);
       if (!kill) continue;
+      const loads = correlateKill(kill, state.index);
+      if (loads.length > 0 && (await persistKill(body, kill))) persisted++;
       const ageMs = killAgeMs(kill);
       if (ageMs === null || ageMs > apertureConfig.ZKB_FEED_MAX_KILL_AGE_MS) {
         // zKB appends reprocessed / late-submitted kills to the live sequence, so
@@ -256,12 +315,12 @@ export async function pollOnce(): Promise<PollResult> {
         jobLog.info('zkb.stale_skipped', { killmailId: kill.killmail_id, ageMs });
         continue;
       }
-      for (const load of correlateKill(kill, state.index)) {
+      for (const load of loads) {
         await notify(load);
         notified++;
       }
     }
-    return { processed, notified, cursor };
+    return { processed, notified, persisted, cursor };
   } finally {
     state.abort = null;
   }
