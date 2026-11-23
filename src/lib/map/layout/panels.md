@@ -29,8 +29,14 @@
 ### defaultMapLayoutForUi(experimental: boolean): MapLayoutConfig
 Returns `EXPERIMENTAL_DEFAULT_MAP_LAYOUT` when `experimental` is true, else `DEFAULT_MAP_LAYOUT`.
 
-### ensurePanelsPlaced(config: MapLayoutConfig): MapLayoutConfig
-Forward-compat normaliser run when seeding layout state on load and when re-showing a hidden panel. Ensures every registered, **non-hidden** panel is placed in every breakpoint. "Placed" means a **member of some group in `groups[bp]`** (not merely a layout item id) — a tabbed member shares its group's cell and has no layout id of its own, so keying off layout ids would wrongly duplicate it. A panel that is a member of no group and not in `config.hidden` is appended below the existing items at `x: 0`, stacked by its `minH`, sized `Math.min(cols, max(minW, 4)) × max(minH, 4)`, and added as a matching singleton group in `groups[bp]`. Panels in `hidden` are skipped, so a hidden panel (whose layout item was removed by `removePanelFromLayout`) is not resurrected on reload, and dropping a panel from `hidden` makes it reappear here as a fresh singleton. No data migration needed for future panels.
+### EXPERIMENTAL_ONLY_PANEL_IDS
+`PanelId[]` — `currentRoute`, `pilots`, `kills`, `dscan`. Omitted from `panelsRegisteredForUi(false)` and from legacy `DEFAULT_MAP_LAYOUT` `sm` stacking.
+
+### panelsRegisteredForUi(experimental: boolean): readonly PanelDef[]
+Full `PANELS` when experimental is on; otherwise excludes `EXPERIMENTAL_ONLY_PANEL_IDS`.
+
+### ensurePanelsPlaced(config: MapLayoutConfig, options?: { experimental?: boolean }): MapLayoutConfig
+Forward-compat normaliser run when seeding layout state on load and when re-showing a hidden panel. Ensures every registered, **non-hidden** panel is placed in every breakpoint. Registry comes from `panelsRegisteredForUi(options.experimental ?? false)`. "Placed" means a **member of some group in `groups[bp]`** (not merely a layout item id) — a tabbed member shares its group's cell and has no layout id of its own, so keying off layout ids would wrongly duplicate it. A panel that is a member of no group and not in `config.hidden` is appended below the existing items at `x: 0`, stacked by its `minH`, sized `Math.min(cols, max(minW, 4)) × max(minH, 4)`, and added as a matching singleton group in `groups[bp]`. Panels in `hidden` are skipped, so a hidden panel (whose layout item was removed by `removePanelFromLayout`) is not resurrected on reload, and dropping a panel from `hidden` makes it reappear here as a fresh singleton. No data migration needed for future panels.
 
 **Parameters:**
 - `config` — the layout to normalise (a migrated saved config, `DEFAULT_MAP_LAYOUT`, or a config with a panel just removed from `hidden`).

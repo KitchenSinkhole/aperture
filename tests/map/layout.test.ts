@@ -10,6 +10,7 @@ import {
   PANELS,
   dedupeGroups,
   ensurePanelsPlaced,
+  EXPERIMENTAL_ONLY_PANEL_IDS,
   mergePanelIntoGroup,
   migrateLayout,
   removePanelFromLayout,
@@ -93,6 +94,17 @@ describe('ensurePanelsPlaced', () => {
   it('is referentially stable when nothing is missing', () => {
     const complete = ensurePanelsPlaced(migrateLayout(DEFAULT_MAP_LAYOUT));
     expect(ensurePanelsPlaced(complete)).toBe(complete);
+  });
+
+  it('does not append experimental-only panels when experimental is off', () => {
+    const complete = ensurePanelsPlaced(migrateLayout(DEFAULT_MAP_LAYOUT), { experimental: false });
+    expect(ensurePanelsPlaced(complete, { experimental: false })).toBe(complete);
+    for (const id of EXPERIMENTAL_ONLY_PANEL_IDS) {
+      for (const bp of ['lg', 'md', 'sm'] as const) {
+        expect(complete.layouts[bp].some((i) => i.i === id)).toBe(false);
+        expect(complete.groups[bp].some((g) => g.members.includes(id))).toBe(false);
+      }
+    }
   });
 
   it('does not re-add a hidden panel', () => {
