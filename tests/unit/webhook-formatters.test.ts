@@ -3,6 +3,7 @@ import {
   describeMapEvent,
   formatHistoryMessage,
   formatRallyMessage,
+  isEolEstimateEvent,
   isRallySetEvent,
   type WebhookEventContext,
 } from '@/lib/webhooks/formatters';
@@ -177,6 +178,26 @@ describe('formatHistoryMessage', () => {
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(
       '**Test Map**: Pilot Foo updated **Jita** ↔ **Amarr** (EOL → ~4h).',
     );
+  });
+
+  it('describes an auto-EOL mark as an age estimate, distinct from a scout EOL', () => {
+    const estimate: MapEventPayload = {
+      kind: 'connection.update',
+      eventId: 7,
+      id: '7',
+      source: '1',
+      target: '2',
+      eolStage: 'eol',
+      eolAt: '2026-11-23T12:00:00.000Z',
+      eolSource: 'auto',
+    };
+    const observed: MapEventPayload = { ...estimate, eolSource: 'observed' };
+    expect(describeMapEvent(estimate, { ...baseCtx, characterName: null })).toBe(
+      'updated **Jita** ↔ **Amarr** (EOL estimated from age → ~4h)',
+    );
+    expect(describeMapEvent(observed, baseCtx)).toBe('updated **Jita** ↔ **Amarr** (EOL → ~4h)');
+    expect(isEolEstimateEvent(estimate)).toBe(true);
+    expect(isEolEstimateEvent(observed)).toBe(false);
   });
 
   it('renders connection.update critical EOL (1h) flip', () => {

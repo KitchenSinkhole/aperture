@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db, pool } from '@/db/client';
 import {
@@ -17,6 +17,7 @@ import {
   universeType,
   universeWormhole,
 } from '@/db/schema';
+import { boundWormholeCodeSql } from '@/lib/map/connectionDeathSnapshot';
 import { addSystem } from '@/lib/map/mutations/systems';
 import { createConnection, deleteConnection } from '@/lib/map/mutations/connections';
 import { pasteSignatures } from '@/lib/map/mutations/bulkSignatures';
@@ -232,6 +233,25 @@ describe.skipIf(!run)('connection.delete death snapshot (real Postgres)', () => 
     expect(del.ok).toBe(true);
     if (!del.ok) return;
     expect(Date.parse((await storedPayload(del.eventId)).lastAliveAt as string)).toBe(heartbeat.getTime());
+  });
+
+  it('boundWormholeCodeSql applies the bound-signature code rule', async () => {
+    const codeOf = async (codes: string[]) => {
+      const values = codes.length > 0 ? codes : [null];
+      const res = await db.execute<{ code: string | null }>(
+        sql`select ${boundWormholeCodeSql(sql`v.code`)} as code from (values ${sql.join(
+          values.map((c) => sql`(${c}::text)`),
+          sql`, `,
+        )}) v(code) where v.code is not null`,
+      );
+      return res.rows[0]!.code;
+    };
+    expect(await codeOf(['O477', 'K162'])).toBe('O477');
+    expect(await codeOf(['O477', 'O477'])).toBe('O477');
+    expect(await codeOf(['K162', 'K162'])).toBe('K162');
+    expect(await codeOf([])).toBeNull();
+    expect(await codeOf(['O477', 'B274'])).toBeNull();
+    expect(await codeOf(['O477', 'B274', 'K162'])).toBeNull();
   });
 });
 

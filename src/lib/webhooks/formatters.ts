@@ -38,6 +38,15 @@ export function isRallySetEvent(event: MapEventPayload): boolean {
   return typeof event.rallyAt === 'string' && event.rallyAt.length > 0;
 }
 
+/**
+ * Whether the event is the auto-EOL cron's age estimate (`connection.update`
+ * carrying `eolSource: 'auto'`). The dispatcher never posts one: an estimate is
+ * not an observation a channel should be alerted to.
+ */
+export function isEolEstimateEvent(event: MapEventPayload): boolean {
+  return event.kind === 'connection.update' && event.eolSource === 'auto';
+}
+
 /** Build the Discord payload for a `history` webhook. Returns `null` if the event has nothing to say. */
 export function formatHistoryMessage(
   event: MapEventPayload,
@@ -308,8 +317,9 @@ function describeConnectionChanges(
         : 'max ship size cleared',
     );
   }
-  if (event.eolStage === 'eol') changes.push('EOL → ~4h');
-  else if (event.eolStage === 'critical') changes.push('EOL → critical (~1h)');
+  if (event.eolStage === 'eol') {
+    changes.push(event.eolSource === 'auto' ? 'EOL estimated from age → ~4h' : 'EOL → ~4h');
+  } else if (event.eolStage === 'critical') changes.push('EOL → critical (~1h)');
   else if (event.eolStage === 'expired') changes.push('EOL → expired');
   else if (event.eolStage === 'none') changes.push('EOL cleared');
   if (event.isRolling === true) changes.push('rolling started');

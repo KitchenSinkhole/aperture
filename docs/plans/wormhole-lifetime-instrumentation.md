@@ -205,7 +205,7 @@ Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the pe
 
 ## Stage 5d — The auto-EOL cron
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 106fe78a
 **Goal:** Ship the cron that marks eligible holes `('eol', 'auto')` per the settled design, kept out of Discord and labelled as an estimate in the audit log.
 **References:** `src/lib/jobs/tasks/eolExpiry.md` (the shape to follow), `src/lib/jobs/registry.md`, `src/lib/map/mutations/core.md`, `src/lib/eve/wormholeJumpInfo.md` (attribute-by-name resolution), `src/lib/map/wormholeTypes.md` (`staticMatchForConnection` join), `src/lib/map/connectionDeathSnapshot.md` (the `wormholeCode` rule), `src/lib/webhooks/dispatcher.md`, `src/lib/webhooks/formatters.md`
 **Touches:** a new `src/lib/jobs/tasks/autoEol.ts` + companion, `src/lib/jobs/registry.ts`, `src/lib/webhooks/dispatcher.ts` and/or `src/lib/webhooks/formatters.ts`, their companions, and job integration tests.
@@ -257,7 +257,7 @@ Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the pe
 _(worked by the user once, after the run — the plan is not complete until it passes)_
 - **Stage 2** — after a live cron reap on a real map, the audit-log entry and the Discord message for the collapsed hole still name both endpoint systems correctly; the enriched payload must not have broken the formatters.
 - **Stage 3** — paste the same probe-scan result twice from the in-game client into a live mapped chain, a few minutes apart. The mapped connections stay on the map and their heartbeat advances (`ap_map_connection.confirmed_at` moves to the second paste's time; it is not shown in the UI); nothing is dropped or duplicated by the second paste.
-- **Stage 5f** — on a live opted-in map, let a typed hole cross `nominal − 4h`. It turns EOL, visibly marked as estimated, in two tabs and on the public share view, and no Discord message fires. Re-selecting EOL on it in the inspector drops the estimate marking and restarts the countdown. Clearing an estimate to `none` keeps it cleared on the next cron tick.
+- **Stage 5f** — on a live opted-in map, let a typed hole cross `nominal − 4h`. It turns EOL, visibly marked as estimated, in two tabs and on the public share view. Re-selecting EOL on it in the inspector drops the estimate marking and restarts the countdown. Clearing an estimate to `none` keeps it cleared on the next cron tick.
 - **Stage 6** — the measurement run itself: tagged statics left unrolled to natural collapse, deaths classified by cause, clear-lag bounded per hole.
 
 ## Notes
@@ -276,3 +276,6 @@ _(appended by executing sessions — non-obvious findings only)_
 - `drizzle-kit generate` emits a new check constraint in the same file as its column, so a backfill the constraint depends on cannot simply be appended: in 0076 the `observed` `UPDATE` sits between `ADD COLUMN` and `ADD CONSTRAINT`, or the constraint fails on any existing EOL row. The dev DB had no non-`none` connections, so the backfill was exercised by seeding EOL rows inside a rolled-back transaction (rollback SQL, seed, forward SQL, assert).
 - **A create at `none` leaves `eol_source` NULL, not `observed`.** The settled design's "any `eolStage` through `createConnection` is `observed`" would, for a client that always sends its default `none` on create, mark every hand-drawn hole as human-touched and so permanently ineligible for the cron. Seeing a hole as not-yet-decaying at creation says nothing about when it will decay; only clearing an existing EOL (an `updateConnection` to `none`) is the "don't estimate this" signal. No current client sends `eolStage` on create except at a non-`none` value, so today the two readings behave the same.
 - **Stage 5b:** the 0076 check constraint does not enforce "`auto` only with `eol`" (`(critical, auto)` and `(expired, auto)` are legal rows), so any writer taking `eolSource` from untrusted input, such as transfer import, must clamp it itself; 5b's `Done when` only covered a genuine round-trip.
+- **Stage 5d:** the static fallback keys on the bound code being NULL, so it covers both an untyped hole and one whose bound non-K162 codes disagree, but not a K162-only hole: `K162` is a resolved code with no lifetime, and the settled design lists K162-only as never marked even when `is_static` is set.
+- **Stage 5d:** an estimate's `connection.update` is still enqueued as a `webhook-dispatch` job on a map with webhooks, because `commitMapEvent` gates the enqueue on `AUDIT_ONLY_EVENT_KINDS` alone. The dispatcher drops it (`isEolEstimateEvent`) before resolving any context. Gating it at enqueue would need `core.ts` to read the payload.
+- **Stage 5d:** `boundWormholeCode` (TS) is gone: once `readConnectionDeathSnapshot` used the SQL fragment, nothing called it. Its unit cases moved into `tests/integration/connection-death-snapshot.test.ts`, run against the fragment over literal `VALUES`, because a unit test cannot evaluate SQL.

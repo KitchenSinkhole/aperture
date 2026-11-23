@@ -25,6 +25,7 @@ import type { WebhookOutcome } from '@/types';
 import {
   formatHistoryMessage,
   formatRallyMessage,
+  isEolEstimateEvent,
   isRallySetEvent,
   type WebhookEventContext,
 } from './formatters';
@@ -88,7 +89,7 @@ export async function runWebhookDispatch(
     return { attempted: 0, succeeded: 0, failed: 0, skipped: 0 };
   }
   const event = parsed.data;
-  if (AUDIT_ONLY_EVENT_KINDS.has(event.kind)) {
+  if (AUDIT_ONLY_EVENT_KINDS.has(event.kind) || isEolEstimateEvent(event)) {
     return { attempted: 0, succeeded: 0, failed: 0, skipped: 0 };
   }
 

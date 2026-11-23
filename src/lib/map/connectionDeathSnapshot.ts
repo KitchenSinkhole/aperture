@@ -1,4 +1,4 @@
-import { and, eq, inArray, max } from 'drizzle-orm';
+import { and, eq, inArray, max, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import {
   apMapConnection,
   apMapConnectionLog,
@@ -22,15 +22,19 @@ export type ReadConnectionDeathSnapshotInput = {
 };
 
 /**
- * The single non-K162 code among `codes`; `K162` when that is the only code;
- * null when there is none or the non-K162 codes disagree.
+ * The bound-signature code rule as an aggregate over `code`, a column of
+ * `universe_wormhole.name` values (one row per bound signature type): the
+ * single distinct non-K162 code; `K162` when that is the only code; null when
+ * there are no rows or the non-K162 codes disagree. Shared by the death
+ * snapshot and the auto-EOL cron so both type a hole the same way.
  */
-export function boundWormholeCode(codes: Iterable<string>): string | null {
-  const distinct = new Set(codes);
-  const real = [...distinct].filter((c) => c !== 'K162');
-  if (real.length === 1) return real[0]!;
-  if (real.length === 0 && distinct.has('K162')) return 'K162';
-  return null;
+export function boundWormholeCodeSql(code: SQLWrapper): SQL<string | null> {
+  return sql<string | null>`(case
+    when count(distinct ${code}) filter (where ${code} <> 'K162') = 1
+      then max(${code}) filter (where ${code} <> 'K162')
+    when count(*) filter (where ${code} <> 'K162') = 0 and bool_or(${code} = 'K162')
+      then 'K162'
+  end)`;
 }
 
 /**
@@ -65,18 +69,19 @@ export async function readConnectionDeathSnapshot(
     .from(apMapConnectionLog)
     .where(eq(apMapConnectionLog.connectionId, input.connectionId));
 
-  const boundCodes = await tx
-    .select({ name: universeWormhole.name })
+  const boundTypeIds = tx
+    .select({ typeId: apMapSignature.typeId })
     .from(apMapSignature)
-    .innerJoin(universeWormhole, eq(universeWormhole.typeId, apMapSignature.typeId))
     .where(eq(apMapSignature.mapConnectionId, input.connectionId));
-  const removedCodes =
-    input.removedBoundSigTypeIds && input.removedBoundSigTypeIds.length > 0
-      ? await tx
-          .select({ name: universeWormhole.name })
-          .from(universeWormhole)
-          .where(inArray(universeWormhole.typeId, input.removedBoundSigTypeIds))
-      : [];
+  const removed = input.removedBoundSigTypeIds ?? [];
+  const [bound] = await tx
+    .select({ code: boundWormholeCodeSql(universeWormhole.name) })
+    .from(universeWormhole)
+    .where(
+      removed.length > 0
+        ? or(inArray(universeWormhole.typeId, boundTypeIds), inArray(universeWormhole.typeId, removed))
+        : inArray(universeWormhole.typeId, boundTypeIds),
+    );
 
   const aliveCandidates = [log?.lastJumpAt ?? null, conn.confirmedAt, conn.updatedAt]
     .filter((d): d is Date => d !== null)
@@ -98,6 +103,6 @@ export async function readConnectionDeathSnapshot(
     eolAt: conn.eolAt ? conn.eolAt.toISOString() : null,
     eolSource: conn.eolSource,
     wasDormant: conn.confirmedAt === null,
-    wormholeCode: boundWormholeCode([...boundCodes, ...removedCodes].map((r) => r.name)),
+    wormholeCode: bound?.code ?? null,
   };
 }

@@ -1,5 +1,6 @@
 import type { CronItem, Task, TaskList } from 'graphile-worker';
 import { activityRollupRefresh } from './tasks/activityRollupRefresh';
+import { autoEol } from './tasks/autoEol';
 import { characterCleanup } from './tasks/characterCleanup';
 import { csvIngest } from './tasks/csvIngest';
 import { eolExpiry } from './tasks/eolExpiry';
@@ -56,8 +57,9 @@ export interface JobModule {
 }
 
 const modules: readonly JobModule[] = [
-  // Map housekeeping (signature reap, EOL/expired connections, map purge).
+  // Map housekeeping (signature reap, EOL estimate/expiry, expired connections, map purge).
   signatureReap,
+  autoEol,
   eolExpiry,
   expiredConnections,
   mapPurge,

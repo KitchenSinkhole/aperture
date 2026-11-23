@@ -3,7 +3,7 @@
 **Purpose:** Reads a connection's death snapshot (`ConnectionDeathSnapshot`) for the `connection.delete` payload, on the transaction that deletes it.
 **File:** `src/lib/map/connectionDeathSnapshot.ts`
 
-No `import 'server-only'`: the graphile-worker reaper tasks run under bare tsx and share this reader.
+No `import 'server-only'`: the graphile-worker reaper and auto-EOL tasks run under bare tsx and share this module.
 
 ---
 
@@ -12,7 +12,7 @@ Locks the `(connectionId, mapId)` row `FOR UPDATE` and reads its state, its late
 
 - `lastAliveAt` — the latest of the last logged jump, `confirmed_at` and `updated_at`. A lower bound on "known open at"; true collapse lies in `[lastAliveAt, deletedAt]`.
 - `wasDormant` — `confirmed_at IS NULL`.
-- `wormholeCode` — `boundWormholeCode` over the bound signatures plus `input.removedBoundSigTypeIds`.
+- `wormholeCode` — `boundWormholeCodeSql` over the bound signatures' types plus `input.removedBoundSigTypeIds`.
 - `cause` — `input.cause`, except a `manual_removed` hole that is `is_rolling` or `mass_status = 'critical'` records `rolled`. Other causes are kept as given.
 
 **Parameters:**
@@ -25,8 +25,8 @@ Locks the `(connectionId, mapId)` row `FOR UPDATE` and reads its state, its late
 
 ---
 
-### boundWormholeCode(codes: Iterable<string>): string | null
-The bound-signature code rule: the single distinct non-K162 code; `K162` when that is the only code; null when there are no codes or the non-K162 codes disagree.
+### boundWormholeCodeSql(code: SQLWrapper): SQL<string | null>
+The bound-signature code rule as a SQL aggregate over `code`, a column of `universe_wormhole.name` values: the single distinct non-K162 code; `K162` when that is the only code; null when there are no rows or the non-K162 codes disagree. Depends only on the distinct set of codes, so duplicate rows don't change it. Used set-wise by the `auto-eol` cron and per-connection by `readConnectionDeathSnapshot`.
 
 ---
 
