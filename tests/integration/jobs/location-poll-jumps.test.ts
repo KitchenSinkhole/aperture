@@ -483,7 +483,7 @@ describe.skipIf(!run)('Stage 12.2 location-poll jump classification + fan-out (r
 
     await db
       .update(apMapConnection)
-      .set({ confirmedAt: null })
+      .set({ confirmedAt: null, eolStage: 'eol', eolSource: 'auto', eolAt: new Date() })
       .where(eq(apMapConnection.mapId, mapA));
     const baselineA = await eventCount(mapA);
 
@@ -498,6 +498,14 @@ describe.skipIf(!run)('Stage 12.2 location-poll jump classification + fan-out (r
       .from(apMapConnection)
       .where(eq(apMapConnection.mapId, mapA));
     expect(conn!.confirmedAt).not.toBeNull();
+    // The re-broadcast edge carries the row's EOL provenance, not a bare default.
+    const [rebroadcast] = await db
+      .select({ payload: apMapEvent.payload })
+      .from(apMapEvent)
+      .where(and(eq(apMapEvent.mapId, mapA), eq(apMapEvent.kind, 'connection.create')))
+      .orderBy(desc(apMapEvent.id))
+      .limit(1);
+    expect(rebroadcast!.payload).toMatchObject({ eolStage: 'eol', eolSource: 'auto' });
 
     const notes = await lastJobNotes();
     expect(notes!.folds).toEqual(

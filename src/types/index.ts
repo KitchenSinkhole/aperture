@@ -506,6 +506,8 @@ export type UserApiConnection = {
   jumpMassClass: WhJumpMass | null;
   eolStage: (typeof eolStage.enumValues)[number];
   eolAt: string | null;
+  /** Provenance of `eolStage`: `auto` (an age-based estimate), `observed` (a human), null (never set). */
+  eolSource: EolSource | null;
   preserveMass: boolean;
   isRolling: boolean;
   isStatic: boolean;

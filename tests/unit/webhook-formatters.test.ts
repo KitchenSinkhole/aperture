@@ -159,6 +159,7 @@ describe('formatHistoryMessage', () => {
       sourceBubbled: false,
       targetBubbled: false,
       eolAt: null,
+      eolSource: null,
       createdAt: '2026-05-27T12:00:00.000Z',
     };
     expect(formatHistoryMessage(event, baseCtx)?.content).toBe(

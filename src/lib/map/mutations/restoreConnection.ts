@@ -110,6 +110,7 @@ export async function restoreConnection(
               sourceBubbled: apMapConnection.sourceBubbled,
               targetBubbled: apMapConnection.targetBubbled,
               eolAt: apMapConnection.eolAt,
+              eolSource: apMapConnection.eolSource,
               createdAt: apMapConnection.createdAt,
             });
           if (!row) throw new Error('Connection not found.');
@@ -127,6 +128,7 @@ export async function restoreConnection(
             sourceBubbled: row.sourceBubbled,
             targetBubbled: row.targetBubbled,
             eolAt: row.eolAt ? row.eolAt.toISOString() : null,
+            eolSource: row.eolSource,
             createdAt: row.createdAt.toISOString(),
           };
         },

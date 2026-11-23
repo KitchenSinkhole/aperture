@@ -373,6 +373,7 @@ async function ensureConnection(
           sourceBubbled: apMapConnection.sourceBubbled,
           targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
+          eolSource: apMapConnection.eolSource,
           createdAt: apMapConnection.createdAt,
         });
       newConnectionId = row!.id;
@@ -390,6 +391,7 @@ async function ensureConnection(
         sourceBubbled: row!.sourceBubbled,
         targetBubbled: row!.targetBubbled,
         eolAt: row!.eolAt ? row!.eolAt.toISOString() : null,
+        eolSource: row!.eolSource,
         createdAt: row!.createdAt.toISOString(),
       };
     },
@@ -437,6 +439,7 @@ async function reconfirmConnection(
           sourceBubbled: apMapConnection.sourceBubbled,
           targetBubbled: apMapConnection.targetBubbled,
           eolAt: apMapConnection.eolAt,
+          eolSource: apMapConnection.eolSource,
           createdAt: apMapConnection.createdAt,
         });
       if (!row) throw new Error(`Dormant connection ${connectionId} vanished before re-confirm.`);
@@ -454,6 +457,7 @@ async function reconfirmConnection(
         sourceBubbled: row.sourceBubbled,
         targetBubbled: row.targetBubbled,
         eolAt: row.eolAt ? row.eolAt.toISOString() : null,
+        eolSource: row.eolSource,
         createdAt: row.createdAt.toISOString(),
       };
     },

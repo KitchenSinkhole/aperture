@@ -66,6 +66,7 @@ const conn1: MapConnectionEdge = {
   targetBubbled: false,
   isRolling: false,
   eolAt: null,
+  eolSource: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 
@@ -236,6 +237,18 @@ describe('applyEvent — connection.create', () => {
     expect(next.connections).toHaveLength(1);
     expect(next.connections[0]).toMatchObject({ id: '20', scope: 'stargate' });
   });
+
+  it('a re-broadcast of an auto-estimated row carries its provenance', () => {
+    const state = makeState({ connections: [conn1] });
+    const restored = {
+      ...conn1,
+      eolStage: 'eol' as const,
+      eolAt: '2026-01-01T00:00:00Z',
+      eolSource: 'auto' as const,
+    };
+    const next = applyEvent(state, { kind: 'connection.create', eventId: 10, ...restored });
+    expect(next.connections[0]).toMatchObject({ eolStage: 'eol', eolSource: 'auto' });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -257,6 +270,37 @@ describe('applyEvent — connection.update', () => {
     expect(c.massStatus).toBe('critical');
     expect(c.eolStage).toBe('critical');
     expect(c.eolAt).toBe('2026-01-01T00:00:00Z');
+  });
+
+  it('applies eolSource when present and keeps it when absent', () => {
+    const state = makeState({ connections: [conn1] });
+    const estimated = applyEvent(state, {
+      kind: 'connection.update',
+      eventId: 11,
+      id: '20',
+      eolStage: 'eol',
+      eolAt: '2026-01-01T00:00:00Z',
+      eolSource: 'auto',
+    });
+    expect(estimated.connections[0]).toMatchObject({ eolStage: 'eol', eolSource: 'auto' });
+
+    const massOnly = applyEvent(estimated, {
+      kind: 'connection.update',
+      eventId: 12,
+      id: '20',
+      massStatus: 'reduced',
+    });
+    expect(massOnly.connections[0]!.eolSource).toBe('auto');
+
+    const confirmed = applyEvent(massOnly, {
+      kind: 'connection.update',
+      eventId: 13,
+      id: '20',
+      eolStage: 'eol',
+      eolAt: '2026-01-01T01:00:00Z',
+      eolSource: 'observed',
+    });
+    expect(confirmed.connections[0]).toMatchObject({ eolSource: 'observed', eolAt: '2026-01-01T01:00:00Z' });
   });
 
   it('is a no-op for an unknown id', () => {

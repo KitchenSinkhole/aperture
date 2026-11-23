@@ -13,5 +13,5 @@ Cases:
 5. **auto EOL reaped**: `eolExpiry` reaping a hole hand-set to `('eol', 'auto')` is one `eol_reaped` row with `eol_source: 'auto'`.
 6. **human EOL**: an `updateConnection` to `eol`, then a delete, is one row with `eol_source: 'observed'`.
 7. **snapshot without `eolSource`**: a hand-inserted Stage-1-shape snapshot at `eolStage: 'eol'` reads `eol_source: 'observed'`.
-8. **dormant then restored**: `removeSystem` on an endpoint, `restoreConnection`, then a delete is exactly one row.
+8. **dormant then restored**: `removeSystem` on an endpoint, a hand-set `('eol', 'auto')`, `restoreConnection` (whose re-broadcast `connection.create` carries `eolSource: 'auto'`), then a delete is exactly one row.
 9. **pre-snapshot event**: a hand-inserted `connection.delete` with `{ id, source, target }` only is absent from the view.

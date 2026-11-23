@@ -160,9 +160,9 @@ There are exactly three emitters of `connection.delete` in the codebase:
 
 **The design risk that gates it:** an age-based EOL is a *guess* about collapse, not an observation. It must be distinguishable from a scout's EOL everywhere it is read (DB, wire, death snapshot, read model, map, Discord, user API), or guesses get laundered into the dataset as data, which is the exact failure this effort exists to prevent.
 
-Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the per-map flag defaults off and its toggle ships last, so no map can opt in before the map can tell an estimate from an observation.
+Split into seven sub-stages, 5a–5g. **The feature stays inert until 5g:** the per-map flag defaults off and its toggle ships last, so no map can opt in before the map can tell an estimate from an observation.
 
-**Settled design (applies across 5a–5f):**
+**Settled design (applies across 5a–5g):**
 - **`eol_source` is the provenance of the current `eol_stage` value.** New `pgEnum` `eol_source` = `auto` | `observed`, nullable column `ap_map_connection.eol_source`. `NULL` means nobody has ever set the stage (the `none` default). `observed` means a human set it last, **including setting it to `none`**. `auto` means the cron set it. `auto` is only ever paired with `eol`, enforced by a check constraint: `eol_stage = 'none'` requires `eol_source IS DISTINCT FROM 'auto'`, and `eol_stage <> 'none'` requires `eol_source IS NOT NULL`. The migration backfills `observed` onto every row whose stage is not `none` (there was no automatic EOL writer before it).
 - **Clients never send `eolSource`.** The server derives it: any `eolStage` that arrives through `updateConnection`, and any non-`none` `eolStage` through `createConnection` (the API routes, and the client's sig-to-connection populate that goes through them), is `observed`. A `createConnection` at `none` leaves it `NULL`. Only the cron writes `auto`. Paths that create at `none` (location-poll auto-link, `ensureTopology`) leave it `NULL`. `restoreConnection` leaves it untouched.
 - **Confirming an estimate is an observation.** A human committing **any** `eolStage` on an `auto` row, **including the same `eol`**, flips it to `observed` **and re-stamps `eol_at` to now**, even though an unchanged stage normally keeps `eol_at`. The scout's sighting is the real "≤4h left" data point, and the auto stamp was a guess.
@@ -217,21 +217,31 @@ Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the pe
 
 ## Stage 5e — `eolSource` reaches every reader
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 3df7b3ab
 **Goal:** Plumb `eolSource` to the map client, the public spectator snapshot and the user API, so every consumer that sees `eolStage` can tell an estimate apart.
 **References:** `src/lib/map/loadMap.md`, `src/lib/map/loadPublicMap.md`, `src/lib/map/applyEvent.md`, `src/lib/map/client.md`, `src/lib/userApi/projection.md`, `docs/api/README.md`
 **Touches:** `src/lib/map/loadMap.ts`, `src/lib/map/loadPublicMap.ts`, `src/lib/map/applyEvent.ts` (and the client connection type it feeds), `src/lib/userApi/projection.ts`, `docs/api/README.md` (additive `eolSource` field on connections), `src/lib/map/mutations/restoreConnection.ts`, `src/lib/jobs/locationCommit.ts` and `src/lib/map/ensureTopology.ts` (see below; `ensureTopology` also emits `connection.create` and needs `eolSource: null` if the edge body makes the field required), and their companions.
 **Re-broadcast emitters:** 5b put `eolSource` on the `connection.create` body only as an optional field, and only `createConnection` and transfer import fill it. `restoreConnection` and `locationCommit`'s re-confirm of an existing row both re-emit the full edge as `connection.create` from the row, and `applyEvent` replaces the whole edge with that payload. So an `auto` row restored or re-confirmed arrives without `eolSource` and would render as if it had none. Both must return the row's `eol_source`. Once every `connection.create` emitter carries it (`ensureTopology` and the location-poll auto-link insert at `none`, so `null`), consider making it required on `connectionEdgeBody`.
 **Done when:** `eolSource` is present on loaded and realtime-applied connections, on the public snapshot and in the user API connection projection, covered by the existing tests for those modules extended with an `auto` row. `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
 
-## Stage 5f — Render estimates and ship the toggle
+## Stage 5f — Render estimates distinctly, with a one-click confirm
 **Mode:** Execute
 **Status:** todo
-**Goal:** Render an `auto` EOL visibly as an estimate with a one-click confirm, and expose the `auto_eol_connections` toggle, which is what turns the feature on.
-**References:** `src/components/map/styling.md`, `src/components/map/ConnectionDetailPopover.md`, `src/components/sidebar/InspectorModule.md`, `src/components/map/MapContextMenu.md`, `src/components/map/manage/MapBehaviorForm.md`, `src/app/(app)/actions/map.md`
-**Touches:** `src/components/map/styling.ts`, `src/components/map/ConnectionDetailPopover.tsx`, `src/components/sidebar/InspectorModule.tsx`, `src/components/map/MapContextMenu.tsx`, `src/components/map/manage/MapBehaviorForm.tsx`, `src/app/(app)/actions/map.ts`, and their companions.
-**Contract:** an `auto` edge keeps the EOL treatment but is visibly marked as an estimate in the edge styling and in the popover and inspector wording. Every EOL control lets a human re-select the current `eol` on an `auto` row (that's the confirm, which 5b turns into `observed`). The toggle is labelled so a map owner understands it shows *estimated* EOLs on everyone's map.
-**Done when:** the toggle persists through the map settings Server Action, and an `auto` connection's rendered output differs from an `observed` one's (component or styling unit test). `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
+**Goal:** Render an `auto` EOL visibly as an estimate, on the map and the public share view, with a confirm that every tab, the acting one included, shows as `observed` once committed.
+**References:** `src/components/map/styling.md`, `src/components/map/ConnectionDetailPopover.md`, `src/components/sidebar/InspectorModule.md`, `src/components/map/MapContextMenu.md`, `src/components/map/MapCanvas.md`
+**Touches:** `src/components/map/styling.ts`, `src/components/map/ConnectionDetailPopover.tsx`, `src/components/sidebar/InspectorModule.tsx`, `src/components/map/MapContextMenu.tsx`, `src/components/map/MapCanvas.tsx`, and their companions.
+**Contract:** an `auto` edge keeps the EOL treatment but is visibly marked as an estimate in the edge styling and in the popover and inspector wording. Every EOL control lets a human re-select the current `eol` on an `auto` row (that's the confirm, which 5b turns into `observed`). `eolSource` is on `MapConnectionEdge` and `PublicMapConnectionEdge` (5e), and `PublicConnectionEdge` renders through the same `connectionStyle` / `connectionBadges`, so widening their `Pick` to `eolSource` covers the public view with no change to the public component.
+**Acting tab:** `MapCanvas`'s `onConnectionPatch` applies only the optimistic `{ id, ...patch }` and, on success, marks the server's `eventId` applied so the WS echo is skipped. It never folds the server's payload, so the server-derived `eolSource: 'observed'` (and a re-stamped `eolAt`) never reaches the tab that clicked: without a change there, a confirm leaves the estimate marking on the confirmer's own screen until reload. Folding the committed `connection.update` payload, or deriving those fields in the optimistic one, are both acceptable.
+**Done when:** an `auto` connection's rendered output differs from an `observed` one's (component or styling unit test), and a test shows the acting tab's edge reads `eolSource: 'observed'` after a successful EOL patch on an `auto` row. `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
+
+## Stage 5g — Ship the toggle
+**Mode:** Execute
+**Status:** todo
+**Goal:** Expose the `auto_eol_connections` toggle, which is what turns the feature on.
+**References:** `src/components/map/manage/MapBehaviorForm.md`, `src/app/(app)/actions/map.md`
+**Touches:** `src/components/map/manage/MapBehaviorForm.tsx`, `src/app/(app)/actions/map.ts`, and their companions.
+**Contract:** the toggle is labelled so a map owner understands it shows *estimated* EOLs on everyone's map.
+**Done when:** the toggle persists through the map settings Server Action. `pnpm lint`, `pnpm typecheck`, `pnpm build` green.
 
 ---
 
@@ -251,13 +261,13 @@ Split into six sub-stages, 5a–5f. **The feature stays inert until 5f:** the pe
 - Stage 3 is independent of Stage 2 and can run in either order after Stage 1.
 - Stage 4 needs Stages 1 and 2 landed (its test reaps through a cron). Stage 3 only improves the data it reads, not its shape.
 - Stage 5 is the largest behavioural change and the one most able to corrupt the dataset if the auto/observed distinction is sloppy; keep it behind Stage 4 so its output is immediately inspectable.
-- 5a and 5b depend only on the schema and can run any time, but **5b must follow 5a immediately**: between them, human EOL writes fail 5a's check constraint. 5c needs Stages 1, 4 and 5b. 5d needs Stage 1 (the `wormholeCode` rule) and 5b (the `connection.update` field). 5e needs 5b. 5f goes last because its toggle is the only way to switch the feature on, so nothing auto-marks before estimates render distinctly.
+- 5a and 5b depend only on the schema and can run any time, but **5b must follow 5a immediately**: between them, human EOL writes fail 5a's check constraint. 5c needs Stages 1, 4 and 5b. 5d needs Stage 1 (the `wormholeCode` rule) and 5b (the `connection.update` field). 5e needs 5b. 5f needs 5e. 5g goes last because its toggle is the only way to switch the feature on, so nothing auto-marks before estimates render distinctly.
 
 ## Manual verification
 _(worked by the user once, after the run — the plan is not complete until it passes)_
 - **Stage 2** — after a live cron reap on a real map, the audit-log entry and the Discord message for the collapsed hole still name both endpoint systems correctly; the enriched payload must not have broken the formatters.
 - **Stage 3** — paste the same probe-scan result twice from the in-game client into a live mapped chain, a few minutes apart. The mapped connections stay on the map and their heartbeat advances (`ap_map_connection.confirmed_at` moves to the second paste's time; it is not shown in the UI); nothing is dropped or duplicated by the second paste.
-- **Stage 5f** — on a live opted-in map, let a typed hole cross `nominal − 4h`. It turns EOL, visibly marked as estimated, in two tabs and on the public share view. Re-selecting EOL on it in the inspector drops the estimate marking and restarts the countdown. Clearing an estimate to `none` keeps it cleared on the next cron tick.
+- **Stage 5f / 5g** — on a live opted-in map, let a typed hole cross `nominal − 4h`. It turns EOL, visibly marked as estimated, in two tabs and on the public share view. Re-selecting EOL on it in the inspector drops the estimate marking and restarts the countdown. Clearing an estimate to `none` keeps it cleared on the next cron tick.
 - **Stage 6** — the measurement run itself: tagged statics left unrolled to natural collapse, deaths classified by cause, clear-lag bounded per hole.
 
 ## Notes
@@ -279,3 +289,5 @@ _(appended by executing sessions — non-obvious findings only)_
 - **Stage 5d:** the static fallback keys on the bound code being NULL, so it covers both an untyped hole and one whose bound non-K162 codes disagree, but not a K162-only hole: `K162` is a resolved code with no lifetime, and the settled design lists K162-only as never marked even when `is_static` is set.
 - **Stage 5d:** an estimate's `connection.update` is still enqueued as a `webhook-dispatch` job on a map with webhooks, because `commitMapEvent` gates the enqueue on `AUDIT_ONLY_EVENT_KINDS` alone. The dispatcher drops it (`isEolEstimateEvent`) before resolving any context. Gating it at enqueue would need `core.ts` to read the payload.
 - **Stage 5d:** `boundWormholeCode` (TS) is gone: once `readConnectionDeathSnapshot` used the SQL fragment, nothing called it. Its unit cases moved into `tests/integration/connection-death-snapshot.test.ts`, run against the fragment over literal `VALUES`, because a unit test cannot evaluate SQL.
+- **Stage 5e:** `eolSource` on the `connection.create` edge body is `.nullable().default(null)`, not strictly required. The audit browser and the webhook dispatcher `safeParse` stored `ap_map_event` payloads with `mapEventPayloadSchema`, so a required field would make every `connection.create` stored before 5b fail to parse and lose its audit description. The default fills only those; every live emitter sends the row's value, and the inferred `MapEventPatch<'connection.create'>` makes it a compile error to omit.
+- **Stage 5e:** the dev DB had Blackout switched on (`ap_instance.blackout_since` set), which makes `location-poll-jumps.test.ts` (wormhole folds are skipped) and the two public-presence cases of `public-map-view.test.ts` fail on an untouched tree. They pass with the switch briefly cleared; restore its exact prior value afterwards.

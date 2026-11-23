@@ -79,6 +79,31 @@ describe('mapEventPayloadSchema', () => {
     expect(parsed).toEqual({ kind: 'system.updated', eventId: 1, id: '7', status: 'hostile' });
   });
 
+  it('keeps a connection.create eolSource, and reads a stored edge without one as null', () => {
+    const edge = {
+      kind: 'connection.create',
+      eventId: 1,
+      id: '3',
+      source: '1',
+      target: '2',
+      scope: 'wh',
+      massStatus: 'fresh',
+      jumpMassClass: null,
+      eolStage: 'eol',
+      preserveMass: false,
+      isRolling: false,
+      isStatic: false,
+      sourceBubbled: false,
+      targetBubbled: false,
+      eolAt: '2026-01-01T00:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    expect(mapEventPayloadSchema.parse({ ...edge, eolSource: 'auto' })).toMatchObject({
+      eolSource: 'auto',
+    });
+    expect(mapEventPayloadSchema.parse(edge)).toMatchObject({ eolSource: null });
+  });
+
   it('rejects a payload missing eventId', () => {
     expect(() =>
       mapEventPayloadSchema.parse({ kind: 'connection.delete', id: '3' }),

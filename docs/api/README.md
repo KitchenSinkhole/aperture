@@ -165,6 +165,7 @@ Scope `map`. The map header, its visible systems, and its confirmed connections 
 | `jumpMassClass` | string or null | Largest ship that fits: `s`, `m`, `l` or `xl`. |
 | `eolStage` | string | `none`, `eol`, `critical` or `expired`. |
 | `eolAt` | string or null | When the connection entered its end-of-life stage. |
+| `eolSource` | string or null | Who set `eolStage`: `observed` (a pilot), `auto` (an estimate from the hole's age and type, not a sighting), or null (never set). |
 | `preserveMass` | boolean | |
 | `isRolling` | boolean | |
 | `isStatic` | boolean | |

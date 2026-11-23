@@ -22,7 +22,7 @@ Systems reuse `loadStatics` (`src/lib/map/loadMap.ts`) for the static-wormhole d
 
 ### Types
 - `PublicMapSystemNode` — `{ id, systemId, name, tag, status, security, trueSec, effect, regionName, constellationName, statics, tradeHub, isHome, positionX, positionY }`. `isHome` marks the map's designated Home (`ap_map.home_map_system_id`), which a guest reads the chain from. Has no `alias`, `intelNotes`, lock fields, or `rallyAt` — those simply are not fields on this type.
-- `PublicMapConnectionEdge` — connection scope/mass/EOL/flags, `sourceBubbled` / `targetBubbled`, plus `sigIds: { source: string | null; target: string | null } | null`. `null` means the token doesn't publish endpoint codes (the hover affordance is absent entirely); a populated object with one side `null` means that side hasn't been scanned yet — the two states are structurally distinct so a consumer can't conflate them.
+- `PublicMapConnectionEdge` — connection scope/mass/EOL/flags (including `eolSource`, so an `auto` estimate is distinguishable from an observed EOL), `sourceBubbled` / `targetBubbled`, plus `sigIds: { source: string | null; target: string | null } | null`. `null` means the token doesn't publish endpoint codes (the hover affordance is absent entirely); a populated object with one side `null` means that side hasn't been scanned yet — the two states are structurally distinct so a consumer can't conflate them.
 - `PublicMapSignature` — the signature shape minus `description` and `activityOverride`.
 - `PublicPresenceSystemCount` — `{ systemId, count, byClass: { shipClass, count }[] }`.
 - `PublicPresencePilot` — the presence entry shape minus account linkage.

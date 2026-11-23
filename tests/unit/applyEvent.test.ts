@@ -18,6 +18,7 @@ function connection(id: string): MapConnectionEdge {
     sourceBubbled: false,
     targetBubbled: false,
     eolAt: null,
+    eolSource: null,
     createdAt: '2026-06-07T00:00:00.000Z',
   };
 }

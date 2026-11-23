@@ -32,7 +32,7 @@ import {
 import { canViewMap, viewableMapPredicate } from '@/lib/auth/rights';
 import { getBlackoutStatus, isPilotHidden } from '@/lib/auth/blackout';
 import { resolveShipClass } from '@/lib/eve/shipClass';
-import type { ApiScope, BlackoutStatus, BlackoutViewer, ShipClass } from '@/types';
+import type { ApiScope, BlackoutStatus, BlackoutViewer, EolSource, ShipClass } from '@/types';
 import { loadSignaturesForSystems } from './systemNode';
 import { apertureConfig } from '../../../aperture.config';
 
@@ -105,6 +105,8 @@ export type MapConnectionEdge = {
   targetBubbled: boolean;
   /** When the current `eol_stage` was entered (ISO). Null when `eolStage === 'none'`. */
   eolAt: string | null;
+  /** Provenance of `eolStage`: `auto` (the age-based estimate), `observed` (a human), null (never set). */
+  eolSource: EolSource | null;
   /** ISO timestamp the row was inserted. Drives the pre-EOL "expires in X" hint. */
   createdAt: string;
 };
@@ -437,6 +439,7 @@ export async function loadVisibleMapConnections(
       sourceBubbled: apMapConnection.sourceBubbled,
       targetBubbled: apMapConnection.targetBubbled,
       eolAt: apMapConnection.eolAt,
+      eolSource: apMapConnection.eolSource,
       createdAt: apMapConnection.createdAt,
     })
     .from(apMapConnection)
@@ -467,6 +470,7 @@ export async function loadVisibleMapConnections(
     sourceBubbled: c.sourceBubbled,
     targetBubbled: c.targetBubbled,
     eolAt: c.eolAt ? c.eolAt.toISOString() : null,
+    eolSource: c.eolSource,
     createdAt: c.createdAt.toISOString(),
   }));
 }

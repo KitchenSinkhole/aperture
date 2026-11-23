@@ -268,8 +268,18 @@ describe.skipIf(!run)('ap_connection_lifecycle view (real Postgres)', () => {
     const connId = await connect(msC, msD);
     const removed = await removeSystem({ mapId, mapSystemId: msD, characterId: null });
     expect(removed.ok).toBe(true);
+    await db
+      .update(apMapConnection)
+      .set({ eolStage: 'eol', eolSource: 'auto', eolAt: new Date() })
+      .where(eq(apMapConnection.id, connId));
     const restored = await restoreConnection({ mapId, connectionId: connId, characterId: null });
     expect(restored.ok).toBe(true);
+    if (!restored.ok) return;
+    // The re-broadcast edge carries the row's EOL provenance.
+    expect(restored.data.payloads.find((p) => p.kind === 'connection.create')).toMatchObject({
+      eolStage: 'eol',
+      eolSource: 'auto',
+    });
 
     const res = await deleteConnection({ mapId, connectionId: connId, characterId: null, cause: 'manual_removed' });
     expect(res.ok).toBe(true);

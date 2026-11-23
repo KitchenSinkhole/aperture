@@ -253,8 +253,9 @@ const connectionEdgeBody = {
   targetBubbled: z.boolean(),
   eolAt: z.string().nullable(),
   createdAt: z.string(),
-  // Provenance of `eolStage` (`ap_map_connection.eol_source`).
-  eolSource: eolSourceEnum.nullable().optional(),
+  // Provenance of `eolStage` (`ap_map_connection.eol_source`). Every emitter
+  // carries it; the default only fills historical events stored without it.
+  eolSource: eolSourceEnum.nullable().default(null),
 };
 
 /** Full signature body — mirrors `ap_map_signature` row fields used by the canvas. */

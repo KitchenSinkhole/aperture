@@ -93,6 +93,7 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
           if (payload.sourceBubbled !== undefined) next.sourceBubbled = payload.sourceBubbled;
           if (payload.targetBubbled !== undefined) next.targetBubbled = payload.targetBubbled;
           if (payload.eolAt !== undefined) next.eolAt = payload.eolAt;
+          if (payload.eolSource !== undefined) next.eolSource = payload.eolSource;
           return next;
         }),
       };
