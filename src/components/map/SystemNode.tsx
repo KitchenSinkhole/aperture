@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { PreviewCard } from '@base-ui/react/preview-card';
 import { Tooltip } from '@base-ui/react/tooltip';
@@ -9,13 +10,21 @@ import {
   CircleDashed,
   Clock,
   Home,
+  ArrowDown,
+  ArrowUp,
   Lock,
+  VolumeX,
   Radiation,
   Signal,
   Swords,
-  VolumeX,
   type LucideIcon,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { isExperimentalUiActive, readExperimentalUiFromHtml } from '@/lib/experimentalUi';
+import {
+  pilotBadgeToneClasses,
+  pilotCountStandingTone,
+} from '@/lib/experimentalPilotPresence';
 import type { MapPresenceEntry, MapSystemNode } from '@/lib/map/loadMap';
 import { formatAgoFromMs } from '@/lib/map/relativeTime';
 import {
@@ -27,14 +36,18 @@ import { systemDisplayName, isDrifterSystem } from '@/lib/eve/drifterSystems';
 import { isShatteredSystem } from '@/lib/eve/shatteredSystems';
 import { staticCompare } from '@/lib/map/staticOrder';
 import { homeAccentColor, systemClassColor, systemEffectColor, systemStatusColor } from './styling';
+import { useMapStyleOptions } from './MapStyleContext';
 import { InlineTextEdit } from './InlineTextEdit';
 import { StaticDetailPopover } from './StaticDetailPopover';
+import { useExperimentalHoverTriggerDelays } from '@/lib/experimentalHoverDelay.client';
 import { SystemPresenceTable } from './SystemPresenceTable';
 import { usePresenceForSystem } from './MapPresenceContext';
 import { useSignatureIndicator } from './MapSignatureIndicatorContext';
 import { useUnderglowForSystem } from './MapUnderglowContext';
 import { SystemUnderglow } from './SystemUnderglow';
 import { RALLY_UNDERGLOW } from './underglowPresets';
+import { useIsLinkEndpointLit, useIsLinkHoverDimActive } from './MapLinkHoverContext';
+import { useExperimentalCombatRingActive } from './ExperimentalCombatRingContext';
 import { SOUND_MUTE_GROUP_LABELS } from '@/lib/sounds/catalog';
 import { useMutedSoundGroups } from '@/lib/sounds/engine';
 import React from 'react';
@@ -55,6 +68,13 @@ export type SystemNodeData = MapSystemNode & {
   inFactionWarfare?: boolean;
   /** Derived in `MapCanvas` from the load-time intel: this system is part of an active incursion. */
   hasIncursion?: boolean;
+  /** Experimental: sidebar panel row is hovering this system. */
+  panelHoverLinked?: boolean;
+  /** Experimental: sync pilots-panel highlight when the tile is hovered. */
+  onPanelHoverSync?: (mapSystemId: string | null) => void;
+  /** Experimental: active route path or hop focus on the map. */
+  routePathLinked?: boolean;
+  /** Experimental: per-system sound mute from saved layout. */
 };
 
 function securityLabel(node: MapSystemNode): string {
@@ -70,7 +90,8 @@ function classIdFromSecurity(security: string | null): number | null {
 }
 
 export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeData }) {
-  const color = systemStatusColor(data.status);
+  const styleOpts = useMapStyleOptions();
+  const color = systemStatusColor(data.status, styleOpts);
   const isWormhole = data.statics.length > 0 || /^J\d{6}$/.test(data.name);
   const onAliasOrTagCommit = data.onAliasOrTagCommit;
   const pilots = usePresenceForSystem(data.systemId);
@@ -78,16 +99,22 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
   const sigIndicator = useSignatureIndicator(data.id, isWormhole);
   const mutedSoundGroups = useMutedSoundGroups(data.systemId, data.isHome ?? false);
 
-  const classColor = systemClassColor(data.security);
+  const classColor = systemClassColor(data.security, styleOpts);
   const displayName = systemDisplayName(data.systemId, data.name);
   const isDrifter = isDrifterSystem(data.systemId);
   const isShattered = isShatteredSystem(data.name);
+  const endpointLitActive = useIsLinkEndpointLit(data.id);
+  const linkDimActive = useIsLinkHoverDimActive();
+  const endpointLit = styleOpts.importanceLinks === true && endpointLitActive;
+  const linkDim = styleOpts.importanceLinks === true && linkDimActive;
+  const experimentalUi = isExperimentalUiActive(readExperimentalUiFromHtml());
+  const combatRing = useExperimentalCombatRingActive(data.id);
 
   // Compose the box-shadow as concentric rings: the resting ring is the system's
   // status colour (replacing the old neutral Tailwind `ring-1`), with the Home
   // accent and the selection halo stacking outside it at larger spreads so all
   // three can show at once. A soft drop shadow sits behind for slight elevation.
-  const home = homeAccentColor();
+  const home = homeAccentColor(styleOpts);
   const boxShadow = [
     `0 0 0 1px ${color}`,
     data.isHome ? `0 0 0 2px ${home}` : '',
@@ -125,7 +152,25 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
 
   return (
     <div
-      className="group relative min-w-30 cursor-pointer rounded-md bg-map-node text-xs text-card-foreground transition-[box-shadow,outline,transform] duration-50"
+      className={[
+        'group relative min-w-30 cursor-pointer rounded-md bg-map-node text-xs text-card-foreground transition-[box-shadow,outline,transform,opacity,filter] duration-50',
+        endpointLit ? 'ap-link-endpoint-lit' : '',
+        linkDim && !endpointLit ? 'ap-link-hover-dimmed' : '',
+        data.panelHoverLinked ? 'ap-panel-linked' : '',
+        data.routePathLinked ? 'ap-route-path-linked' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      onMouseEnter={
+        experimentalUi && data.onPanelHoverSync
+          ? () => data.onPanelHoverSync?.(data.id)
+          : undefined
+      }
+      onMouseLeave={
+        experimentalUi && data.onPanelHoverSync
+          ? () => data.onPanelHoverSync?.(null)
+          : undefined
+      }
       style={{
         borderLeft: `4px solid ${classColor}`,
         // Selected tiles get a prominent halo in their status colour: a solid
@@ -141,6 +186,9 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
       {/* Persistent rally underglow, derived straight from map state so it lives
           exactly as long as `rallyAt` is set. Kept separate from the transient
           store glow below so a coinciding killmail/ping can't clear it. */}
+      {experimentalUi && combatRing ? (
+        <div className="ap-combat-ring pointer-events-none absolute inset-0 rounded-md" aria-hidden />
+      ) : null}
       {data.rallyAt && <SystemUnderglow {...RALLY_UNDERGLOW} />}
       {glow && <SystemUnderglow key={glow.token} {...glow.config} />}
       {pilots.length > 0 && <PresenceBadge pilots={pilots} />}
@@ -192,7 +240,7 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
         <div className="flex flex-col items-center justify-center gap-0.5 border-r border-foreground/10 px-1.5 leading-none">
           <span
             className="font-mono text-sm font-bold leading-none"
-            style={{ color: systemClassColor(data.security) }}
+            style={{ color: systemClassColor(data.security, styleOpts) }}
           >
             {securityLabel(data)}
           </span>
@@ -204,14 +252,14 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
               maxLength={50}
               onCommit={(next) => onAliasOrTagCommit(data.id, 'tag', next)}
               className="font-mono text-lg font-bold leading-none empty:hidden"
-              style={{ color: systemClassColor(data.security) }}
+              style={{ color: systemClassColor(data.security, styleOpts) }}
               inputClassName="w-12"
             />
           ) : (
             data.tag && (
               <span
                 className="font-mono text-lg font-bold leading-none"
-                style={{ color: systemClassColor(data.security) }}
+                style={{ color: systemClassColor(data.security, styleOpts) }}
               >
                 {data.tag}
               </span>
@@ -280,7 +328,7 @@ export function SystemNode({ data, selected }: NodeProps & { data: SystemNodeDat
                       <StaticDetailPopover key={i} typeId={s.typeId}>
                         <span
                           className="font-bold"
-                          style={{ color: systemClassColor(s.label) }}
+                          style={{ color: systemClassColor(s.label, styleOpts) }}
                         >
                           {s.label}
                         </span>
@@ -470,6 +518,7 @@ function EffectIndicator({ effect, classId }: { effect: SystemEffectKey; classId
   const color = systemEffectColor(effect);
   const name = systemEffectName(effect);
   const bonuses = classId != null ? systemEffectBonuses(effect, classId) : [];
+  const hoverDelays = useExperimentalHoverTriggerDelays();
 
   return (
     <PreviewCard.Root>
@@ -478,6 +527,7 @@ function EffectIndicator({ effect, classId }: { effect: SystemEffectKey; classId
         className="nodrag nopan ml-auto size-2.5 shrink-0 rounded-xs ring-1 ring-foreground/25"
         style={{ backgroundColor: color }}
         aria-label={`System effect: ${name}`}
+        {...hoverDelays}
       />
       <PreviewCard.Portal>
         <PreviewCard.Positioner sideOffset={4} side="bottom" align="end">
@@ -518,6 +568,21 @@ function EffectIndicator({ effect, classId }: { effect: SystemEffectKey; classId
  * pan/drag. Hover/focus opens a `SystemPresenceTable` of this system's pilots.
  */
 function PresenceBadge({ pilots }: { pilots: readonly MapPresenceEntry[] }) {
+  const experimental = isExperimentalUiActive(readExperimentalUiFromHtml());
+  const hoverDelays = useExperimentalHoverTriggerDelays();
+  const standing = pilotCountStandingTone(pilots.length);
+  const [delta, setDelta] = useState<'up' | 'down' | null>(null);
+  const prevCount = useRef(pilots.length);
+
+  useEffect(() => {
+    if (!experimental) return;
+    if (pilots.length > prevCount.current) setDelta('up');
+    else if (pilots.length < prevCount.current) setDelta('down');
+    prevCount.current = pilots.length;
+    const timer = window.setTimeout(() => setDelta(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [pilots.length, experimental]);
+
   return (
     // Anchor the pill's bottom-right corner near the tile's top-left corner
     // (`-translate-x-full -translate-y-full`) so it grows up and to the left as
@@ -528,15 +593,33 @@ function PresenceBadge({ pilots }: { pilots: readonly MapPresenceEntry[] }) {
           // Render as a button so it's keyboard-focusable; default `<a>` would
           // suggest a navigation.
           render={<button type="button" />}
-          className="nodrag nopan pointer-events-auto inline-flex items-center rounded-full bg-card px-2 py-1 text-sm font-semibold leading-none text-primary shadow-sm ring-1 ring-primary/40"
+          {...(experimental ? hoverDelays : {})}
+          className={cn(
+            'nodrag nopan pointer-events-auto inline-flex items-center gap-0.5 rounded-full bg-card px-2 py-1 text-sm font-semibold leading-none shadow-sm ring-1',
+            experimental
+              ? pilotBadgeToneClasses(standing)
+              : 'text-primary ring-primary/40',
+          )}
           aria-label={`${pilots.length} pilot${pilots.length === 1 ? '' : 's'} in system`}
         >
           {pilots.length}
+          {experimental && delta === 'up' ? (
+            <ArrowUp className="size-3 text-emerald-400" aria-hidden />
+          ) : null}
+          {experimental && delta === 'down' ? (
+            <ArrowDown className="size-3 text-red-400" aria-hidden />
+          ) : null}
         </PreviewCard.Trigger>
         <PreviewCard.Portal>
           <PreviewCard.Positioner sideOffset={4} side="top" align="start">
-            <PreviewCard.Popup className="nodrag nopan z-50 min-w-40 rounded-md border bg-popover p-0 text-xs text-popover-foreground shadow-md">
-              <SystemPresenceTable presence={pilots} />
+            <PreviewCard.Popup
+              className={cn(
+                'nodrag nopan z-50 min-w-44 rounded-md border bg-popover p-0 text-xs text-popover-foreground shadow-md',
+                experimental && 'ap-pilot-hover-card',
+                experimental && standing === 'friendly' && 'ap-pilot-standing-friendly',
+              )}
+            >
+              <SystemPresenceTable presence={pilots} colorNamesByStanding={experimental} />
             </PreviewCard.Popup>
           </PreviewCard.Positioner>
         </PreviewCard.Portal>

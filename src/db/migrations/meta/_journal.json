@@ -519,6 +519,20 @@
       "when": 1795281630966,
       "tag": "0074_killmail_system_value",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1795439453296,
+      "tag": "0075_build2_active_route_favourites",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1795442497884,
+      "tag": "0076_experimental_signature_cleanup",
+      "breakpoints": true
     }
   ]
 }

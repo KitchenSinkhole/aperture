@@ -14,30 +14,42 @@
 | systems | MapSystemNode[] | yes | The map's live systems; drives recompute when a per-system tag changes. |
 | connections | MapConnectionEdge[] | yes | The map's live connections; drives recompute when the chain changes. |
 | signatures | MapSignature[] | yes | The map's live signatures; drives recompute when a connection-bound sig changes. |
+| onPlanHighlight | (plan: RoutePlan \| null) => void | no | Experimental: pushes the highlighted plan to `MapCanvas` for edge/system glow. |
+| planHighlightSuppressed | boolean | no | Experimental: clears map highlight and skips auto-pick until the user selects a plan again (Current Route **Stop**). |
+| onPlanHighlightEngaged | () => void | no | Experimental: notifies the parent to resume planner-driven highlight after the user picks a destination plan. |
+| onHopClick | (eveSystemId: number) => void | no | Experimental: pan/zoom to an on-map hop via `MapCanvas`. |
+| mapRouteFavourites | MapRouteFavouriteView[] | no | Experimental per-map favourites. |
+| activeCharacterId | number \| null | no | Primary character for ESI waypoint push. |
+| viewerCharacters | { id, name }[] | no | Follower picker when **Set route** is confirmed. |
+| stats / intel / presence | maps / arrays | no | Experimental analysis panel inputs. |
 
 ### Renders
 A `Card` ("Routes") with: a **controls row** with a **From** label and two toggle chips ("Active character" / "Selected system"), **Safety** select, and **Min ship** select — in a `@container` grid that stacks (1 col) when the card is narrow and spreads to one row (3 cols) at `@md`; optional **fallback prompts** when the chosen source has no system (character mode, no located chars → system search field; system mode, no selected system → "Select a system on the map"); an Avoid-reduced / Avoid-critical / Avoid-EOL / EVE-Scout toggle-chip box; and the destination list — each row a name + `Nj` jump count, a remove (✕), a breadcrumb of per-hop **markers** — **circles** for wormhole (J-space) systems, **squares** for everything else (fill = system colour — K-space by its fine-grained security-status gradient, wormhole/Pochven/Abyssal by class colour) — and below it a **step disclosure** (`N steps`, chevron) that expands into a numbered list of navigational instructions for the route, alongside a **Copy** button. Each marker shows the system's `[tag]` (when set) + name + via label in a hover/focus `Tooltip` (base-ui). An inline "Add destination…" typeahead at the bottom.
+
+When `onPlanHighlight` is set (experimental UI), an **Experimental exits** block adds: exit-origin chips (**Chain exit** / **Selected**), a **Jump bridges** device toggle (merged into compute prefs), one-click destination chips (nearest high-sec, Jita, staging tag, Thera, Turnur), and an **Exit compare** list (top 2–3 K-space exits → first destination) that selects which plan drives map highlight. Destination rows gain **Analysis** (kills, WH mass/EOL, pilots on path). On-map hop markers are clickable when `onHopClick` is wired.
 
 ### Behaviour & Interactions
 - **Route source persistence** — choice between "Active character" and "Selected system" is persisted to `localStorage` under key `aperture:routes:source`; survives tab refresh.
 - **Character mode source** — reads `activeCharSystemId` from `useMapActiveChar()` context; when it changes (character jumps), route recomputes without UI flicker. Fallback: when no character is located, show a `SystemSearchField` to manually pick a start system (stored in `manualSource` state); this fallback is independent of "Selected system" mode.
 - **System mode source** — uses the `selectedSystemId` prop (the map's primary selection, updated every render when the user clicks a system).
-- **Recompute** — debounced (300ms) `POST /api/map/[mapId]/route-plan` whenever the source, prefs, destinations, a connection signature (`id:scope:mass:eol:jumpMass`), a connection-bound scan sig (`connectionId:mapSystemId:sigId`, sorted), or a system tag (`systemId:tag`, sorted, untagged systems omitted) changes — the last two because the instructions name the sig flown through and call each system by its tag, both of which the server bakes into the plan; out-of-order responses are dropped via a seq ref; results stored locally.
+- **Recompute** — debounced (300ms) `POST /api/map/[mapId]/route-plan` whenever the source, prefs, destinations, a connection signature (`id:scope:mass:eol:jumpMass`), a connection-bound scan sig (`connectionId:mapSystemId:sigId`, sorted), or a system tag (`systemId:tag`, sorted, untagged systems omitted) changes — the last two because the instructions name the sig flown through and call each system by its tag, both of which the server bakes into the plan; out-of-order responses are dropped via a seq ref; results stored locally. Failed responses surface `toast.error`.
 - **Persistence** — prefs changes optimistically update local state and fire `setRoutePrefsAction` in a transition; destination add/remove optimistically update the local list and call `addRouteDestinationAction` / `removeRouteDestinationAction`.
 - **Instruction steps** — `DestinationRow` derives segments from the plan via `segmentRoute` (memoized per plan) and renders each segment's `routeSegmentTokens` as an `<ol>` line through `InstructionToken`, tinting system tokens with `systemSecurityColor` (the map's own colouring) and setting sig-code tokens in mono. The disclosure is collapsed by default and tracked per destination id, so expanded state survives a route recompute. The steps and the **Copy** button appear only once a plan has segments, so an absent or unreachable plan shows just the `RouteBreadcrumb` messaging.
 - **Stale plan while recomputing** — `plans` is cleared only when there is no source or no destinations, so across the debounce and the in-flight request a destination still holds its **previous** plan: the breadcrumb and steps describe the route as it was until the response lands. **Copy** is disabled whenever a recompute is in flight or the held plan's first hop is not the current source, so the clipboard can never name an origin the pilot has already left.
 - **Copy** — writes `formatRouteInstructions(segments)` to the clipboard as plain text (a `Route X -> Y` header plus one numbered step per line) and reports via a `sonner` toast.
-- **External additions** — subscribes to `subscribeRouteDestinations`; a destination saved by the map context-menu "Add to routes" item is folded into the local list (deduped by `systemId`) so it appears without a reload.
+- **External additions** — subscribes to `subscribeRouteDestinations`; a destination saved by the map context-menu "Add to routes" / "Route here" item is folded into the local list (deduped by `systemId`) so it appears without a reload.
 - `SystemSearchField` (inline) reuses `searchSystemsOnServer` (the map `system-search` endpoint) for both the manual-source fallback and add-destination typeaheads. Its result list (`SearchResults`) is **portalled to `document.body`** and pinned under the input via the input's `getBoundingClientRect()` (re-measured on capture-phase scroll + resize) — the enclosing `Card` is `overflow-hidden`, which would otherwise clip an absolutely-positioned dropdown at the card edge.
 
 ### Emits / Calls
 - `setRoutePrefsAction`, `addRouteDestinationAction`, `removeRouteDestinationAction` (`@/app/(app)/actions/routes`)
 - `subscribeRouteDestinations` (`@/lib/map/routeDestinationBus`) — folds context-menu "Add to routes" additions
 - `requestJson('POST', /api/map/<id>/route-plan)` → `RoutePlan[]`
+- `requestJson('GET', /api/map/<id>/route-shortcut)` — nearest high-sec destination id (experimental)
 - `useMapActiveChar()` — reads `activeCharSystemId` (the active character's current location from presence data)
 - `searchSystemsOnServer` — system typeahead search for the manual-source fallback and add-destination fields
 - `systemSecurityColor` — marker/name tint (K-space security-status gradient, else class colour)
 - `segmentRoute` / `routeSegmentTokens` / `formatRouteInstructions` / `routeSpaceKind` (`@/lib/map/routeSegments`) — route→instruction segmentation, and the J-space test behind the circle/square marker shape
+- `@/lib/experimentalRoutePrefs`, `@/lib/map/experimentalRouteExit`, `@/lib/map/experimentalRouteAnalysis` — experimental exit/compare/analysis helpers
 
 ### Local State
 - `routeSource: 'character' | 'system'` — toggled between active character and selected system; persisted to localStorage
@@ -46,3 +58,4 @@ A `Card` ("Routes") with: a **controls row** with a **From** label and two toggl
 - `plans: RoutePlan[]`, `computing: boolean` — computed routes from source to each destination
 - `computeSeq: number` (ref) — sequence counter for deduping old async responses
 - `expandedSteps: ReadonlySet<number>` — destination ids whose instruction list is expanded
+- `highlightedPlan`, `exitComparePlans`, `analysisDestId` — experimental highlight, compare, and analysis UI

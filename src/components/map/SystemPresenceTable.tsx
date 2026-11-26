@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { ShipClassIcon } from '@/components/icons/ShipClassIcon';
 import { customShipName } from '@/lib/map/shipName';
+import { pilotCountStandingTone, pilotNameToneClass } from '@/lib/experimentalPilotPresence';
+import { cn } from '@/lib/utils';
 import type { ShipClass } from '@/types';
 
 /**
@@ -22,18 +24,27 @@ export type PresenceTableRow = {
  * scopes everything to one system). Deliberately separate from
  * `PilotRosterTable`, whose needs have diverged.
  */
-export function SystemPresenceTable({ presence }: { presence: readonly PresenceTableRow[] }) {
+export function SystemPresenceTable({
+  presence,
+  colorNamesByStanding = false,
+}: {
+  presence: readonly PresenceTableRow[];
+  colorNamesByStanding?: boolean;
+}) {
   const sorted = useMemo(
     () => [...presence].sort((a, b) => a.characterName.localeCompare(b.characterName)),
     [presence],
   );
+  const nameClass = colorNamesByStanding
+    ? pilotNameToneClass(pilotCountStandingTone(sorted.length))
+    : undefined;
 
   return (
     <table className="w-full text-xs [&_td]:px-2 [&_td]:py-0.5">
       <tbody>
         {sorted.map((p) => (
           <tr key={p.characterId}>
-            <td>{p.characterName}</td>
+            <td className={cn(nameClass)}>{p.characterName}</td>
             <td className="!p-0 w-4">
               <ShipClassIcon shipClass={p.shipClass} />
             </td>

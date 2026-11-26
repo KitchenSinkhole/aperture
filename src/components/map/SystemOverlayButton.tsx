@@ -19,11 +19,25 @@ import type { MapViewData } from '@/types';
 export function SystemOverlayButton({ viewData }: { viewData: MapViewData }) {
   const { pipWindow, isOpen, isSupported, open, close } = useDocumentPip();
 
-  if (!isSupported) {
-    return (
+  const tooltip = isSupported
+    ? 'Open a floating read-only overlay in its own window.'
+    : 'The floating system overlay needs the Document Picture-in-Picture API, available only in Chromium-based browsers (Chrome, Edge, …).';
+
+  return (
+    <>
       <Tooltip.Root>
         <Tooltip.Trigger render={<span className="inline-flex" />}>
-          <Button variant="ghost" size="sm" disabled>
+          <Button
+            variant={isOpen ? 'secondary' : 'ghost'}
+            size="sm"
+            disabled={!isSupported}
+            aria-pressed={isSupported ? isOpen : undefined}
+            onClick={() => {
+              if (!isSupported) return;
+              if (isOpen) close();
+              else void open();
+            }}
+          >
             <PictureInPicture2 />
             Overlay
           </Button>
@@ -31,29 +45,11 @@ export function SystemOverlayButton({ viewData }: { viewData: MapViewData }) {
         <Tooltip.Portal>
           <Tooltip.Positioner sideOffset={4} side="bottom" align="center">
             <Tooltip.Popup className="z-50 max-w-[18rem] rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md">
-              The floating system overlay needs the Document Picture-in-Picture API, available only
-              in Chromium-based browsers (Chrome, Edge, …).
+              {tooltip}
             </Tooltip.Popup>
           </Tooltip.Positioner>
         </Tooltip.Portal>
       </Tooltip.Root>
-    );
-  }
-
-  return (
-    <>
-      <Button
-        variant={isOpen ? 'secondary' : 'ghost'}
-        size="sm"
-        aria-pressed={isOpen}
-        onClick={() => {
-          if (isOpen) close();
-          else void open();
-        }}
-      >
-        <PictureInPicture2 />
-        Overlay
-      </Button>
       {pipWindow && createPortal(<SystemOverlay viewData={viewData} />, pipWindow.document.body)}
     </>
   );

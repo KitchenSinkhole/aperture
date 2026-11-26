@@ -15,4 +15,5 @@ export const routePrefsSchema: z.ZodType<RoutePrefs> = z.object({
   avoidCritical: z.boolean(),
   avoidEol: z.boolean(),
   includeEveScout: z.boolean(),
+  includeJumpBridge: z.boolean().optional(),
 });

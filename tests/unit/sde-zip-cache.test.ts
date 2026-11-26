@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ReadableStream } from 'node:stream/web';

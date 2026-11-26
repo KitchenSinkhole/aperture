@@ -13,6 +13,7 @@
 | onFiltersChange | (f: SigSearchFilters) => void | yes | Commits a filter change back to the owner |
 | onNavigate | (systemId: string, sigId: string) => void | yes | Called when a result's "Go" is clicked — selects/centers the system and flashes the row |
 | tagScheme | TagScheme | yes | The map's `ap_map.tag_scheme`; picks how the System column combines class and tag |
+| onRowHover | (mapSystemId: string \| null) => void | no | Experimental: highlight that system on the map while a row is hovered |
 
 ### Renders
 A single frameless `Card` (panel body) with a filter bar (name, group, activity, max-age, class-kind toggles, system-class toggles) above a scrollable, sortable results table (activity glyph, Sig, Group, System, Name, Age, Go) and a result-count line. Empty-state row when no signatures match. Body rows are zebra-striped (even rows tinted) with a hover highlight that takes over on the pointed row.

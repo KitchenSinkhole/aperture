@@ -10,6 +10,8 @@ export default defineConfig({
     // Defaults so `@/lib/env` (parsed at import time) and crypto work in tests.
     // A real `.env.local`/CI env overrides these via process.env.
     env: {
+      // React 19 omits `act` from production builds; Vitest would otherwise resolve production React.
+      NODE_ENV: 'test',
       ESI_TOKEN_ENC_KEY:
         process.env.ESI_TOKEN_ENC_KEY ?? 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
       AUTH_EVE_CLIENT_ID: process.env.AUTH_EVE_CLIENT_ID ?? 'test-client-id',

@@ -4,7 +4,7 @@
 **File:** `src/app/(app)/layout.tsx`
 
 ### Renders
-A `RealtimeProvider` wrapping a `CurrentMapScopeProvider` (spans header + `<main>` so the header's Statistics dialog can read the viewed map's scope), which wraps the chrome: a `LowContrastController` (applies the per-device low-contrast preference to `<html>` on mount), a `ClientErrorReporter` (window-level error capture), the `RealtimeStatusBanner` (degraded-mode), the `SdeStatusBanner` (out-of-date or failing static data), the `AppUpdateBanner` (stale build after a deploy), `AppHeader` (active character + roster) above a `<main>` content area, `AppFooter` below, and a `sonner` `Toaster`.
+A `RealtimeProvider` wrapping a `CurrentMapScopeProvider` (spans header + `<main>` so the header's Statistics dialog can read the viewed map's scope), which wraps the chrome: a `LowContrastController` (applies the per-device low-contrast preference to `<html>` on mount), a `ClientErrorReporter` (window-level error capture), the `RealtimeStatusBanner` (degraded-mode), the `SdeStatusBanner` (out-of-date or failing static data), the `AppUpdateBanner` (stale build after a deploy), `AppHeader` (active character + roster) above a `<main>` content area wrapped in `ExperimentalHoverDelayProvider` (experimental UI only: shared Base UI tooltip open delay from device `localStorage`), `AppFooter` below, and a `sonner` `Toaster`.
 
 The `<main>` is full-width (no `max-w-*` constraint) so wide pages like the map canvas can fill the viewport; pages that need a narrower box (e.g. `/maps`) wrap their own content in `mx-auto max-w-*`.
 

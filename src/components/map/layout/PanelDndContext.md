@@ -11,7 +11,7 @@
 | children | ReactNode | yes | The grid; its tabs (draggables) and headers (droppables) register against this context. |
 
 ### Renders
-Its `children` plus a `DragOverlay` showing the dragged panel's title (resolved from `PANELS`) as a floating ghost while a drag is active.
+Its `children` plus a `DragOverlay` showing the dragged panel's title and `PANEL_MIN` footprint as a floating ghost while a drag is active (`dropAnimation` disabled to reduce overlay jitter).
 
 ### Behaviour & Interactions
 - `PointerSensor` with a 5px activation distance, so a plain tab click still fires the tab's `onClick` (switch) rather than starting a drag.

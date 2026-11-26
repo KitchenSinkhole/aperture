@@ -76,6 +76,37 @@ export function connectionTimeLeftMs(
  * - `c` — the connection lifecycle fields.
  * - `now` — clock to compare against (defaults to `Date.now()`; injectable for tests).
  */
+export type EolTimeUrgency = 'warning' | 'critical';
+
+/** Live EOL urgency from countdown: &lt;4h warning (orange), ≤1h or elapsed critical (red). */
+export function eolTimeUrgencyFromMs(timeLeftMs: number | null): EolTimeUrgency | null {
+  if (timeLeftMs == null || !Number.isFinite(timeLeftMs)) return null;
+  if (timeLeftMs <= 0) return 'critical';
+  if (timeLeftMs <= WORMHOLE_EOL_CRITICAL_NOMINAL_MS) return 'critical';
+  if (timeLeftMs < WORMHOLE_EOL_NOMINAL_MS) return 'warning';
+  return null;
+}
+
+/** Urgency for experimental EOL outline and tags from stage + live countdown. */
+export function eolDisplayUrgency(
+  stage: ConnectionLifecycleInput['eolStage'],
+  timeLeftMs: number | null,
+): EolTimeUrgency | null {
+  if (stage === 'expired') return 'critical';
+  if (stage !== 'eol' && stage !== 'critical') return null;
+  return eolTimeUrgencyFromMs(timeLeftMs);
+}
+
+/** Compact tag for connection-edge EOL labels (e.g. `3h 42m`). */
+export function formatEolTimeLeftTag(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '0m';
+  const totalMin = Math.floor(ms / 60_000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
+}
+
 export function connectionExpiredSinceMs(
   c: ConnectionLifecycleInput,
   now: number = Date.now(),

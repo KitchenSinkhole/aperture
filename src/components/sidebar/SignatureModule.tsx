@@ -1,7 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ClipboardPaste, Plus, ShieldCheck, Swords, Trash2 } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ClipboardPaste,
+  Plus,
+  ShieldCheck,
+  Sparkles,
+  Swords,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import {
   createColumnHelper,
@@ -12,6 +21,7 @@ import {
   type CellContext,
   type Row,
   type SortingState,
+  type Table,
 } from '@tanstack/react-table';
 import { ContextMenu } from '@base-ui/react/context-menu';
 import { Button } from '@/components/ui/button';
@@ -61,6 +71,15 @@ import { fetchWormholeCatalog, resolveSignatureDestinationOnServer } from '@/lib
 import { effectiveSignatureActivity, siteActivity } from '@/lib/map/siteActivity';
 import { SIGNATURE_GROUP_CATALOG } from '@/lib/map/signatureGroups';
 import { formatAgoFromMs } from '@/lib/map/relativeTime';
+import { shouldSyncSignatureDraft } from '@/lib/map/signatureDraftSync';
+import {
+  compareSignaturesExperimental,
+  isSignatureFullyScanned,
+} from '@/lib/map/signatureTableSort';
+import { signatureRowAgeClass, signatureRowAgeTier } from '@/lib/map/signatureRowAge';
+import { wormholeDestClassRowClass } from '@/lib/map/wormholeDestClassStyle';
+import { SIGNATURE_DRAG_MIME } from '@/lib/experimentalSignatureUndo';
+import { useSetMapLinkHover } from '@/components/map/MapLinkHoverContext';
 import { cn } from '@/lib/utils';
 import { apertureConfig } from '../../../aperture.config';
 
@@ -234,6 +253,8 @@ type SignatureTableMeta = {
   resolvingSigId: string | null;
   /** The map's auto-tag scheme — drives the far end's class+tag label. */
   tagScheme: TagScheme;
+  experimentalUi: boolean;
+  onSignatureHover?: (sig: MapSignature | null) => void;
 };
 
 // Cell renderers are module-level components with fixed identities. TanStack's
@@ -596,18 +617,53 @@ function SignatureRow({
   flashSigId,
   pasteFlash,
   onPatch,
+  table,
 }: {
   row: Row<MapSignature>;
   flashSigId: string | null;
   pasteFlash?: Record<string, 'created' | 'updated'>;
   onPatch: (signatureId: string, patch: UpdateSignatureBody) => void;
+  table: Table<MapSignature>;
 }) {
+  const meta = table.options.meta as SignatureTableMeta;
+  const setLinkHover = useSetMapLinkHover();
+  const sig = row.original;
+  const whDestClass =
+    meta.experimentalUi && sig.groupKey === 'wormhole' && sig.typeId != null
+      ? meta.metaByTypeId.get(sig.typeId)?.targetClass ?? null
+      : null;
   const rowClassName = cn(
     'border-t border-foreground/10 align-middle even:bg-foreground/[0.03]',
     row.original.id === flashSigId && 'ap-sig-flash',
     pasteFlash?.[row.original.id] === 'created' && 'ap-sig-flash-created',
     pasteFlash?.[row.original.id] === 'updated' && 'ap-sig-flash-updated',
+    meta.experimentalUi && signatureRowAgeClass(signatureRowAgeTier(sig.updatedAt)),
+    meta.experimentalUi && wormholeDestClassRowClass(whDestClass),
   );
+
+  const onRowMouseEnter = () => {
+    if (!meta.experimentalUi || sig.groupKey !== 'wormhole' || sig.mapConnectionId == null) return;
+    const conn = meta.connections.find((c) => c.id === sig.mapConnectionId);
+    if (!conn) return;
+    setLinkHover({ edgeId: conn.id, sourceId: conn.source, targetId: conn.target });
+    meta.onSignatureHover?.(sig);
+  };
+  const onRowMouseLeave = () => {
+    if (!meta.experimentalUi) return;
+    setLinkHover({ edgeId: null, sourceId: null, targetId: null });
+    meta.onSignatureHover?.(null);
+  };
+
+  const dragProps =
+    meta.experimentalUi && sig.groupKey === 'wormhole' && sig.mapConnectionId == null
+      ? ({
+          draggable: true,
+          onDragStart: (e: React.DragEvent) => {
+            e.dataTransfer.setData(SIGNATURE_DRAG_MIME, sig.id);
+            e.dataTransfer.effectAllowed = 'link';
+          },
+        } as const)
+      : {};
   const cells = row.getVisibleCells().map((cell) => (
     <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
   ));
@@ -615,12 +671,32 @@ function SignatureRow({
   // Wormholes have no site-safety classification, so they get no activity glyph
   // and no re-mark menu — the row is a plain, non-interactive <tr>.
   if (row.original.groupKey === 'wormhole') {
-    return <tr className={rowClassName}>{cells}</tr>;
+    return (
+      <tr
+        className={rowClassName}
+        onMouseEnter={onRowMouseEnter}
+        onMouseLeave={onRowMouseLeave}
+        {...dragProps}
+      >
+        {cells}
+      </tr>
+    );
   }
 
   return (
     <ContextMenu.Root>
-      <ContextMenu.Trigger render={<tr className={rowClassName} />}>{cells}</ContextMenu.Trigger>
+      <ContextMenu.Trigger
+        render={
+          <tr
+            className={rowClassName}
+            onMouseEnter={onRowMouseEnter}
+            onMouseLeave={onRowMouseLeave}
+            {...dragProps}
+          />
+        }
+      >
+        {cells}
+      </ContextMenu.Trigger>
       <SignatureActivityMenu sig={row.original} onPatch={onPatch} />
     </ContextMenu.Root>
   );
@@ -639,6 +715,7 @@ export function SignatureModule({
   connections,
   systems,
   onCreate,
+  onCreateWithId,
   onPatch,
   onDelete,
   onConnectionPatch,
@@ -646,6 +723,8 @@ export function SignatureModule({
   flashSigId = null,
   pasteFlash,
   tagScheme,
+  experimentalUi = false,
+  onSignatureHover,
 }: {
   mapId: string;
   system: MapSystemNode | null;
@@ -653,6 +732,8 @@ export function SignatureModule({
   connections: MapConnectionEdge[];
   systems: MapSystemNode[];
   onCreate: (body: CreateSignatureBody) => void;
+  /** Experimental draft row: returns created signature id after server commit. */
+  onCreateWithId?: (body: CreateSignatureBody) => Promise<string | null>;
   onPatch: (signatureId: string, patch: UpdateSignatureBody) => void;
   onDelete: (signatureId: string) => void;
   onConnectionPatch: (connectionId: string, patch: UpdateConnectionBody) => void;
@@ -660,6 +741,9 @@ export function SignatureModule({
   flashSigId?: string | null;
   pasteFlash?: Record<string, 'created' | 'updated'>;
   tagScheme: TagScheme;
+  experimentalUi?: boolean;
+  /** Experimental: highlight far system when hovering a linked WH row. */
+  onSignatureHover?: (sig: MapSignature | null) => void;
 }) {
   return (
     <Card className="flex h-full flex-col gap-3 p-3">
@@ -676,6 +760,7 @@ export function SignatureModule({
           connections={connections}
           systems={systems}
           onCreate={onCreate}
+          onCreateWithId={onCreateWithId}
           onPatch={onPatch}
           onDelete={onDelete}
           onConnectionPatch={onConnectionPatch}
@@ -683,6 +768,8 @@ export function SignatureModule({
           flashSigId={flashSigId}
           pasteFlash={pasteFlash}
           tagScheme={tagScheme}
+          experimentalUi={experimentalUi}
+          onSignatureHover={onSignatureHover}
         />
       )}
     </Card>
@@ -703,6 +790,8 @@ export function SignatureModuleHeaderActions({
   onBulkPaste,
   lazyDelete,
   onLazyDeleteChange,
+  onOpenCleanup,
+  showCleanup,
 }: {
   mapId: string;
   system: MapSystemNode | null;
@@ -710,9 +799,24 @@ export function SignatureModuleHeaderActions({
   onBulkPaste: (payloads: MapEventPayload[]) => void;
   lazyDelete: boolean;
   onLazyDeleteChange: (next: boolean) => void;
+  /** Experimental signature bulk-delete dialog. */
+  onOpenCleanup?: () => void;
+  showCleanup?: boolean;
 }) {
   return (
     <>
+      {showCleanup ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => onOpenCleanup?.()}
+        >
+          <Sparkles className="size-3.5" />
+          Clean up
+        </Button>
+      ) : null}
       {system && (
         <>
           <LazyDeleteToggle armed={lazyDelete} onArmedChange={onLazyDeleteChange} />
@@ -797,6 +901,225 @@ function SignaturePasteButton({
   );
 }
 
+function SignatureDraftTableRow({
+  system,
+  connections,
+  systems,
+  metaByTypeId,
+  assignedConnectionIds,
+  tagScheme,
+  onCreateWithId,
+  onPatch,
+  syncConnectionSize,
+  syncConnectionEol,
+}: {
+  system: MapSystemNode;
+  connections: MapConnectionEdge[];
+  systems: MapSystemNode[];
+  metaByTypeId: Map<number, WormholeTypeMeta>;
+  assignedConnectionIds: string[];
+  tagScheme: TagScheme;
+  onCreateWithId: (body: CreateSignatureBody) => Promise<string | null>;
+  onPatch: (signatureId: string, patch: UpdateSignatureBody) => void;
+  syncConnectionSize: (typeId: number | null, connectionId: string | null) => void;
+  syncConnectionEol: (stage: EolStage, connectionId: string | null) => void;
+}) {
+  const [serverId, setServerId] = useState<string | null>(null);
+  const [draftSigId, setDraftSigId] = useState('');
+  const [draftGroupKey, setDraftGroupKey] = useState<SignatureGroupKey | null>(null);
+  const [draftTypeId, setDraftTypeId] = useState<number | null>(null);
+  const [draftName, setDraftName] = useState('');
+  const [draftConnectionId, setDraftConnectionId] = useState<string | null>(null);
+  const [draftEolStage, setDraftEolStage] = useState<EolStage>('none');
+  const syncingRef = useRef(false);
+
+  const draftFar = connectionFarSystem(draftConnectionId, system, connections, systems);
+
+  const ensureSynced = useCallback(async () => {
+    if (!shouldSyncSignatureDraft(draftSigId) || syncingRef.current) return;
+    const body: CreateSignatureBody = {
+      mapSystemId: system.id,
+      sigId: draftSigId.trim().toUpperCase(),
+      groupKey: draftGroupKey,
+      typeId: draftGroupKey === 'wormhole' ? draftTypeId : null,
+      eolStage: draftGroupKey === 'wormhole' ? draftEolStage : 'none',
+      name: draftGroupKey === 'wormhole' ? null : draftName.trim() || null,
+      mapConnectionId: draftGroupKey === 'wormhole' ? draftConnectionId : null,
+      expiresAt: defaultExpiry(),
+    };
+    syncingRef.current = true;
+    try {
+      const id = await onCreateWithId(body);
+      if (id) {
+        setServerId(id);
+        if (draftGroupKey === 'wormhole') {
+          syncConnectionSize(draftTypeId, draftConnectionId);
+          syncConnectionEol(draftEolStage, draftConnectionId);
+        }
+      }
+    } finally {
+      syncingRef.current = false;
+    }
+  }, [
+    draftSigId,
+    draftGroupKey,
+    draftTypeId,
+    draftName,
+    draftConnectionId,
+    draftEolStage,
+    system.id,
+    onCreateWithId,
+    syncConnectionSize,
+    syncConnectionEol,
+  ]);
+
+  const patchServer = useCallback(
+    (patch: UpdateSignatureBody) => {
+      if (serverId) onPatch(serverId, patch);
+    },
+    [serverId, onPatch],
+  );
+
+  const resetDraft = () => {
+    setServerId(null);
+    setDraftSigId('');
+    setDraftGroupKey(null);
+    setDraftTypeId(null);
+    setDraftName('');
+    setDraftConnectionId(null);
+    setDraftEolStage('none');
+  };
+
+  return (
+    <tr className="border-t border-dashed border-primary/30 bg-primary/5 align-middle">
+      <td />
+      <td className="px-2 py-px">
+        <Input
+          value={draftSigId}
+          onChange={(e) => setDraftSigId(e.target.value.toUpperCase())}
+          onBlur={() => void ensureSynced()}
+          className="h-6 w-full font-mono text-xs"
+          placeholder="Add…"
+          maxLength={7}
+        />
+      </td>
+      <td className="px-1 py-px">
+        <SignatureGroupSelect
+          value={draftGroupKey}
+          onValueChange={(next) => {
+            setDraftGroupKey(next);
+            setDraftTypeId(null);
+            setDraftName('');
+            setDraftConnectionId(null);
+            setDraftEolStage('none');
+            if (serverId) {
+              patchServer(buildGroupChangePatch(
+                {
+                  id: serverId,
+                  mapSystemId: system.id,
+                  mapConnectionId: draftConnectionId,
+                  sigId: draftSigId,
+                  groupKey: draftGroupKey,
+                  classKind: null,
+                  activityOverride: null,
+                  typeId: draftTypeId,
+                  eolStage: draftEolStage,
+                  wormholeCode: null,
+                  name: draftName || null,
+                  description: null,
+                  expiresAt: defaultExpiry(),
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                },
+                next,
+              ));
+            } else if (shouldSyncSignatureDraft(draftSigId)) void ensureSynced();
+          }}
+          triggerClassName={FLAT_TRIGGER}
+        />
+      </td>
+      <td className="px-1 py-px">
+        {draftGroupKey === 'wormhole' ? (
+          <WormholeTypeSelect
+            systemSecurity={system.security}
+            staticTypeIds={system.staticTypeIds}
+            value={draftTypeId}
+            onValueChange={(typeId) => {
+              setDraftTypeId(typeId);
+              if (serverId) {
+                patchServer({ typeId, name: null });
+                syncConnectionSize(typeId, draftConnectionId);
+              } else if (shouldSyncSignatureDraft(draftSigId)) void ensureSynced();
+            }}
+            destinationClass={draftFar?.security ?? null}
+            destinationSystemId={draftFar?.systemId ?? null}
+            triggerClassName={FLAT_TRIGGER}
+          />
+        ) : draftGroupKey === null ? (
+          <span className="text-xs italic text-muted-foreground">—</span>
+        ) : (
+          <SiteTypeCombobox
+            security={system.security}
+            groupKey={draftGroupKey}
+            value={draftName || null}
+            onValueChange={(next) => {
+              setDraftName(next ?? '');
+              if (serverId) patchServer({ name: next });
+              else if (shouldSyncSignatureDraft(draftSigId)) void ensureSynced();
+            }}
+            inputClassName={FLAT_INPUT}
+          />
+        )}
+      </td>
+      <td />
+      <td className="px-1 py-px" />
+      <td className="px-1 py-px">
+        {draftGroupKey === 'wormhole' ? (
+          <ConnectionSelect
+            system={system}
+            connections={connections}
+            systems={systems}
+            value={draftConnectionId}
+            onValueChange={(next) => {
+              setDraftConnectionId(next);
+              if (serverId) {
+                patchServer({ mapConnectionId: next });
+                syncConnectionSize(draftTypeId, next);
+                syncConnectionEol(draftEolStage, next);
+              } else if (shouldSyncSignatureDraft(draftSigId)) void ensureSynced();
+            }}
+            targetClass={
+              draftTypeId == null ? null : metaByTypeId.get(draftTypeId)?.targetClass ?? null
+            }
+            excludeIds={assignedConnectionIds}
+            triggerClassName={FLAT_TRIGGER}
+            tagScheme={tagScheme}
+          />
+        ) : null}
+      </td>
+      <td className="px-1 py-px">
+        {draftGroupKey === 'wormhole' ? (
+          <EolStageSelect
+            value={draftEolStage}
+            onValueChange={(next) => {
+              setDraftEolStage(next);
+              if (serverId) patchServer({ eolStage: next });
+            }}
+            triggerClassName={FLAT_TRIGGER}
+          />
+        ) : null}
+      </td>
+      <td />
+      <td />
+      <td className="px-1 py-px text-right">
+        <Button type="button" variant="ghost" size="icon-xs" aria-label="Clear draft" onClick={resetDraft}>
+          <Trash2 className="size-3.5" />
+        </Button>
+      </td>
+    </tr>
+  );
+}
+
 function SignaturePanelBody({
   mapId,
   system,
@@ -804,6 +1127,7 @@ function SignaturePanelBody({
   connections,
   systems,
   onCreate,
+  onCreateWithId,
   onPatch,
   onDelete,
   onConnectionPatch,
@@ -811,6 +1135,8 @@ function SignaturePanelBody({
   flashSigId = null,
   pasteFlash,
   tagScheme,
+  experimentalUi,
+  onSignatureHover,
 }: {
   mapId: string;
   system: MapSystemNode;
@@ -818,6 +1144,7 @@ function SignaturePanelBody({
   connections: MapConnectionEdge[];
   systems: MapSystemNode[];
   onCreate: (body: CreateSignatureBody) => void;
+  onCreateWithId?: (body: CreateSignatureBody) => Promise<string | null>;
   onPatch: (signatureId: string, patch: UpdateSignatureBody) => void;
   onDelete: (signatureId: string) => void;
   onConnectionPatch: (connectionId: string, patch: UpdateConnectionBody) => void;
@@ -825,6 +1152,8 @@ function SignaturePanelBody({
   flashSigId?: string | null;
   pasteFlash?: Record<string, 'created' | 'updated'>;
   tagScheme: TagScheme;
+  experimentalUi: boolean;
+  onSignatureHover?: (sig: MapSignature | null) => void;
 }) {
   const rows = useMemo(
     () => signatures.filter((s) => s.mapSystemId === system.id),
@@ -845,7 +1174,7 @@ function SignaturePanelBody({
   const sigStats = useMemo(
     () => ({
       total: rows.length,
-      unscanned: rows.filter((s) => s.classKind !== 'anomaly' && !isFullyScanned(s)).length,
+      unscanned: rows.filter((s) => s.classKind !== 'anomaly' && !isSignatureFullyScanned(s)).length,
       wormholes: rows.filter((s) => s.groupKey === 'wormhole').length,
     }),
     [rows],
@@ -869,11 +1198,20 @@ function SignaturePanelBody({
     if (groupFilter.size > 0)
       result = result.filter((s) => groupFilter.has(s.groupKey));
     if (scanFilter === 'scanned')
-      result = result.filter(isFullyScanned);
+      result = result.filter(isSignatureFullyScanned);
     else if (scanFilter === 'unscanned')
-      result = result.filter((s) => !isFullyScanned(s));
+      result = result.filter((s) => !isSignatureFullyScanned(s));
     return result;
   }, [rows, groupFilter, scanFilter]);
+
+  const [sorting, setSorting] = useState<SortingState>(
+    experimentalUi ? [] : [{ id: 'sigId', desc: false }],
+  );
+
+  const tableData = useMemo(() => {
+    if (!experimentalUi || sorting.length > 0) return filteredRows;
+    return [...filteredRows].sort(compareSignaturesExperimental);
+  }, [filteredRows, experimentalUi, sorting]);
 
   /**
    * When a WH sig ends up with both a type and a linked connection, push the
@@ -938,11 +1276,9 @@ function SignaturePanelBody({
     [mapId, rows, onBulkPaste, onPatch, syncConnectionSize, syncConnectionEol],
   );
 
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'sigId', desc: false }]);
-
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table manages its own memoization; the React Compiler correctly skips auto-memoizing this component, no stale-UI risk here.
   const table = useReactTable({
-    data: filteredRows,
+    data: tableData,
     columns: signatureColumns,
     getRowId: (row) => row.id,
     state: { sorting },
@@ -963,6 +1299,8 @@ function SignaturePanelBody({
       resolveDestination: handleResolve,
       resolvingSigId,
       tagScheme,
+      experimentalUi,
+      onSignatureHover,
     } satisfies SignatureTableMeta,
   });
 
@@ -1002,6 +1340,7 @@ function SignaturePanelBody({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="ap-signature-sticky-chrome">
       <SignatureFilterBar
         groupFilter={groupFilter}
         onGroupFilterChange={setGroupFilter}
@@ -1009,7 +1348,8 @@ function SignaturePanelBody({
         onScanFilterChange={setScanFilter}
         stats={sigStats}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-md ring-1 ring-foreground/10">
+      </div>
+      <div className="ap-signature-table-scroll min-h-0 flex-1 overflow-y-auto rounded-md ring-1 ring-foreground/10">
         <table className="w-full text-sm [&_[data-slot=input]]:h-6 [&_[data-slot=select-trigger]]:h-6">
           <thead className="sticky top-0 z-10 bg-[color-mix(in_oklab,var(--muted)_50%,var(--card))] text-[11px] uppercase text-muted-foreground">
             {table.getHeaderGroups().map((hg) => (
@@ -1046,15 +1386,31 @@ function SignaturePanelBody({
               <SignatureRow
                 key={row.id}
                 row={row}
+                table={table}
                 flashSigId={flashSigId}
                 pasteFlash={pasteFlash}
                 onPatch={onPatch}
               />
             ))}
+            {experimentalUi && onCreateWithId ? (
+              <SignatureDraftTableRow
+                system={system}
+                connections={connections}
+                systems={systems}
+                metaByTypeId={metaByTypeId}
+                assignedConnectionIds={assignedConnectionIds}
+                tagScheme={tagScheme}
+                onCreateWithId={onCreateWithId}
+                onPatch={onPatch}
+                syncConnectionSize={syncConnectionSize}
+                syncConnectionEol={syncConnectionEol}
+              />
+            ) : null}
           </tbody>
         </table>
       </div>
 
+      {!experimentalUi ? (
       <div className="flex shrink-0 items-end gap-2">
         <div className="flex flex-col gap-1">
           <span className="text-[11px] text-muted-foreground">Sig</span>
@@ -1129,6 +1485,7 @@ function SignaturePanelBody({
           Add
         </Button>
       </div>
+      ) : null}
     </div>
   );
 }
@@ -1192,14 +1549,6 @@ function TypeCell({
       onValueChange={(next) => onPatch(sig.id, { name: next })}
       inputClassName={inputClassName}
     />
-  );
-}
-
-function isFullyScanned(s: MapSignature): boolean {
-  return (
-    s.groupKey !== null &&
-    (s.groupKey === 'wormhole' ? s.typeId !== null : !!(s.name)) &&
-    (s.groupKey !== 'wormhole' || s.mapConnectionId !== null)
   );
 }
 

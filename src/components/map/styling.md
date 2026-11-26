@@ -5,7 +5,10 @@
 
 ---
 
-### systemClassColor(cls: string | null | undefined): string
+### MapStylePalette / MapStyleOptions
+`palette`: `'default' | 'experimental'` (defaults to `'default'`). Optional `theme`: `'dark' | 'light'` when experimental.
+
+### systemClassColor(cls: string | null | undefined, opts?: MapStyleOptions): string
 Maps a `universe_system.security` or `universe_wormhole.target_class` label to a hex colour.
 - `H` green, `L` orange, `0.0` firetruck-red, `P` (Pochven) deep rose-red, `A` (Abyssal) teal.
 - `C1`–`C6` progress from sky-blue → cyan → emerald → amber → orange → orangy-red.
@@ -28,6 +31,18 @@ Returns the amber/gold accent (`#fbbf24`) used to mark the map's designated Home
 
 ### noteSeverityColor(severity: NoteSeverity): string
 Border colour for a map note (`MapNoteNode`), by `map_note_severity`: `neutral`→grey `#6b7280` (the file's default, so an unflagged note reads as "no severity"), `green`→`#22c55e`, `yellow`→`#eab308`, `red`→`#ef4444`.
+
+### experimentalEolOutlineClass(eolStage): string | null
+Fallback outline classes from the stored `eolStage` when countdown is unavailable (`critical` and `expired` use the red outline).
+
+### experimentalEolOutlineClassFromUrgency(urgency): string | null
+Maps live urgency (`warning` orange, `critical` red) to outline CSS classes on `ConnectionEdge`.
+
+### EOL_URGENCY_COLORS
+Text/border hex tokens for live EOL urgency (map edge outline helpers).
+
+### experimentalEolCountdownPillClass(urgency): string
+CSS class for the filled live countdown pill on a connection tag; the badge-cluster card keeps a neutral ring.
 
 ### connectionStyle(edge: Pick&lt;MapConnectionEdge, 'scope' | 'massStatus' | 'jumpMassClass' | 'eolStage'&gt;): EdgeStyle
 Returns `{ stroke, strokeWidth, strokeDasharray? }`. Scope sets the base colour; wormholes are recoloured by `massStatus` (fresh/reduced/critical). `eolStage` dashes the line — `expired` sparsest (`1 4`, barely-there), `critical` (1h) tighter (`2 3`) than `eol` (4h, `6 4`) — to read as progressively more urgent; `jumpMassClass === 's'` thins the stroke (frigate/small holes).

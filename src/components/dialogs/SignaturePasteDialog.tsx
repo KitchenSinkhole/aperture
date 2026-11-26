@@ -41,6 +41,7 @@ export function SignaturePasteDialog({
   mapSystemId,
   existingSigs,
   onResult,
+  initialText,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -48,6 +49,8 @@ export function SignaturePasteDialog({
   mapSystemId: string;
   existingSigs: MapSignature[];
   onResult: (payloads: MapEventPayload[]) => void;
+  /** Seeds the textarea when opened from Ctrl+V preview (experimental). */
+  initialText?: string;
 }) {
   const [text, setText] = useState('');
   const [resolved, setResolved] = useState<ResolvedSigRow[]>([]);
@@ -74,6 +77,7 @@ export function SignaturePasteDialog({
   // Reset on close — wrap `onOpenChange` rather than mirroring `open` in an
   // effect (avoids the cascading-render anti-pattern).
   function handleOpenChange(next: boolean) {
+    if (next && initialText) setText(initialText);
     if (!next) {
       setText('');
       setResolved([]);

@@ -22,6 +22,17 @@ Wall-clock instant the connection expires, or `null` when no expiry applies.
 
 ---
 
+### eolTimeUrgencyFromMs(timeLeftMs): EolTimeUrgency | null
+Live urgency for experimental EOL colouring: `warning` below the 4h nominal, `critical` at or below the 1h nominal or when the countdown has elapsed (`timeLeftMs <= 0`).
+
+### eolDisplayUrgency(stage, timeLeftMs): EolTimeUrgency | null
+Maps stored `eolStage` plus live countdown into outline/tag urgency (`expired` is always `critical`).
+
+### formatEolTimeLeftTag(ms: number): string
+Compact countdown for connection-edge EOL tags (e.g. `3h 42m`).
+
+---
+
 ### connectionTimeLeftMs(c: ConnectionLifecycleInput, now?: number): number | null
 Milliseconds until `connectionExpiresAt(c)`. Returns `null` for non-expiring connections and `0` once past expiry (clamped, never negative). `now` defaults to `Date.now()` but is injectable for tests.
 

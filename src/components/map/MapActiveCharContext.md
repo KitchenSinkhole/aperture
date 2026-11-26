@@ -32,6 +32,7 @@ Returns the active character context. Throws if called outside `MapActiveCharPro
 {
   activeCharId: number | null;              // The resolved active character id
   activeCharSystemId: number | null;        // The system that character is in (or null)
+  pickedCharId: number | null;              // Manual pilots-panel pick when set
   locatedChars: { id: number; name: string }[];  // Characters with a known location
   setPickedCharId: (id: number | null) => void;  // Manual picker override
 }

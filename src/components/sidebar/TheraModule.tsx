@@ -1,13 +1,50 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link as LinkIcon, Plus, RefreshCw } from 'lucide-react';
+import { ArrowDownUp, Link as LinkIcon, Plus, RefreshCw } from 'lucide-react';
 import { Card, CardAction, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { systemClassColor } from '@/components/map/styling';
 import { fetchTheraConnections, syncTheraConnectionsOnServer } from '@/lib/map/client';
 import type { MapViewData } from '@/lib/map/loadMap';
-import type { MapEventPayload, TheraConnection, TheraSyncInput } from '@/types';
+import type { MapConnectionEdge, MapEventPayload, MapSystemNode, TheraConnection, TheraSyncInput } from '@/types';
+import { subscribeExperimentalPanelAdd } from '@/lib/experimentalPanelActionBus';
+import { pickPrimaryChainExit } from '@/lib/map/experimentalRouteExit';
+
+type TheraSortMode = 'name' | 'exit-jumps' | 'dest-jumps';
+
+function hopsOnMap(
+  from: MapSystemNode,
+  targetEveId: number,
+  systems: MapSystemNode[],
+  connections: MapConnectionEdge[],
+): number | null {
+  const byId = new Map(systems.map((s) => [s.id, s]));
+  if (!byId.has(from.id)) return null;
+  const target = systems.find((s) => s.systemId === targetEveId);
+  if (!target) return null;
+  const adj = new Map<string, string[]>();
+  for (const c of connections) {
+    const a = adj.get(c.source) ?? [];
+    a.push(c.target);
+    adj.set(c.source, a);
+    const b = adj.get(c.target) ?? [];
+    b.push(c.source);
+    adj.set(c.target, b);
+  }
+  const q: { id: string; d: number }[] = [{ id: from.id, d: 0 }];
+  const seen = new Set<string>([from.id]);
+  while (q.length > 0) {
+    const { id, d } = q.shift()!;
+    if (id === target.id) return d;
+    for (const n of adj.get(id) ?? []) {
+      if (seen.has(n)) continue;
+      seen.add(n);
+      q.push({ id: n, d: d + 1 });
+    }
+  }
+  return null;
+}
 
 // Global Thera module. Lists EVE-Scout's published Thera + Turnur
 // connections and folds chosen ones onto the open map. Unlike the system-scoped
@@ -44,6 +81,7 @@ export function TheraModule({
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [sortMode, setSortMode] = useState<TheraSortMode>('name');
 
   useEffect(() => {
     let active = true;
@@ -88,16 +126,38 @@ export function TheraModule({
     });
   }, [connections, viewData.systems, viewData.connections]);
 
+  const sortRows = useCallback(
+    (rows: AnnotatedConnection[]) => {
+      if (sortMode === 'name') {
+        return [...rows].sort((a, b) => a.targetName.localeCompare(b.targetName));
+      }
+      const exit =
+        (viewData.map.homeMapSystemId
+          ? viewData.systems.find((s) => s.id === viewData.map.homeMapSystemId)
+          : null) ?? pickPrimaryChainExit(viewData.systems, viewData.connections);
+      const dest =
+        viewData.systems.find((s) => s.status === 'hostile') ??
+        viewData.systems.find((s) => /fight/i.test(s.tag ?? s.alias ?? ''));
+      const score = (row: AnnotatedConnection) => {
+        const anchor = sortMode === 'exit-jumps' ? exit : dest;
+        if (!anchor) return 999;
+        return hopsOnMap(anchor, row.targetSystemId, viewData.systems, viewData.connections) ?? 999;
+      };
+      return [...rows].sort((a, b) => score(a) - score(b) || a.targetName.localeCompare(b.targetName));
+    },
+    [sortMode, viewData],
+  );
+
   const groups = useMemo(() => {
     const thera = annotated.filter((c) => c.hub === 'Thera');
     const turnur = annotated.filter((c) => c.hub === 'Turnur');
-    const byName = (a: AnnotatedConnection, b: AnnotatedConnection) =>
-      a.targetName.localeCompare(b.targetName);
     return [
-      { hub: 'Thera' as const, rows: thera.sort(byName) },
-      { hub: 'Turnur' as const, rows: turnur.sort(byName) },
+      { hub: 'Thera' as const, rows: sortRows(thera) },
+      { hub: 'Turnur' as const, rows: sortRows(turnur) },
     ].filter((g) => g.rows.length > 0);
-  }, [annotated]);
+  }, [annotated, sortRows]);
+
+  const missing = useMemo(() => annotated.filter((c) => !c.onMap), [annotated]);
 
   const sync = useCallback(
     async (rows: TheraConnection[]) => {
@@ -116,10 +176,38 @@ export function TheraModule({
     [mapId, onBulkPaste],
   );
 
+  useEffect(
+    () =>
+      subscribeExperimentalPanelAdd('thera', () => {
+        void sync(missing);
+      }),
+    [sync, missing],
+  );
+
   return (
     <Card size="sm">
       <CardHeader>
         <CardAction className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Toggle Thera sort"
+            title={
+              sortMode === 'name'
+                ? 'Sort: name'
+                : sortMode === 'exit-jumps'
+                  ? 'Sort: jumps from exit'
+                  : 'Sort: jumps toward fight/dest'
+            }
+            onClick={() =>
+              setSortMode((m) =>
+                m === 'name' ? 'exit-jumps' : m === 'exit-jumps' ? 'dest-jumps' : 'name',
+              )
+            }
+          >
+            <ArrowDownUp className="size-3.5" />
+          </Button>
           {/* <Button
             variant="ghost"
             size="sm"
@@ -196,6 +284,7 @@ export function TheraModule({
                           aria-label={`Add ${row.targetName} to map`}
                           disabled={syncing}
                           onClick={() => void sync([row])}
+                          title="One-click add hole"
                         >
                           <Plus />
                         </Button>

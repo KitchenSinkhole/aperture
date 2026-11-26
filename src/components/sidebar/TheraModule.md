@@ -19,6 +19,7 @@ A `Card` listing EVE-Scout connections grouped under `Thera` / `Turnur` sub-head
 - Fetches `fetchTheraConnections` on mount + manual refresh (active-guard against stale responses).
 - Per-row on-map status is computed client-side: hub + target both placed AND a connection links them. It re-derives automatically as `viewData` changes (own sync echo or a peer's realtime update), so a synced row flips green without a refetch.
 - Add / Sync-all POST `…/thera/sync` and fold the returned payloads via `onBulkPaste`.
+- Experimental header control cycles sort: name → jumps from Home/exit → jumps toward fight-tagged/ hostile system (on-map BFS).
 
 ### Emits / Calls
 - `fetchTheraConnections({ mapId })` — list.

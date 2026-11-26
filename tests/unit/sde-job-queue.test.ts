@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { buildCronItems, jobModules, jobQueueFor } from '@/lib/jobs/registry';
 import { SDE_QUEUE } from '@/lib/jobs/queues';

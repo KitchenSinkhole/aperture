@@ -254,6 +254,8 @@ export type MapSettings = {
   homeMapSystemId: string | null;
   /** ABC-only: leave the Home system's static target untagged. */
   exemptHomeStaticFromTag: boolean;
+  /** Experimental UI: periodic signature Clean up (off by default). `experimental_signature_cleanup` on `ap_map`. */
+  experimentalAutoSignatureCleanup: boolean;
 };
 
 /**
@@ -543,6 +545,7 @@ export async function loadMapSettings(
       tagScheme: apMap.tagScheme,
       homeMapSystemId: apMap.homeMapSystemId,
       exemptHomeStaticFromTag: apMap.exemptHomeStaticFromTag,
+      experimentalSignatureCleanup: apMap.experimentalSignatureCleanup,
     })
     .from(apMap)
     .where(and(eq(apMap.id, mapId), isNull(apMap.deletedAt)));
@@ -550,6 +553,7 @@ export async function loadMapSettings(
   return {
     ...row,
     homeMapSystemId: row.homeMapSystemId === null ? null : row.homeMapSystemId.toString(),
+    experimentalAutoSignatureCleanup: row.experimentalSignatureCleanup,
   };
 }
 

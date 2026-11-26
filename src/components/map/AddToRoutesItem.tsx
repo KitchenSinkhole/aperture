@@ -30,6 +30,8 @@ export function AddToRoutesItem({
           if (result.ok) {
             publishRouteDestination(result.data);
             toast.success(`Added ${systemLabel(system)} to routes`);
+          } else {
+            toast.error(result.error);
           }
         });
         onClose();

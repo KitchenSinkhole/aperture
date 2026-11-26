@@ -6,6 +6,8 @@ import { usePresenceForMap } from '@/components/map/MapPresenceContext';
 interface MapActiveCharContextValue {
   activeCharId: number | null;
   activeCharSystemId: number | null;
+  /** Explicit pick from the pilots panel; when set it overrides the default active char. */
+  pickedCharId: number | null;
   locatedChars: { id: number; name: string }[];
   setPickedCharId: (id: number | null) => void;
 }
@@ -46,8 +48,8 @@ export function MapActiveCharProvider({
   const activeCharSystemId = activeCharId != null ? (locatedByChar.get(activeCharId) ?? null) : null;
 
   const value = useMemo(
-    () => ({ activeCharId, activeCharSystemId, locatedChars, setPickedCharId }),
-    [activeCharId, activeCharSystemId, locatedChars],
+    () => ({ activeCharId, activeCharSystemId, pickedCharId, locatedChars, setPickedCharId }),
+    [activeCharId, activeCharSystemId, pickedCharId, locatedChars],
   );
 
   return <MapActiveCharContext.Provider value={value}>{children}</MapActiveCharContext.Provider>;

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMapActiveChar } from '@/components/map/MapActiveCharContext';
 import { usePresenceForSystem } from '@/components/map/MapPresenceContext';
 import { connectionBadges, connectionStyle, systemClassColor } from '@/components/map/styling';
+import { useMapStyleOptions } from '@/components/map/MapStyleContext';
 import { ShipClassIcon } from '@/components/icons/ShipClassIcon';
 import { ChevronDown, ChevronUp, Flag } from 'lucide-react';
 import { connectionExpiredSinceMs, connectionTimeLeftMs } from '@/lib/map/connectionState';
@@ -101,7 +102,8 @@ function Header({
   const trueSec = node ? node.trueSec : (fallback?.systemTrueSec ?? null);
   const name = node ? (node.alias ?? node.name) : (fallback?.systemName ?? 'Unknown system');
   const tag = node?.tag ?? null;
-  const color = systemClassColor(security);
+  const styleOpts = useMapStyleOptions();
+  const color = systemClassColor(security, styleOpts);
   const [pinging, setPinging] = useState(false);
   const [togglingRally, setTogglingRally] = useState(false);
 
@@ -618,9 +620,10 @@ function ConnectionRow({
   far: MapSystemNode | null;
   sig: string | null;
 }) {
+  const styleOpts = useMapStyleOptions();
   const countdown = useEolCountdown(edge);
-  const dotColor = connectionStyle(edge).stroke;
-  const color = systemClassColor(far?.security);
+  const dotColor = connectionStyle(edge, styleOpts).stroke;
+  const color = systemClassColor(far?.security, styleOpts);
   // connectionBadges already carries an EOL badge; drop it so the live countdown
   // is the single EOL indicator, keeping STATIC / size.
   const badges = connectionBadges(edge).filter((b) => b.key !== 'eol');
