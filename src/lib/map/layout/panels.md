@@ -6,7 +6,7 @@
 ---
 
 ### LAYOUT_CONFIG_VERSION
-`number` (currently `2`). Bumped when `MapLayoutConfig`'s stored shape changes incompatibly; gates the `migrateLayout` upgrade of saved layouts.
+`number` (currently `3`). Bumped when `MapLayoutConfig`'s stored shape changes incompatibly; gates the `migrateLayout` upgrade of saved layouts.
 
 ### PANEL_BREAKPOINTS
 `Record<Breakpoint, number>` — `{ lg: 1200, md: 768, sm: 0 }`. Min container widths (px) for the responsive grid; shared by the grid component (later stages).
@@ -15,7 +15,7 @@
 `Record<Breakpoint, number>` — `{ lg: 12, md: 8, sm: 4 }`. Column count per breakpoint.
 
 ### PANELS
-`PanelDef[]` — the registry of every panel in DOM source order (which drives single-column `sm` stacking). Each `PanelDef` is `{ id: PanelId; title: string; defaultVisible: boolean; minW: number; minH: number }`. Order: canvas, signatures, sigSearch (displayed as "Signature Search"), inspector, route, intel, structure, killStats, systemGraph, systemKillboard, tags, thera (displayed as "Eve-Scout"). `minW`/`minH` are the per-panel resize floors **in grid columns/rows** (not px) — edit them here to change how small a panel can be dragged.
+`PanelDef[]` — the full registry in DOM source order (which drives single-column `sm` stacking when experimental UI is on). Each `PanelDef` is `{ id: PanelId; title: string; defaultVisible: boolean; minW: number; minH: number }`. Core panels: canvas, signatures, sigSearch ("Signature Search"), inspector, route, intel, structure, killStats, systemGraph, systemKillboard, tags, thera ("Eve-Scout"). Experimental-only ids (also in `EXPERIMENTAL_ONLY_PANEL_IDS`): `currentRoute`, `pilots`, `kills`, `dscan`. Legacy UIs use `panelsRegisteredForUi(false)` so those four never auto-place or appear in the Panels menu. `minW`/`minH` are resize floors in grid columns/rows.
 
 ### PANEL_MIN
 `Record<PanelId, { minW: number; minH: number }>` — the resize floors derived from `PANELS`. Authoritative: `MapLayoutGrid` re-applies these over each stored layout item at render time, so lowering a floor takes effect for already-saved per-account layouts without disturbing their persisted positions.

@@ -8,11 +8,18 @@ import { requireSession } from '@/lib/session';
 import { canViewMap } from '@/lib/auth/rights';
 import type { MapRouteFavouriteView } from '@/types';
 
+const numericId = z.string().regex(/^\d+$/, 'Invalid id.');
+
 const pinSchema = z.object({
-  mapId: z.string().min(1),
+  mapId: numericId,
   systemId: z.number().int().positive(),
   label: z.string().trim().max(60).nullish(),
   shared: z.boolean().optional(),
+});
+
+const removeFavouriteInputSchema = z.object({
+  mapId: numericId,
+  favouriteId: numericId,
 });
 
 export async function addMapRouteFavouriteAction(
@@ -64,7 +71,9 @@ export async function removeMapRouteFavouriteAction(input: {
   favouriteId: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const session = await requireSession();
-  if (!(await canViewMap(BigInt(session.characterId!), BigInt(input.mapId)))) return {
+  const parsed = removeFavouriteInputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid favourite.' };
+  if (!(await canViewMap(BigInt(session.characterId!), BigInt(parsed.data.mapId)))) return {
     ok: false,
     error: 'No access.',
   };
@@ -72,8 +81,8 @@ export async function removeMapRouteFavouriteAction(input: {
     .delete(apMapRouteFavourite)
     .where(
       and(
-        eq(apMapRouteFavourite.id, BigInt(input.favouriteId)),
-        eq(apMapRouteFavourite.mapId, BigInt(input.mapId)),
+        eq(apMapRouteFavourite.id, BigInt(parsed.data.favouriteId)),
+        eq(apMapRouteFavourite.mapId, BigInt(parsed.data.mapId)),
         eq(apMapRouteFavourite.userId, session.userId),
       ),
     );

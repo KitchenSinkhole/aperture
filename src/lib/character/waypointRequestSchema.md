@@ -5,5 +5,8 @@
 
 ---
 
+### CHARACTER_WAYPOINT_SEQUENCE_MAX
+`number` — cap on `waypointSystemIds` length in sequence mode (currently 10).
+
 ### characterWaypointBodySchema
 Union of legacy single-destination and multi-waypoint sequence payloads.

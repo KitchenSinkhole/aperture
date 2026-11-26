@@ -2,11 +2,14 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { apMapActiveRoute } from '@/db/schema';
+import { apMapActiveRoute, universeSystem } from '@/db/schema';
 import { requireSession, assertCharacterOwnership } from '@/lib/session';
 import { canViewMap } from '@/lib/auth/rights';
 import type { MapActiveRouteView, RouteHop } from '@/types';
-import { setMapActiveRouteInputSchema } from '@/lib/map/mapActiveRouteSchema';
+import {
+  clearMapActiveRouteInputSchema,
+  setMapActiveRouteInputSchema,
+} from '@/lib/map/mapActiveRouteSchema';
 
 export async function setMapActiveRouteAction(
   input: unknown,
@@ -28,6 +31,12 @@ export async function setMapActiveRouteAction(
       return { ok: false, error: 'Character not found.' };
     }
   }
+
+  const [destSystem] = await db
+    .select({ id: universeSystem.id })
+    .from(universeSystem)
+    .where(eq(universeSystem.id, parsed.data.destinationSystemId));
+  if (!destSystem) return { ok: false, error: 'No such system.' };
 
   const hops = parsed.data.plan.hops;
   const planJson = { hops, destinationSystemId: parsed.data.destinationSystemId };
@@ -76,14 +85,16 @@ export async function clearMapActiveRouteAction(input: {
   mapId: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const session = await requireSession();
-  if (!(await canViewMap(BigInt(session.characterId!), BigInt(input.mapId)))) {
+  const parsed = clearMapActiveRouteInputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid active route.' };
+  if (!(await canViewMap(BigInt(session.characterId!), BigInt(parsed.data.mapId)))) {
     return { ok: false, error: 'No access.' };
   }
   await db
     .delete(apMapActiveRoute)
     .where(
       and(
-        eq(apMapActiveRoute.mapId, BigInt(input.mapId)),
+        eq(apMapActiveRoute.mapId, BigInt(parsed.data.mapId)),
         eq(apMapActiveRoute.ownerUserId, session.userId),
       ),
     );

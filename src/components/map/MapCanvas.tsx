@@ -213,6 +213,7 @@ import { PanelDndContext } from './layout/PanelDndContext';
 import {
   defaultMapLayoutForUi,
   PANELS,
+  panelsRegisteredForUi,
   PANEL_COLS,
   PANEL_MIN,
   dedupeGroups,
@@ -3485,7 +3486,7 @@ export function MapCanvas({
                         }
                       />
                       <MenuContent>
-                        {PANELS.map((p) => (
+                        {panelsRegisteredForUi(experimentalActive).map((p) => (
                           <MenuCheckboxItem
                             key={p.id}
                             checked={!layout.hidden.includes(p.id)}

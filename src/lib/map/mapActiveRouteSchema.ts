@@ -24,13 +24,21 @@ export const routePlanSchema = z.object({
   hops: z.array(routeHopSchema).max(ACTIVE_ROUTE_MAX_HOPS),
 });
 
-export const setMapActiveRouteInputSchema = z.object({
-  mapId: z.string().min(1),
-  primaryCharacterId: z.number().int().positive(),
-  destinationSystemId: z.number().int().positive(),
-  plan: routePlanSchema,
-  followerCharacterIds: z
-    .array(z.number().int().positive())
-    .min(1)
-    .max(ACTIVE_ROUTE_MAX_FOLLOWERS),
+export const setMapActiveRouteInputSchema = z
+  .object({
+    mapId: z.string().regex(/^\d+$/, 'Invalid map id.'),
+    primaryCharacterId: z.number().int().positive(),
+    destinationSystemId: z.number().int().positive(),
+    plan: routePlanSchema,
+    followerCharacterIds: z
+      .array(z.number().int().positive())
+      .min(1)
+      .max(ACTIVE_ROUTE_MAX_FOLLOWERS),
+  })
+  .refine((v) => v.plan.destinationSystemId === v.destinationSystemId, {
+    message: 'Plan destination does not match.',
+  });
+
+export const clearMapActiveRouteInputSchema = z.object({
+  mapId: z.string().regex(/^\d+$/, 'Invalid map id.'),
 });
