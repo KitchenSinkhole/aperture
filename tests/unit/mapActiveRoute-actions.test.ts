@@ -75,6 +75,40 @@ describe('setMapActiveRouteInputSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects non-numeric map id', () => {
+    const result = setMapActiveRouteInputSchema.safeParse({
+      mapId: 'not-a-number',
+      primaryCharacterId: 42,
+      destinationSystemId: 30000142,
+      plan: {
+        destinationSystemId: 30000142,
+        destinationName: 'Jita',
+        reachable: true,
+        jumps: 1,
+        hops: [],
+      },
+      followerCharacterIds: [42],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects when plan destination disagrees with top-level destination', () => {
+    const result = setMapActiveRouteInputSchema.safeParse({
+      mapId: '1',
+      primaryCharacterId: 42,
+      destinationSystemId: 30000142,
+      plan: {
+        destinationSystemId: 30002187,
+        destinationName: 'Amarr',
+        reachable: true,
+        jumps: 1,
+        hops: [],
+      },
+      followerCharacterIds: [42],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects too many followers', () => {
     const result = setMapActiveRouteInputSchema.safeParse({
       mapId: '1',

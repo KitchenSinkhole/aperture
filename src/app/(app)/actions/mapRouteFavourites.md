@@ -10,6 +10,3 @@ Pins a universe system on a map for the viewer; optional label and shared flag.
 
 ### removeMapRouteFavouriteAction(input)
 Removes a favourite by id for the viewer when `mapId` and favourite row match and the viewer can view the map.
-
-### listMapRouteFavouritesAction(mapId)
-Returns favourites visible to the viewer on the map.
