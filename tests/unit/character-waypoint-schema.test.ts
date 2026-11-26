@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { characterWaypointBodySchema } from '@/lib/character/waypointRequestSchema';
+import {
+  CHARACTER_WAYPOINT_SEQUENCE_MAX,
+  characterWaypointBodySchema,
+} from '@/lib/character/waypointRequestSchema';
 
 describe('characterWaypointBodySchema', () => {
   it('accepts legacy single-destination body', () => {
@@ -30,7 +33,7 @@ describe('characterWaypointBodySchema', () => {
   });
 
   it('caps waypoint sequence length', () => {
-    const ids = Array.from({ length: 25 }, (_, i) => 30_000_100 + i);
+    const ids = Array.from({ length: CHARACTER_WAYPOINT_SEQUENCE_MAX + 1 }, (_, i) => 30_000_100 + i);
     const result = characterWaypointBodySchema.safeParse({
       mode: 'sequence',
       characterId: 1,

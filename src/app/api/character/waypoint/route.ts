@@ -57,6 +57,7 @@ export const POST = withApiMetrics('/api/character/waypoint', async function POS
       ? parsed.data.waypointSystemIds
       : [parsed.data.destinationId];
 
+  let pushed = 0;
   try {
     for (let i = 0; i < destinations.length; i++) {
       await esiCall('setWaypoint', {
@@ -68,8 +69,9 @@ export const POST = withApiMetrics('/api/character/waypoint', async function POS
           clear_other_waypoints: i === 0,
         },
       });
+      pushed++;
     }
-    return Response.json({ ok: true, pushed: destinations.length });
+    return Response.json({ ok: true, pushed });
   } catch (err) {
     if (err instanceof EsiTokenTransientError) {
       return Response.json(
@@ -87,7 +89,7 @@ export const POST = withApiMetrics('/api/character/waypoint', async function POS
       );
     }
     return Response.json(
-      { ok: false, error: 'Set destination is unavailable right now.' },
+      { ok: false, error: 'Set destination is unavailable right now.', pushed },
       { status: 502 },
     );
   }
