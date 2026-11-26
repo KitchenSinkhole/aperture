@@ -13,6 +13,7 @@ import {
   EXPERIMENTAL_ONLY_PANEL_IDS,
   mergePanelIntoGroup,
   migrateLayout,
+  panelsRegisteredForUi,
   removePanelFromLayout,
 } from '@/lib/map/layout/panels';
 import { mapLayoutConfigSchema } from '@/lib/map/layout/schema';
@@ -58,6 +59,16 @@ describe('migrateLayout', () => {
     const migrated = migrateLayout(DEFAULT_MAP_LAYOUT);
     expect(migrated.groups).toEqual(DEFAULT_MAP_LAYOUT.groups);
     expect(migrated.version).toBe(LAYOUT_CONFIG_VERSION);
+  });
+});
+
+describe('panelsRegisteredForUi', () => {
+  it('excludes experimental-only panels when experimental is off', () => {
+    const ids = panelsRegisteredForUi(false).map((p) => p.id);
+    for (const id of EXPERIMENTAL_ONLY_PANEL_IDS) {
+      expect(ids).not.toContain(id);
+    }
+    expect(panelsRegisteredForUi(true).map((p) => p.id)).toEqual(PANELS.map((p) => p.id));
   });
 });
 
